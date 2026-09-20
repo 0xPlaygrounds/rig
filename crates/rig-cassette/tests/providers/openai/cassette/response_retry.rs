@@ -40,6 +40,9 @@ impl AgentHook for RetryOnceOnMarker {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_retry/rejected_response_is_retried_with_feedback"
+))]
 #[tokio::test]
 async fn rejected_response_is_retried_with_feedback() {
     with_openai_cassette(

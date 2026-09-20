@@ -42,6 +42,9 @@ fn cache_padding(label: &str) -> String {
     )
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/caching_and_identity_share_the_wire_blocking"
+))]
 /// Family A: the #2312 cache-TTL feature and #2313 identity capture share
 /// `send_completion` and landed a day apart — assert both on the same
 /// recorded turns. The warm turn reads the cache yet reports its *own*
@@ -101,6 +104,9 @@ async fn caching_and_identity_share_the_wire_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/caching_and_identity_share_the_wire_streaming"
+))]
 /// Streaming half of the cache × identity collision: the SSE-captured ids
 /// are per-connection distinct while the cache warms across them.
 #[tokio::test]
@@ -145,6 +151,9 @@ async fn caching_and_identity_share_the_wire_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/strict_tools_and_identity"
+))]
 /// Family A: strict tool schemas rebuild the request; identity still rides it.
 #[tokio::test]
 async fn strict_tools_and_identity() {
@@ -173,6 +182,9 @@ async fn strict_tools_and_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/extended_thinking_and_identity"
+))]
 /// Family A: extended thinking's altered message shape still routes through
 /// the capturing driver.
 #[tokio::test]
@@ -199,6 +211,9 @@ async fn extended_thinking_and_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/documents_and_identity"
+))]
 /// Family A: document context blocks still route through the capturing driver.
 #[tokio::test]
 async fn documents_and_identity() {
@@ -265,6 +280,9 @@ impl Tool for FlakyAdder {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/tool_error_retry_reports_distinct_ids_blocking"
+))]
 /// Family B: a tool error fed back to the model produces extra completion
 /// calls — every one observed with its *own* transport id, none leaked
 /// across the tool-error boundary.
@@ -318,6 +336,9 @@ async fn tool_error_retry_reports_distinct_ids_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/tool_error_retry_reports_distinct_ids_streamed"
+))]
 /// Family B: same recovery on the streamed surface.
 #[tokio::test]
 async fn tool_error_retry_reports_distinct_ids_streamed() {
@@ -361,6 +382,9 @@ async fn tool_error_retry_reports_distinct_ids_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/streamed_hook_retry_uses_second_connections_id"
+))]
 /// Family B: a *live* hook-driven retry on the streamed surface. The retried
 /// attempt opens a new SSE connection; the second `ModelTurnFinished` must
 /// carry that second connection's id — the real-world test of the shared
@@ -424,6 +448,9 @@ async fn streamed_hook_retry_uses_second_connections_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity"
+))]
 /// Family B: an invalid tool call (provider-advertised alias rig cannot
 /// execute) repaired by a hook. The recovered turn's identity-bearing events
 /// stay suppressed — intentional — while its `CompletionCall` still records
@@ -524,6 +551,9 @@ async fn repaired_invalid_call_keeps_call_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/max_turns_exhaustion_still_observed_completed_calls"
+))]
 /// Family B: `max_turns` exhaustion mid-tool-run — every *completed* call was
 /// observed with identity before the abort.
 #[tokio::test]
@@ -562,6 +592,9 @@ async fn max_turns_exhaustion_still_observed_completed_calls() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/parallel_tool_calls_one_identity_per_turn"
+))]
 /// Family B: several tool calls in one turn are one completion call with one
 /// identity — never duplicated per tool execution.
 #[tokio::test]
@@ -602,6 +635,9 @@ async fn parallel_tool_calls_one_identity_per_turn() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/history_replay_does_not_leak_prior_run_identity"
+))]
 /// Family D: run B is fed run A's messages as history; run B's identity is
 /// its own — persisted `message_id`s in history never resurface as run B's
 /// identity, and the request bodies carry no identity fields at all (the
@@ -650,6 +686,9 @@ async fn history_replay_does_not_leak_prior_run_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/stream_conversion_carries_live_identity"
+))]
 /// Family D: live pin of the stream→`CompletionResponse` conversion — the
 /// terminal's transport id survives into the converted response.
 #[tokio::test]
@@ -682,6 +721,9 @@ async fn stream_conversion_carries_live_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity_edge/provider_error_response_surfaces_cleanly"
+))]
 /// Family B: a provider 4xx — identity capture must not disturb the error
 /// path, and the recorded fixture documents whether the error *response*
 /// carried the `request-id` header (evidence for the error-path follow-up;

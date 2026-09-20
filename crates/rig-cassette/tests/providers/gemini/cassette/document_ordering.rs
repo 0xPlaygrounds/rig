@@ -39,6 +39,9 @@ fn assistant_text(choice: &[AssistantContent]) -> String {
         .join("")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/document_ordering/generate_content_keeps_documents_after_system_before_history"
+))]
 #[tokio::test]
 async fn generate_content_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_cassette(
@@ -76,6 +79,9 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/document_ordering/interactions_keeps_documents_after_system_before_history"
+))]
 #[tokio::test]
 async fn interactions_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_interactions_cassette(

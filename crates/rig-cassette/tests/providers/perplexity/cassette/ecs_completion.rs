@@ -4,6 +4,9 @@ use crate::perplexity::support::with_perplexity_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use rig::providers::perplexity;
 use rig_ecs::agent::DefaultMaxTurns;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_perplexity_cassette("agent/completion_smoke", |client| async move {
@@ -21,6 +24,9 @@ async fn completion_smoke() {
     })
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/agent/completion_with_perplexity_options"
+))]
 #[tokio::test]
 async fn completion_with_perplexity_options() {
     with_perplexity_cassette(

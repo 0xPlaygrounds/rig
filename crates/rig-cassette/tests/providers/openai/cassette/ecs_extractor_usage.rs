@@ -4,6 +4,9 @@ use super::extractor_usage::{Address, Person, assert_compatible_professions};
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
 use rig::providers;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor_usage/extract_backward_compatibility"
+))]
 /// Test that `extract()`'s `.output` is the extracted value
 /// (usage rides alongside it on the response).
 #[tokio::test]
@@ -28,6 +31,9 @@ async fn extract_backward_compatibility() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor_usage/extract_with_usage_returns_data_and_usage"
+))]
 /// Test `extract()` returns the extracted data with usage information.
 #[tokio::test]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
@@ -53,6 +59,9 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor_usage/extract_with_chat_history_with_usage_works"
+))]
 /// Test `extract(..).history(..)` returns the extracted data with usage information.
 #[tokio::test]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
@@ -85,6 +94,9 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor_usage/extract_and_extract_with_usage_return_same_data"
+))]
 /// Test that two `extract()` calls agree on the stable extracted fields.
 /// These are separate model calls, so exact wording can vary across runs.
 #[tokio::test]
@@ -117,6 +129,9 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor_usage/usage_tracking_works_for_different_schemas"
+))]
 /// Test that usage is reported for both simple and complex extraction scenarios.
 #[tokio::test]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {

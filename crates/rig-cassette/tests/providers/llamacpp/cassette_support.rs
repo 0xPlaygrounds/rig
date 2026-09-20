@@ -116,13 +116,7 @@ async fn llamacpp_cassette_on(
     spec: impl Into<CassetteSpec>,
     upstream: &str,
 ) -> (ProviderCassette, BoundLlamacpp) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "llamacpp",
-        spec,
-        upstream,
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("llamacpp", spec, upstream).await;
     // No credential: `llama-server` needs none unless started with
     // `--api-key`, and an empty key under the dialect's
     // [`Auth::OptionalBearer`](rig::providers::openai::wire::Auth) is a
@@ -307,8 +301,7 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
     F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = rig_test_support::recording::start(
         "llamacpp",
         spec,
         &upstream("LLAMACPP_API_KEY_UPSTREAM", 8089),
@@ -382,13 +375,7 @@ pub(super) async fn with_llamacpp_raw_http_cassette<F, Fut>(
     F: FnOnce(String) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "llamacpp",
-        spec,
-        &record_upstream(),
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("llamacpp", spec, &record_upstream()).await;
     let base_url = cassette.base_url();
     let result = AssertUnwindSafe(test_body(base_url)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -410,13 +397,7 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "llamacpp",
-        spec,
-        &record_upstream(),
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("llamacpp", spec, &record_upstream()).await;
     // Note the `/v1`: the `OPENAI` dialect composes paths straight onto its
     // base URL and its own default already carries the prefix, so a caller
     // aiming it at `llama-server` supplies that prefix themselves — and,

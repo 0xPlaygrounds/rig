@@ -15,3 +15,5 @@ use rig_test_support::support;
 
 #[path = "providers/llamacpp/mod.rs"]
 mod llamacpp;
+
+rig_test_support::cassette_inventory!();

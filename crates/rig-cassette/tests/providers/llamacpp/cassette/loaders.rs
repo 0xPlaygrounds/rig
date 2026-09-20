@@ -6,6 +6,9 @@ use rig::prelude::*;
 use super::super::cassette_support::*;
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/loaders/loaders_smoke"
+))]
 #[tokio::test]
 async fn loaders_smoke() {
     with_llamacpp_cassette("loaders/loaders_smoke", |client| async move {

@@ -11,3 +11,5 @@ use rig_test_support::support;
 
 #[path = "providers/ollama/mod.rs"]
 mod ollama;
+
+rig_test_support::cassette_inventory!();

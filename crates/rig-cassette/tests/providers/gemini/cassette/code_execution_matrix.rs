@@ -247,6 +247,9 @@ async fn streaming_body(
 
 // --- 1/2: baseline, raw model, blocking and streaming ---------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_raw_model_answers_after_code_execution"
+))]
 #[tokio::test]
 async fn blocking_raw_model_answers_after_code_execution() {
     const SCENARIO: &str = "code_execution_matrix/blocking_raw_model_answers_after_code_execution";
@@ -268,6 +271,9 @@ async fn blocking_raw_model_answers_after_code_execution() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_raw_model_answers_after_code_execution"
+))]
 #[tokio::test]
 async fn streaming_raw_model_answers_after_code_execution() {
     const SCENARIO: &str = "code_execution_matrix/streaming_raw_model_answers_after_code_execution";
@@ -291,6 +297,9 @@ async fn streaming_raw_model_answers_after_code_execution() {
 
 // --- 3/4: agent surface ---------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_agent_prompt_answers_after_code_execution"
+))]
 #[tokio::test]
 async fn blocking_agent_prompt_answers_after_code_execution() {
     with_gemini_code_execution_cassette(
@@ -322,6 +331,9 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_agent_prompt_answers_after_code_execution"
+))]
 #[tokio::test]
 async fn streaming_agent_prompt_answers_after_code_execution() {
     with_gemini_code_execution_cassette(
@@ -367,6 +379,9 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
 
 // --- 5: provider-native escape hatch --------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_raw_completion_keeps_native_code_parts"
+))]
 #[tokio::test]
 async fn blocking_raw_completion_keeps_native_code_parts() {
     const SCENARIO: &str = "code_execution_matrix/blocking_raw_completion_keeps_native_code_parts";
@@ -435,6 +450,9 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
 const FAILING_CODE_PROMPT: &str = "Use the code execution tool to run exactly `print(1/0)` first. After it fails, \
      say the word DIVISIONERROR in your answer.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_failed_code_execution_outcome"
+))]
 #[tokio::test]
 async fn blocking_failed_code_execution_outcome() {
     const SCENARIO: &str = "code_execution_matrix/blocking_failed_code_execution_outcome";
@@ -459,6 +477,9 @@ async fn blocking_failed_code_execution_outcome() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_failed_code_execution_outcome"
+))]
 #[tokio::test]
 async fn streaming_failed_code_execution_outcome() {
     const SCENARIO: &str = "code_execution_matrix/streaming_failed_code_execution_outcome";
@@ -488,6 +509,9 @@ async fn streaming_failed_code_execution_outcome() {
 const MULTI_ROUND_PROMPT: &str = "Use the code execution tool twice, in two separate runs: first compute 6*7, \
      then in a second run compute 6*7 plus 100. State both numbers in your answer.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_multiple_code_execution_rounds"
+))]
 #[tokio::test]
 async fn blocking_multiple_code_execution_rounds() {
     const SCENARIO: &str = "code_execution_matrix/blocking_multiple_code_execution_rounds";
@@ -512,6 +536,9 @@ async fn blocking_multiple_code_execution_rounds() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_multiple_code_execution_rounds"
+))]
 #[tokio::test]
 async fn streaming_multiple_code_execution_rounds() {
     const SCENARIO: &str = "code_execution_matrix/streaming_multiple_code_execution_rounds";
@@ -541,6 +568,9 @@ async fn streaming_multiple_code_execution_rounds() {
 const THINKING_PROMPT: &str = "Use the code execution tool to compute the 20th Fibonacci number. \
      State the number in your answer.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_with_visible_thoughts"
+))]
 #[tokio::test]
 async fn blocking_code_execution_with_visible_thoughts() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_with_visible_thoughts";
@@ -581,6 +611,9 @@ async fn blocking_code_execution_with_visible_thoughts() {
     assert_recorded_response_contains(SCENARIO, &["\"thought\""]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_code_execution_with_visible_thoughts"
+))]
 #[tokio::test]
 async fn streaming_code_execution_with_visible_thoughts() {
     const SCENARIO: &str = "code_execution_matrix/streaming_code_execution_with_visible_thoughts";
@@ -626,6 +659,9 @@ const PREAMBLE: &str = "You are a calculator. Always use the code execution tool
                         state the numeric result in plain text.";
 const PREAMBLE_PROMPT: &str = "What is 123 multiplied by 456?";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_with_preamble"
+))]
 #[tokio::test]
 async fn blocking_code_execution_with_preamble() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_with_preamble";
@@ -657,6 +693,9 @@ async fn blocking_code_execution_with_preamble() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_code_execution_with_preamble"
+))]
 #[tokio::test]
 async fn streaming_code_execution_with_preamble() {
     const SCENARIO: &str = "code_execution_matrix/streaming_code_execution_with_preamble";
@@ -695,6 +734,9 @@ async fn streaming_code_execution_with_preamble() {
 const UNICODE_PROMPT: &str = "Use the code execution tool to run exactly \
      `print('θερμοκρασία 🌡️ 25°C')` and then repeat its output verbatim in your answer.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_unicode_output"
+))]
 #[tokio::test]
 async fn blocking_code_execution_unicode_output() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_unicode_output";
@@ -719,6 +761,9 @@ async fn blocking_code_execution_unicode_output() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_code_execution_unicode_output"
+))]
 #[tokio::test]
 async fn streaming_code_execution_unicode_output() {
     // The cassette replay server fragments SSE bodies on byte boundaries that
@@ -751,6 +796,9 @@ async fn streaming_code_execution_unicode_output() {
 const LARGE_OUTPUT_PROMPT: &str = "Use the code execution tool to run exactly `print(list(range(200)))`. \
      Then say the word PRINTED in your answer.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_large_stdout"
+))]
 #[tokio::test]
 async fn blocking_code_execution_large_stdout() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_large_stdout";
@@ -775,6 +823,9 @@ async fn blocking_code_execution_large_stdout() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_code_execution_large_stdout"
+))]
 #[tokio::test]
 async fn streaming_code_execution_large_stdout() {
     const SCENARIO: &str = "code_execution_matrix/streaming_code_execution_large_stdout";
@@ -817,6 +868,9 @@ fn assert_capped_request_carried_both_knobs(scenario: &str) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_capped_by_max_tokens"
+))]
 #[tokio::test]
 async fn blocking_code_execution_capped_by_max_tokens() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_capped_by_max_tokens";
@@ -840,6 +894,9 @@ async fn blocking_code_execution_capped_by_max_tokens() {
     assert_capped_request_carried_both_knobs(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_code_execution_capped_by_max_tokens"
+))]
 #[tokio::test]
 async fn streaming_code_execution_capped_by_max_tokens() {
     const SCENARIO: &str = "code_execution_matrix/streaming_code_execution_capped_by_max_tokens";
@@ -868,6 +925,9 @@ async fn streaming_code_execution_capped_by_max_tokens() {
 const SECOND_MODEL_PROMPT: &str =
     "Use the code execution tool to compute 17 squared. State the number in your answer.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_on_gemini_3_flash"
+))]
 #[tokio::test]
 async fn blocking_code_execution_on_gemini_3_flash() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_on_gemini_3_flash";
@@ -892,6 +952,9 @@ async fn blocking_code_execution_on_gemini_3_flash() {
     assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_code_execution_on_gemini_3_flash"
+))]
 #[tokio::test]
 async fn streaming_code_execution_on_gemini_3_flash() {
     const SCENARIO: &str = "code_execution_matrix/streaming_code_execution_on_gemini_3_flash";
@@ -918,6 +981,9 @@ async fn streaming_code_execution_on_gemini_3_flash() {
 
 // --- 22: a code-execution turn replayed as chat history -------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history"
+))]
 #[tokio::test]
 async fn blocking_code_execution_replayed_in_chat_history() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_replayed_in_chat_history";

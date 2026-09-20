@@ -17,6 +17,9 @@ use crate::support::assert_nonempty_response;
 const SKIP_REASON: &str = "the add tool is down for maintenance; report exactly that to the user";
 const TERMINATE_REASON: &str = "tool execution vetoed by policy hook";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_hooks/on_tool_call_skip_returns_reason_without_executing"
+))]
 #[tokio::test]
 async fn on_tool_call_skip_returns_reason_without_executing() {
     let add = CountingAdd::default();
@@ -59,6 +62,9 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_hooks/on_tool_call_terminate_cancels_run"
+))]
 #[tokio::test]
 async fn on_tool_call_terminate_cancels_run() {
     let add = CountingAdd::default();
@@ -101,6 +107,9 @@ async fn on_tool_call_terminate_cancels_run() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_hooks/hooks_observe_every_tool_call_and_result"
+))]
 #[tokio::test]
 async fn hooks_observe_every_tool_call_and_result() {
     let add = CountingAdd::default();

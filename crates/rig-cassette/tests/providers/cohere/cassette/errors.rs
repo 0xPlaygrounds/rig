@@ -12,6 +12,9 @@ use crate::support::BASIC_PROMPT;
 
 const UNKNOWN_MODEL: &str = "command-does-not-exist";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/errors/completion_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn completion_error_preserves_status_and_body() {
     with_cohere_cassette(

@@ -367,6 +367,9 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_cached_code_execution"
+))]
 /// The carve-out the `declares_functions` gate exists for, measured rather than
 /// assumed: a cache carrying a **provider-hosted** tool is usable from an agent
 /// that declares nothing itself.
@@ -445,6 +448,9 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
     assert_recorded_requests_read_from_a_cache("cached_content_matrix/edge_cached_code_execution");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_agent_active_tools_suppressed"
+))]
 /// The exception to the cell above, recorded because it is the one that would
 /// otherwise be an unchecked claim in the docs.
 ///
@@ -519,6 +525,9 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/sys_notools_nocfg_noname_ttl"
+))]
 #[tokio::test]
 async fn sys_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -540,6 +549,9 @@ async fn sys_notools_nocfg_noname_ttl() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/sys_notools_nocfg_noname_abs"
+))]
 #[tokio::test]
 async fn sys_notools_nocfg_noname_abs() {
     with_gemini_prompt_caching_cassette(
@@ -561,6 +573,9 @@ async fn sys_notools_nocfg_noname_abs() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/sys_notools_nocfg_noname_default"
+))]
 #[tokio::test]
 async fn sys_notools_nocfg_noname_default() {
     with_gemini_prompt_caching_cassette(
@@ -582,6 +597,9 @@ async fn sys_notools_nocfg_noname_default() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/sys_notools_nocfg_named_ttl"
+))]
 #[tokio::test]
 async fn sys_notools_nocfg_named_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -603,6 +621,9 @@ async fn sys_notools_nocfg_named_ttl() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/sys_onetool_nocfg_noname_ttl"
+))]
 #[tokio::test]
 async fn sys_onetool_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -624,6 +645,9 @@ async fn sys_onetool_nocfg_noname_ttl() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/sys_threetools_autocfg_noname_ttl"
+))]
 #[tokio::test]
 async fn sys_threetools_autocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -645,6 +669,9 @@ async fn sys_threetools_autocfg_noname_ttl() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/contents_notools_nocfg_noname_ttl"
+))]
 #[tokio::test]
 async fn contents_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -666,6 +693,9 @@ async fn contents_notools_nocfg_noname_ttl() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/both_notools_nocfg_noname_ttl"
+))]
 #[tokio::test]
 async fn both_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -691,6 +721,9 @@ async fn both_notools_nocfg_noname_ttl() {
 // Edges the create matrix cannot reach
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_below_minimum"
+))]
 /// A cache under the minimum is refused by the provider, citing the minimum.
 ///
 /// The create matrix pads every cell just over 1,024 tokens; this is the cell
@@ -731,6 +764,9 @@ async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_expiry_in_the_past"
+))]
 /// An `expireTime` already in the past is **accepted**.
 ///
 /// Surprising, and worth pinning precisely because it is: Gemini does not
@@ -771,6 +807,9 @@ async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_default_expiry_is_one_hour"
+))]
 /// Omitting both expiry forms defaults to one hour.
 #[tokio::test]
 async fn omitting_expiry_defaults_to_one_hour() {
@@ -806,6 +845,9 @@ async fn omitting_expiry_defaults_to_one_hour() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_list_pagination"
+))]
 /// `list` follows the cursor when the page is smaller than the collection.
 ///
 /// The pagination loop and its cursor-does-not-advance guard were unreachable
@@ -868,6 +910,9 @@ async fn list_follows_the_cursor_across_pages() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_double_delete"
+))]
 /// Deleting a handle twice reports the second as gone rather than succeeding.
 #[tokio::test]
 async fn deleting_twice_reports_the_second_as_expired() {
@@ -906,6 +951,9 @@ async fn deleting_twice_reports_the_second_as_expired() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/edge_update_expiry_absolute"
+))]
 /// Extending expiry with an absolute timestamp uses the `expireTime` update
 /// mask, not the `ttl` one.
 #[tokio::test]
@@ -937,6 +985,9 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/cached_content_matrix/use_streaming"
+))]
 /// Streaming against a cache handle.
 ///
 /// The recorded explicit-cache cells all drive the blocking surface. Cache

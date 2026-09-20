@@ -96,6 +96,7 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check default-tests
+      - run: cargo xtask verify --check cassette-inventory
 
   # The required parity lane owns the root agent/ECS matrices and world
   # golden replay; default-tests and bus-verification exclude these tests.

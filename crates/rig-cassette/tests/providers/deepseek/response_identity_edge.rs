@@ -6,6 +6,9 @@ use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/response_identity_edge/blocking_contract_captures_none"
+))]
 #[tokio::test]
 async fn blocking_contract_captures_none() {
     with_deepseek_cassette(

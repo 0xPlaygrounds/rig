@@ -109,6 +109,9 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/streaming_grammar/thinking_and_tool_call"
+))]
 /// Thinking and a tool call in ONE stream (`think: true`): the reasoning part
 /// and the tool call survive aggregation as discrete siblings.
 #[tokio::test]
@@ -173,6 +176,9 @@ async fn thinking_and_tool_call_in_one_stream() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/streaming_grammar/parallel_tool_calls"
+))]
 /// Parallel tool calls on real recorded traffic: both calls survive as
 /// distinct parts with uncorrupted arguments — the 2258 item-0 collapse pin
 /// against real traffic — and each keeps its daemon-issued call id.
@@ -253,6 +259,9 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/streaming_grammar/same_tool_twice"
+))]
 /// Two calls to the SAME tool in one turn, on real recorded traffic — the
 /// live twin of the corpus pin (#2258 A2 / review 84a43e9e). Modern Ollama
 /// daemons issue distinct call ids; rig preserves them, and both calls
@@ -336,6 +345,9 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/streaming_grammar/chat_sourced_history_replay"
+))]
 /// Cross-provider replay, recorded live (84a43e9e finding #5): a history
 /// sourced from another provider's wire carries `call_abc123` only as rig's
 /// correlation handle — no Ollama provider id. Replayed to Ollama, the tool

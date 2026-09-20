@@ -4,6 +4,9 @@ use crate::copilot::{live_embedding_model, with_copilot_cassette};
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 use rig::embeddings::EmbeddingModel;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/embeddings/embeddings_smoke"
+))]
 #[tokio::test]
 async fn embeddings_smoke() {
     with_copilot_cassette("embeddings/embeddings_smoke", |client| async move {

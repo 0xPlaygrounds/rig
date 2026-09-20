@@ -131,6 +131,7 @@ fn recorded_terminal_events(scenario: &str) -> (String, Value) {
 // 1: raw is the raw_stream FinalResponse, serialized
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("bedrock/raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn stream_raw_terminal_round_trips_provider_type() {
@@ -176,6 +177,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 // 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("bedrock/raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn stream_raw_exposes_bedrock_stop_reason() {

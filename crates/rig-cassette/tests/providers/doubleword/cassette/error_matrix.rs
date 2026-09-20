@@ -206,6 +206,9 @@ async fn invalid_temperature_streaming_body(client: BoundDoubleword) {
     assert_preserved_client_error_report(&error, 400, ErrorEnvelope::Flat);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/unknown_model_blocking"
+))]
 #[tokio::test]
 async fn unknown_model_blocking() {
     const SCENARIO: &str = "error_matrix/unknown_model_blocking";
@@ -222,6 +225,9 @@ async fn unknown_model_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/unknown_model_streaming"
+))]
 #[tokio::test]
 async fn unknown_model_streaming() {
     const SCENARIO: &str = "error_matrix/unknown_model_streaming";
@@ -242,6 +248,9 @@ async fn unknown_model_streaming() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/invalid_key_blocking"
+))]
 #[tokio::test]
 async fn invalid_key_blocking() {
     const SCENARIO: &str = "error_matrix/invalid_key_blocking";
@@ -258,6 +267,9 @@ async fn invalid_key_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/invalid_key_streaming"
+))]
 #[tokio::test]
 async fn invalid_key_streaming() {
     const SCENARIO: &str = "error_matrix/invalid_key_streaming";
@@ -278,6 +290,9 @@ async fn invalid_key_streaming() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/invalid_temperature_blocking"
+))]
 #[tokio::test]
 async fn invalid_temperature_blocking() {
     const SCENARIO: &str = "error_matrix/invalid_temperature_blocking";
@@ -294,6 +309,9 @@ async fn invalid_temperature_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/invalid_temperature_streaming"
+))]
 #[tokio::test]
 async fn invalid_temperature_streaming() {
     const SCENARIO: &str = "error_matrix/invalid_temperature_streaming";

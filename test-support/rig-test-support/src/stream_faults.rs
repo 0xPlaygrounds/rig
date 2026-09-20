@@ -69,7 +69,11 @@ use crate::{
 
 /// The recorded SSE frames of one interaction of a scenario: the response
 /// body split at its blank-line delimiters, in wire order.
-pub fn recorded_sse_frames(provider: &str, scenario: &str, interaction: usize) -> Vec<String> {
+pub(crate) fn recorded_sse_frames(
+    provider: &str,
+    scenario: &str,
+    interaction: usize,
+) -> Vec<String> {
     let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, scenario);
     let (status, body) = recorded
         .get(interaction)
@@ -454,7 +458,7 @@ fn responses_filtered(frames: &[String], with_text: bool) -> Vec<String> {
 /// The recorded setup failure of `scenario` under `status`, as the bundled
 /// transport reports a rejection: a status error carrying the reply's
 /// headers (`Retry-After: 1` when `retry_after`).
-pub fn status_reply(
+pub(crate) fn status_reply(
     provider: &str,
     scenario: &str,
     status: u16,

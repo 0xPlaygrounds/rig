@@ -8,3 +8,5 @@ use rig_test_support::support;
 
 #[path = "providers/mistralrs/mod.rs"]
 mod mistralrs;
+
+rig_test_support::cassette_inventory!();

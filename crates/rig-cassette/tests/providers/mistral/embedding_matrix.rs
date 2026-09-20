@@ -27,6 +27,9 @@ fn inputs() -> Vec<String> {
     EMBEDDING_INPUTS.iter().map(|s| (*s).to_string()).collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/normalized_response_is_complete"
+))]
 #[tokio::test]
 async fn normalized_response_is_complete() {
     with_mistral_embedding_cassette(
@@ -43,6 +46,9 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/raw_round_trips"
+))]
 /// `raw` is the provider's own payload: it deserializes back to the wire type,
 /// and the provider-native fields it exposes are the normalized response's —
 /// plus the envelope tag the normalized view has no slot for.
@@ -68,6 +74,9 @@ async fn raw_round_trips() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/raw_route_parity"
+))]
 /// Two live exchanges in one recording: the same request, twice. `encode` is
 /// deterministic, so the second turn asks for exactly what the first did, and
 /// the reply it rides on is described the same way by both views — the
@@ -94,6 +103,9 @@ async fn raw_route_parity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/single_text_convenience"
+))]
 /// The single-text conveniences derive from the full method: same embedding,
 /// same metadata.
 #[tokio::test]
@@ -119,6 +131,9 @@ async fn single_text_convenience() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/dimensions_request"
+))]
 /// `embedding(model, Some(n))` round-trips the requested width — the
 /// provider either honors it or the driver errors honestly with
 /// `MismatchedDimensions`; a silent mismatch is the bug this cell exists to
@@ -141,6 +156,9 @@ async fn dimensions_request() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/error_preserves_provider_body"
+))]
 /// A rejected request surfaces the provider's own error body, preserved raw.
 #[tokio::test]
 async fn error_preserves_provider_body() {
@@ -167,6 +185,9 @@ async fn error_preserves_provider_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/embedding_matrix/bug_mistral_request_id_dropped"
+))]
 /// Pin of the bug the matrix recording surfaced: Mistral sends
 /// `mistral-correlation-id` on embedding responses exactly as it does on
 /// completions, but the embeddings ext inherited the trait's `None` header

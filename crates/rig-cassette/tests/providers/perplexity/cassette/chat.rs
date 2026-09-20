@@ -8,6 +8,9 @@ use crate::support::assert_contains_any_case_insensitive;
 
 use super::super::support::with_perplexity_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/chat/chat_history_smoke"
+))]
 #[tokio::test]
 async fn chat_history_smoke() {
     with_perplexity_cassette("chat/chat_history_smoke", |client| async move {

@@ -11,6 +11,9 @@ use super::super::support::with_ollama_cassette;
 
 const MODEL: &str = "qwen3:4b";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/tools/optional_argument"
+))]
 #[tokio::test]
 async fn tool_with_optional_argument() {
     with_ollama_cassette("tools/optional_argument", |client| async move {
@@ -24,6 +27,9 @@ async fn tool_with_optional_argument() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/tools/two_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn two_tools_nonstreaming_chain() {
     with_ollama_cassette("tools/two_tools_nonstreaming", |client| async move {

@@ -5,6 +5,9 @@ use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/usage/chat_completion_usage_without_output_tokens_details_deserializes"
+))]
 #[tokio::test]
 async fn chat_completion_usage_without_output_tokens_details_deserializes() {
     with_mistralrs_completions_cassette(

@@ -42,6 +42,9 @@ fn assistant_text(choice: &[AssistantContent]) -> String {
         .join("")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/document_ordering/documents_are_prepended_before_history"
+))]
 #[tokio::test]
 async fn documents_are_prepended_before_history() {
     with_bedrock_cassette(

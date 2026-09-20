@@ -17,6 +17,9 @@ use serde::Deserialize;
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/responses_behaviors/strict_tools_opt_in_roundtrip"
+))]
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
     with_openai_cassette(
@@ -74,6 +77,9 @@ async fn strict_tools_opt_in_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/responses_behaviors/incomplete_response_surfaces_partial_output"
+))]
 #[tokio::test]
 async fn incomplete_response_surfaces_partial_output() {
     with_openai_cassette(
@@ -136,6 +142,9 @@ async fn incomplete_response_surfaces_partial_output() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/responses_behaviors/system_messages_as_input_items_mid_conversation"
+))]
 #[tokio::test]
 async fn system_messages_as_input_items_mid_conversation() {
     with_openai_cassette(

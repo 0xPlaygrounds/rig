@@ -10,8 +10,13 @@ description = "Workspace maintenance tasks for rig. Not published."
 workspace = true
 
 [dependencies]
+rig-cassette-inventory = { path = "../test-support/cassette-inventory" }
+anyhow.workspace = true
 syn = { workspace = true, features = ["full", "visit"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+assert_fs.workspace = true

@@ -47,6 +47,9 @@ async fn run_until_invalid_add_call(
     run
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_recovery/fail_resolution_returns_unknown_tool_call"
+))]
 #[tokio::test]
 async fn fail_resolution_returns_unknown_tool_call() {
     with_gemini_cassette(
@@ -88,6 +91,9 @@ async fn fail_resolution_returns_unknown_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it"
+))]
 #[tokio::test]
 async fn repair_renames_tool_call_and_executes_it() {
     with_gemini_cassette(
@@ -175,6 +181,9 @@ async fn repair_renames_tool_call_and_executes_it() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_recovery/skip_suppresses_every_call_in_the_turn"
+))]
 #[tokio::test]
 async fn skip_suppresses_every_call_in_the_turn() {
     with_gemini_cassette(
@@ -267,6 +276,9 @@ async fn skip_suppresses_every_call_in_the_turn() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_recovery/retry_with_exhausted_budget_fails_with_unknown_tool_call"
+))]
 #[tokio::test]
 async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
     with_gemini_cassette(
@@ -297,6 +309,9 @@ async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_recovery/repair_to_disallowed_name_fails_with_unknown_tool_call"
+))]
 #[tokio::test]
 async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
     with_gemini_cassette(

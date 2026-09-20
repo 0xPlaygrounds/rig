@@ -17,6 +17,9 @@ fn agent(model: impl CompletionModel + 'static, tokens: u64, stop: &str) -> EcsA
     ecs
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/agent_stream_single_sequence"
+))]
 #[tokio::test]
 async fn agent_stream_single_sequence() {
     super::super::support::with_anthropic_stop_sequence_cassette(
@@ -41,6 +44,9 @@ async fn agent_stream_single_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn agent_prompt_empty_stop_sequence() {
     super::super::support::with_anthropic_empty_stop_cassette(
@@ -64,6 +70,9 @@ async fn agent_prompt_empty_stop_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/agent_stream_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn agent_stream_empty_stop_sequence() {
     super::super::support::with_anthropic_empty_stop_cassette(

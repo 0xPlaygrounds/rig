@@ -5,6 +5,9 @@ use rig::providers::venice;
 
 use super::super::support::with_venice_direct_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/audio_generation/audio_generation_smoke"
+))]
 /// Venice's `response_format` has no field on Rig's audio request, so it
 /// travels through `additional_params` — which is also what this pins.
 ///

@@ -104,6 +104,9 @@ fn provider_text(choice: &mistral::Choice) -> &str {
 // 1. raw round-trips Mistral's own type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_capture_matrix/raw_round_trips_mistral_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_mistral_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_mistral_type";
@@ -141,6 +144,9 @@ async fn raw_round_trips_mistral_type() {
 // 2. Fields the normalized response provably lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_capture_matrix/raw_exposes_object_and_service_tier"
+))]
 #[tokio::test]
 async fn raw_exposes_object_and_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object_and_service_tier";
@@ -176,6 +182,9 @@ async fn raw_exposes_object_and_service_tier() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
@@ -247,6 +256,9 @@ async fn normalized_fields_match_raw_renormalized() {
 // 4. A forced tool call: raw round-trips and keeps the wire's spelling
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call"
+))]
 #[tokio::test]
 async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     const SCENARIO: &str =

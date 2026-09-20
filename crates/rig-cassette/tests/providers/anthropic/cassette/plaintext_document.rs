@@ -92,6 +92,9 @@ fn collect_anthropic_citations(choice: &[rig::message::AssistantContent]) -> Vec
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/plaintext_document/plaintext_document_prompt"
+))]
 #[tokio::test]
 async fn plaintext_document_prompt() {
     super::super::support::with_anthropic_cassette(
@@ -121,6 +124,9 @@ async fn plaintext_document_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/plaintext_document/plaintext_document_with_instruction"
+))]
 #[tokio::test]
 async fn plaintext_document_with_instruction() {
     super::super::support::with_anthropic_cassette(
@@ -151,6 +157,9 @@ async fn plaintext_document_with_instruction() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/plaintext_document/streaming_document_citations_accepts_null_citation_start"
+))]
 #[tokio::test]
 async fn streaming_document_citations_accepts_null_citation_start() {
     super::super::support::with_anthropic_cassette(
@@ -173,6 +182,9 @@ async fn streaming_document_citations_accepts_null_citation_start() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/plaintext_document/document_citations_followup_preserves_history"
+))]
 #[tokio::test]
 async fn document_citations_followup_preserves_assistant_citation_history() {
     super::super::support::with_anthropic_cassette(

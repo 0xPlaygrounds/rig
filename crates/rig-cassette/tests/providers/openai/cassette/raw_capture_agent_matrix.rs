@@ -601,6 +601,9 @@ fn assert_tool_run_records_distinct_raw(
 // Chat route
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/chat_blocking_hooks_see_raw"
+))]
 #[tokio::test]
 async fn chat_blocking_hooks_see_raw() {
     const SCENARIO: &str = "raw_capture_agent_matrix/chat_blocking_hooks_see_raw";
@@ -614,6 +617,9 @@ async fn chat_blocking_hooks_see_raw() {
     assert_blocking_hooks_see_raw(SCENARIO, Route::Chat, &probe, take(&observed));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/chat_streamed_hooks_see_raw"
+))]
 #[tokio::test]
 async fn chat_streamed_hooks_see_raw() {
     const SCENARIO: &str = "raw_capture_agent_matrix/chat_streamed_hooks_see_raw";
@@ -627,6 +633,9 @@ async fn chat_streamed_hooks_see_raw() {
     assert_streamed_hooks_see_raw(SCENARIO, Route::Chat, &probe, take(&observed));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/chat_blocking_tool_run_records_distinct_raw"
+))]
 #[tokio::test]
 async fn chat_blocking_tool_run_records_distinct_raw() {
     const SCENARIO: &str = "raw_capture_agent_matrix/chat_blocking_tool_run_records_distinct_raw";
@@ -640,6 +649,9 @@ async fn chat_blocking_tool_run_records_distinct_raw() {
     assert_tool_run_records_distinct_raw(SCENARIO, Route::Chat, false, &probe, take(&observed));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/chat_streamed_tool_run_records_distinct_raw"
+))]
 #[tokio::test]
 async fn chat_streamed_tool_run_records_distinct_raw() {
     const SCENARIO: &str = "raw_capture_agent_matrix/chat_streamed_tool_run_records_distinct_raw";
@@ -653,6 +665,9 @@ async fn chat_streamed_tool_run_records_distinct_raw() {
     assert_tool_run_records_distinct_raw(SCENARIO, Route::Chat, true, &probe, take(&observed));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/chat_retried_turn_records_retried_attempt_raw"
+))]
 /// A retried turn: the first attempt is rejected by the hook and the run
 /// makes a second attempt at the same turn. `completion_calls[1]` and the
 /// second `ModelTurnFinished` carry the *retried* attempt's payload — the
@@ -752,6 +767,9 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
 // Responses route
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/responses_blocking_hooks_see_raw"
+))]
 #[tokio::test]
 async fn responses_blocking_hooks_see_raw() {
     const SCENARIO: &str = "raw_capture_agent_matrix/responses_blocking_hooks_see_raw";
@@ -765,6 +783,9 @@ async fn responses_blocking_hooks_see_raw() {
     assert_blocking_hooks_see_raw(SCENARIO, Route::Responses, &probe, take(&observed));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/responses_streamed_hooks_see_raw"
+))]
 #[tokio::test]
 async fn responses_streamed_hooks_see_raw() {
     const SCENARIO: &str = "raw_capture_agent_matrix/responses_streamed_hooks_see_raw";
@@ -778,6 +799,9 @@ async fn responses_streamed_hooks_see_raw() {
     assert_streamed_hooks_see_raw(SCENARIO, Route::Responses, &probe, take(&observed));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/responses_blocking_tool_run_records_distinct_raw"
+))]
 #[tokio::test]
 async fn responses_blocking_tool_run_records_distinct_raw() {
     const SCENARIO: &str =
@@ -798,6 +822,9 @@ async fn responses_blocking_tool_run_records_distinct_raw() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_agent_matrix/responses_streamed_tool_run_records_distinct_raw"
+))]
 #[tokio::test]
 async fn responses_streamed_tool_run_records_distinct_raw() {
     const SCENARIO: &str =

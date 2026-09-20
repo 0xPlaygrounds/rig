@@ -19,6 +19,9 @@ const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUST use the p
 const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
      subtract tool. Report the final number.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/effect_corpus/tool_call_turns"
+))]
 #[tokio::test]
 async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {

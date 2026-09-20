@@ -150,6 +150,9 @@ fn memory_agent(client: Bound<Anthropic>) -> EcsAgent {
     ecs
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/deny_tool"
+))]
 #[tokio::test]
 async fn deny_tool_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
@@ -164,6 +167,9 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/patch_tool_args"
+))]
 #[tokio::test]
 async fn patch_tool_args_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
@@ -175,6 +181,9 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/replace_tool_result"
+))]
 #[tokio::test]
 async fn replace_tool_result_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
@@ -190,6 +199,9 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/two_hooks"
+))]
 #[tokio::test]
 async fn two_layers_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
@@ -216,6 +228,9 @@ async fn two_layers_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/deny_tool"
+))]
 #[tokio::test]
 async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
     // The host's own policy on the agent's tool key, over the host's bus.
@@ -244,6 +259,9 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/patch_tool_args"
+))]
 #[tokio::test]
 async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
     // The agent's hook patches first (40 + 2); the host's layer beneath it
@@ -271,6 +289,9 @@ async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_layers/memory_load_replaced"
+))]
 #[tokio::test]
 async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_layers_cassette(

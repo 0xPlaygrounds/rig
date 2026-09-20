@@ -165,6 +165,9 @@ async fn run_cell(
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_zero_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent";
@@ -186,6 +189,9 @@ async fn blocking_gpt4o_zero_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_nested_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent";
@@ -207,6 +213,9 @@ async fn blocking_gpt4o_nested_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_parallel_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent";
@@ -228,6 +237,9 @@ async fn blocking_gpt4o_parallel_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt41_zero_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent";
@@ -249,6 +261,9 @@ async fn blocking_gpt41_zero_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt41_nested_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent";
@@ -270,6 +285,9 @@ async fn blocking_gpt41_nested_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt41_parallel_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent";
@@ -291,6 +309,9 @@ async fn blocking_gpt41_parallel_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_zero_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent";
@@ -312,6 +333,9 @@ async fn streaming_gpt4o_zero_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_nested_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent";
@@ -333,6 +357,9 @@ async fn streaming_gpt4o_nested_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_parallel_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent";
@@ -354,6 +381,9 @@ async fn streaming_gpt4o_parallel_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt41_zero_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent";
@@ -375,6 +405,9 @@ async fn streaming_gpt41_zero_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt41_nested_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent";
@@ -396,6 +429,9 @@ async fn streaming_gpt41_nested_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt41_parallel_agent() -> Result<()> {
     const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent";

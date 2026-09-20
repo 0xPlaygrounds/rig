@@ -10,6 +10,9 @@ use crate::reasoning::{self, WeatherTool};
 
 use super::super::support::with_openrouter_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_openrouter_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
@@ -37,6 +40,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_openrouter_cassette(

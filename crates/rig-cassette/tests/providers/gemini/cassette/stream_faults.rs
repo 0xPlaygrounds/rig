@@ -6,6 +6,12 @@
 //! surfaces as its own kind, with nothing recorded, committed or executed
 //! after it.
 
+rig_test_support::scripted_family! {
+    const SCRIPTED_SOURCES: "gemini", "stream_faults", [
+        "stream_faults/multi_frame_stream",
+    ]
+}
+
 use bytes::Bytes;
 use rig::driver::Bound;
 use rig::error::ErrorKind;
@@ -57,6 +63,9 @@ pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<Gemini, SequencedStre
     Gemini::new(SCRIPTED_KEY).bind(scripted(chunks))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 /// The model refuses the request before any frame: the run fails with the
 /// recorded 404 and its body, streams nothing, and records the one
 /// completion as that failure.
@@ -218,6 +227,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("gemini/stream_faults/multi_frame_stream").missing("needs a live recording: no committed Gemini REST stream carries more than one frame; record `stream_faults/multi_frame_stream` with GEMINI_API_KEY (one streamed prompt, gemini-3-flash-preview, a few hundred output tokens)"))]
 /// The recording the two cells below derive from, once it exists: one
 /// streamed prompt long enough for `gemini-3-flash-preview` to answer in
 /// several `streamGenerateContent` frames, so a prefix can be cut from a
@@ -249,8 +259,7 @@ async fn multi_frame_stream_recording() {
 #[ignore = "derives from `stream_faults/multi_frame_stream`; see multi_frame_stream_recording"]
 #[tokio::test]
 async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
-    let frames =
-        crate::stream_faults::recorded_sse_frames("gemini", "stream_faults/multi_frame_stream", 0);
+    let frames = SCRIPTED_SOURCES.recorded_sse_frames("stream_faults/multi_frame_stream", 0);
     let prefix =
         crate::stream_faults::frames_before(&frames, |frame| frame.contains("finishReason"));
     let expected: String = prefix

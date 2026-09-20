@@ -40,3 +40,5 @@ mod ecs_cache;
 mod ecs_matrix;
 
 use rig_test_support::matrix;
+
+rig_test_support::cassette_inventory!();

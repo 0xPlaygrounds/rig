@@ -17,6 +17,9 @@ use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, assert_mentions_expected_number, assert_nonempty_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_stepping/hand_driven_single_turn_completes"
+))]
 #[tokio::test]
 async fn hand_driven_single_turn_completes() {
     with_gemini_cassette(
@@ -100,6 +103,9 @@ async fn hand_driven_single_turn_completes() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_stepping/hand_driven_multi_turn_tool_run_completes"
+))]
 #[tokio::test]
 async fn hand_driven_multi_turn_tool_run_completes() {
     with_gemini_cassette(
@@ -190,6 +196,9 @@ async fn hand_driven_multi_turn_tool_run_completes() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_stepping/hand_driven_parallel_tool_calls_arrive_in_one_step"
+))]
 #[tokio::test]
 async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
     with_gemini_cassette(
@@ -254,6 +263,9 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_stepping/max_turns_error_carries_pending_tool_results_message"
+))]
 #[tokio::test]
 async fn max_turns_error_carries_pending_tool_results_message() {
     with_gemini_cassette(
@@ -325,6 +337,9 @@ async fn max_turns_error_carries_pending_tool_results_message() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_stepping/entries_survive_midrun_serialization"
+))]
 /// Host-side entry log across a mid-run serialize/resume (PR #2408): a driver
 /// pausing at the tool boundary appends its state to the run's record, ships
 /// the serialized run across a process boundary, and the resumed run carries

@@ -12,6 +12,9 @@ use rig::prelude::*;
 use super::super::support::with_openai_cassette;
 use crate::reasoning::{self, WeatherTool};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/reasoning_tool_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_openai_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
@@ -47,6 +50,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/reasoning_tool_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_openai_cassette(

@@ -18,13 +18,8 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 pub(super) type BoundDeepSeek = Bound<OpenAI, BoxedHttpClient>;
 
 async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDeepSeek) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "deepseek",
-        spec,
-        "https://api.deepseek.com",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("deepseek", spec, "https://api.deepseek.com").await;
     let bound = OpenAI::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
         .with_base_url(cassette.base_url())
         .bound()
@@ -86,13 +81,8 @@ where
     F: FnOnce(BoundDeepSeek) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "deepseek",
-        spec,
-        "https://api.deepseek.com",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("deepseek", spec, "https://api.deepseek.com").await;
     let bound = OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

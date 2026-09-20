@@ -106,6 +106,7 @@ fn recorded_terminal_response(scenario: &str) -> Value {
 // 1: raw reads back as the provider's own response type
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("chatgpt/raw_capture_matrix/raw_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_round_trips_provider_type() {
@@ -156,6 +157,7 @@ async fn raw_round_trips_provider_type() {
 // 2: envelope fields rig does not normalize are readable from raw
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("chatgpt/raw_capture_matrix/raw_exposes_response_envelope").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_exposes_response_envelope() {
@@ -201,6 +203,7 @@ async fn raw_exposes_response_envelope() {
 // 3: the normalized view and raw tell one story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("chatgpt/raw_capture_matrix/normalized_fields_equal_raw_renormalized").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// Every field the normalized response carries must be the field the envelope
 /// on `raw` carries — and that envelope must be the recorded terminal
 /// `response.completed` frame. Capture is a pure serialization of the reply

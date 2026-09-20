@@ -67,6 +67,9 @@ const UNMODELLED_USAGE: [&str; 3] = [
 // 1. raw reads back as the shared OpenAI type — and carries more
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/raw_capture_matrix/raw_round_trips_openai_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_openai_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
@@ -104,6 +107,9 @@ async fn raw_round_trips_openai_type() {
 // 2. A field the normalized response provably lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/raw_capture_matrix/raw_exposes_object"
+))]
 #[tokio::test]
 async fn raw_exposes_object() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object";
@@ -149,6 +155,9 @@ async fn raw_exposes_object() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";

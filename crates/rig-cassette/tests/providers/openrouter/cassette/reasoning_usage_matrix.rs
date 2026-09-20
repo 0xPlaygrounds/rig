@@ -120,6 +120,9 @@ fn pinned(upstream: &str) -> Value {
 // The bug: a documented, always-present field with a first-class slot, zeroed.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage"
+))]
 #[tokio::test]
 async fn blocking_reasoning_tokens_reach_normalized_usage() {
     const SCENARIO: &str =
@@ -159,6 +162,9 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
     assert_recorded_reasoning_detail_types(SCENARIO, &["reasoning.encrypted", "reasoning.summary"]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record"
+))]
 #[tokio::test]
 async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     const SCENARIO: &str =
@@ -196,6 +202,9 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_agent_reports_reasoning_tokens"
+))]
 /// The agent surface must report the breakdown too: `prompt()` returns a
 /// `PromptResponse` whose `usage` carries the reasoning tokens, so this cell
 /// fails if the mapping drops them.
@@ -239,6 +248,9 @@ async fn blocking_agent_reports_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/streaming_agent_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn streaming_agent_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/streaming_agent_reports_reasoning_tokens";
@@ -275,6 +287,9 @@ async fn streaming_agent_reports_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn blocking_high_effort_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens";
@@ -308,6 +323,9 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn blocking_gpt_5_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens";
@@ -341,6 +359,9 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn streaming_gpt_5_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens";
@@ -381,6 +402,9 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
 // A second and third upstream family: the breakdown is not an OpenAI-ism.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn blocking_anthropic_routed_reports_reasoning_tokens() {
     const SCENARIO: &str =
@@ -418,6 +442,9 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn streaming_anthropic_routed_reports_reasoning_tokens() {
     const SCENARIO: &str =
@@ -458,6 +485,9 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens"
+))]
 #[tokio::test]
 async fn blocking_open_weight_route_reports_reasoning_tokens() {
     const SCENARIO: &str =
@@ -496,6 +526,9 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
 // Adjacent shapes on the same code path.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_excluded_reasoning_still_counts_tokens"
+))]
 /// `reasoning.exclude: true` asks OpenRouter not to *show* the reasoning, and
 /// it changes neither the billing nor this mapping. Recorded census, from this
 /// cell's own fixture: on the OpenAI route `exclude` still returns the
@@ -543,6 +576,9 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
     assert_recorded_reasoning_detail_types(SCENARIO, &["reasoning.encrypted"]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_reasoning_tokens_stay_within_completion_tokens"
+))]
 /// The breakdown is a *share* of `completion_tokens`, not an addition to it —
 /// the invariant that says the field was mapped rather than invented.
 #[tokio::test]
@@ -580,6 +616,9 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request"
+))]
 #[tokio::test]
 async fn blocking_reasoning_tokens_with_tools_in_request() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request";
@@ -614,6 +653,9 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/transports_agree_on_reasoning_tokens"
+))]
 /// One scenario, both transports: the blocking reply and the stream's terminal
 /// frame report the same accounting through the same shape, so a fix that only
 /// reached one of them would show up here.
@@ -683,6 +725,9 @@ async fn transports_agree_on_reasoning_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree"
+))]
 /// The provider-native escape hatch and the normalized view must agree: the
 /// gateway's own document, which the driver keeps verbatim on `raw`, carries
 /// the breakdown in `openrouter::Usage`, and the decoder's one mapping
@@ -720,6 +765,9 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/blocking_cost_and_cache_details_still_map"
+))]
 /// The fields the mapping already handled must keep working: adding a field to
 /// `Usage` must not disturb cost or the prompt-token breakdown.
 ///
@@ -785,6 +833,9 @@ async fn blocking_cost_and_cache_details_still_map() {
 // Controls — a non-reasoning route must still report zero.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/control_non_reasoning_model_reports_zero_blocking"
+))]
 #[tokio::test]
 async fn control_non_reasoning_model_reports_zero_blocking() {
     const SCENARIO: &str =
@@ -811,6 +862,9 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_usage_matrix/control_non_reasoning_model_reports_zero_streaming"
+))]
 #[tokio::test]
 async fn control_non_reasoning_model_reports_zero_streaming() {
     const SCENARIO: &str =

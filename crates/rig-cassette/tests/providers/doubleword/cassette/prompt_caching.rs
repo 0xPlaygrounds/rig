@@ -49,6 +49,9 @@ fn probe() -> CacheProbe {
     CacheProbe::new("doubleword prompt caching")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_observes_no_meaningful_prefix_cache() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
@@ -67,6 +70,9 @@ async fn blocking_probe_observes_no_meaningful_prefix_cache() {
     assert_prefix_stable("doubleword", SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_observes_no_meaningful_prefix_cache() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
@@ -88,6 +94,9 @@ async fn streaming_probe_observes_no_meaningful_prefix_cache() {
     assert_prefix_stable("doubleword", SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/prompt_caching/agent_loop"
+))]
 /// A real agent loop with a tool round-trip, asserted on **prefix stability
 /// alone**.
 ///

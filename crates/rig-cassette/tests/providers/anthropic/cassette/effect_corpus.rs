@@ -21,6 +21,9 @@ fn families(log: &rig::cassette::effect_log::EffectLog) -> Vec<EffectFamily> {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/effect_corpus/tool_call_turn"
+))]
 /// One tool call, then the final answer: `[Completion, Tool, Completion]`.
 #[tokio::test]
 async fn tool_call_turn_effect_log_is_the_golden_fixture() {
@@ -54,6 +57,9 @@ async fn tool_call_turn_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/effect_corpus/cancelled_stream"
+))]
 /// A streamed turn whose consumer drops the stream after the first text
 /// delta: the completion record's outcome is `Cancelled`, not a handler or
 /// provider failure (the corpus prompt's risk 6, now with evidence).

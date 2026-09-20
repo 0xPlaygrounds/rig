@@ -17,13 +17,8 @@ pub(super) type BoundOllama = Bound<Ollama, BoxedHttpClient>;
 /// Replays by default; set `RIG_PROVIDER_TEST_MODE=record` (with a local Ollama
 /// server on http://localhost:11434) to record. Ollama needs no API key.
 async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOllama) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "ollama",
-        spec,
-        "http://localhost:11434",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("ollama", spec, "http://localhost:11434").await;
     let ollama = Ollama::new()
         .with_base_url(cassette.base_url())
         .bound()

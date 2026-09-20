@@ -162,6 +162,9 @@ fn agent(client: Bound<Anthropic>) -> rig::agent::Agent {
         .build()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/malformed_tool_args_matrix/blocking_healthy_control"
+))]
 #[tokio::test]
 async fn blocking_healthy_control() {
     with_anthropic_cassette(
@@ -177,6 +180,9 @@ async fn blocking_healthy_control() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/malformed_tool_args_matrix/streaming_healthy_control"
+))]
 #[tokio::test]
 async fn streaming_healthy_control() {
     with_anthropic_cassette(
@@ -193,6 +199,7 @@ async fn streaming_healthy_control() {
     assert_fixture_is_healthy("malformed_tool_args_matrix/streaming_healthy_control");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::derived("anthropic/malformed_tool_args_matrix/streaming_malformed_fails_by_default", &["anthropic/malformed_tool_args_matrix/streaming_healthy_control"], "A live model cannot be steered into streaming tool arguments that are not JSON (#2447).", "Copy the streaming control and, in the recorded response stream only, replace the last `input_json_delta`'s `partial_json` with `\"\\u0001}\"` so the assembled input is invalid JSON; the request section stays byte-identical to the control's. `assert_fixture_is_corrupt` re-asserts the control byte."))]
 #[tokio::test]
 async fn streaming_malformed_fails_by_default() {
     with_anthropic_cassette(
@@ -232,6 +239,7 @@ async fn streaming_malformed_fails_by_default() {
     assert_fixture_is_corrupt("malformed_tool_args_matrix/streaming_malformed_fails_by_default");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::derived("anthropic/malformed_tool_args_matrix/streaming_malformed_skip_feeds_result_back", &["anthropic/malformed_tool_args_matrix/streaming_healthy_control"], "The same corruption plus the `Skip` recovery's follow-up turn, whose request history no live capture produces.", "Apply the control-byte edit as above, then derive turn 2's request from the control's turn 2 by substituting the recovery history (the malformed call with `{}` input plus a `tool_result` carrying the hook's text) and answer it with the control's own recorded final-text response."))]
 #[tokio::test]
 async fn streaming_malformed_skip_feeds_result_back() {
     with_anthropic_cassette(
@@ -274,6 +282,7 @@ async fn streaming_malformed_skip_feeds_result_back() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::derived("anthropic/malformed_tool_args_matrix/streaming_malformed_retry_reissues_request", &["anthropic/malformed_tool_args_matrix/streaming_healthy_control"], "The same corruption plus the two follow-up turns the `Retry` recovery issues.", "Apply the control-byte edit as above, then derive two follow-ups from the control's turn 2: the healthy tool call, then the tool-result follow-up carrying the full five-message history, each answered with the control's own recorded responses."))]
 #[tokio::test]
 async fn streaming_malformed_retry_reissues_request() {
     with_anthropic_cassette(

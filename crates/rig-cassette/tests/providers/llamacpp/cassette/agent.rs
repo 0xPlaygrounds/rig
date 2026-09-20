@@ -6,6 +6,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 use super::super::cassette_support::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_llamacpp_cassette("agent/completion_smoke", |client| async move {

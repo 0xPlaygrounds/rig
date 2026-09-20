@@ -137,6 +137,9 @@ fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &Co
 // 1. raw reads back as DeepSeek's own type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/raw_capture_matrix/raw_round_trips_deepseek_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_deepseek_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_deepseek_type";
@@ -171,6 +174,9 @@ async fn raw_round_trips_deepseek_type() {
 // 2. A field the normalized response provably lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens"
+))]
 #[tokio::test]
 async fn raw_exposes_prompt_cache_miss_tokens() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens";
@@ -216,6 +222,9 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
@@ -254,6 +263,9 @@ async fn normalized_fields_match_raw_renormalized() {
 // 4. A thinking-mode turn: raw reads back and carries reasoning_content
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content"
+))]
 #[tokio::test]
 async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     const SCENARIO: &str =

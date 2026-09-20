@@ -18,6 +18,9 @@ use crate::support::{Adder, TOOLS_PREAMBLE};
 
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_delta/interactions_baseline"
+))]
 #[tokio::test]
 async fn interactions_baseline_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_delta_cassette("corpus_delta/interactions_baseline", |client| async move {

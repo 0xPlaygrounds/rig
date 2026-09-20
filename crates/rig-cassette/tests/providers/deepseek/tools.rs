@@ -8,6 +8,9 @@ use crate::support::{
     Adder, Subtract, TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_number,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/tools/tools_smoke"
+))]
 #[tokio::test]
 async fn tools_smoke() {
     with_deepseek_cassette("tools/tools_smoke", |client| async move {

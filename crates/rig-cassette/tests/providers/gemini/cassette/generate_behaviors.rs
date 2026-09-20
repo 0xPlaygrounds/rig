@@ -32,6 +32,9 @@ struct EventRecord {
     note: Option<String>,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text"
+))]
 #[tokio::test]
 async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
@@ -95,6 +98,9 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_behaviors/structured_output_nested_arrays_and_optional_fields"
+))]
 #[tokio::test]
 async fn structured_output_nested_arrays_and_optional_fields() {
     with_gemini_cassette(

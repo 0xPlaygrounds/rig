@@ -451,6 +451,9 @@ async fn finish(scenario: &str, cell: Cell, observed: SharedChoice) {
     assert_normalized_order(scenario, cell, observed);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_order_matrix/blocking_single"
+))]
 #[tokio::test]
 async fn blocking_single() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/blocking_single";
@@ -469,6 +472,9 @@ async fn blocking_single() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_order_matrix/blocking_parallel"
+))]
 #[tokio::test]
 async fn blocking_parallel() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/blocking_parallel";
@@ -487,6 +493,9 @@ async fn blocking_parallel() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_order_matrix/streaming_single"
+))]
 #[tokio::test]
 async fn streaming_single() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_single";
@@ -505,6 +514,9 @@ async fn streaming_single() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_order_matrix/streaming_parallel"
+))]
 #[tokio::test]
 async fn streaming_parallel() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_parallel";
@@ -523,6 +535,9 @@ async fn streaming_parallel() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_order_matrix/blocking_signed_agent_roundtrip"
+))]
 #[tokio::test]
 async fn blocking_signed_agent_roundtrip() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/blocking_signed_agent_roundtrip";
@@ -541,6 +556,9 @@ async fn blocking_signed_agent_roundtrip() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_tool_order_matrix/streaming_signed_agent_roundtrip"
+))]
 #[tokio::test]
 async fn streaming_signed_agent_roundtrip() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_signed_agent_roundtrip";

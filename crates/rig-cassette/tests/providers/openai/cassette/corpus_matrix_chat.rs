@@ -209,12 +209,15 @@ crate::matrix::golden_matrix! {
 
 crate::matrix::case_matrix! {
     wrapper: with_openai_cassette, family: wire_matrix_case;
+    #[cassette_missing("gpt-5-mini low reported zero reasoning tokens on the second turn in all three attempts; record-openai-chat-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted")]
     #[ignore = "gpt-5-mini low reported zero reasoning tokens on the second turn in all three attempts; record-openai-chat-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
     #[tokio::test]
     shaping_thinking_second_turn: ("corpus_matrix_chat/shaping_thinking_second_turn", shaping_thinking_second_turn_9);
+    #[cassette_missing("gpt-5-mini low reported zero reasoning tokens on the second turn in all three attempts; record-openai-chat-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted")]
     #[tokio::test]
     #[ignore = "gpt-5-mini low reported zero reasoning tokens on the tool turn in attempts 1, 2 and 3; record-openai-chat-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_tool_unary: ("reasoning_matrix_chat/tool_unary", reasoning_tool_unary_10);
+    #[cassette_missing("gpt-5-mini low reported zero reasoning tokens on the second turn in all three attempts; record-openai-chat-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted")]
     #[tokio::test]
     #[ignore = "gpt-5-mini low reported zero reasoning tokens on the tool turn in all three attempts; record-openai-chat-tool-streamed-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_tool_streamed: ("reasoning_matrix_chat/tool_streamed", reasoning_tool_streamed_11);
@@ -231,6 +234,7 @@ fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone 
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("openai/reasoning_matrix_chat/text_unary").missing("gpt-5-mini at reasoning_effort low reported zero reasoning tokens in attempts 1, 2 and 3 (2026-09-13, record-openai-chat-text-unary-attempt-{1,2,3}.log); exhausted the prompt's three-attempt limit"))]
 #[ignore = "gpt-5-mini at reasoning_effort low reported zero reasoning tokens in attempts 1, 2 and 3 (2026-09-13, record-openai-chat-text-unary-attempt-{1,2,3}.log); exhausted the prompt's three-attempt limit"]
 #[tokio::test]
 async fn reasoning_text_unary() {

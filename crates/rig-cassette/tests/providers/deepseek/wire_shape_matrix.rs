@@ -109,6 +109,9 @@ fn assert_rejected_by_deepseek(error: &rig::completion::CompletionError, context
 // A. Non-text parts now reach the wire
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_image_base64_part_reaches_the_wire"
+))]
 #[tokio::test]
 async fn blocking_image_base64_part_reaches_the_wire() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_image_base64_part_reaches_the_wire";
@@ -140,6 +143,9 @@ async fn blocking_image_base64_part_reaches_the_wire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_image_url_part_reaches_the_wire"
+))]
 #[tokio::test]
 async fn blocking_image_url_part_reaches_the_wire() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_image_url_part_reaches_the_wire";
@@ -174,6 +180,9 @@ async fn blocking_image_url_part_reaches_the_wire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire"
+))]
 #[tokio::test]
 async fn blocking_pdf_document_part_reaches_the_wire() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire";
@@ -210,6 +219,9 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_audio_part_reaches_the_wire"
+))]
 #[tokio::test]
 async fn blocking_audio_part_reaches_the_wire() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_audio_part_reaches_the_wire";
@@ -243,6 +255,9 @@ async fn blocking_audio_part_reaches_the_wire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_video_part_reaches_the_wire"
+))]
 #[tokio::test]
 async fn blocking_video_part_reaches_the_wire() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_video_part_reaches_the_wire";
@@ -281,6 +296,9 @@ async fn blocking_video_part_reaches_the_wire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_image_only_message_reaches_the_wire"
+))]
 /// The boundary the flatten predicate turns on: an array with **no** text part
 /// at all. `parts.iter().all(is_text)` is false here, so the array survives
 /// whole rather than flattening to the empty string — which is what the old
@@ -318,6 +336,9 @@ async fn blocking_image_only_message_reaches_the_wire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/streaming_image_part_reaches_the_wire"
+))]
 #[tokio::test]
 async fn streaming_image_part_reaches_the_wire() {
     const SCENARIO: &str = "wire_shape_matrix/streaming_image_part_reaches_the_wire";
@@ -370,6 +391,9 @@ async fn streaming_image_part_reaches_the_wire() {
 // B. Controls: every all-text shape still flattens, byte for byte
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string"
+))]
 #[tokio::test]
 async fn blocking_all_text_parts_still_flatten_to_a_string() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string";
@@ -415,6 +439,9 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_text_document_still_flattens_to_a_string"
+))]
 #[tokio::test]
 async fn blocking_text_document_still_flattens_to_a_string() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_text_document_still_flattens_to_a_string";
@@ -452,6 +479,9 @@ async fn blocking_text_document_still_flattens_to_a_string() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_assistant_and_tool_history_still_flattens"
+))]
 #[tokio::test]
 async fn blocking_assistant_and_tool_history_still_flattens() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_assistant_and_tool_history_still_flattens";
@@ -518,6 +548,9 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
 // C. Census: the forced-tool-choice suppression is justified
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/forced_tool_choice_under_thinking_is_rejected_upstream"
+))]
 #[tokio::test]
 async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
     const SCENARIO: &str =
@@ -592,6 +625,9 @@ async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/rig_suppresses_a_forced_tool_choice_while_thinking_is_on"
+))]
 #[tokio::test]
 async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
     const SCENARIO: &str =
@@ -627,6 +663,9 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/rig_keeps_a_forced_tool_choice_when_thinking_is_disabled"
+))]
 #[tokio::test]
 async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
     const SCENARIO: &str =
@@ -666,6 +705,9 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
 // D. Census: the completion path preserves DeepSeek's error envelope
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body"
+))]
 #[tokio::test]
 async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
     with_deepseek_wire_shape_cassette_result(
@@ -694,6 +736,9 @@ async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
     .expect("chat_completion_rejects_an_unknown_model_with_the_provider_body should replay from its cassette");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/chat_completion_rejects_a_bogus_key_with_the_provider_body"
+))]
 #[tokio::test]
 async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
     with_deepseek_cassette_bogus_key_result(
@@ -733,6 +778,9 @@ fn cache_probe_prompt() -> String {
     )
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/blocking_repeated_prompt_reports_the_cache_split"
+))]
 #[tokio::test]
 async fn blocking_repeated_prompt_reports_the_cache_split() {
     const SCENARIO: &str = "wire_shape_matrix/blocking_repeated_prompt_reports_the_cache_split";
@@ -793,6 +841,9 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/streaming_repeated_prompt_reports_the_cache_split"
+))]
 #[tokio::test]
 async fn streaming_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(

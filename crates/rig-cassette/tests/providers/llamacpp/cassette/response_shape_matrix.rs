@@ -56,6 +56,14 @@ const REASONING_PROMPT: &str = "What is 2+2? Answer briefly.";
 const TWO_CANDIDATE_PROMPT: &str =
     "/no_think Invent a two-word name for a fictional harbour town. Reply with the name only.";
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_shape_matrix/reasoning_blocking"
+    ),
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_shape_matrix/reasoning_streaming"
+    )
+)]
 /// llama.cpp puts hidden reasoning in a non-standard `reasoning_content`
 /// field, and rig maps it to a structured reasoning block on both transports.
 ///
@@ -214,6 +222,14 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
     );
 }
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_shape_matrix/two_candidates_blocking"
+    ),
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_shape_matrix/two_candidates_streaming"
+    )
+)]
 /// `n > 1`: both transports answer from candidate 0, and the answer rig
 /// produced is compared against the recorded candidate.
 ///
@@ -355,6 +371,9 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/response_shape_matrix/logprobs"
+))]
 /// `logprobs` reach the caller through `raw`, and stay out of the normalized
 /// view.
 #[tokio::test]

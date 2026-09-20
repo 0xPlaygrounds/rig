@@ -15,6 +15,9 @@ use rig::tool::Tool;
 use super::super::support::with_gemini_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_tool_modes/required_maps_to_any_and_forces_function_call"
+))]
 #[tokio::test]
 async fn required_maps_to_any_and_forces_function_call() {
     with_gemini_cassette(

@@ -8,6 +8,9 @@ use crate::llamacpp::cassette_support::CASSETTE_MODEL;
 use crate::llamacpp::cassette_support::with_llamacpp_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use rig_ecs::agent::DefaultMaxTurns;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_llamacpp_cassette("agent/completion_smoke", |client| async move {

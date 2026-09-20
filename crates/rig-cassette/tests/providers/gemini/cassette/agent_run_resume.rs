@@ -20,6 +20,9 @@ fn roundtrip(run: AgentRun) -> AgentRun {
     serde_json::from_str(&suspended).expect("run state should deserialize")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_resume/resume_from_serialized_state_mid_tool_execution"
+))]
 #[tokio::test]
 async fn resume_from_serialized_state_mid_tool_execution() {
     with_gemini_cassette(
@@ -126,6 +129,9 @@ async fn resume_from_serialized_state_mid_tool_execution() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_resume/resume_while_invalid_tool_call_awaits_resolution"
+))]
 #[tokio::test]
 async fn resume_while_invalid_tool_call_awaits_resolution() {
     with_gemini_cassette(
@@ -225,6 +231,9 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_resume/resume_after_invalid_tool_call_retry_rollback"
+))]
 #[tokio::test]
 async fn resume_after_invalid_tool_call_retry_rollback() {
     with_gemini_cassette(

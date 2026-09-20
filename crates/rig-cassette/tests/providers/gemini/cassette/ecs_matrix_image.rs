@@ -40,6 +40,7 @@ crate::matrix::golden_matrix! {
     inline_followup: ("image_matrix/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "gemini_image_inline_followup");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("gemini/image_matrix/url_text_unary").missing("Gemini's `fileData.fileUri` takes Files API and Cloud Storage URIs, not an arbitrary HTTPS image (image-understanding docs, retrieved 2026-09-13); rig renders `DocumentSourceKind::Url` as `fileData`, so the HTTPS row is documented-unsupported on this wire and unrecorded"))]
 #[tokio::test]
 #[ignore = "Gemini's `fileData.fileUri` takes Files API and Cloud Storage URIs, not an arbitrary HTTPS image (image-understanding docs, retrieved 2026-09-13); rig renders `DocumentSourceKind::Url` as `fileData`, so the HTTPS row is documented-unsupported on this wire and unrecorded"]
 async fn url_text_unary() {
@@ -52,6 +53,7 @@ async fn url_text_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("gemini/image_matrix/url_tool_unary").missing("Gemini's `fileData.fileUri` takes Files API and Cloud Storage URIs, not an arbitrary HTTPS image (image-understanding docs, retrieved 2026-09-13); rig renders `DocumentSourceKind::Url` as `fileData`, so the HTTPS row is documented-unsupported on this wire and unrecorded"))]
 #[tokio::test]
 #[ignore = "Gemini's `fileData.fileUri` takes Files API and Cloud Storage URIs, not an arbitrary HTTPS image (image-understanding docs, retrieved 2026-09-13); rig renders `DocumentSourceKind::Url` as `fileData`, so the HTTPS row is documented-unsupported on this wire and unrecorded"]
 async fn url_tool_unary() {

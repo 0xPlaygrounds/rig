@@ -10,6 +10,9 @@ use crate::support::{
     STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_smoke_structured_output,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/structured_output/structured_output_smoke"
+))]
 #[tokio::test]
 async fn structured_output_smoke() {
     with_venice_cassette(

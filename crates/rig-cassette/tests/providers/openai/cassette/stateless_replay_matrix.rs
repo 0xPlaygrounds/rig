@@ -117,6 +117,9 @@ async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, Prov
     (provider_reply(&first), provider_reply(&second))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/stateless_replay_matrix/phase_round_trips_on_follow_up"
+))]
 #[tokio::test]
 async fn phase_round_trips_on_follow_up() {
     with_openai_cassette(
@@ -158,6 +161,7 @@ async fn phase_round_trips_on_follow_up() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::derived("openai/stateless_replay_matrix/compaction_item_decodes_on_the_response", &["openai/stateless_replay_matrix/phase_round_trips_on_follow_up"], "A `compaction` item cannot be captured through rig: the client has no `/responses/compact` call (#2269).", "Copy the round-trip cell and insert a `compaction` item at the head of turn 2's request `input[]` and at the head of turn 1's response `output[]`, in the shape `/responses/compact` returns; every other byte identical."))]
 #[tokio::test]
 async fn compaction_item_decodes_on_the_response() {
     with_openai_cassette(

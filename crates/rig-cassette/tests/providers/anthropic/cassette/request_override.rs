@@ -190,6 +190,9 @@ struct RecordedRequest {
     body: Option<String>,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/request_override/request_overridden_by_hook_blocking"
+))]
 #[tokio::test]
 async fn request_overridden_by_hook_blocking() {
     let weather = GetWeather::default();
@@ -225,6 +228,9 @@ async fn request_overridden_by_hook_blocking() {
     assert_first_request_was_overridden("request_override/request_overridden_by_hook_blocking");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/request_override/request_overridden_by_hook_streaming"
+))]
 #[tokio::test]
 async fn request_overridden_by_hook_streaming() {
     let weather = GetWeather::default();

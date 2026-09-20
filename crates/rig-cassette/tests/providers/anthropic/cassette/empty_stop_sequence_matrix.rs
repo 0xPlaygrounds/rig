@@ -146,6 +146,9 @@ pub(super) fn assert_recorded_streamed_empty_stop(scenario: &str) {
 // 1–5: the surfaces a caller reaches this through
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/raw_normalize_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn raw_normalize_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -173,6 +176,9 @@ async fn raw_normalize_empty_stop_sequence() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/raw_normalize_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/completion_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn completion_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -195,6 +201,9 @@ async fn completion_empty_stop_sequence() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/completion_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn agent_prompt_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -222,6 +231,9 @@ async fn agent_prompt_empty_stop_sequence() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/streaming_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn streaming_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -261,6 +273,9 @@ async fn streaming_empty_stop_sequence() {
     assert_recorded_streamed_empty_stop("empty_stop_sequence_matrix/streaming_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/agent_stream_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn agent_stream_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -316,6 +331,9 @@ async fn agent_stream_empty_stop_sequence() {
 // 6: control — the same stop reason with content must still produce content
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/nonempty_stop_sequence_control"
+))]
 #[tokio::test]
 async fn nonempty_stop_sequence_control() {
     with_anthropic_empty_stop_cassette(
@@ -356,6 +374,9 @@ async fn nonempty_stop_sequence_control() {
 // 7–10: sequence shapes that can match at position zero
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/unicode_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn unicode_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -376,6 +397,9 @@ async fn unicode_empty_stop_sequence() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/unicode_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/whitespace_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn whitespace_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -396,6 +420,9 @@ async fn whitespace_empty_stop_sequence() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/whitespace_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/punctuation_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn punctuation_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -416,6 +443,9 @@ async fn punctuation_empty_stop_sequence() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/punctuation_empty_stop_sequence");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/two_sequences_empty_stop"
+))]
 #[tokio::test]
 async fn two_sequences_empty_stop() {
     with_anthropic_empty_stop_cassette(
@@ -440,6 +470,9 @@ async fn two_sequences_empty_stop() {
 // 11–14: the rest of the request surface
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/with_preamble_empty_stop"
+))]
 #[tokio::test]
 async fn with_preamble_empty_stop() {
     with_anthropic_empty_stop_cassette(
@@ -463,6 +496,9 @@ async fn with_preamble_empty_stop() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/with_preamble_empty_stop");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/with_tools_empty_stop"
+))]
 #[tokio::test]
 async fn with_tools_empty_stop() {
     with_anthropic_empty_stop_cassette(
@@ -486,6 +522,9 @@ async fn with_tools_empty_stop() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/with_tools_empty_stop");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/with_prompt_caching_empty_stop"
+))]
 #[tokio::test]
 async fn with_prompt_caching_empty_stop() {
     with_anthropic_empty_stop_cassette(
@@ -508,6 +547,9 @@ async fn with_prompt_caching_empty_stop() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/with_prompt_caching_empty_stop");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/sonnet_empty_stop_sequence"
+))]
 #[tokio::test]
 async fn sonnet_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
@@ -532,6 +574,9 @@ async fn sonnet_empty_stop_sequence() {
 // 15–18: what the response must still carry, and life after it
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/identity_survives_empty_stop"
+))]
 #[tokio::test]
 async fn identity_survives_empty_stop() {
     let observed_model: std::sync::Arc<std::sync::Mutex<Option<String>>> = Default::default();
@@ -587,6 +632,9 @@ async fn identity_survives_empty_stop() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/finish_reason_is_stop_on_empty_stop"
+))]
 #[tokio::test]
 async fn finish_reason_is_stop_on_empty_stop() {
     with_anthropic_empty_stop_cassette(
@@ -612,6 +660,9 @@ async fn finish_reason_is_stop_on_empty_stop() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/finish_reason_is_stop_on_empty_stop");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/followup_after_empty_stop_turn"
+))]
 #[tokio::test]
 async fn followup_after_empty_stop_turn() {
     with_anthropic_empty_stop_cassette(
@@ -645,6 +696,9 @@ async fn followup_after_empty_stop_turn() {
     assert_recorded_empty_stop("empty_stop_sequence_matrix/followup_after_empty_stop_turn");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_stop_sequence_matrix/long_sequence_empty_stop"
+))]
 #[tokio::test]
 async fn long_sequence_empty_stop() {
     with_anthropic_empty_stop_cassette(

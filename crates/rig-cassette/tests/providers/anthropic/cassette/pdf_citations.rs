@@ -46,6 +46,9 @@ fn collect_citations(choice: &[rig::message::AssistantContent]) -> Vec<Citation>
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/pdf_citations/pdf_document_citations_decode_as_page_locations"
+))]
 /// A PDF-grounded answer cites back into the document by *page*, so the
 /// response must decode as [`Citation::PageLocation`] rather than falling
 /// through to the forward-compatible `Unknown` bucket.

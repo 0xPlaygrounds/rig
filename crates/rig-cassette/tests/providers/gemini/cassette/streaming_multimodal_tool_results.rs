@@ -65,6 +65,9 @@ impl Tool for HybridImageTool {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts"
+))]
 #[tokio::test]
 async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     super::super::support::with_gemini_cassette("streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts", |client| async move {

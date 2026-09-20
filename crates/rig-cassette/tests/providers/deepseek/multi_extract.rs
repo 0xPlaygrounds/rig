@@ -29,6 +29,9 @@ struct Sentiment {
     confidence: f64,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/multi_extract/batch_multi_extract_chain"
+))]
 #[tokio::test]
 async fn batch_multi_extract_chain() -> Result<()> {
     with_deepseek_cassette_result(

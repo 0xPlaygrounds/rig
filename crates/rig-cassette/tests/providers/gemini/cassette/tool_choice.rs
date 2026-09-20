@@ -46,6 +46,9 @@ fn assert_history_tool_calls(history: &[Message], expected: &[&str], forbidden: 
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_choice/specific_add_raw_streaming"
+))]
 #[tokio::test]
 async fn specific_add_raw_streaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
@@ -99,6 +102,9 @@ async fn specific_add_raw_streaming_allows_only_add() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_choice/specific_add_raw_nonstreaming"
+))]
 #[tokio::test]
 async fn specific_add_raw_nonstreaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
@@ -151,6 +157,9 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_choice/none_streaming_no_tools"
+))]
 #[tokio::test]
 async fn none_streaming_does_not_emit_tool_calls() {
     super::super::support::with_gemini_cassette(
@@ -197,6 +206,9 @@ async fn none_streaming_does_not_emit_tool_calls() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_choice/none_nonstreaming_no_tools"
+))]
 #[tokio::test]
 async fn none_nonstreaming_does_not_emit_tool_calls() {
     super::super::support::with_gemini_cassette(

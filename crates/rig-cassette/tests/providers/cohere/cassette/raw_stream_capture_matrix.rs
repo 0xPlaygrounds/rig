@@ -95,6 +95,9 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 // 1: typed access is recoverable
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response"
+))]
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
@@ -147,6 +150,9 @@ async fn raw_roundtrips_streaming_completion_response() {
 // 2: terminal-only fields are readable and match the wire
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/raw_stream_capture_matrix/raw_exposes_terminal_only_fields"
+))]
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";

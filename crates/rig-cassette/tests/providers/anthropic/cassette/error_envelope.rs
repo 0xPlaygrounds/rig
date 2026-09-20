@@ -12,6 +12,9 @@ use rig::completion::CompletionModel;
 
 use super::super::support::with_anthropic_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_envelope/nonexistent_model_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn nonexistent_model_error_preserves_status_and_body() {
     with_anthropic_cassette(
@@ -52,6 +55,9 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_anthropic_cassette(
@@ -98,6 +104,9 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_envelope/nonexistent_model_error_preserves_status_and_body"
+))]
 /// rig#2210: the failed response's headers must reach the caller, on both the
 /// unary and streaming paths.
 ///
@@ -141,6 +150,9 @@ async fn nonexistent_model_error_preserves_response_headers() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn nonexistent_model_streaming_error_preserves_response_headers() {
     with_anthropic_cassette(

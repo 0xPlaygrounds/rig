@@ -59,6 +59,9 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 // 1. raw is the reply document
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/raw_capture_matrix/raw_round_trips_openai_type"
+))]
 #[tokio::test]
 async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
@@ -113,6 +116,9 @@ async fn raw_is_the_verbatim_response_body() {
 // 2. The fields with no normalized slot reach the caller through raw
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/raw_capture_matrix/raw_exposes_object_not_citations"
+))]
 #[tokio::test]
 async fn raw_exposes_object_and_citations() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object_not_citations";
@@ -163,6 +169,9 @@ async fn raw_exposes_object_and_citations() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";

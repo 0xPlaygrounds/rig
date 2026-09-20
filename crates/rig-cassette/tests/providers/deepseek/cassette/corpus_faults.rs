@@ -30,6 +30,9 @@ fn missing(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'stati
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_faults/setup_unary"
+))]
 #[tokio::test]
 async fn setup_unary() {
     with_deepseek_cassette("corpus_faults/setup_unary", |client| async move {
@@ -41,6 +44,9 @@ async fn setup_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_matrix/error_facts_streamed"
+))]
 #[tokio::test]
 async fn setup_streamed() {
     with_deepseek_cassette("corpus_matrix/error_facts_streamed", |client| async move {
@@ -54,6 +60,9 @@ async fn setup_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_faults/tool_error"
+))]
 #[tokio::test]
 async fn tool_error() {
     with_deepseek_cassette("corpus_faults/tool_error", |client| async move {
@@ -65,6 +74,9 @@ async fn tool_error() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_faults/tool_error_streamed"
+))]
 #[tokio::test]
 async fn tool_error_streamed() {
     with_deepseek_cassette("corpus_faults/tool_error_streamed", |client| async move {
@@ -76,6 +88,9 @@ async fn tool_error_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_faults/batch_second_fails"
+))]
 #[tokio::test]
 async fn batch_second_fails() {
     with_deepseek_cassette("corpus_faults/batch_second_fails", |client| async move {
@@ -87,6 +102,9 @@ async fn batch_second_fails() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_faults/batch_second_fails"
+))]
 #[tokio::test]
 async fn batch_second_fails_concurrent() {
     with_deepseek_cassette("corpus_faults/batch_second_fails", |client| async move {

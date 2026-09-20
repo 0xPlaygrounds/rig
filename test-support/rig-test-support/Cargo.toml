@@ -12,6 +12,8 @@ workspace = true
 doctest = false
 
 [dependencies]
+rig-cassette-inventory = { path = "../cassette-inventory" }
+rig-cassette-macros = { path = "../cassette-macros" }
 rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils"] }
 rig-agent = { path = "../../crates/rig-agent", default-features = false, features = ["test-utils"] }
 rig-reqwest = { path = "../../crates/rig-reqwest", default-features = false }
@@ -35,3 +37,7 @@ base64.workspace = true
 bytes.workspace = true
 serde_yaml.workspace = true
 reqwest = { workspace = true, features = ["json", "stream"] }
+
+[dev-dependencies]
+assert_fs.workspace = true
+httpmock = { workspace = true, features = ["record", "proxy"] }

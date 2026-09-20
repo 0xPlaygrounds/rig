@@ -75,6 +75,9 @@ const WHICH_IS_THE_PHOTOGRAPH: &str = "Two images follow. One is a photograph of
      one is a plain coloured square. Answer with exactly one word, FIRST or SECOND: which image \
      is the photograph of an insect?";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/multimodal_matrix/two_images_keep_their_order"
+))]
 /// Two images in one turn, and the answer tracks which came first.
 ///
 /// The cell records **both orders** in one scenario. A single order proves
@@ -155,6 +158,9 @@ async fn two_images_in_one_turn_keep_their_order() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/multimodal_matrix/image_plus_tools"
+))]
 /// An image and a tool in the same request.
 ///
 /// On the smaller vision model, whose template supports tool calls. The
@@ -229,6 +235,9 @@ async fn an_image_and_a_tool_reach_the_model_together() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/multimodal_matrix/malformed_data_uri"
+))]
 /// A data URI whose base64 does not decode is a 400.
 #[tokio::test]
 async fn a_malformed_data_uri_is_a_400() {
@@ -283,6 +292,9 @@ async fn a_malformed_data_uri_is_a_400() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/multimodal_matrix/unfetchable_image_url"
+))]
 /// An image URL the server cannot fetch is a **500**.
 ///
 /// llama.cpp fetches remote images itself, and reports a failed fetch as
@@ -338,6 +350,9 @@ async fn a_url_the_server_cannot_fetch_is_a_500() {
     assert_eq!(json["error"]["type"], serde_json::json!("server_error"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/multimodal_matrix/image_without_mmproj"
+))]
 /// An image sent to a server started without `--mmproj`.
 #[tokio::test]
 async fn an_image_to_a_text_only_server_names_the_missing_mmproj() {
@@ -380,6 +395,9 @@ async fn an_image_to_a_text_only_server_names_the_missing_mmproj() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/multimodal_matrix/video_part_is_refused"
+))]
 /// A video part is refused, although `/props` advertises `video: true`.
 #[tokio::test]
 async fn a_video_part_is_refused_even_though_props_advertises_video() {

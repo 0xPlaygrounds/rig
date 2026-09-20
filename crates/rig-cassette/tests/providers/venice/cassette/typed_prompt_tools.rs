@@ -59,6 +59,9 @@ impl Tool for WeatherTool {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip"
+))]
 #[tokio::test]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_venice_cassette_result(

@@ -32,25 +32,19 @@ pub(super) fn model_name() -> String {
     std::env::var("MISTRALRS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
 }
 
-/// The local server's address and credential, from the environment when the
-/// suite is recorded against a running mistral.rs.
-fn server() -> (String, String) {
-    (
-        std::env::var("MISTRALRS_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string()),
-        std::env::var("MISTRALRS_API_KEY").unwrap_or_else(|_| DEFAULT_API_KEY.to_string()),
-    )
+fn server_base_url() -> String {
+    std::env::var("MISTRALRS_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string())
+}
+
+// Credential lookup must follow recording authorization, even for local servers.
+fn server_api_key() -> String {
+    std::env::var("MISTRALRS_API_KEY").unwrap_or_else(|_| DEFAULT_API_KEY.to_string())
 }
 
 async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundResponses) {
-    let (real_base_url, api_key) = server();
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistralrs",
-        spec,
-        &real_base_url,
-    )
-    .await;
-    let responses = OpenAI::new(api_key)
+    let real_base_url = server_base_url();
+    let cassette = rig_test_support::recording::start("mistralrs", spec, &real_base_url).await;
+    let responses = OpenAI::new(server_api_key())
         .with_base_url(cassette.base_url())
         .bound()
         .expect("mistral.rs Responses transport should build");
@@ -61,15 +55,9 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
 async fn mistralrs_completions_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, BoundCompletions) {
-    let (real_base_url, api_key) = server();
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistralrs",
-        spec,
-        &real_base_url,
-    )
-    .await;
-    let completions = OpenAI::new(api_key)
+    let real_base_url = server_base_url();
+    let cassette = rig_test_support::recording::start("mistralrs", spec, &real_base_url).await;
+    let completions = OpenAI::new(server_api_key())
         .with_base_url(cassette.base_url())
         .with_route(Route::Chat)
         .bound()
@@ -79,15 +67,8 @@ async fn mistralrs_completions_cassette(
 }
 
 async fn mistralrs_raw_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, String) {
-    let real_base_url =
-        std::env::var("MISTRALRS_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistralrs",
-        spec,
-        &real_base_url,
-    )
-    .await;
+    let real_base_url = server_base_url();
+    let cassette = rig_test_support::recording::start("mistralrs", spec, &real_base_url).await;
     let base_url = cassette.base_url();
     (cassette, base_url)
 }

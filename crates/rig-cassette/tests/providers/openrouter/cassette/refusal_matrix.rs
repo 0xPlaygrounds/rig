@@ -134,6 +134,9 @@ fn pinned_only(upstream: &str) -> Value {
 // Blocking — the surface that threw the refusal away.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_raw_model_surfaces_refusal"
+))]
 #[tokio::test]
 async fn blocking_raw_model_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/blocking_raw_model_surfaces_refusal";
@@ -173,6 +176,9 @@ async fn blocking_raw_model_surfaces_refusal() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_agent_prompt_surfaces_refusal"
+))]
 #[tokio::test]
 async fn blocking_agent_prompt_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/blocking_agent_prompt_surfaces_refusal";
@@ -200,6 +206,9 @@ async fn blocking_agent_prompt_surfaces_refusal() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_raw_and_normalized_agree"
+))]
 /// The one reader must report the refusal the gateway's own document carries.
 ///
 /// This cell used to compare two readers of one reply — `text_response`, which
@@ -255,6 +264,9 @@ async fn blocking_raw_and_normalized_agree() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_refusal_finishes_with_stop"
+))]
 /// A refusal is a *completed* turn: the gateway reports `finish_reason: stop`,
 /// and that must reach the caller alongside the text.
 #[tokio::test]
@@ -285,6 +297,9 @@ async fn blocking_refusal_finishes_with_stop() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_usage_survives_the_refusal"
+))]
 #[tokio::test]
 async fn blocking_usage_survives_the_refusal() {
     const SCENARIO: &str = "refusal_matrix/blocking_usage_survives_the_refusal";
@@ -327,6 +342,9 @@ async fn blocking_usage_survives_the_refusal() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_refusal_with_tools_in_request"
+))]
 /// Tool schemas in the request must not change the refusal path: the turn
 /// still comes back as a refusal with no tool call.
 #[tokio::test]
@@ -362,6 +380,9 @@ async fn blocking_refusal_with_tools_in_request() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_refusal_with_preamble"
+))]
 #[tokio::test]
 async fn blocking_refusal_with_preamble() {
     const SCENARIO: &str = "refusal_matrix/blocking_refusal_with_preamble";
@@ -388,6 +409,9 @@ async fn blocking_refusal_with_preamble() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_refusal_survives_into_history"
+))]
 /// The refused turn must be replayable: it becomes an assistant message in
 /// history and a second turn on top of it succeeds. Before the fix the turn
 /// never reached history at all.
@@ -442,6 +466,9 @@ async fn blocking_refusal_survives_into_history() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_refusal_under_a_tight_cap"
+))]
 /// A refusal fits inside a 32-token cap, so this cell varies the request's
 /// `max_tokens` without the turn being truncated — the recorded turn finishes
 /// `stop`. It covers the cap as a *request* dimension only; the truncated-turn
@@ -476,6 +503,9 @@ async fn blocking_refusal_under_a_tight_cap() {
 // Streaming — the transport that already worked, kept as the parity reference.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/streaming_raw_model_surfaces_refusal"
+))]
 #[tokio::test]
 async fn streaming_raw_model_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/streaming_raw_model_surfaces_refusal";
@@ -513,6 +543,9 @@ async fn streaming_raw_model_surfaces_refusal() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/streaming_agent_surfaces_refusal"
+))]
 #[tokio::test]
 async fn streaming_agent_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/streaming_agent_surfaces_refusal";
@@ -539,6 +572,9 @@ async fn streaming_agent_surfaces_refusal() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/streaming_terminal_carries_usage_and_reason"
+))]
 #[tokio::test]
 async fn streaming_terminal_carries_usage_and_reason() {
     const SCENARIO: &str = "refusal_matrix/streaming_terminal_carries_usage_and_reason";
@@ -575,6 +611,9 @@ async fn streaming_terminal_carries_usage_and_reason() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/streaming_refusal_emits_no_tool_calls"
+))]
 #[tokio::test]
 async fn streaming_refusal_emits_no_tool_calls() {
     const SCENARIO: &str = "refusal_matrix/streaming_refusal_emits_no_tool_calls";
@@ -607,6 +646,9 @@ async fn streaming_refusal_emits_no_tool_calls() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/transports_agree_on_the_refusal_text"
+))]
 /// One scenario, both transports, derived from that scenario's own bytes: the
 /// blocking turn's text is the concatenation of the streamed refusal deltas.
 #[tokio::test]
@@ -673,6 +715,9 @@ async fn transports_agree_on_the_refusal_text() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_gpt_4_1_refusal"
+))]
 #[tokio::test]
 async fn blocking_gpt_4_1_refusal() {
     const SCENARIO: &str = "refusal_matrix/blocking_gpt_4_1_refusal";
@@ -703,6 +748,9 @@ async fn blocking_gpt_4_1_refusal() {
 // A second upstream: the same rig model handle, routed to Azure instead.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/blocking_azure_routed_refusal"
+))]
 #[tokio::test]
 async fn blocking_azure_routed_refusal() {
     const SCENARIO: &str = "refusal_matrix/blocking_azure_routed_refusal";
@@ -729,6 +777,9 @@ async fn blocking_azure_routed_refusal() {
     assert_recorded_provider(SCENARIO, "Azure");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/streaming_azure_routed_refusal"
+))]
 #[tokio::test]
 async fn streaming_azure_routed_refusal() {
     const SCENARIO: &str = "refusal_matrix/streaming_azure_routed_refusal";
@@ -758,6 +809,9 @@ async fn streaming_azure_routed_refusal() {
 // Controls — turns that must be byte-identical before and after the fix.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/control_answerable_prompt_is_unchanged_blocking"
+))]
 #[tokio::test]
 async fn control_answerable_prompt_is_unchanged_blocking() {
     const SCENARIO: &str = "refusal_matrix/control_answerable_prompt_is_unchanged_blocking";
@@ -786,6 +840,9 @@ async fn control_answerable_prompt_is_unchanged_blocking() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/control_answerable_prompt_is_unchanged_streaming"
+))]
 #[tokio::test]
 async fn control_answerable_prompt_is_unchanged_streaming() {
     const SCENARIO: &str = "refusal_matrix/control_answerable_prompt_is_unchanged_streaming";
@@ -815,6 +872,9 @@ async fn control_answerable_prompt_is_unchanged_streaming() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/control_mini_answers_inside_schema"
+))]
 /// Why the matrix cannot use the cheap model: `gpt-4o-mini` answers the
 /// refusable prompt *inside* the schema, so it never populates `refusal`.
 #[tokio::test]
@@ -843,6 +903,9 @@ async fn control_mini_answers_inside_schema() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/control_no_schema_refusal_is_plain_content"
+))]
 /// Without a strict schema the same prompt comes back as ordinary `content`,
 /// never as the `refusal` field — the control that scopes the bug to
 /// structured output.
@@ -872,6 +935,9 @@ async fn control_no_schema_refusal_is_plain_content() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/refusal_matrix/control_tool_call_turn_is_unchanged"
+))]
 /// A tool-calls-only turn holds `content` at `null` with `refusal` absent —
 /// the shape the fallback must leave alone.
 #[tokio::test]

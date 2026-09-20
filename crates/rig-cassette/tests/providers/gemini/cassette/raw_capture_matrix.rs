@@ -223,6 +223,9 @@ fn visible_text(candidate: &ContentCandidate) -> String {
 // 1: typed access is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_matrix/raw_roundtrips_generate_content_response"
+))]
 #[tokio::test]
 async fn raw_roundtrips_generate_content_response() {
     const SCENARIO: &str = "raw_capture_matrix/raw_roundtrips_generate_content_response";
@@ -295,6 +298,9 @@ async fn raw_roundtrips_generate_content_response() {
 // 2: an un-normalized field is readable and matches the wire
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_matrix/raw_exposes_prompt_tokens_details"
+))]
 #[tokio::test]
 async fn raw_exposes_prompt_tokens_details() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_prompt_tokens_details";
@@ -348,6 +354,9 @@ async fn raw_exposes_prompt_tokens_details() {
 // 3: a forced tool call keeps the wire's functionCall and finishReason
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_matrix/raw_exposes_forced_function_call"
+))]
 #[tokio::test]
 async fn raw_exposes_forced_function_call() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_forced_function_call";
@@ -459,6 +468,9 @@ async fn raw_exposes_forced_function_call() {
 // 4: a structured-output turn keeps the provider-only fields
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_matrix/raw_exposes_structured_output_turn"
+))]
 #[tokio::test]
 async fn raw_exposes_structured_output_turn() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_structured_output_turn";

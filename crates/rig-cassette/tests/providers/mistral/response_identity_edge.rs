@@ -52,6 +52,9 @@ fn assert_report_keeps_id_and_body(report: &ErrorReport) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/response_identity_edge/blocking_response_carries_the_correlation_id"
+))]
 #[tokio::test]
 async fn blocking_response_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
@@ -69,6 +72,9 @@ async fn blocking_response_carries_the_correlation_id() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/response_identity_edge/streaming_terminal_carries_the_correlation_id"
+))]
 #[tokio::test]
 async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
@@ -85,6 +91,9 @@ async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/response_identity_edge/verify_succeeds_against_the_versioned_models_route"
+))]
 /// `verify()` sends the `MISTRAL` dialect's `verify_path` — `/v1/models` —
 /// against the configured base URL, which for Mistral is the bare host. The
 /// path used to be a bare `/models`, which is a gateway 404 on that host, so
@@ -105,6 +114,9 @@ async fn verify_succeeds_against_the_versioned_models_route() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/response_identity_edge/blocking_error_carries_the_correlation_id"
+))]
 /// The contract must hold on failures too, not just on the happy path: an
 /// error that eats the id is exactly as unrecoverable as one that eats the
 /// body. Mistral sends `mistral-correlation-id` on 4xx as well.
@@ -126,6 +138,9 @@ async fn blocking_error_carries_the_correlation_id() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/response_identity_edge/streaming_error_carries_the_correlation_id"
+))]
 /// The streaming twin of the cell above.
 ///
 /// Derived from the recording rather than assumed: `stream()` returns `Ok` for
@@ -163,6 +178,9 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/response_identity_edge/blocking_unauthorized_carries_the_correlation_id"
+))]
 /// The same on a 401, whose body is a different shape again (`{"detail": …}`
 /// rather than Mistral's `{"object":"error", …}` envelope).
 #[tokio::test]

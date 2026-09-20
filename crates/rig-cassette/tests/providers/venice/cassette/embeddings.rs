@@ -6,6 +6,9 @@ use rig::providers::venice;
 use super::super::support::with_venice_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/embeddings/embeddings_smoke"
+))]
 #[tokio::test]
 async fn embeddings_smoke() {
     with_venice_cassette("embeddings/embeddings_smoke", |client| async move {
@@ -19,6 +22,9 @@ async fn embeddings_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/embeddings/requested_dimensions"
+))]
 /// Venice honors OpenAI's `dimensions` field: the returned vectors must have
 /// exactly the requested width, not the model's native one.
 #[tokio::test]

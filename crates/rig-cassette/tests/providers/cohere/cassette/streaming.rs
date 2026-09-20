@@ -8,6 +8,9 @@ use crate::support::{
     collect_stream_final_response_and_provider_final,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_cohere_cassette("streaming/streaming_smoke", |client| async move {

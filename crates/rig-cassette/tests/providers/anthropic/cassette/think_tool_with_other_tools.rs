@@ -271,6 +271,9 @@ fn collect_assistant_tool_calls(messages: &[Message]) -> Vec<(String, serde_json
     tool_calls
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/think_tool_with_other_tools/think_tool_with_other_tools"
+))]
 #[tokio::test]
 async fn think_tool_with_other_tools() -> Result<()> {
     let calculator_calls = Arc::new(AtomicUsize::new(0));

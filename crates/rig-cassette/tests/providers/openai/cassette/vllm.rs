@@ -8,7 +8,6 @@ use serde::Deserialize;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
-use crate::cassettes::ProviderCassette;
 use futures::FutureExt;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
@@ -18,13 +17,7 @@ where
 {
     let base_url =
         std::env::var("VLLM_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8000/v1".to_string());
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        scenario,
-        &base_url,
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("openai", scenario, &base_url).await;
     let client = OpenAI::new("dummy-vllm-key")
         .with_base_url(cassette.base_url())
         .bound()
@@ -34,6 +27,9 @@ where
     cassette.finish_after_test(result).await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/vllm/responses_api_accepts_null_metadata"
+))]
 #[tokio::test]
 async fn responses_api_accepts_null_metadata() {
     with_openai_vllm_cassette(

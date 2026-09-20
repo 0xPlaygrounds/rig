@@ -31,6 +31,9 @@ fn tool_names(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_output/tool_unary"
+))]
 #[tokio::test]
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
@@ -58,6 +61,9 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_output/prompted_unary"
+))]
 #[tokio::test]
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {

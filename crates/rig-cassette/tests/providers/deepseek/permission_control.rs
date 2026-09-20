@@ -165,6 +165,9 @@ impl AgentHook for PermissionHook {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/permission_control/permission_control_prompt_example"
+))]
 #[tokio::test]
 async fn permission_control_prompt_example() -> Result<()> {
     with_deepseek_cassette_result(
@@ -215,6 +218,9 @@ async fn permission_control_prompt_example() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/permission_control/permission_control_streaming_example"
+))]
 #[tokio::test]
 async fn permission_control_streaming_example() -> Result<()> {
     with_deepseek_cassette_result(

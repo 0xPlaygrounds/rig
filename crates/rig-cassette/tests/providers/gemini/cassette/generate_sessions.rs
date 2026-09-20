@@ -89,6 +89,9 @@ fn result_index_for_call(results: &[ToolEvent], call: &ToolEvent) -> usize {
         .message_index
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_sessions/sequential_tool_calls_ordering_nonstreaming"
+))]
 #[tokio::test]
 async fn sequential_tool_calls_ordering_nonstreaming() {
     with_gemini_cassette(
@@ -141,6 +144,9 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_sessions/sequential_tool_calls_ordering_streaming"
+))]
 #[tokio::test]
 async fn sequential_tool_calls_ordering_streaming() {
     with_gemini_cassette(
@@ -189,6 +195,9 @@ async fn sequential_tool_calls_ordering_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_sessions/long_history_replay_nonstreaming"
+))]
 #[tokio::test]
 async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
@@ -274,6 +283,9 @@ async fn long_history_replay_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_sessions/thinking_session_reports_thought_tokens_in_usage"
+))]
 #[tokio::test]
 async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(

@@ -11,6 +11,9 @@ use rig_ecs::{
     systems::RunCommands,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/agent_blocking_thinking"
+))]
 #[tokio::test]
 async fn agent_blocking_thinking() {
     let observed = Observed::new();

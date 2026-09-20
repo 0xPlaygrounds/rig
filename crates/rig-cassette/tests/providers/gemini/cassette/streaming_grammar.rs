@@ -155,6 +155,9 @@ fn aggregated_reasoning_text(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/max_tokens_truncation"
+))]
 /// `MAX_TOKENS` truncation via a small `maxOutputTokens` budget: terminal
 /// record present, finish reason normalized to `Length`, partial text kept.
 #[tokio::test]
@@ -194,6 +197,9 @@ async fn max_tokens_truncation_normalizes_to_length() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/streaming_tool_call"
+))]
 /// Streaming tool-call turn: the call lands in the aggregated choice with the
 /// IDs the stream reported, and the terminal record normalizes to `ToolCalls`.
 #[tokio::test]
@@ -235,6 +241,9 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/thinking_stream"
+))]
 /// Thinking output on a thinking-capable model: all thinking text the stream
 /// surfaced (deltas and/or full blocks) must survive into the aggregated
 /// choice's reasoning content — a signed final thinking chunk must not erase
@@ -368,6 +377,9 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/thinking_then_tool_call"
+))]
 /// Thinking and a tool call interleaved in ONE stream: the aggregated choice
 /// keeps the reasoning part and the tool-call part as discrete siblings (the
 /// F1b thinking/tool boundary, pinned on real traffic).
@@ -446,6 +458,9 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/parallel_function_calls"
+))]
 /// Parallel function calls in one turn: both calls survive aggregation as
 /// distinct parts with the ids the stream reported.
 #[tokio::test]
@@ -528,6 +543,9 @@ async fn parallel_function_calls_stay_distinct() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/stop_finish_reason"
+))]
 /// Plain `STOP` finish on a text-only turn (`finishReason` variant beyond
 /// MAX_TOKENS): terminal record present, `Stop` normalized, text aggregated
 /// exactly as streamed.
@@ -564,6 +582,9 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/interactions_thinking_stream"
+))]
 /// Thinking-enabled Interactions streaming turn: reasoning and text arrive as
 /// discrete normalized parts through the shared REST/interactions part-kind
 /// interpretation, pinned on real traffic.
@@ -712,6 +733,9 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/interactions_requires_action"
+))]
 /// Interactions API turn that stops for a declared client tool
 /// (`requires_action`), then completes after the tool result is submitted —
 /// one recorded exchange, asserted through the normalized conversion.
@@ -823,6 +847,9 @@ async fn interactions_requires_action_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/interactions_same_tool_twice"
+))]
 /// Two STREAMED calls to the SAME tool in one Interactions turn, on real
 /// recorded traffic — the live twin of the corpus pin (review 84a43e9e).
 /// Whatever identity the wire supplies (Interactions function calls may or
@@ -929,6 +956,9 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/interactions_signature_without_summaries"
+))]
 /// A thinking turn with summaries suppressed (`thinking_summaries: none`),
 /// recorded live: if the wire still delivers a `thought_signature`, it
 /// arrives with NO accumulated summary text — the empty-buffer shape that
@@ -1013,6 +1043,9 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_grammar/chat_sourced_history_replay"
+))]
 /// Cross-provider replay, recorded live (84a43e9e finding #5): a history
 /// sourced from an OpenAI-Chat-shaped provider carries the other wire's
 /// identifier `call_abc` only as rig's correlation handle — no Gemini

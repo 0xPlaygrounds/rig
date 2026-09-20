@@ -104,6 +104,7 @@ fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
 // 1: raw is the raw_completion value, serialized
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("bedrock/raw_capture_matrix/raw_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn raw_round_trips_provider_type() {
@@ -139,6 +140,7 @@ async fn raw_round_trips_provider_type() {
 // 2: a provider-only field rig does not normalize is readable from raw
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("bedrock/raw_capture_matrix/raw_exposes_latency_metrics").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn raw_exposes_latency_metrics() {
@@ -190,6 +192,7 @@ async fn raw_exposes_latency_metrics() {
 // 3: raw and the typed route tell one story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("bedrock/raw_capture_matrix/normalized_fields_equal_raw_renormalized").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// The normalized response, with `raw` stripped, must equal the normalization
 /// (`try_into`) of `raw` read back through the mirror type — and the fields
 /// the wire body decides (choice text, usage) must equal the recorded body.

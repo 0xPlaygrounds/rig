@@ -6,6 +6,9 @@ use rig::providers::deepseek;
 use super::support::with_deepseek_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_deepseek_cassette("extractor/extractor_smoke", |client| async move {

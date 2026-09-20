@@ -78,6 +78,9 @@ fn assert_maps_provider_fields(response: &rig::completion::CompletionResponse, c
 // 1. The normalized view is the mapping of the provider's own fields
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/raw_completion_parity_matrix/raw_normalize_reproduces_completion"
+))]
 #[tokio::test]
 async fn raw_normalize_reproduces_completion() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_normalize_reproduces_completion";
@@ -127,6 +130,9 @@ async fn raw_normalize_reproduces_completion() {
 // 2. The id rides on the normalized response, not in the reply document
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type"
+))]
 #[tokio::test]
 async fn raw_completion_carries_request_id_on_the_type() {
     const SCENARIO: &str =

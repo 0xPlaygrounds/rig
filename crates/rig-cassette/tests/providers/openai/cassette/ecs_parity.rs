@@ -15,6 +15,9 @@ use crate::{
     },
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_openai_cassette("agent/completion_smoke", |client| async move {
@@ -24,6 +27,9 @@ async fn completion_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
@@ -52,6 +58,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_openai_cassette(
@@ -70,6 +79,9 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming/example_streaming_prompt"
+))]
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_openai_cassette("streaming/example_streaming_prompt", |client| async move {
@@ -93,6 +105,9 @@ async fn example_streaming_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/example_streaming_with_tools"
+))]
 #[tokio::test]
 async fn example_streaming_with_tools() {
     with_openai_cassette(

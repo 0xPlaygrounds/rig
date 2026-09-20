@@ -22,6 +22,9 @@ fn venice_reply(raw: &serde_json::Value) -> venice::CompletionResponse {
     venice::CompletionResponse::deserialize(raw).expect("raw is Venice's own CompletionResponse")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/venice_parameters/web_search_on"
+))]
 #[tokio::test]
 async fn web_search_on_returns_citations() {
     with_venice_cassette("venice_parameters/web_search_on", |client| async move {
@@ -67,6 +70,9 @@ async fn web_search_on_returns_citations() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/venice_parameters/web_search_auto"
+))]
 #[tokio::test]
 async fn web_search_auto_is_echoed() {
     with_venice_cassette("venice_parameters/web_search_auto", |client| async move {
@@ -99,6 +105,9 @@ async fn web_search_auto_is_echoed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/venice_parameters/disable_thinking"
+))]
 /// `disable_thinking` is how callers turn a reasoning model into a plain one;
 /// the echo is the only place Venice confirms it took effect.
 #[tokio::test]
@@ -131,6 +140,9 @@ async fn disable_thinking_is_applied() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/venice_parameters/include_venice_system_prompt_false"
+))]
 /// Venice injects its own system prompt by default; opting out is visible in
 /// the echo and is what callers use to control the model's persona.
 #[tokio::test]
@@ -173,6 +185,9 @@ async fn venice_system_prompt_can_be_disabled() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/venice_parameters/character_slug"
+))]
 /// Characters are Venice-hosted personas selected by slug; the request must
 /// carry the slug and the response must echo it back.
 #[tokio::test]

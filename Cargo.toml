@@ -24,6 +24,8 @@ members = [
     "crates/rig-cassette/tests/minimal",
     "examples/*",
     "xtask",
+    "test-support/cassette-inventory",
+    "test-support/cassette-macros",
     "test-support/service-tests",
     "test-support/rig-test-support",
 ]

@@ -25,6 +25,9 @@ use crate::support::{
 
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_oracle/concurrent_notes"
+))]
 /// Two tool calls in one turn under `tool_concurrency: 2`, a host note
 /// inside each dispatch: the recorder orders the six records as they were
 /// dispatched, and the replay must agree.
@@ -87,6 +90,9 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_oracle/stop_after_turn_two"
+))]
 /// A stateful stop: `StopAfterTurn(2)` ends the run after the answer
 /// turn, and the header names the hook with its state.
 #[tokio::test]

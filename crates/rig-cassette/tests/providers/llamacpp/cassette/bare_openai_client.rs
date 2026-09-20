@@ -38,6 +38,9 @@ use crate::support::{
 
 use super::super::cassette_support::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/bare_openai_client/caller_supplies_the_v1_prefix"
+))]
 /// The caller carries the `/v1` the `LLAMACPP` dialect's default base URL
 /// carries for them.
 ///
@@ -81,6 +84,9 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/bare_openai_client/authorization_header_is_always_sent"
+))]
 /// The `OPENAI` dialect authenticates with `Auth::Bearer`, so it always sends
 /// `Authorization` — and llama.cpp accepts any bearer token when it was not
 /// started with `--api-key`.
@@ -181,6 +187,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/bare_openai_client/tool_call_stream_without_the_single_chunk_const"
+))]
 /// The same tool-call stream, decoded under a dialect that is **not**
 /// `LLAMACPP` — and reassembled identically.
 ///
@@ -252,6 +261,9 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
     assert!(parsed.is_object(), "{parsed}");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/bare_openai_client/agent_prompt_through_completions_api"
+))]
 /// The Responses/Completions split is configuration rather than one client's
 /// two surfaces: the `OPENAI` dialect's flagship is `/responses`, and llama.cpp
 /// is reachable by routing the configuration to Chat once, after which the
@@ -277,6 +289,9 @@ async fn agent_prompt_through_completions_api() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/bare_openai_client/raw_response_text_matches_normalized_choice_text"
+))]
 /// `raw` on this path is the server's verbatim chat-completions payload, and
 /// it rides under the `openai` descriptor name rather than `llamacpp`.
 #[tokio::test]

@@ -192,6 +192,9 @@ async fn over_host(
     log
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_at_start"
+))]
 #[tokio::test]
 async fn custom_at_start_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_at_start", |client| async move {
@@ -206,6 +209,9 @@ async fn custom_at_start_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_at_completion_call"
+))]
 #[tokio::test]
 async fn custom_at_completion_call_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette(
@@ -223,6 +229,9 @@ async fn custom_at_completion_call_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_at_outcome"
+))]
 #[tokio::test]
 async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_at_outcome", |client| async move {
@@ -246,6 +255,9 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_at_settled"
+))]
 /// A dispatch from `on_run_settled`, after the answer: the recorder is
 /// still tapping the host's bus, so the record follows the completion
 /// that answered the run.
@@ -263,6 +275,9 @@ async fn custom_at_settled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_start_and_settled"
+))]
 #[tokio::test]
 async fn custom_start_and_settled_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette(
@@ -284,6 +299,9 @@ async fn custom_start_and_settled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_twice_serial"
+))]
 #[tokio::test]
 async fn custom_twice_serial_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_twice_serial", |client| async move {
@@ -306,6 +324,9 @@ async fn custom_twice_serial_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_twice_concurrent"
+))]
 #[tokio::test]
 async fn custom_twice_concurrent_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette(
@@ -327,6 +348,9 @@ async fn custom_twice_concurrent_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_at_start_streamed"
+))]
 #[tokio::test]
 async fn custom_at_start_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette(
@@ -348,6 +372,9 @@ async fn custom_at_start_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_at_outcome_streamed"
+))]
 #[tokio::test]
 async fn custom_at_outcome_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_host_cassette(
@@ -375,6 +402,9 @@ async fn custom_at_outcome_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_host/custom_unserved"
+))]
 /// The host registered no note taker: the hook's bind is refused, the
 /// run goes on, and nothing of the hook reaches the log but its name.
 #[tokio::test]

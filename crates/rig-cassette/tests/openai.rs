@@ -6,6 +6,8 @@
     clippy::unreachable
 )]
 
+rig_test_support::cassette_inventory!();
+
 use rig_test_support::cache_conformance;
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;

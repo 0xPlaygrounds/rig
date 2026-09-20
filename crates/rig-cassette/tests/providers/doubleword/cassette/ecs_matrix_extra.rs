@@ -39,6 +39,9 @@ crate::matrix::case_matrix! {
     despawn_run_waits_for_an_in_flight_stream: ("corpus_matrix/endings_text_delta_stop", despawn_run_waits_for_an_in_flight_stream_22);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/unknown_model_blocking"
+))]
 /// The recorded 4xx, unary: the run fails as the provider's response and
 /// the record and the witness carry the same facts.
 #[tokio::test]
@@ -60,6 +63,9 @@ async fn error_facts_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/error_matrix/unknown_model_streaming"
+))]
 /// The recorded 4xx on the streaming surface.
 #[tokio::test]
 async fn error_facts_streamed() {

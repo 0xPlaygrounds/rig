@@ -8,6 +8,9 @@ use rig::completion::CompletionModel;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/response_identity/nonstreaming_request_id_is_none_by_design"
+))]
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
     with_cohere_cassette(
@@ -30,6 +33,9 @@ async fn nonstreaming_request_id_is_none_by_design() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/response_identity/streaming_request_id_is_none_by_design"
+))]
 /// Blocking/streaming parity for the `None` provider: the streamed terminal
 /// also reports no transport id — recorded absence, not a skipped surface.
 #[tokio::test]

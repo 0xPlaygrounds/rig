@@ -14,6 +14,9 @@ use super::super::support::with_openrouter_cassette;
 
 const MODEL: &str = "openai/gpt-5.2";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/response_identity_edge/blocking_contract_and_gateway_both_report_none"
+))]
 #[tokio::test]
 async fn blocking_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
@@ -35,6 +38,9 @@ async fn blocking_contract_and_gateway_both_report_none() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/response_identity_edge/streaming_contract_and_gateway_both_report_none"
+))]
 #[tokio::test]
 async fn streaming_contract_and_gateway_both_report_none() {
     use futures::StreamExt;
@@ -63,6 +69,9 @@ async fn streaming_contract_and_gateway_both_report_none() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/response_identity_edge/routed_failure_error_shape"
+))]
 /// 2xx-envelope / routed-failure hunt (rig#2314 error matrix): a model id
 /// that parses but routes nowhere — record what OpenRouter actually answers
 /// (assertion derived from the recording).

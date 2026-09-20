@@ -128,6 +128,9 @@ fn assert_raw_is_the_reply_document(
 // 1. Two turns, one seam: deterministic bytes, faithful documents
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/raw_completion_parity_matrix/raw_with_request_id_reproduces_completion"
+))]
 #[tokio::test]
 async fn encode_is_deterministic_and_raw_is_faithful() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion";
@@ -182,6 +185,9 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
 // 2. The transport id is a header, not a body field
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/raw_completion_parity_matrix/plain_raw_completion_lacks_request_id"
+))]
 #[tokio::test]
 async fn the_transport_id_comes_from_the_header_not_the_body() {
     const SCENARIO: &str = "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id";

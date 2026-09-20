@@ -137,13 +137,49 @@ with:
 cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
 ```
 
-Record mode requires the relevant provider credentials in the environment and
-overwrites existing cassette files:
+Recording requires the relevant provider credentials and overwrites only
+explicitly authorized live captures. Preview a selection before recording:
 
 ```bash
-RIG_PROVIDER_TEST_MODE=record \
-cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
+cargo xtask cassettes list --provider openai
+cargo xtask cassettes plan --scenario openai/agent/completion_smoke
+cargo xtask cassettes record --scenario openai/agent/completion_smoke
 ```
+
+`list`, `plan`, and `check` compile native provider test binaries using
+`cargo test --offline --locked`, then execute only inventory-export tests
+and libtest listing. Unfiltered commands build all cassette test targets so
+first-capture-only providers are discoverable even without a fixture directory.
+They need cached Cargo dependencies, but no provider
+credentials or provider/network access. The compiled inventory supplies exact
+test identities; there is no source scan or handwritten test-name registry.
+`list --json` exports the declarations, including derived-fixture recipes and
+scripted dependencies. `cargo xtask cassettes check` checks all provider
+fixture directories against their compiled declarations and executable safety
+tests; CI runs it after the default test sweep.
+
+`plan --provider openai` selects the provider's recordable scenarios and
+explains forbidden, scripted and ignored exclusions. Ignored tests require an
+explicit `--scenario` or `--include-ignored`. Partial selection of a test that
+opens multiple scenarios is rejected rather than silently authorizing more
+writes; select its complete provider plan instead. Recording uses the same
+planner and runs the exact compiled tests with a scenario-scoped permission
+set. It requires one passing test and a successful finalization receipt for
+each selected capture; a zero-test invocation is not success.
+
+Direct `RIG_PROVIDER_TEST_MODE=record cargo test ...` execution uses the same
+repository session authorization. Unknown, synthetic and derived destinations
+are refused before engine startup, credential lookup, upstream contact or
+fixture writes. A bulk direct run therefore fails on protected cells; use the
+planner instead. The repository wrapper protects against accidental misuse,
+not deliberate replacement of test code with calls to the portable engine.
+The published `rig-cassette` recording API is unchanged.
+
+`RIG_CHECKPOINT_ATTEMPT_DIR` and `RIG_LONG_LOOP_ATTEMPT_DIR` may retain partial
+attempt evidence outside the fixture corpus. The repository session chooses
+its own authorized scenario filename; checkpoint destinations inside the
+corpus (including symlink aliases), or paths containing `..`, are refused.
+Only successful finalization writes the actual fixture and emits its receipt.
 
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
 
@@ -170,6 +206,44 @@ cargo test -p rig-cassette --all-features --test gemini \
   streaming_tools_smoke \
   -- --nocapture --test-threads=1
 ```
+
+### Declaring a cassette test
+
+Annotate standalone producing tests with `#[rig_test_support::cassette(...)]`
+before `#[tokio::test]`. Its arguments are `rig_test_support::recording::Scenario`
+expressions. The compiler attribute emits the original test and a compiled
+inventory entry from the same function name and attributes; test bodies remain
+ordinary Rust for formatting and source-based golden checks. Existing `golden_matrix!`, `resume_matrix!` and
+cassette-backed `case_matrix!` rows emit the same inventory automatically.
+Keep all scenarios opened by a multi-session test in its declaration.
+New provider targets also include `rig_test_support::cassette_inventory!()` and
+`common/cassette_safety.rs`, as in [the OpenAI entrypoint](../crates/rig-cassette/tests/openai.rs).
+The inventory check verifies those safety tests are compiled and non-ignored.
+
+- `Scenario::live("provider/scenario")` permits recording an existing capture.
+- `.missing("why no capture exists yet")` explicitly allows its first capture;
+  remove the allowance after capturing, before committing. `#[ignore]` alone
+  never authorizes a missing file. Matrix rows use
+  `#[cassette_missing("why no capture exists yet")]` before their test attributes.
+- `Scenario::derived(id, &[source_ids], reason, rebuild)` forbids live recording
+  and describes reconstruction. `Scenario::synthetic(id, reason)` protects
+  handwritten fixtures without live sources. Real provider errors are live
+  captures, not synthetic fixtures.
+
+See the [OpenAI metadata tests](../crates/rig-cassette/tests/providers/openai/cassette/response_metadata_matrix.rs)
+for live and derived declarations. Fixture provenance is metadata, separate
+from recording permission, absence allowances, and executable test identity.
+Multiple tests may consume the same scenario, but their policy must agree;
+duplicate test identities and conflicting scenario declarations fail.
+
+Declare a scripted family's inputs with `rig_test_support::scripted_family!`
+and read frames, substituted statuses, or rewritten response bodies through
+its `ScriptedFamily` handle. The low-level fault readers are crate-private.
+Families without fixtures stay separate from cassette scenarios; a missing
+source stays unavailable rather than being synthesized or implicitly captured.
+The [OpenAI stream-fault tests](../crates/rig-cassette/tests/providers/openai/cassette/stream_faults.rs)
+show this pattern. Existing fixture-inspection helpers remain available for
+assertions, not as a bypass for scripted-source declarations.
 
 ### Cassette Safety
 

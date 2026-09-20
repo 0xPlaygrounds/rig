@@ -183,6 +183,9 @@ pub(super) fn last_outcome_kind(log: &rig::cassette::effect_log::EffectLog) -> O
 
 // -- unary --------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/tool_dispatch_cancelled"
+))]
 /// `on_dispatch` → `Deny(Cancelled)`: the completion is recorded, the tool
 /// never reaches the bus, the run stops.
 #[tokio::test]
@@ -204,6 +207,9 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/tool_outcome_cancelled"
+))]
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool's result: the tool
 /// ran and its record holds the real result; the run stops after it.
 #[tokio::test]
@@ -229,6 +235,9 @@ async fn tool_outcome_cancelled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/answer_outcome_cancelled"
+))]
 /// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
 #[tokio::test]
 async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
@@ -264,6 +273,9 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/turn_finished_stop"
+))]
 /// `on_model_turn_finished` → `Stop` on the first turn.
 #[tokio::test]
 async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
@@ -284,6 +296,9 @@ async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/answer_turn_stop"
+))]
 /// `on_model_turn_finished` → `Stop` at the answer turn of a tool program:
 /// the tool turn's records precede the stop.
 #[tokio::test]
@@ -311,6 +326,9 @@ async fn answer_turn_stop_effect_log_is_the_golden_fixture() {
 
 // -- streamed -----------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/effect_corpus/cancelled_stream"
+))]
 /// `on_text_delta` → `Stop`: the engine drops the model's stream at the
 /// first delta, so the completion is recorded as the cancel it was, on
 /// every transport.
@@ -332,6 +350,9 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/tool_call_delta_stop"
+))]
 /// `on_tool_call_delta` → `Stop`.
 #[tokio::test]
 async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
@@ -358,6 +379,9 @@ async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/tool_dispatch_cancelled_streamed"
+))]
 /// `on_dispatch` → `Deny(Cancelled)`, streamed with events: the completion
 /// completed and is recorded whole; the tool never reaches the bus.
 #[tokio::test]
@@ -387,6 +411,9 @@ async fn tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/turn_finished_stop_streamed"
+))]
 /// `on_model_turn_finished` → `Stop`, streamed with events.
 #[tokio::test]
 async fn turn_finished_stop_streamed_effect_log_is_the_golden_fixture() {
@@ -402,6 +429,9 @@ async fn turn_finished_stop_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_endings/tool_outcome_cancelled_streamed"
+))]
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool, streamed.
 #[tokio::test]
 async fn tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture() {

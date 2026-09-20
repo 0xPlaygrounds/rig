@@ -8,6 +8,9 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use super::super::support::with_anthropic_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_anthropic_cassette("reasoning_roundtrip/streaming", |client| async move {
@@ -22,6 +25,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_anthropic_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
@@ -36,6 +42,9 @@ async fn nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_delta_hook/streaming"
+))]
 #[tokio::test]
 async fn reasoning_delta_hook_streaming() {
     with_anthropic_cassette("reasoning_delta_hook/streaming", |client| async move {

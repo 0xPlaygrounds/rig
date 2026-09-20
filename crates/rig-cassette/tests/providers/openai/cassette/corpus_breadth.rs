@@ -101,6 +101,9 @@ fn host_bus(
     (dispatcher, registrar, driver, model_key)
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_breadth/output_tool_streamed"
+))]
 /// `Tool` output mode, streamed with events: the output tool's call as
 /// this wire ids it.
 #[tokio::test]
@@ -132,6 +135,9 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_breadth/text_delta_stop"
+))]
 /// A stop on the first text delta of a long streamed answer: the
 /// completion is cancelled at the delta.
 #[tokio::test]
@@ -173,6 +179,9 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_breadth/tool_dispatch_cancelled"
+))]
 /// `on_dispatch` → `Deny(Cancelled)` on the tool: the completion is
 /// recorded, the tool never reaches the bus.
 #[tokio::test]
@@ -206,6 +215,9 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_breadth/custom_at_outcome"
+))]
 /// A host's custom note inside the tool's dispatch, beside this wire's
 /// tool-call ids.
 #[tokio::test]
@@ -247,6 +259,9 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_breadth/prompted_streamed"
+))]
 /// `Prompted` output mode, streamed with events, on the Responses wire.
 #[tokio::test]
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
@@ -273,6 +288,9 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_breadth/memory_two_runs"
+))]
 /// Two runs over one conversation on the Responses wire: the second
 /// load holds the first append.
 #[tokio::test]

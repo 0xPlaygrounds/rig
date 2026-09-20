@@ -47,6 +47,9 @@ fn audio_content() -> UserContent {
     UserContent::audio(BASE64_STANDARD.encode(bytes), Some(AudioMediaType::MP3))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/multimodal/image_analysis_prompt"
+))]
 #[tokio::test]
 async fn image_analysis_prompt() {
     with_openrouter_cassette("multimodal/image_analysis_prompt", |client| async move {
@@ -70,6 +73,9 @@ async fn image_analysis_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/multimodal/pdf_analysis_prompt"
+))]
 #[tokio::test]
 async fn pdf_analysis_prompt() {
     with_openrouter_cassette("multimodal/pdf_analysis_prompt", |client| async move {
@@ -93,6 +99,9 @@ async fn pdf_analysis_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/multimodal/mixed_multimodal_prompt"
+))]
 #[tokio::test]
 async fn mixed_multimodal_prompt() {
     with_openrouter_cassette("multimodal/mixed_multimodal_prompt", |client| async move {
@@ -118,6 +127,9 @@ async fn mixed_multimodal_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/multimodal/video_analysis_prompt"
+))]
 #[tokio::test]
 async fn video_analysis_prompt() {
     with_openrouter_cassette("multimodal/video_analysis_prompt", |client| async move {
@@ -141,6 +153,9 @@ async fn video_analysis_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/multimodal/audio_analysis_prompt"
+))]
 #[tokio::test]
 async fn audio_analysis_prompt() {
     with_openrouter_cassette("multimodal/audio_analysis_prompt", |client| async move {

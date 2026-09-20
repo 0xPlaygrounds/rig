@@ -45,6 +45,9 @@ use super::super::cassette_support::*;
 
 const NO_THINK: &str = "/no_think ";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/content_matrix/empty_answer_with_stop"
+))]
 /// A turn whose whole answer is eaten by a stop sequence is a **rig error**,
 /// not a provider failure — and the distinction is worth being able to make.
 ///
@@ -125,6 +128,9 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/content_matrix/consecutive_same_role"
+))]
 /// Two consecutive `user` messages go out as two messages.
 ///
 /// Some providers reject alternation violations and some clients silently
@@ -174,6 +180,9 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/content_matrix/unicode_across_chunks"
+))]
 /// Multi-byte characters survive SSE chunk boundaries.
 ///
 /// llama.cpp streams per token and a UTF-8 sequence can straddle two of them,
@@ -254,6 +263,9 @@ async fn unicode_split_across_stream_chunks_reassembles() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/content_matrix/long_tool_output"
+))]
 /// An 8 KiB tool result reaches the model intact.
 #[tokio::test]
 async fn a_very_long_tool_output_survives_the_round_trip() {
@@ -327,6 +339,9 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/content_matrix/system_plus_history"
+))]
 /// A system message plus a multi-turn history keeps its order.
 #[tokio::test]
 async fn a_system_message_plus_history_keeps_its_order() {

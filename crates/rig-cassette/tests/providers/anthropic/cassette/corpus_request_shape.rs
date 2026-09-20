@@ -73,6 +73,9 @@ pub(super) fn last_text(log: &rig::cassette::effect_log::EffectLog) -> String {
 
 // -- tool_choice ------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/tool_choice_auto"
+))]
 /// `tool_choice(Auto)` with `add` advertised: the model calls it.
 #[tokio::test]
 async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
@@ -110,6 +113,9 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/tool_choice_required"
+))]
 /// `tool_choice(Required)`: every turn must be a tool call, and the run
 /// spec's tool choice applies to every turn, so the run never reaches a
 /// text answer: after `max_turns(2)` model calls it ends in `MaxTurnsError`
@@ -158,6 +164,9 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/tool_choice_specific"
+))]
 /// `tool_choice(Specific(add))`: the named tool is forced on every turn,
 /// so, like `Required`, the run ends in `MaxTurnsError` after two forced
 /// calls.
@@ -206,6 +215,9 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/tool_choice_none"
+))]
 /// `tool_choice(None)` with `add` advertised: no tool record exists. What
 /// the wire did: Sonnet 4.6 answered `tool_choice: none` with an empty
 /// `content: []` and `end_turn` under the tools preamble *and* under the
@@ -252,6 +264,9 @@ async fn tool_choice_none_effect_log_is_the_golden_fixture() {
 
 // -- sampling and params ---------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/max_tokens"
+))]
 /// `max_tokens(32)`: the request carries the cap; the answer stops at it.
 #[tokio::test]
 async fn max_tokens_effect_log_is_the_golden_fixture() {
@@ -282,6 +297,9 @@ async fn max_tokens_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/thinking_unary"
+))]
 /// `additional_params(thinking: adaptive)`, unary: the record's completion
 /// carries a reasoning block with its signature.
 #[tokio::test]
@@ -311,6 +329,9 @@ async fn thinking_unary_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/thinking_streamed"
+))]
 /// The same, streamed with its events kept: the reasoning deltas and the
 /// block's signature are on the record, and both interpreters carry them.
 #[tokio::test]
@@ -350,6 +371,9 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
 
 // -- preamble and context ---------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/static_context"
+))]
 /// Two static `context` documents: the request holds them and the answer
 /// uses them.
 #[tokio::test]
@@ -385,6 +409,9 @@ async fn static_context_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/append_preamble"
+))]
 /// `append_preamble`: the spec's preamble is the base and the document.
 #[tokio::test]
 async fn append_preamble_effect_log_is_the_golden_fixture() {
@@ -410,6 +437,9 @@ async fn append_preamble_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/without_preamble"
+))]
 /// `without_preamble`: the request carries no system prompt at all.
 #[tokio::test]
 async fn without_preamble_effect_log_is_the_golden_fixture() {
@@ -441,6 +471,9 @@ async fn without_preamble_effect_log_is_the_golden_fixture() {
 
 // -- output and history -----------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/output_schema_unary"
+))]
 /// `output_schema_raw`, unary: the answer is the schema's object.
 #[tokio::test]
 async fn output_schema_unary_effect_log_is_the_golden_fixture() {
@@ -472,6 +505,9 @@ async fn output_schema_unary_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/output_schema_streamed"
+))]
 /// `output_schema_raw`, streamed with events kept.
 #[tokio::test]
 async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
@@ -510,6 +546,9 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_request_shape/prior_history"
+))]
 /// A prior history on the runner: the first record's request already
 /// holds two turns before the prompt.
 #[tokio::test]

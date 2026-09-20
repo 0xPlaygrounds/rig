@@ -60,6 +60,9 @@ impl Tool for StatusWordTool {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/streaming_tools/raw_stream_emits_required_zero_arg_tool_call"
+))]
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_xai_cassette(
@@ -79,6 +82,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/streaming_tools/responses_stream_preserves_tool_result_flow"
+))]
 #[tokio::test]
 async fn responses_stream_preserves_tool_result_flow() {
     with_xai_cassette(
@@ -103,6 +109,9 @@ async fn responses_stream_preserves_tool_result_flow() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering"
+))]
 #[tokio::test]
 async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_xai_cassette(

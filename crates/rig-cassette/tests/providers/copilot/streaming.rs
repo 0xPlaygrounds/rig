@@ -7,6 +7,9 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_copilot_cassette("streaming/streaming_smoke", |client| async move {
@@ -25,6 +28,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming/example_streaming_prompt"
+))]
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_copilot_cassette("streaming/example_streaming_prompt", |client| async move {

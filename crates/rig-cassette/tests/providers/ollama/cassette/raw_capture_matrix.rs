@@ -92,6 +92,9 @@ fn assert_recorded_completed_with_durations(body: &Value, scenario: &str) {
 // 1: raw is exactly what raw_completion would have returned, serialized
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/raw_capture_matrix/raw_round_trips_provider_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
@@ -140,6 +143,9 @@ async fn raw_round_trips_provider_type() {
 // 2: a provider-only field rig does not normalize is readable from raw
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/raw_capture_matrix/raw_exposes_ollama_durations"
+))]
 #[tokio::test]
 async fn raw_exposes_ollama_durations() {
     let scenario = "raw_capture_matrix/raw_exposes_ollama_durations";
@@ -192,6 +198,9 @@ async fn raw_exposes_ollama_durations() {
 // 3: raw and the typed route tell one story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/raw_capture_matrix/normalized_fields_equal_raw_renormalized"
+))]
 /// One decoder, two views. The provider's own type, read back out of `raw` and
 /// read out of the recorded wire body, must agree with the normalized
 /// response on every field the normalized response has: capture neither

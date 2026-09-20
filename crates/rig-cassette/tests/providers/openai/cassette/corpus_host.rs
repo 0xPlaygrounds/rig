@@ -100,6 +100,9 @@ async fn embeds_over_host(
     log
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_host/embed_prompt"
+))]
 #[tokio::test]
 async fn embed_prompt_effect_log_is_the_golden_fixture() {
     with_openai_corpus_host_cassette("corpus_host/embed_prompt", |client| async move {
@@ -109,6 +112,9 @@ async fn embed_prompt_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_host/embed_prompt_streamed"
+))]
 #[tokio::test]
 async fn embed_prompt_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_host_cassette("corpus_host/embed_prompt_streamed", |client| async move {

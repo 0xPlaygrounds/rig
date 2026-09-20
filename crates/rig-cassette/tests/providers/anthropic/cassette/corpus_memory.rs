@@ -134,6 +134,9 @@ async fn remembers(
     agent.stamp(recorder.take())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/clear_at_start"
+))]
 #[tokio::test]
 async fn clear_at_start_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/clear_at_start", |client| async move {
@@ -147,6 +150,9 @@ async fn clear_at_start_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/clear_at_settled"
+))]
 #[tokio::test]
 async fn clear_at_settled_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/clear_at_settled", |client| async move {
@@ -157,6 +163,9 @@ async fn clear_at_settled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/two_runs"
+))]
 /// Two runs over one conversation, one log: the second load holds the
 /// first run's append.
 #[tokio::test]
@@ -181,6 +190,9 @@ async fn two_runs_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/two_runs_streamed"
+))]
 #[tokio::test]
 async fn two_runs_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/two_runs_streamed", |client| async move {
@@ -193,6 +205,9 @@ async fn two_runs_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/clear_at_settled_two_runs"
+))]
 /// `Clear` after `Append`, twice: the second run loads nothing.
 #[tokio::test]
 async fn clear_at_settled_two_runs_effect_log_is_the_golden_fixture() {
@@ -211,6 +226,9 @@ async fn clear_at_settled_two_runs_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/clear_at_start_two_runs"
+))]
 /// `Clear` at run start, twice: the hook fires after the load, so the
 /// second run still reads the first run's append before clearing it.
 #[tokio::test]
@@ -230,6 +248,9 @@ async fn clear_at_start_two_runs_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/history_bypass"
+))]
 /// Explicit runner history bypasses memory: no `Load`, no `Append`.
 #[tokio::test]
 async fn history_bypass_effect_log_is_the_golden_fixture() {
@@ -264,6 +285,9 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/host_bus_memory"
+))]
 /// Memory over a host's bus: the builder registers the store on the
 /// host's registrar under the agent's key, since only the builder can
 /// name the run's memory.
@@ -308,6 +332,9 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/serial_two_tools"
+))]
 /// Serial serving, memory and two tool calls in one turn: the append
 /// carries both results.
 #[tokio::test]
@@ -386,6 +413,9 @@ async fn append_fails(
     log
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/failing_append"
+))]
 #[tokio::test]
 async fn failing_append_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/failing_append", |client| async move {
@@ -395,6 +425,9 @@ async fn failing_append_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_memory/failing_append_streamed"
+))]
 #[tokio::test]
 async fn failing_append_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette(

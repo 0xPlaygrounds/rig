@@ -39,6 +39,9 @@ fn assistant_text(choice: &[AssistantContent]) -> String {
         .join("")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/document_ordering/responses_keeps_documents_after_system_before_history"
+))]
 #[tokio::test]
 async fn responses_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_cassette(
@@ -70,6 +73,9 @@ async fn responses_keeps_documents_after_system_before_history() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/document_ordering/chat_completions_keeps_documents_after_system_before_history"
+))]
 #[tokio::test]
 async fn chat_completions_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_completions_cassette(

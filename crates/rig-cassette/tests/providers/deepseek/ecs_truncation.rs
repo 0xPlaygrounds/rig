@@ -12,6 +12,9 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked"
+))]
 #[tokio::test]
 async fn agent_blocking_truncated_call_is_not_invoked() {
     const SCENARIO: &str = "truncation_matrix/agent_blocking_truncated_call_is_not_invoked";
@@ -65,6 +68,9 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_streaming_truncated_call_is_not_invoked"
+))]
 #[tokio::test]
 async fn agent_streaming_truncated_call_is_not_invoked() {
     const SCENARIO: &str = "truncation_matrix/agent_streaming_truncated_call_is_not_invoked";
@@ -118,6 +124,9 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked"
+))]
 #[tokio::test]
 async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
     const SCENARIO: &str =
@@ -173,6 +182,9 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
     assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked"
+))]
 #[tokio::test]
 async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
     const SCENARIO: &str =

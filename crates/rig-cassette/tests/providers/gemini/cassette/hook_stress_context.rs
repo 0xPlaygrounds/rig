@@ -22,6 +22,9 @@ use rig::agent::RequestPatch;
 // HookContext identity + turn advancement.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking"
+))]
 #[tokio::test]
 async fn hook_context_identity_stable_and_turn_advances_blocking() {
     let add = CountingAdd::default();
@@ -71,6 +74,9 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/agent_name_absent_when_unconfigured_blocking"
+))]
 #[tokio::test]
 async fn agent_name_absent_when_unconfigured_blocking() {
     let add = CountingAdd::default();
@@ -110,6 +116,9 @@ async fn agent_name_absent_when_unconfigured_blocking() {
 // Scratchpad: shared across two hooks and growing across turns.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking"
+))]
 #[tokio::test]
 async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking() {
     let add = CountingAdd::default();
@@ -180,6 +189,9 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
 // Tool-call correlation: block_id pairs ToolCall with ToolResult.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/block_id_correlates_tool_call_and_result_blocking"
+))]
 #[tokio::test]
 async fn block_id_correlates_tool_call_and_result_blocking() {
     let add = CountingAdd::default();
@@ -230,6 +242,9 @@ async fn block_id_correlates_tool_call_and_result_blocking() {
 // HookStack composition: multiple observe-only hooks, add_hook append.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking"
+))]
 #[tokio::test]
 async fn two_observe_only_hooks_both_observe_the_run_blocking() {
     let add = CountingAdd::default();
@@ -277,6 +292,9 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/add_hook_appends_across_builder_and_request_blocking"
+))]
 #[tokio::test]
 async fn add_hook_appends_across_builder_and_request_blocking() {
     let add = CountingAdd::default();
@@ -325,6 +343,9 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/completion_call_patches_accumulate_from_two_hooks_blocking"
+))]
 #[tokio::test]
 async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
     let add = CountingAdd::default();
@@ -373,6 +394,9 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking"
+))]
 #[tokio::test]
 async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
     let add = CountingAdd::default();

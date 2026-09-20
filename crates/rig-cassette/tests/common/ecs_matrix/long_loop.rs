@@ -2041,6 +2041,7 @@ impl UnaryShape {
 /// (`INVALID_ARGS_MIDWAY`), or `fault_reply` inserted before turn
 /// [`FAULT_TURN`]'s reply (`PROVIDER_FAULT_MIDWAY`).
 pub(crate) fn scripted_replies(
+    sources: &rig_test_support::recording::ScriptedFamily,
     thinking: ThinkingWire,
     cell: &Cell,
     fault_reply: Option<rig_agent::test_utils::MockHttpResponse>,
@@ -2048,7 +2049,12 @@ pub(crate) fn scripted_replies(
     use rig_agent::test_utils::MockHttpResponse;
 
     let (provider, scenario) = scenario(thinking, &LONG_UNARY);
-    let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, &scenario);
+    assert_eq!(
+        provider,
+        sources.provider(),
+        "scripted wire must match its declared sources"
+    );
+    let recorded = sources.recorded_statuses_and_bodies(&scenario);
     assert!(
         recorded.len() > FAULT_TURN,
         "{}: the row-1 recording has a turn {FAULT_TURN} to fault",
@@ -2139,13 +2145,8 @@ pub(crate) async fn assert_request_body_rejected(provider: &'static str, scenari
     );
     serde_json::from_str::<serde_json::Value>(&changed).expect("mutation preserves JSON syntax");
 
-    let cassette = crate::cassettes::ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        provider,
-        scenario,
-        "https://long-loop.invalid",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start(provider, scenario, "https://long-loop.invalid").await;
     let client = reqwest::Client::builder()
         .no_proxy()
         .build()

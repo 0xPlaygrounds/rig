@@ -11,6 +11,9 @@ use super::super::{
 };
 use crate::support::{TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_number};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/tools/tool_call_roundtrip"
+))]
 #[tokio::test]
 async fn tool_call_roundtrip() {
     with_cohere_cassette("tools/tool_call_roundtrip", |client| async move {
@@ -32,6 +35,9 @@ async fn tool_call_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/tools/required_tool_choice_is_accepted"
+))]
 /// Asserted on a single completion rather than through the agent loop: Cohere
 /// applies `REQUIRED` to every turn, so an agent configured this way is forced to
 /// keep calling tools and never reaches a final text answer.
@@ -88,6 +94,9 @@ async fn required_tool_choice_is_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/tools/required_tool_choice_selects_from_multiple_tools"
+))]
 #[tokio::test]
 async fn required_tool_choice_selects_from_multiple_tools() {
     with_cohere_cassette(
@@ -127,6 +136,9 @@ async fn required_tool_choice_selects_from_multiple_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/tools/none_tool_choice_with_tools_returns_text"
+))]
 #[tokio::test]
 async fn none_tool_choice_with_tools_returns_text() {
     with_cohere_cassette(
@@ -165,6 +177,9 @@ async fn none_tool_choice_with_tools_returns_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/tools/none_tool_choice_without_tools_returns_text"
+))]
 #[tokio::test]
 async fn none_tool_choice_without_tools_returns_text() {
     with_cohere_cassette(
@@ -195,6 +210,9 @@ async fn none_tool_choice_without_tools_returns_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/tools/strict_required_tool_choice_is_accepted"
+))]
 #[tokio::test]
 async fn strict_required_tool_choice_is_accepted() {
     with_cohere_cassette(

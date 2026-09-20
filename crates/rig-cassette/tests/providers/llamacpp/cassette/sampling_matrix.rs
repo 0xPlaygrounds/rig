@@ -75,6 +75,10 @@ fn recorded_finish_reason(scenario: &str) -> String {
 // temperature
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live("llamacpp/sampling_matrix/temperature_nonzero"),
+    rig_test_support::recording::Scenario::live("llamacpp/sampling_matrix/temperature_zero")
+)]
 /// `temperature: 0.0` must arrive as `0.0`, not vanish.
 ///
 /// A client that skips falsy values silently turns every "deterministic
@@ -126,6 +130,9 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
 // max_tokens
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/sampling_matrix/max_tokens_one"
+))]
 /// `max_tokens: 1` stops after exactly one token, reported as `Length`.
 #[tokio::test]
 async fn a_one_token_cap_truncates_with_finish_reason_length() {
@@ -164,6 +171,9 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/sampling_matrix/max_tokens_normal"
+))]
 /// A cap the turn does not reach leaves `finish_reason: stop`.
 #[tokio::test]
 async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
@@ -211,6 +221,9 @@ fn a_cap_past_the_context_is_clamped() {
 // stop sequences
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/sampling_matrix/stop_single"
+))]
 /// One stop sequence truncates the answer before the sequence itself.
 #[tokio::test]
 async fn a_single_stop_sequence_truncates_the_answer() {
@@ -256,6 +269,9 @@ async fn a_single_stop_sequence_truncates_the_answer() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/sampling_matrix/stop_multiple"
+))]
 /// With several stop sequences, whichever the model reaches first wins.
 #[tokio::test]
 async fn several_stop_sequences_fire_on_whichever_comes_first() {
@@ -294,6 +310,9 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
     assert!(!text.contains("Bravo"), "{text:?}");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/sampling_matrix/stop_never_fires"
+))]
 /// A stop sequence the model never produces changes nothing.
 #[tokio::test]
 async fn a_stop_sequence_that_never_matches_changes_nothing() {
@@ -324,6 +343,9 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
     assert!(text.contains("Delta"), "{text:?}");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/sampling_matrix/stop_case_sensitive"
+))]
 /// llama.cpp matches stop sequences **case-sensitively**.
 ///
 /// A footgun with no client-side guard: the same sequence in the wrong case
@@ -369,6 +391,10 @@ async fn stop_matching_is_case_sensitive() {
 // seed
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live("llamacpp/sampling_matrix/seed_absent"),
+    rig_test_support::recording::Scenario::live("llamacpp/sampling_matrix/seed_fixed")
+)]
 /// `seed` present round-trips; absent falls back to the server's `--seed`.
 ///
 /// Both halves are worth a cell because a recording harness depends on them:

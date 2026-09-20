@@ -7,6 +7,9 @@ use rig::providers::xai;
 use super::support::with_xai_cassette;
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/loaders/loaders_smoke"
+))]
 #[tokio::test]
 async fn loaders_smoke() {
     with_xai_cassette("loaders/loaders_smoke", |client| async move {

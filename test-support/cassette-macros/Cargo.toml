@@ -1,0 +1,16 @@
+[package]
+name = "rig-cassette-macros"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Compiler declaration attribute for repository cassette tests."
+
+[lints]
+workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true

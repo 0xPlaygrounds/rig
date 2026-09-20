@@ -160,6 +160,9 @@ async fn assert_streaming_terminal_usage(client: OpenAiCassette) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_metadata_matrix/numeric_top_p_blocking_tool_call"
+))]
 #[tokio::test]
 async fn numeric_top_p_blocking_tool_call() {
     with_openai_cassette(
@@ -169,7 +172,9 @@ async fn numeric_top_p_blocking_tool_call() {
     .await;
     assert_recorded_top_p_is_number("response_metadata_matrix/numeric_top_p_blocking_tool_call");
 }
-
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_metadata_matrix/numeric_top_p_streaming_terminal_usage"
+))]
 #[tokio::test]
 async fn numeric_top_p_streaming_terminal_usage() {
     with_openai_cassette(
@@ -181,7 +186,12 @@ async fn numeric_top_p_streaming_terminal_usage() {
         "response_metadata_matrix/numeric_top_p_streaming_terminal_usage",
     );
 }
-
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::derived(
+    "openai/response_metadata_matrix/object_top_p_blocking_tool_call",
+    &["openai/response_metadata_matrix/numeric_top_p_blocking_tool_call"],
+    "Pin object-shaped top_p emitted by compatible endpoints",
+    "Copy the numeric sibling; replace response top_p numbers with {value: 1.0}, leaving requests unchanged",
+))]
 #[tokio::test]
 async fn object_top_p_blocking_tool_call() {
     with_openai_cassette(
@@ -191,7 +201,12 @@ async fn object_top_p_blocking_tool_call() {
     .await;
     assert_recorded_top_p_is_object("response_metadata_matrix/object_top_p_blocking_tool_call");
 }
-
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::derived(
+    "openai/response_metadata_matrix/object_top_p_streaming_terminal_usage",
+    &["openai/response_metadata_matrix/numeric_top_p_streaming_terminal_usage"],
+    "Pin object-shaped top_p in terminal SSE usage",
+    "Copy the numeric sibling; replace response top_p numbers with {value: 1.0}, leaving requests unchanged",
+))]
 #[tokio::test]
 async fn object_top_p_streaming_terminal_usage() {
     with_openai_cassette(

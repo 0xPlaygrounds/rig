@@ -6,6 +6,9 @@ use rig::prelude::*;
 use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_copilot_cassette("agent/completion_smoke", |client| async move {

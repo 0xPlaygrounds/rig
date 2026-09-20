@@ -5,6 +5,9 @@ use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
 use rig::message::Message;
 use rig::providers::deepseek;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/extractor_usage/extract_backward_compatibility"
+))]
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
     with_deepseek_cassette_result(
@@ -35,6 +38,9 @@ async fn extract_backward_compatibility() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/extractor_usage/extract_with_usage_returns_data_and_usage"
+))]
 #[tokio::test]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_deepseek_cassette_result(
@@ -76,6 +82,9 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/extractor_usage/extract_with_chat_history_with_usage_works"
+))]
 #[tokio::test]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     with_deepseek_cassette_result(
@@ -128,6 +137,9 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/extractor_usage/extract_and_extract_with_usage_return_same_data"
+))]
 #[tokio::test]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_deepseek_cassette_result(
@@ -175,6 +187,9 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/extractor_usage/usage_tracking_works_for_different_schemas"
+))]
 #[tokio::test]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_deepseek_cassette_result(

@@ -5,6 +5,9 @@ use rig::prelude::*;
 use super::super::cassette_support::*;
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/context/context_smoke"
+))]
 #[tokio::test]
 async fn context_smoke() {
     with_llamacpp_cassette("context/context_smoke", |client| async move {

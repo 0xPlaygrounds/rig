@@ -13,6 +13,9 @@ fn think_params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "think": true }))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/reasoning_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_ollama_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
@@ -25,6 +28,9 @@ async fn nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/reasoning_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_ollama_cassette("reasoning_roundtrip/streaming", |client| async move {

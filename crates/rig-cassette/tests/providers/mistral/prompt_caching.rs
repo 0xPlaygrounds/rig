@@ -75,6 +75,9 @@ fn probe() -> CacheProbe {
         .with_padding(MISTRAL_PADDING_REPETITIONS, "mistral prompt caching")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_surfaces_the_cache_read_mistral_reports() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
@@ -89,6 +92,9 @@ async fn blocking_probe_surfaces_the_cache_read_mistral_reports() {
     assert_prefix_stable("mistral", SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_surfaces_the_cache_read_mistral_reports() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";

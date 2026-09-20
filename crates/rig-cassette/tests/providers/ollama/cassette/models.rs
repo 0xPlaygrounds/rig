@@ -7,6 +7,9 @@ use rig::model::ModelLister;
 
 use super::super::support::with_ollama_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_ollama_cassette("models/list_models_smoke", |client| async move {

@@ -5,6 +5,9 @@ use serde_json::json;
 use super::super::support::with_anthropic_cassette;
 use super::messages_strict_tools::assert_strict_tool_call;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_date_time_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_date_time_format_roundtrip() {
     with_anthropic_cassette(
@@ -27,6 +30,9 @@ async fn supported_date_time_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_time_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_time_format_roundtrip() {
     with_anthropic_cassette(
@@ -49,6 +55,9 @@ async fn supported_time_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_date_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_date_format_roundtrip() {
     with_anthropic_cassette(
@@ -71,6 +80,9 @@ async fn supported_date_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_duration_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_duration_format_roundtrip() {
     with_anthropic_cassette(
@@ -93,6 +105,9 @@ async fn supported_duration_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_email_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_email_format_roundtrip() {
     with_anthropic_cassette(
@@ -115,6 +130,9 @@ async fn supported_email_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_hostname_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_hostname_format_roundtrip() {
     with_anthropic_cassette(
@@ -137,6 +155,9 @@ async fn supported_hostname_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_uri_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_uri_format_roundtrip() {
     with_anthropic_cassette(
@@ -159,6 +180,9 @@ async fn supported_uri_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_ipv4_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_ipv4_format_roundtrip() {
     with_anthropic_cassette(
@@ -181,6 +205,9 @@ async fn supported_ipv4_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_ipv6_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_ipv6_format_roundtrip() {
     with_anthropic_cassette(
@@ -203,6 +230,9 @@ async fn supported_ipv6_format_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_formats/supported_uuid_format_roundtrip"
+))]
 #[tokio::test]
 async fn supported_uuid_format_roundtrip() {
     with_anthropic_cassette(

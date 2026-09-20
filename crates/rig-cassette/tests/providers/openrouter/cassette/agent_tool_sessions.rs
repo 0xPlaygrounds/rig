@@ -400,6 +400,9 @@ crate::matrix::case_matrix! {
     sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming_0);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent_tool_sessions/sequential_complex_tool_calls_streaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_openrouter_cassette_result(
@@ -465,6 +468,9 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_openrouter_cassette_result(
@@ -512,6 +518,9 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_streaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_openrouter_cassette_result(
@@ -539,6 +548,9 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments"
+))]
 #[tokio::test]
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_openrouter_cassette_result(
@@ -581,6 +593,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent_tool_sessions/long_history_replay_with_tool_result_continuation"
+))]
 #[tokio::test]
 async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_openrouter_cassette_result(
@@ -676,6 +691,9 @@ pub(super) struct PlanCheck {
     pub(super) required: bool,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent_tool_sessions/nested_structured_output_schema_roundtrip"
+))]
 #[tokio::test]
 async fn nested_structured_output_schema_roundtrip() -> Result<()> {
     with_openrouter_cassette_result(

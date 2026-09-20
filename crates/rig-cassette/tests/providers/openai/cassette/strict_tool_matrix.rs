@@ -119,6 +119,9 @@ fn assert_recorded_strict(scenario: &str, expected: bool) {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/strict_tool_matrix/non_strict_tool_omits_optional_argument_blocking"
+))]
 #[tokio::test]
 async fn non_strict_tool_omits_optional_argument_blocking() {
     with_openai_cassette(
@@ -147,6 +150,9 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming"
+))]
 #[tokio::test]
 async fn non_strict_tool_omits_optional_argument_streaming() {
     with_openai_cassette(
@@ -186,6 +192,9 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/strict_tool_matrix/strict_tools_opt_in_sends_strict_true"
+))]
 #[tokio::test]
 async fn strict_tools_opt_in_sends_strict_true() {
     with_openai_cassette(
@@ -231,6 +240,9 @@ async fn strict_tools_opt_in_sends_strict_true() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/strict_tool_matrix/agent_tool_turn_sends_strict_false"
+))]
 #[tokio::test]
 async fn agent_tool_turn_sends_strict_false() {
     with_openai_cassette(

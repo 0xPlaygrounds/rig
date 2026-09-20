@@ -15,6 +15,9 @@ use crate::support::{
     collect_stream_final_response_and_provider_final,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     let thinking_config = GenerationConfig {
@@ -49,6 +52,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming/example_streaming_prompt"
+))]
 #[tokio::test]
 async fn example_streaming_prompt() {
     let generation_config = GenerationConfig {
@@ -83,6 +89,9 @@ async fn example_streaming_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming/final_metadata_exposes_finish_reason_and_model_version"
+))]
 #[tokio::test]
 async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
@@ -137,6 +146,9 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming/final_metadata_handles_terminal_finish_reason_chunk"
+))]
 #[tokio::test]
 async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(

@@ -18,6 +18,7 @@
 //! ```
 
 mod bevy;
+mod cassettes;
 mod test_layout;
 mod verify;
 mod wires;
@@ -31,6 +32,9 @@ fn main() -> ExitCode {
 
     let result = match task.as_deref() {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
+        Some("cassettes") => {
+            cassettes::run(&workspace_root(), args.collect()).map_err(|e| e.to_string())
+        }
         Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
@@ -52,6 +56,7 @@ usage: cargo xtask <task>
 tasks:
   verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
   verify --check ID           run one check by id (CI runs one per job)
+  cassettes list|plan|record   inspect and safely record compiled cassette declarations
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
   check-wires                 fail if anything under rig-core's providers/ is

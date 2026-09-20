@@ -15,6 +15,9 @@ use crate::support::{
     collect_stream_final_response, collect_stream_observation, zero_arg_tool_definition,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_copilot_cassette(
@@ -39,6 +42,9 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming_tools/example_streaming_with_tools"
+))]
 #[tokio::test]
 async fn example_streaming_with_tools() {
     with_copilot_cassette("streaming_tools/example_streaming_with_tools", |client| async move {
@@ -64,6 +70,9 @@ async fn example_streaming_with_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming_tools/raw_stream_emits_required_zero_arg_tool_call"
+))]
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_copilot_cassette(
@@ -83,6 +92,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text"
+))]
 #[tokio::test]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_copilot_cassette(
@@ -113,6 +125,9 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer"
+))]
 #[tokio::test]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     with_copilot_cassette(
@@ -138,6 +153,9 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls"
+))]
 #[tokio::test]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_copilot_cassette("streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls", |client| async move {

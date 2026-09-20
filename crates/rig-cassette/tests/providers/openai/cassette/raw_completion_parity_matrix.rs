@@ -354,6 +354,9 @@ fn assert_chat_parity(
     assert_parity(scenario, &typed, &normalized, expected_finish);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_completion_parity_matrix/chat_text_turn_parity"
+))]
 #[tokio::test]
 async fn chat_text_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/chat_text_turn_parity";
@@ -367,6 +370,9 @@ async fn chat_text_turn_parity() {
     assert_chat_parity(SCENARIO, &observed, FinishReason::Stop, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_completion_parity_matrix/chat_tool_turn_parity"
+))]
 #[tokio::test]
 async fn chat_tool_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/chat_tool_turn_parity";
@@ -380,6 +386,9 @@ async fn chat_tool_turn_parity() {
     assert_chat_parity(SCENARIO, &observed, FinishReason::ToolCalls, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id"
+))]
 /// The asymmetry between the two views of one reply: the provider's reply
 /// document carries no transport id even though the wire reported one in the
 /// `x-request-id` header, so a caller reading `raw` alone cannot obtain it,
@@ -559,6 +568,9 @@ fn assert_responses_parity(
     assert_parity(scenario, &typed, &normalized, expected_finish);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_completion_parity_matrix/responses_text_turn_parity"
+))]
 #[tokio::test]
 async fn responses_text_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/responses_text_turn_parity";
@@ -578,6 +590,9 @@ async fn responses_text_turn_parity() {
     assert_responses_parity(SCENARIO, &observed, FinishReason::Stop, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_completion_parity_matrix/responses_tool_turn_parity"
+))]
 /// A completed Responses turn reports `status: completed` — mapped to `Stop`
 /// — and it is `with_optional_finish_reason`'s reconciliation that upgrades
 /// it to `ToolCalls` for a turn carrying a function call. Both routes go

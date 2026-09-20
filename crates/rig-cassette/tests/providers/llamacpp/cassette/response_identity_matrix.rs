@@ -61,6 +61,14 @@ const PROBE: &str = "/no_think Reply with exactly the word: cedar.";
 /// ever starts sending one it will be recorded and this list will find it.
 const REQUEST_ID_HEADERS: &[&str] = &["request-id", "x-request-id", "mistral-correlation-id"];
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_identity_matrix/blocking_identity"
+    ),
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_identity_matrix/streaming_identity"
+    )
+)]
 #[tokio::test]
 async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     use futures::StreamExt as _;
@@ -137,6 +145,14 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     }
 }
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_identity_matrix/blocking_response_id"
+    ),
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/response_identity_matrix/streaming_response_id"
+    )
+)]
 /// The body-level `chatcmpl-…` id does reach the caller, on both transports.
 ///
 /// Its own scenarios rather than a re-read of the cell above's: a cell that
@@ -221,6 +237,9 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/response_identity_matrix/typed_route_parity"
+))]
 /// The normalized view and the captured `raw` of one reply tell the same
 /// story, and `encode` is deterministic.
 ///

@@ -113,6 +113,9 @@ fn aggregated_text(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar_chat/parallel_tool_calls"
+))]
 /// Parallel tool calls on the chat wire: both indexed calls survive into the
 /// aggregated choice as distinct parts with distinct wire ids and uncorrupted
 /// arguments (the item-0 identity contract on the compat family's canonical
@@ -173,6 +176,9 @@ async fn parallel_tool_calls_stay_distinct() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar_chat/tool_call_with_content"
+))]
 /// Tool call and assistant content in the same turn: the aggregated choice
 /// keeps the text part and the tool-call part as separate siblings.
 #[tokio::test]
@@ -223,6 +229,9 @@ async fn tool_call_and_content_in_same_turn() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar_chat/logprobs_chunks"
+))]
 /// `logprobs`-bearing chunks: the wire attaches per-token fields Rig does not
 /// model. Forward-compat contract — unknown fields are ignored, the stream
 /// completes normally, and the aggregation is unaffected.
@@ -250,6 +259,9 @@ async fn logprobs_chunks_are_forward_compatible() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar_chat/long_text_stream"
+))]
 /// Long multi-chunk text stream (buffer/ordering soak): many text deltas, all
 /// preserved in order into one aggregated text part.
 #[tokio::test]

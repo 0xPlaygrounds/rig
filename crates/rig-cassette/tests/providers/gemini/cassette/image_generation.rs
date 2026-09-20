@@ -3,6 +3,9 @@
 use rig::image_generation::ImageGenerationModel;
 use rig::providers::gemini;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/image_generation/nano_banana_image_generation_smoke"
+))]
 #[tokio::test]
 async fn nano_banana_image_generation_smoke() {
     super::super::support::with_gemini_cassette(

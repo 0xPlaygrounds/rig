@@ -45,6 +45,9 @@ async fn build_tool_index<H: Socket>(
     vector_store.index(embedding_model)
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/dynamic_tools/dynamic_tool_retrieved_and_merged_with_static"
+))]
 #[tokio::test]
 async fn dynamic_tool_retrieved_and_merged_with_static() {
     let add = CountingAdd::default();
@@ -93,6 +96,9 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt"
+))]
 #[tokio::test]
 async fn dynamic_only_agent_retrieves_tool_per_prompt() {
     let add = EmbedAdd::default();
@@ -137,6 +143,9 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/dynamic_tools/sample_caps_retrieved_definitions"
+))]
 #[tokio::test]
 async fn sample_caps_retrieved_definitions() {
     with_gemini_cassette(

@@ -24,6 +24,9 @@ use crate::support::{
     collect_stream_final_response, collect_stream_observation,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_anthropic_cassette(
@@ -48,6 +51,9 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message"
+))]
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {
     with_anthropic_cassette(
@@ -104,6 +110,9 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 #[tokio::test]
 async fn serial_serving_reproduces_the_recorded_request_order() {
     // The corpus was recorded with the bus's default (concurrent serving)
@@ -156,6 +165,9 @@ async fn serial_serving_reproduces_the_recorded_request_order() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 #[tokio::test]
 async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles() {
     // The cassette file name predates the atomic-batch semantics; the recorded
@@ -643,6 +655,9 @@ fn content_items(message: &Value) -> impl Iterator<Item = &Value> {
         .flatten()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tools_smoke"
+))]
 /// Golden `anthropic_streaming_with_events`: a streamed tool turn recorded
 /// with its stream events kept, so the corpus pins the event sequence, not
 /// only the folded completion.
@@ -680,6 +695,9 @@ async fn streaming_tools_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 /// Golden `anthropic_concurrent_tools_serial`: two tool calls in one turn
 /// dispatched concurrently by the runner and served one at a time per key
 /// (`serial_per_handler: true`) — the cassette-ordered property, recorded.

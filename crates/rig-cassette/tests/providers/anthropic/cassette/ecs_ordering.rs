@@ -14,6 +14,9 @@ use crate::{
 };
 use rig::providers::anthropic;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message"
+))]
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {
     with_anthropic_cassette(

@@ -6,6 +6,9 @@ use rig::providers::doubleword;
 use super::super::support::with_doubleword_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embeddings/embeddings_smoke"
+))]
 #[tokio::test]
 async fn embeddings_smoke() {
     with_doubleword_cassette("embeddings/embeddings_smoke", |client| async move {

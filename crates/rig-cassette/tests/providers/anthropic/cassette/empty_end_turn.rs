@@ -136,6 +136,9 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
     })
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice"
+))]
 #[tokio::test]
 async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
@@ -194,6 +197,9 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result"
+))]
 #[tokio::test]
 async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -243,6 +249,9 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty"
+))]
 #[tokio::test]
 async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     let call_count = Arc::new(AtomicUsize::new(0));

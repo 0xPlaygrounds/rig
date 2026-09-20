@@ -17,6 +17,9 @@ use crate::{
     support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response},
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
@@ -28,6 +31,9 @@ async fn completion_smoke_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn memory_conversation_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {

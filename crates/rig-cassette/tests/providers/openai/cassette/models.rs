@@ -4,6 +4,9 @@ use rig::model::ModelLister;
 
 use super::super::support::{with_openai_cassette, with_openai_cassette_bogus_key};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_openai_cassette("models/list_models_smoke", |client| async move {
@@ -22,6 +25,9 @@ async fn list_models_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/models/list_models_rejected_key_reports_api_error_with_context"
+))]
 /// rig#2079 — the shared fetch path classifies a rejected listing as
 /// `ApiError` carrying provider, path, status and a body preview.
 ///

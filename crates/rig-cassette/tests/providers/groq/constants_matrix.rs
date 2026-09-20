@@ -47,6 +47,9 @@ const PUBLIC_CONSTANTS: &[&str] = &[
     groq::WHISPER_LARGE_V3_TURBO,
 ];
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/constants_matrix/catalog_lists_current_constants"
+))]
 #[tokio::test]
 async fn catalog_lists_current_constants() -> Result<()> {
     with_groq_cassette_result(
@@ -79,6 +82,9 @@ async fn assert_completion_smoke(client: BoundGroq, model_id: &str) -> Result<()
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/constants_matrix/gpt_oss_120b_completion_smoke"
+))]
 #[tokio::test]
 async fn gpt_oss_120b_completion_smoke() -> Result<()> {
     with_groq_cassette_result(
@@ -88,6 +94,9 @@ async fn gpt_oss_120b_completion_smoke() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/constants_matrix/gpt_oss_20b_completion_smoke"
+))]
 #[tokio::test]
 async fn gpt_oss_20b_completion_smoke() -> Result<()> {
     with_groq_cassette_result(
@@ -97,6 +106,9 @@ async fn gpt_oss_20b_completion_smoke() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/constants_matrix/qwen3_8_27b_completion_smoke"
+))]
 #[tokio::test]
 async fn qwen3_8_27b_completion_smoke() -> Result<()> {
     with_groq_cassette_result(

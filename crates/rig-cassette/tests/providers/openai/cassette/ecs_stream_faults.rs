@@ -6,6 +6,13 @@
 //! history must not change with it, and the trace carries the bus's facts
 //! beside the Responses adapter's own boundary facts.
 
+rig_test_support::scripted_family! {
+    const SCRIPTED_SOURCES: "openai", "ecs_stream_faults", [
+        "streaming/streaming_smoke",
+        "streaming_tools/streaming_tools_smoke",
+    ]
+}
+
 use bevy_ecs::prelude::*;
 use bytes::Bytes;
 use rig::error::ErrorKind;
@@ -38,6 +45,13 @@ use crate::{
         STREAMING_TOOLS_PROMPT,
     },
 };
+
+#[test]
+fn shared_frames_respect_consuming_family_sources() {
+    let empty = rig_test_support::recording::ScriptedFamily::new("openai", &[]);
+    assert!(std::panic::catch_unwind(|| text_prefix_frames(&empty)).is_err());
+    assert!(std::panic::catch_unwind(|| tool_call_prefix_frames(&empty)).is_err());
+}
 
 /// A scripted-transport model: one streaming exchange, then EOF.
 fn scripted_model(
@@ -74,6 +88,9 @@ fn assert_failure_facts(
     events
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 /// The recorded 400 through the native runtime: the run fails as the
 /// provider's response, streams nothing, commits only the prompt.
 #[tokio::test]
@@ -153,7 +170,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 /// (CONTRACT §5): this pins the failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
-    let frames = text_prefix_frames();
+    let frames = text_prefix_frames(&SCRIPTED_SOURCES);
     let prefix = delta_text(&frames);
     let mut runs = Vec::new();
     for witness in [true, false] {
@@ -207,7 +224,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 /// budget (CONTRACT §5) so the failure, not the retry, is what is pinned.
 #[tokio::test]
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
-    let frames = tool_call_prefix_frames();
+    let frames = tool_call_prefix_frames(&SCRIPTED_SOURCES);
     let mut runs = Vec::new();
     for witness in [true, false] {
         let invocations = Invocations::default();
@@ -264,7 +281,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
 /// item at its position, and history keeps only the prompt.
 #[tokio::test]
 async fn error_event_after_content_fails_with_the_provider_error() {
-    let mut frames = text_prefix_frames();
+    let mut frames = text_prefix_frames(&SCRIPTED_SOURCES);
     let prefix = delta_text(&frames);
     frames.push(ERROR_EVENT.to_owned());
     let mut runs = Vec::new();
@@ -342,6 +359,9 @@ fn despawn_at_first_text(
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming/streaming_smoke"
+))]
 /// The issued completion is despawned at the recorded stream's first text
 /// delta: the run fails as cancelled, the completion is recorded as
 /// cancelled and no answer is committed. The replay marked the interaction

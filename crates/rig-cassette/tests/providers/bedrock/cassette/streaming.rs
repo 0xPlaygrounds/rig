@@ -10,6 +10,9 @@ use crate::support::{
     collect_stream_final_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_bedrock_cassette("streaming/streaming_smoke", |client| async move {
@@ -28,6 +31,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/streaming/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_bedrock_cassette("streaming/streaming_tools_smoke", |client| async move {

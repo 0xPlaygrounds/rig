@@ -4,6 +4,9 @@ use rig_agent::test_utils::{optional_argument, sequential_tools};
 
 use super::super::{TOOL_MODEL, support::with_venice_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/tools/optional_argument"
+))]
 #[tokio::test]
 async fn tool_with_optional_argument() {
     with_venice_cassette("tools/optional_argument", |client| async move {
@@ -14,6 +17,9 @@ async fn tool_with_optional_argument() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/tools/two_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn two_tools_nonstreaming_chain() {
     with_venice_cassette("tools/two_tools_nonstreaming", |client| async move {

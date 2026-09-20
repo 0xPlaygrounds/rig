@@ -112,6 +112,9 @@ fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
 // Length
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/turn_termination_matrix/blocking_truncated_turn"
+))]
 #[tokio::test]
 async fn blocking_truncated_turn_reports_length_and_cap() {
     let probe = TurnTerminationProbe::default();
@@ -158,6 +161,9 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/turn_termination_matrix/streaming_truncated_turn"
+))]
 #[tokio::test]
 async fn streaming_truncated_turn_reports_length_and_cap() {
     let probe = TurnTerminationProbe::default();
@@ -192,6 +198,9 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
 // Stop
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/turn_termination_matrix/blocking_completed_turn"
+))]
 #[tokio::test]
 async fn blocking_completed_turn_reports_stop() {
     let probe = TurnTerminationProbe::default();
@@ -231,6 +240,9 @@ async fn blocking_completed_turn_reports_stop() {
 // ToolCalls
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/turn_termination_matrix/blocking_tool_turn"
+))]
 #[tokio::test]
 async fn blocking_tool_turn_reports_tool_calls() {
     let probe = TurnTerminationProbe::default();
@@ -270,6 +282,9 @@ async fn blocking_tool_turn_reports_tool_calls() {
 // The escalation loop
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/turn_termination_matrix/escalating_retry"
+))]
 #[tokio::test]
 async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
     let probe = TurnTerminationProbe::default();

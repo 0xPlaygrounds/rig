@@ -17,6 +17,9 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, collect_stream_final_response_and_provider_final,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/regression/stop_reason_max_tokens"
+))]
 /// A3 — Regression: a `max_tokens` truncation reaches the consumer as
 /// [`FinishReason::Length`].
 ///
@@ -52,6 +55,9 @@ async fn max_tokens_truncation_surfaces_as_length() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/regression/stop_reason_end_turn"
+))]
 /// A4 — Regression: a natural stop normalizes to [`FinishReason::Stop`].
 ///
 /// The counterpart to A3. Without it, A3 alone cannot tell you that `Length` is
@@ -81,6 +87,9 @@ async fn natural_stop_surfaces_as_stop() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/regression/cache_hit_zero_uncached_input"
+))]
 /// A5 — Regression: on a cache-hit turn, `input_tokens` is the **uncached
 /// remainder**, not the prompt size.
 ///

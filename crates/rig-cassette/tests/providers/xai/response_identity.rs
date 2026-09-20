@@ -19,6 +19,9 @@ fn assert_request_id(id: Option<&str>, context: &str) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/response_identity/nonstreaming_response_carries_identity"
+))]
 #[tokio::test]
 async fn nonstreaming_response_carries_identity() {
     with_xai_cassette(
@@ -45,6 +48,9 @@ async fn nonstreaming_response_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/response_identity/streaming_terminal_carries_identity"
+))]
 #[tokio::test]
 async fn streaming_terminal_carries_identity() {
     with_xai_cassette(
@@ -74,6 +80,9 @@ async fn streaming_terminal_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/response_identity/streamed_agent_run_reports_identity"
+))]
 /// Streamed agent run on xAI: hook turn events carry the SSE connection's
 /// transport id.
 #[tokio::test]
@@ -110,6 +119,9 @@ async fn streamed_agent_run_reports_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/response_identity/raw_and_normalized_views_agree_on_identity"
+))]
 /// Family D (edge matrix): one interaction, two views — the provider reply
 /// captured in [`rig::completion::CompletionResponse::raw`] and the
 /// normalized response describe the same interaction, and the transport id
@@ -146,6 +158,9 @@ async fn raw_and_normalized_views_agree_on_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/response_identity/provider_error_classifies_with_contract_but_reports_no_id"
+))]
 /// rig#2314 census finding: xAI sends `x-request-id` on *successes* but not
 /// on its 4xx error responses (verified live; this fixture's error headers
 /// show the absence). The contract classification still applies — the error
@@ -177,6 +192,9 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/response_identity/auth_rejection_classifies_with_contract"
+))]
 /// 401 auth rejection (rig#2314 error matrix): contract classification holds
 /// on the auth tier; the recording documents whether xAI's auth tier sends
 /// the id it omits on 4xx.

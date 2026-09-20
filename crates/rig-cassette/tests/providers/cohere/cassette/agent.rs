@@ -12,6 +12,9 @@ use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, assert_contains_any_case_insensitive, assert_nonempty_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_cohere_cassette("agent/completion_smoke", |client| async move {
@@ -31,6 +34,9 @@ async fn completion_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/agent/usage_is_reported_from_token_counts"
+))]
 #[tokio::test]
 async fn usage_is_reported_from_token_counts() {
     with_cohere_cassette(
@@ -94,6 +100,9 @@ async fn usage_is_reported_from_token_counts() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/agent/max_tokens_sets_max_tokens_finish_reason"
+))]
 #[tokio::test]
 async fn max_tokens_sets_max_tokens_finish_reason() {
     with_cohere_cassette(
@@ -118,6 +127,9 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/agent/multiturn_history_is_accepted"
+))]
 #[tokio::test]
 async fn multiturn_history_is_accepted() {
     with_cohere_cassette("agent/multiturn_history_is_accepted", |client| async move {
@@ -151,6 +163,9 @@ async fn multiturn_history_is_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/agent/stop_sequences_are_forwarded"
+))]
 #[tokio::test]
 async fn stop_sequences_are_forwarded() {
     with_cohere_cassette("agent/stop_sequences_are_forwarded", |client| async move {
@@ -177,6 +192,9 @@ async fn stop_sequences_are_forwarded() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/agent/sampling_parameters_are_forwarded"
+))]
 #[tokio::test]
 async fn sampling_parameters_are_forwarded() {
     with_cohere_cassette(

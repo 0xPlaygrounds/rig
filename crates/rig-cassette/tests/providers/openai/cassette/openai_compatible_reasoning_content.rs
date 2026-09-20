@@ -4,15 +4,10 @@
 //! `content` array containing `reasoning_text`, as llama.cpp does.
 
 use std::future::Future;
-use std::net::SocketAddr;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
 use rig::driver::Bound;
@@ -20,17 +15,18 @@ use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::net::TcpListener;
-use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 
-use crate::cassettes::{self, ProviderCassette};
+use crate::cassettes;
 use crate::reasoning::{self, WeatherTool};
 
 const SCENARIO: &str = "openai_compatible/reasoning_content_tool_roundtrip";
 const REASONING_TEXT: &str =
     "The user asked for current weather, so I need to call get_weather before answering.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::synthetic(
+    "openai/openai_compatible/reasoning_content_tool_roundtrip",
+    "Handwritten Responses replies from the former LocalReasoningContentServer, not live provider traffic. Maintain the fixture manually and replay its round-trip test."
+))]
 #[tokio::test]
 async fn nonstreaming_reasoning_content_tool_roundtrip() {
     with_local_reasoning_content_cassette(
@@ -66,12 +62,11 @@ where
     F: FnOnce(Bound<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let server = LocalReasoningContentServer::start().await;
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    // These committed synthetic replies have no live upstream to regenerate them.
+    let cassette = rig_test_support::recording::start(
         "openai",
         scenario,
-        &server.base_url(),
+        "https://openai-compatible.invalid/v1",
     )
     .await;
     let client = OpenAI::new("dummy-openai-compatible-key")
@@ -81,167 +76,6 @@ where
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
-}
-
-struct LocalReasoningContentServer {
-    addr: SocketAddr,
-    shutdown: Option<oneshot::Sender<()>>,
-    task: JoinHandle<()>,
-}
-
-impl LocalReasoningContentServer {
-    async fn start() -> Self {
-        let state = Arc::new(LocalState {
-            request_count: AtomicUsize::new(0),
-        });
-        let app = Router::new()
-            .route("/v1/responses", post(local_responses_api))
-            .with_state(state);
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("local OpenAI-compatible server should bind");
-        let addr = listener
-            .local_addr()
-            .expect("local OpenAI-compatible server address should be available");
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        let task = tokio::spawn(async move {
-            axum::serve(listener, app)
-                .with_graceful_shutdown(async {
-                    let _ = shutdown_rx.await;
-                })
-                .await
-                .expect("local OpenAI-compatible server should run");
-        });
-
-        Self {
-            addr,
-            shutdown: Some(shutdown_tx),
-            task,
-        }
-    }
-
-    fn base_url(&self) -> String {
-        format!("http://{}/v1", self.addr)
-    }
-}
-
-impl Drop for LocalReasoningContentServer {
-    fn drop(&mut self) {
-        if let Some(shutdown) = self.shutdown.take() {
-            let _ = shutdown.send(());
-        }
-        self.task.abort();
-    }
-}
-
-struct LocalState {
-    request_count: AtomicUsize,
-}
-
-async fn local_responses_api(
-    State(state): State<Arc<LocalState>>,
-    Json(body): Json<Value>,
-) -> impl IntoResponse {
-    match state.request_count.fetch_add(1, Ordering::SeqCst) {
-        0 => first_tool_call_response(),
-        1 => continuation_response(body),
-        _ => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": {
-                    "message": "unexpected extra request",
-                    "type": "invalid_request_error"
-                }
-            })),
-        ),
-    }
-}
-
-fn first_tool_call_response() -> (StatusCode, Json<Value>) {
-    (
-        StatusCode::OK,
-        Json(json!({
-            "id": "resp_llamacpp_1",
-            "object": "response",
-            "created_at": 0,
-            "status": "completed",
-            "model": "llama-cpp-reasoning-model",
-            "output": [
-                {
-                    "id": "rs_llamacpp_1",
-                    "summary": [],
-                    "type": "reasoning",
-                    "content": [
-                        {
-                            "text": REASONING_TEXT,
-                            "type": "reasoning_text"
-                        }
-                    ],
-                    "encrypted_content": "",
-                    "status": "completed"
-                },
-                {
-                    "arguments": "{\"city\":\"Tokyo, Japan\"}",
-                    "call_id": "call_llamacpp_1",
-                    "id": "fc_llamacpp_1",
-                    "name": "get_weather",
-                    "status": "completed",
-                    "type": "function_call"
-                }
-            ],
-            "usage": {
-                "input_tokens": 12,
-                "output_tokens": 8,
-                "total_tokens": 20
-            }
-        })),
-    )
-}
-
-fn continuation_response(body: Value) -> (StatusCode, Json<Value>) {
-    if !request_preserves_reasoning_content(&body) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": {
-                    "code": 400,
-                    "message": "item['content'] is not an array",
-                    "type": "invalid_request_error"
-                }
-            })),
-        );
-    }
-
-    (
-        StatusCode::OK,
-        Json(json!({
-            "id": "resp_llamacpp_2",
-            "object": "response",
-            "created_at": 0,
-            "status": "completed",
-            "model": "llama-cpp-reasoning-model",
-            "output": [
-                {
-                    "id": "msg_llamacpp_1",
-                    "role": "assistant",
-                    "status": "completed",
-                    "type": "message",
-                    "content": [
-                        {
-                            "annotations": [],
-                            "text": "Tokyo, Japan is sunny at 72F (22C). Pack sunscreen; an umbrella is not needed based on the current weather.",
-                            "type": "output_text"
-                        }
-                    ]
-                }
-            ],
-            "usage": {
-                "input_tokens": 25,
-                "output_tokens": 18,
-                "total_tokens": 43
-            }
-        })),
-    )
 }
 
 fn request_preserves_reasoning_content(body: &Value) -> bool {

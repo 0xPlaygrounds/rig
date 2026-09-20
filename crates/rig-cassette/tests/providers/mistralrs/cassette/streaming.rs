@@ -6,6 +6,9 @@ use crate::support::collect_stream_observation;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/streaming/chat_completions_stream_emits_reasoning_and_text_incrementally"
+))]
 #[tokio::test]
 async fn chat_completions_stream_emits_reasoning_and_text_incrementally() {
     with_mistralrs_completions_cassette(

@@ -298,6 +298,9 @@ fn assert_terminal_matches_fixture(
 // 1: typed round trip, terminal-only shape
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_stream_capture_matrix/terminal_raw_round_trips_into_provider_type"
+))]
 #[tokio::test]
 async fn terminal_raw_round_trips_into_provider_type() {
     let sink = Observed::default();
@@ -403,6 +406,9 @@ async fn terminal_raw_round_trips_into_provider_type() {
 // 2: a terminal-only field, verbatim
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_stream_capture_matrix/raw_exposes_stop_sequence"
+))]
 #[tokio::test]
 async fn raw_exposes_stop_sequence() {
     let sink = Observed::default();
@@ -473,6 +479,9 @@ async fn raw_exposes_stop_sequence() {
 // 3: raw and the normalized terminal tell one story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_stream_capture_matrix/normalized_terminal_matches_raw_renormalized"
+))]
 /// The normalized terminal and `raw` describe the same stream: reading `raw`
 /// back into the provider terminal type reproduces every normalized field
 /// delivered beside it: identity, finish reason, model, usage. And each of
@@ -531,6 +540,9 @@ async fn normalized_terminal_matches_raw_renormalized() {
 // 4: an extended-thinking stream — terminal round trip beside a thinking block
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_stream_capture_matrix/terminal_raw_round_trips_for_thinking_stream"
+))]
 /// The streamed twin of `raw_capture_matrix::raw_exposes_thinking_block_and_signature`.
 /// `raw` is the terminal record, so the thinking block itself is not in it —
 /// it was streamed as frames and delivered as `Reasoning` items. What the
@@ -665,6 +677,9 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
 // 5: a forced tool-call stream — terminal round trip beside a tool_use block
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream"
+))]
 /// The streamed twin of `raw_capture_matrix::raw_exposes_tool_use_block`. The
 /// terminal `raw` round-trips and names the stop reason as the wire spelled
 /// it — `tool_use` — while the normalized terminal reports

@@ -68,6 +68,9 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/structured_output/structured_output_smoke"
+))]
 #[tokio::test]
 async fn structured_output_smoke() {
     with_openai_cassette(
@@ -123,6 +126,9 @@ async fn classic_tool_mode_maps_through_openai_responses() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/structured_output/prompt_typed_and_output_schema"
+))]
 #[tokio::test]
 async fn prompt_typed_and_output_schema() {
     with_openai_cassette(

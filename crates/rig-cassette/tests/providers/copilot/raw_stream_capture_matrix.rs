@@ -135,6 +135,7 @@ fn recorded_responses_terminal(scenario: &str) -> Value {
 // Chat-completions route
 // ===========================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_stream_raw_terminal_round_trips_provider_type() {
@@ -174,6 +175,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_stream_raw_exposes_copilot_usage() {
@@ -245,6 +247,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
 // Responses route
 // ===========================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_stream_raw_terminal_round_trips_provider_type() {
@@ -283,6 +286,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_stream_raw_exposes_terminal_status() {

@@ -84,6 +84,9 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/dynamic_context_one"
+))]
 /// `dynamic_context(1, facts)`: one `TopN` retrieval, then the completion
 /// whose request holds the retrieved fact as a document.
 #[tokio::test]
@@ -127,6 +130,9 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/dynamic_context_two_streamed"
+))]
 /// `dynamic_context(2, facts)`, streamed with events.
 #[tokio::test]
 async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
@@ -160,6 +166,9 @@ async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/dynamic_context_over_sampled"
+))]
 /// `dynamic_context(5, facts)` over three facts: the index answers with
 /// all three.
 #[tokio::test]
@@ -191,6 +200,9 @@ async fn dynamic_context_over_sampled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/dynamic_context_empty_index"
+))]
 /// `dynamic_context(1, empty)`: the query is embedded, the index answers
 /// with no documents, the request carries none.
 #[tokio::test]
@@ -227,6 +239,9 @@ async fn dynamic_context_empty_index_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/retrieved_tools_one"
+))]
 /// `retrieved_tools(1, tools)`: a `TopNIds` retrieval before every model
 /// call, the retrieved tool advertised and called.
 #[tokio::test]
@@ -276,6 +291,9 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/retrieved_tools_with_static"
+))]
 /// A static `add` and a retrievable `subtract`: the static tool is always
 /// advertised, the retrieved one when its index says so.
 #[tokio::test]
@@ -324,6 +342,9 @@ async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_retrieval/context_and_tools"
+))]
 /// Both: the context retrieval, then the tool retrieval, before every
 /// model call, in that order.
 #[tokio::test]

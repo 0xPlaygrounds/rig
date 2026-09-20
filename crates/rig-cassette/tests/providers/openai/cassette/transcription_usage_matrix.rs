@@ -98,6 +98,9 @@ fn assert_transcribed(text: &str) {
 // Duration-billed and token-billed models, through both clients.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/whisper_reports_duration_usage"
+))]
 #[tokio::test]
 async fn whisper_reports_duration_usage() {
     with_openai_transcription_cassette(
@@ -123,6 +126,9 @@ async fn whisper_reports_duration_usage() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/gpt_4o_transcribe_reports_token_usage"
+))]
 #[tokio::test]
 async fn gpt_4o_transcribe_reports_token_usage() {
     with_openai_transcription_cassette(
@@ -161,6 +167,9 @@ async fn gpt_4o_transcribe_reports_token_usage() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/gpt_4o_mini_transcribe_reports_token_usage"
+))]
 #[tokio::test]
 async fn gpt_4o_mini_transcribe_reports_token_usage() {
     with_openai_transcription_cassette(
@@ -186,6 +195,9 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/completions_client_reports_duration_usage"
+))]
 /// A second recording of the duration shape, taken through the Chat
 /// Completions credential: the same transcription wire must decode it.
 #[tokio::test]
@@ -213,6 +225,9 @@ async fn completions_client_reports_duration_usage() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/completions_client_reports_token_usage"
+))]
 #[tokio::test]
 async fn completions_client_reports_token_usage() {
     with_openai_transcription_cassette(
@@ -238,6 +253,9 @@ async fn completions_client_reports_token_usage() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/verbose_json_still_reports_duration_usage"
+))]
 /// A richer response format wraps `usage` in a much larger payload (adding
 /// `segments`, `language`, and a top-level `duration`) without changing what
 /// the usage itself is. The request that asks for it is pinned by the shared
@@ -275,6 +293,9 @@ async fn verbose_json_still_reports_duration_usage() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/transcript_still_reaches_the_normalized_response"
+))]
 /// Reading the usage must not come at the transcript's expense: the normalized
 /// response's `text` is still the transcript, not a stringified payload.
 #[tokio::test]
@@ -300,6 +321,9 @@ async fn transcript_still_reaches_the_normalized_response() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/transcription_usage_matrix/rejected_request_surfaces_the_provider_body"
+))]
 /// A rejected request has no usage to report. It must surface the provider's
 /// own body rather than fail somewhere in the decode over the missing field —
 /// the error path does not construct a response at all, and this pins that the

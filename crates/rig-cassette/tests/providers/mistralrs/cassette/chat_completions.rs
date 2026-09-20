@@ -6,6 +6,9 @@ use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/chat_completions/raw_chat_completion_surfaces_reasoning_or_text"
+))]
 #[tokio::test]
 async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
@@ -58,6 +61,9 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/chat_completions/chat_completions_agent_prompt_completes"
+))]
 #[tokio::test]
 async fn chat_completions_agent_prompt_completes() {
     with_mistralrs_completions_cassette(

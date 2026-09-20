@@ -157,6 +157,9 @@ async fn assert_mid_conversation_system_turn(client: Bound<Anthropic>, model_id:
     assert_contains_any_case_insensitive(&text, &["azul"]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/sonnet_4_6_defaults_to_128k"
+))]
 #[tokio::test]
 async fn sonnet_4_6_defaults_to_128k() {
     with_anthropic_cassette(
@@ -167,6 +170,9 @@ async fn sonnet_4_6_defaults_to_128k() {
     assert_recorded_max_tokens("model_defaults_matrix/sonnet_4_6_defaults_to_128k", 128_000);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/opus_5_defaults_to_128k"
+))]
 #[tokio::test]
 async fn opus_5_defaults_to_128k() {
     with_anthropic_cassette(
@@ -177,6 +183,9 @@ async fn opus_5_defaults_to_128k() {
     assert_recorded_max_tokens("model_defaults_matrix/opus_5_defaults_to_128k", 128_000);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/sonnet_5_defaults_to_128k"
+))]
 #[tokio::test]
 async fn sonnet_5_defaults_to_128k() {
     with_anthropic_cassette(
@@ -187,6 +196,9 @@ async fn sonnet_5_defaults_to_128k() {
     assert_recorded_max_tokens("model_defaults_matrix/sonnet_5_defaults_to_128k", 128_000);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/fable_5_1_defaults_to_128k"
+))]
 #[tokio::test]
 async fn fable_5_1_defaults_to_128k() {
     with_anthropic_cassette(
@@ -197,6 +209,9 @@ async fn fable_5_1_defaults_to_128k() {
     assert_recorded_max_tokens("model_defaults_matrix/fable_5_1_defaults_to_128k", 128_000);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/haiku_4_5_defaults_to_64k"
+))]
 #[tokio::test]
 async fn haiku_4_5_defaults_to_64k() {
     with_anthropic_cassette(
@@ -207,6 +222,9 @@ async fn haiku_4_5_defaults_to_64k() {
     assert_recorded_max_tokens("model_defaults_matrix/haiku_4_5_defaults_to_64k", 64_000);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/opus_5_preserves_mid_conversation_system_role"
+))]
 #[tokio::test]
 async fn opus_5_preserves_mid_conversation_system_role() {
     with_anthropic_cassette(
@@ -223,6 +241,9 @@ async fn opus_5_preserves_mid_conversation_system_role() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/model_defaults_matrix/sonnet_5_hoists_mid_conversation_system_role"
+))]
 #[tokio::test]
 async fn sonnet_5_hoists_mid_conversation_system_role() {
     with_anthropic_cassette(

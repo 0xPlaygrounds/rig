@@ -208,6 +208,7 @@ crate::matrix::golden_matrix! {
     resume_tool_turn: ("corpus_matrix/resume_tool_turn", cells::RESUME_TOOL_TURN, "gemini_resume_tool_turn");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("gemini/corpus_matrix/endings_tool_call_delta_stop").missing("the Gemini REST wire streams a function call as one whole part: no tool-call delta reaches the hook, the run answers"))]
 #[ignore = "the Gemini REST wire streams a function call as one whole part: no tool-call delta reaches the hook, the run answers"]
 #[tokio::test]
 async fn endings_tool_call_delta_stop() {
@@ -220,6 +221,7 @@ async fn endings_tool_call_delta_stop() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("gemini/corpus_matrix/output_tool_thinking").missing("gemini-3-flash-preview returned a signed final_result call without visible reasoning in all three attempts; record-gemini-output-tool-thinking-attempt-{1,2,3}.log; three attempts exhausted"))]
 #[ignore = "gemini-3-flash-preview returned a signed final_result call without visible reasoning in all three attempts; record-gemini-output-tool-thinking-attempt-{1,2,3}.log; three attempts exhausted"]
 #[tokio::test]
 async fn output_tool_thinking() {
@@ -234,6 +236,7 @@ async fn output_tool_thinking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("gemini/corpus_matrix/shaping_tool_choice_none_on_committed_output").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[ignore = "Gemini answers the output-tool call the model still makes under mode NONE with finish_reason MALFORMED_FUNCTION_CALL: the turn has no record"]
 #[tokio::test]
 async fn shaping_tool_choice_none_on_committed_output() {
@@ -253,15 +256,19 @@ async fn shaping_tool_choice_none_on_committed_output() {
 
 crate::matrix::case_matrix! {
     wrapper: with_gemini_cassette, family: wire_matrix_case;
+    #[cassette_missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded")]
     #[ignore = "gemini-3-flash-preview returned only text and a signature-only reasoning part with zero reasoning usage on the second turn in all three attempts; record-gemini-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
     #[tokio::test]
     shaping_thinking_second_turn: ("corpus_matrix/shaping_thinking_second_turn", shaping_thinking_second_turn_18);
+    #[cassette_missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded")]
     #[tokio::test]
     #[ignore = "gemini-3-flash-preview with thinkingBudget 128 returned a signed tool call without reasoning in all three attempts; record-gemini-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_tool_unary: ("reasoning_matrix/tool_unary", reasoning_tool_unary_19);
+    #[cassette_missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded")]
     #[tokio::test]
     #[ignore = "gemini-3-flash-preview with thinkingBudget 128 returned a signed tool call without reasoning in all three attempts; record-gemini-tool-streamed-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_tool_streamed: ("reasoning_matrix/tool_streamed", reasoning_tool_streamed_20);
+    #[cassette_missing("gemini-3-flash-preview accepted thinkingBudget 0 but returned a signature-only reasoning part despite zero reasoning usage in all three attempts; record-gemini-off-attempt-{1,2,3}.log; three attempts exhausted")]
     #[tokio::test]
     #[ignore = "gemini-3-flash-preview accepted thinkingBudget 0 but returned a signature-only reasoning part despite zero reasoning usage in all three attempts; record-gemini-off-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_off: ("reasoning_matrix/off", reasoning_off_21);

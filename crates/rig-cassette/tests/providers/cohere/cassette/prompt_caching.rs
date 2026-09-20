@@ -69,6 +69,9 @@ fn probe() -> CacheProbe {
     CacheProbe::new("cohere prompt caching")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_warms_to_a_full_cache_hit_over_three_turns() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
@@ -84,6 +87,9 @@ async fn blocking_probe_warms_to_a_full_cache_hit_over_three_turns() {
     assert_breakpoints_match_support("cohere", SCENARIO, &COHERE_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
@@ -99,6 +105,9 @@ async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
     assert_breakpoints_match_support("cohere", SCENARIO, &COHERE_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/prompt_caching/agent_loop"
+))]
 /// A real agent loop with a tool round-trip, asserted on **prefix stability
 /// alone**.
 ///

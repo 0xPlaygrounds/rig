@@ -23,13 +23,7 @@ fn mistral_config(cassette: &ProviderCassette) -> OpenAI {
 }
 
 async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundMistral) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistral",
-        spec,
-        MISTRAL_BASE_URL,
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("mistral", spec, MISTRAL_BASE_URL).await;
     let client = mistral_config(&cassette)
         .bound()
         .expect("Mistral cassette client should build");
@@ -95,13 +89,7 @@ where
     F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistral",
-        spec,
-        MISTRAL_BASE_URL,
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("mistral", spec, MISTRAL_BASE_URL).await;
     let client = OpenAI::with_key(&MISTRAL, "invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

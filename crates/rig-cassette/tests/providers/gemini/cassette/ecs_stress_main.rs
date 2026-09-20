@@ -13,6 +13,9 @@ const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUST use the p
      every arithmetic operation instead of computing results yourself. Perform the steps in order, \
      using the result of each step as an input to the next. Once you have the final tool result, \
      reply with the final numeric answer in plain text.";
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/lifecycle_and_scratchpad_thread_across_multi_turn_blocking"
+))]
 #[tokio::test]
 async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
     let add = CountingAdd::default();
@@ -108,6 +111,9 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
 const VAULT_FACT_ID: &str = "vault-note";
 const VAULT_FACT: &str = "Operational note: the vault access code is CINNABAR-42.";
 const VAULT_CODE: &str = "CINNABAR-42";
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/request_patch_injects_context_and_narrows_active_tools_blocking"
+))]
 #[tokio::test]
 async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
     let add = CountingAdd::default();
@@ -170,6 +176,9 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
     .await;
 }
 const REDACTION_MARKER: &str = "REDACTED-SUM-ZK7";
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/chained_arg_rewrite_then_result_redaction_blocking"
+))]
 #[tokio::test]
 async fn chained_arg_rewrite_then_result_redaction_blocking() {
     let add = CountingAdd::default();
@@ -231,6 +240,9 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag"
+))]
 #[tokio::test]
 async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
     let add = CountingAdd::default();
@@ -306,6 +318,9 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/multi_tool_workflow_pairs_calls_and_results_per_turn_blocking"
+))]
 #[tokio::test]
 async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
     let add = CountingAdd::default();
@@ -369,6 +384,9 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
 }
 const SUBTRACT_SKIP_REASON: &str =
     "the subtract tool is offline; treat its result as unavailable and continue";
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking"
+))]
 #[tokio::test]
 async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
     let add = CountingAdd::default();
@@ -413,6 +431,9 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
         )
         .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag"
+))]
 /// Golden `gemini_tool_call_turns`: two tool turns on a wire that carries
 /// no tool-call ids. Every id in the log is minted from the block that
 /// assembled the call, so the record is the same on every run — the proof

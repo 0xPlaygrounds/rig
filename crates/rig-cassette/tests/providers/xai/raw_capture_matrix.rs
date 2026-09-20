@@ -65,6 +65,9 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 // 1. raw round-trips the Responses type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/raw_capture_matrix/raw_round_trips_responses_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_responses_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_responses_type";
@@ -101,6 +104,9 @@ async fn raw_round_trips_responses_type() {
 // 2. Fields the normalized response provably lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/raw_capture_matrix/raw_exposes_status_and_service_tier"
+))]
 #[tokio::test]
 async fn raw_exposes_status_and_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_status_and_service_tier";
@@ -144,6 +150,9 @@ async fn raw_exposes_status_and_service_tier() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";

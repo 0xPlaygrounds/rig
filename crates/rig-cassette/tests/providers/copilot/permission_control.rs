@@ -149,6 +149,9 @@ impl AgentHook for PermissionHook {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/permission_control/permission_control_prompt_example"
+))]
 #[tokio::test]
 async fn permission_control_prompt_example() -> Result<()> {
     with_copilot_cassette_result(

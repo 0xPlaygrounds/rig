@@ -277,6 +277,9 @@ async fn transcription_body(
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/transcription_with_visible_thoughts_returns_the_transcript"
+))]
 #[tokio::test]
 async fn transcription_with_visible_thoughts_returns_the_transcript() {
     const SCENARIO: &str =
@@ -302,6 +305,9 @@ async fn transcription_with_visible_thoughts_returns_the_transcript() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/transcription_with_thinking_disabled_is_unchanged"
+))]
 #[tokio::test]
 async fn transcription_with_thinking_disabled_is_unchanged() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_thinking_disabled_is_unchanged";
@@ -326,6 +332,9 @@ async fn transcription_with_thinking_disabled_is_unchanged() {
     assert_thought_parts_recorded(SCENARIO, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/transcription_with_default_params_is_unchanged"
+))]
 #[tokio::test]
 async fn transcription_with_default_params_is_unchanged() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_default_params_is_unchanged";
@@ -350,6 +359,9 @@ async fn transcription_with_default_params_is_unchanged() {
     assert_thought_parts_recorded(SCENARIO, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/transcription_with_thoughts_on_gemini_3_flash"
+))]
 #[tokio::test]
 async fn transcription_with_thoughts_on_gemini_3_flash() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_thoughts_on_gemini_3_flash";
@@ -379,6 +391,9 @@ async fn transcription_with_thoughts_on_gemini_3_flash() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/transcription_with_thoughts_and_temperature"
+))]
 #[tokio::test]
 async fn transcription_with_thoughts_and_temperature() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_thoughts_and_temperature";
@@ -403,6 +418,9 @@ async fn transcription_with_thoughts_and_temperature() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/transcription_with_a_large_thinking_budget"
+))]
 #[tokio::test]
 async fn transcription_with_a_large_thinking_budget() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_a_large_thinking_budget";
@@ -524,6 +542,9 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
 const THINKING_PROMPT: &str =
     "Work out how many minutes are in three and a half days, then answer with only the number.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_skips_thoughts_on_gemini_2_5_flash"
+))]
 #[tokio::test]
 async fn text_response_skips_thoughts_on_gemini_2_5_flash() {
     const SCENARIO: &str = "thought_text_matrix/text_response_skips_thoughts_on_gemini_2_5_flash";
@@ -551,6 +572,9 @@ async fn text_response_skips_thoughts_on_gemini_2_5_flash() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_skips_thoughts_on_gemini_3_flash"
+))]
 #[tokio::test]
 async fn text_response_skips_thoughts_on_gemini_3_flash() {
     const SCENARIO: &str = "thought_text_matrix/text_response_skips_thoughts_on_gemini_3_flash";
@@ -582,6 +606,9 @@ async fn text_response_skips_thoughts_on_gemini_3_flash() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_with_thinking_disabled_is_unchanged"
+))]
 #[tokio::test]
 async fn text_response_with_thinking_disabled_is_unchanged() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_thinking_disabled_is_unchanged";
@@ -609,6 +636,9 @@ async fn text_response_with_thinking_disabled_is_unchanged() {
     assert_thought_parts_recorded(SCENARIO, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_on_gemini_2_5_flash_lite"
+))]
 #[tokio::test]
 async fn text_response_on_gemini_2_5_flash_lite() {
     const SCENARIO: &str = "thought_text_matrix/text_response_on_gemini_2_5_flash_lite";
@@ -638,6 +668,9 @@ async fn text_response_on_gemini_2_5_flash_lite() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_on_gemini_3_1_flash_lite"
+))]
 #[tokio::test]
 async fn text_response_on_gemini_3_1_flash_lite() {
     // Thinking on but `includeThoughts` off: the flag never appears even
@@ -671,6 +704,9 @@ async fn text_response_on_gemini_3_1_flash_lite() {
     assert_thought_parts_recorded(SCENARIO, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_with_a_large_thinking_budget"
+))]
 #[tokio::test]
 async fn text_response_with_a_large_thinking_budget() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_a_large_thinking_budget";
@@ -696,6 +732,9 @@ async fn text_response_with_a_large_thinking_budget() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_with_a_preamble"
+))]
 #[tokio::test]
 async fn text_response_with_a_preamble() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_a_preamble";
@@ -723,6 +762,9 @@ async fn text_response_with_a_preamble() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_on_a_tool_call_turn"
+))]
 #[tokio::test]
 async fn text_response_on_a_tool_call_turn() {
     const SCENARIO: &str = "thought_text_matrix/text_response_on_a_tool_call_turn";
@@ -783,6 +825,9 @@ async fn text_response_on_a_tool_call_turn() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_with_structured_output"
+))]
 #[tokio::test]
 async fn text_response_with_structured_output() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_structured_output";
@@ -823,6 +868,9 @@ async fn text_response_with_structured_output() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_across_two_candidates"
+))]
 #[tokio::test]
 async fn text_response_across_two_candidates() {
     const SCENARIO: &str = "thought_text_matrix/text_response_across_two_candidates";
@@ -915,6 +963,9 @@ async fn text_response_across_two_candidates() {
     assert_recorded_response_contains(SCENARIO, THOUGHT_MARKER);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought"
+))]
 #[tokio::test]
 async fn text_response_is_none_when_the_turn_is_all_thought() {
     const SCENARIO: &str = "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought";
@@ -969,6 +1020,9 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
 
 // --- 18: streaming parity for the same request ----------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text"
+))]
 #[tokio::test]
 async fn streaming_twin_keeps_reasoning_out_of_the_text() {
     const SCENARIO: &str = "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text";
@@ -1048,6 +1102,9 @@ fn signature_of(choice: &[AssistantContent]) -> Option<String> {
     })
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/blocking_keeps_a_trailing_thought_signature"
+))]
 #[tokio::test]
 async fn blocking_keeps_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
@@ -1098,6 +1155,9 @@ async fn blocking_keeps_a_trailing_thought_signature() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature"
+))]
 #[tokio::test]
 async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(

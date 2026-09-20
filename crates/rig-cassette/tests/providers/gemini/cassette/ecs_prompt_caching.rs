@@ -5,6 +5,9 @@ use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/agent_loop"
+))]
 #[tokio::test]
 async fn agent_loop_keeps_hitting_across_tool_turns() {
     super::super::support::with_gemini_prompt_caching_cassette(

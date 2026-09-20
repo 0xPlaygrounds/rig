@@ -45,6 +45,9 @@ fn stream_choices(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation"
+))]
 #[tokio::test]
 async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
     const SCENARIO: &str =
@@ -83,6 +86,9 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation"
+))]
 #[tokio::test]
 async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
     const SCENARIO: &str =
@@ -123,6 +129,9 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn"
+))]
 #[tokio::test]
 async fn low_reasoning_effort_produces_a_reasoning_turn() {
     const SCENARIO: &str = "followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn";
@@ -158,6 +167,9 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/followup_hunt_matrix/policy_sensitive_response_content_shape_is_recorded"
+))]
 #[tokio::test]
 async fn policy_sensitive_response_content_shape_is_recorded() {
     const SCENARIO: &str =

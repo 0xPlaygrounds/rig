@@ -130,6 +130,9 @@ fn recorded_cache_counters(scenario: &str) -> Vec<(u64, u64, u64)> {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
@@ -162,6 +165,9 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
@@ -180,6 +186,9 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/prompt_caching/cache_prompt_disabled"
+))]
 /// `cache_prompt: false` is llama.cpp's own switch, and it is per-turn.
 ///
 /// No OpenAI-compatible provider has this field; it rides `additional_params`.
@@ -277,6 +286,9 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/prompt_caching/agent_loop"
+))]
 /// A real agent loop with a tool round-trip, asserted on prefix stability.
 #[tokio::test]
 async fn agent_loop_does_not_move_its_own_prefix() {

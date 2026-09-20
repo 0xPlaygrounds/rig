@@ -7,6 +7,9 @@ use std::collections::HashMap;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/context/context_documents_are_accepted"
+))]
 #[tokio::test]
 async fn context_documents_are_accepted() {
     with_cohere_cassette("context/context_documents_are_accepted", |client| async move {
@@ -37,6 +40,9 @@ async fn context_documents_are_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/context/document_metadata_and_multiple_documents_are_accepted"
+))]
 #[tokio::test]
 async fn document_metadata_and_multiple_documents_are_accepted() {
     with_cohere_cassette(

@@ -37,6 +37,9 @@ fn assert_recorded_parameter(scenario: &str, field: &str, expected: Value) {
     }));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_parameter_matrix/temperature_from_the_typed_builder"
+))]
 #[tokio::test]
 async fn temperature_from_the_typed_builder() {
     const SCENARIO: &str = "request_parameter_matrix/temperature_from_the_typed_builder";
@@ -60,6 +63,9 @@ async fn temperature_from_the_typed_builder() {
     assert_recorded_parameter(SCENARIO, "temperature", json!(0.0));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_parameter_matrix/max_tokens_from_the_typed_builder"
+))]
 #[tokio::test]
 async fn max_tokens_from_the_typed_builder() {
     const SCENARIO: &str = "request_parameter_matrix/max_tokens_from_the_typed_builder";
@@ -77,6 +83,9 @@ async fn max_tokens_from_the_typed_builder() {
     assert_recorded_parameter(SCENARIO, "max_tokens", json!(7));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_parameter_matrix/top_p_from_additional_params"
+))]
 #[tokio::test]
 async fn top_p_from_additional_params() {
     const SCENARIO: &str = "request_parameter_matrix/top_p_from_additional_params";
@@ -100,6 +109,9 @@ async fn top_p_from_additional_params() {
     assert_recorded_parameter(SCENARIO, "top_p", json!(0.25));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_parameter_matrix/seed_from_additional_params"
+))]
 #[tokio::test]
 async fn seed_from_additional_params() {
     const SCENARIO: &str = "request_parameter_matrix/seed_from_additional_params";
@@ -123,6 +135,9 @@ async fn seed_from_additional_params() {
     assert_recorded_parameter(SCENARIO, "seed", json!(31_415));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_parameter_matrix/stop_sequence_from_additional_params"
+))]
 #[tokio::test]
 async fn stop_sequence_from_additional_params() {
     const SCENARIO: &str = "request_parameter_matrix/stop_sequence_from_additional_params";
@@ -146,6 +161,9 @@ async fn stop_sequence_from_additional_params() {
     assert_recorded_parameter(SCENARIO, "stop", json!(["BANANA"]));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_parameter_matrix/json_object_response_format_from_additional_params"
+))]
 #[tokio::test]
 async fn json_object_response_format_from_additional_params() {
     const SCENARIO: &str =

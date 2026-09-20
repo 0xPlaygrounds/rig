@@ -11,6 +11,9 @@ use crate::support::{
     assert_nonempty_response, assistant_text_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_completion/raw_response_text_matches_normalized_choice_text"
+))]
 #[tokio::test]
 async fn raw_response_text_matches_normalized_choice_text() {
     with_bedrock_cassette(

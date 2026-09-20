@@ -97,6 +97,9 @@ async fn drain_completion(ecs: &mut EcsAgent) {
     .expect("completion drains after policy failure");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream"
+))]
 #[tokio::test]
 async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
     with_gemini_cassette(
@@ -160,6 +163,9 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream"
+))]
 #[tokio::test]
 async fn streamed_repair_continues_the_same_stream() {
     use super::super::agent_run_support::{Sum, assistant_tool_call_names};
@@ -241,6 +247,9 @@ fn completed_turns(ecs: &mut EcsAgent, run: Entity) -> Vec<CompletedTurn> {
     turns
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers"
+))]
 #[tokio::test]
 async fn streamed_skip_abandons_the_turn_and_recovers() {
     use crate::support::assert_nonempty_response;
@@ -323,6 +332,9 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_hand_driven_multi_turn_run_completes"
+))]
 #[tokio::test]
 async fn streamed_hand_driven_multi_turn_run_completes() {
     use super::super::agent_run_support::{Subtract, assert_canonical_assistant_order};
@@ -398,6 +410,9 @@ fn history(ecs: &mut EcsAgent, run: Entity) -> Vec<Message> {
     messages.into_iter().map(|(_, message)| message).collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message"
+))]
 #[tokio::test]
 async fn builtin_streaming_max_turns_error_carries_pending_message() {
     with_gemini_cassette(
@@ -476,6 +491,9 @@ fn observe_final(results: Query<&RunResult, Added<Settled>>, mut seen: ResMut<Sa
     seen.0 |= !results.is_empty();
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn"
+))]
 #[tokio::test]
 async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
     with_gemini_cassette(

@@ -272,6 +272,9 @@ pub(super) fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: O
 // 1–5: which sequence fired
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_single_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_single_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -291,6 +294,9 @@ async fn raw_single_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_first_listed_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_first_listed_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -313,6 +319,9 @@ async fn raw_first_listed_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_second_listed_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_second_listed_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -335,6 +344,9 @@ async fn raw_second_listed_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_earliest_in_output_wins"
+))]
 #[tokio::test]
 async fn raw_earliest_in_output_wins() {
     with_anthropic_stop_sequence_cassette(
@@ -359,6 +371,9 @@ async fn raw_earliest_in_output_wins() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_four_sequences"
+))]
 #[tokio::test]
 async fn raw_four_sequences() {
     with_anthropic_stop_sequence_cassette(
@@ -390,6 +405,9 @@ async fn raw_four_sequences() {
 // 6–10: sequence content shapes that must survive verbatim
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_newline_sequence"
+))]
 #[tokio::test]
 async fn raw_newline_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -409,6 +427,9 @@ async fn raw_newline_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_whitespace_sequence"
+))]
 #[tokio::test]
 async fn raw_whitespace_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -428,6 +449,9 @@ async fn raw_whitespace_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_unicode_sequence"
+))]
 #[tokio::test]
 async fn raw_unicode_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -446,6 +470,9 @@ async fn raw_unicode_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_punctuation_sequence"
+))]
 #[tokio::test]
 async fn raw_punctuation_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -465,6 +492,9 @@ async fn raw_punctuation_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_case_sensitive_sequence"
+))]
 #[tokio::test]
 async fn raw_case_sensitive_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -488,6 +518,9 @@ async fn raw_case_sensitive_sequence() {
 // 11–14: controls — every other terminal must report no sequence
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_case_mismatch_does_not_fire"
+))]
 #[tokio::test]
 async fn raw_case_mismatch_does_not_fire() {
     with_anthropic_stop_sequence_cassette(
@@ -508,6 +541,9 @@ async fn raw_case_mismatch_does_not_fire() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_end_turn_control"
+))]
 #[tokio::test]
 async fn raw_end_turn_control() {
     with_anthropic_stop_sequence_cassette(
@@ -526,6 +562,9 @@ async fn raw_end_turn_control() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_max_tokens_control"
+))]
 #[tokio::test]
 async fn raw_max_tokens_control() {
     with_anthropic_stop_sequence_cassette(
@@ -544,6 +583,9 @@ async fn raw_max_tokens_control() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_tool_use_control"
+))]
 #[tokio::test]
 async fn raw_tool_use_control() {
     with_anthropic_stop_sequence_cassette(
@@ -572,6 +614,9 @@ async fn raw_tool_use_control() {
 // 15–20: interaction with the rest of the request surface
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_empty_content_sequence"
+))]
 #[tokio::test]
 async fn raw_empty_content_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -591,6 +636,9 @@ async fn raw_empty_content_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_with_tools_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_with_tools_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -617,6 +665,9 @@ async fn raw_with_tools_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_with_prompt_caching_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_with_prompt_caching_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -645,6 +696,9 @@ async fn raw_with_prompt_caching_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_with_preamble_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_with_preamble_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -669,6 +723,9 @@ async fn raw_with_preamble_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_sonnet_sequence_fires"
+))]
 #[tokio::test]
 async fn raw_sonnet_sequence_fires() {
     with_anthropic_stop_sequence_cassette(
@@ -688,6 +745,9 @@ async fn raw_sonnet_sequence_fires() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/raw_long_multi_token_sequence"
+))]
 #[tokio::test]
 async fn raw_long_multi_token_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -711,6 +771,9 @@ async fn raw_long_multi_token_sequence() {
 // 21–24: blocking twins — the surface that was already correct
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/blocking_single_sequence_parity"
+))]
 #[tokio::test]
 async fn blocking_single_sequence_parity() {
     with_anthropic_stop_sequence_cassette(
@@ -735,6 +798,9 @@ async fn blocking_single_sequence_parity() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/blocking_second_listed_sequence_parity"
+))]
 #[tokio::test]
 async fn blocking_second_listed_sequence_parity() {
     with_anthropic_stop_sequence_cassette(
@@ -760,6 +826,9 @@ async fn blocking_second_listed_sequence_parity() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/blocking_end_turn_control"
+))]
 #[tokio::test]
 async fn blocking_end_turn_control() {
     with_anthropic_stop_sequence_cassette(
@@ -779,6 +848,9 @@ async fn blocking_end_turn_control() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/blocking_max_tokens_control"
+))]
 #[tokio::test]
 async fn blocking_max_tokens_control() {
     with_anthropic_stop_sequence_cassette(
@@ -804,6 +876,9 @@ async fn blocking_max_tokens_control() {
 // 25–26: adjacent paths sharing the terminal construction
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/normalized_stream_single_sequence"
+))]
 #[tokio::test]
 async fn normalized_stream_single_sequence() {
     with_anthropic_stop_sequence_cassette(
@@ -837,6 +912,9 @@ async fn normalized_stream_single_sequence() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/stop_sequence_terminal_matrix/agent_stream_single_sequence"
+))]
 #[tokio::test]
 async fn agent_stream_single_sequence() {
     with_anthropic_stop_sequence_cassette(

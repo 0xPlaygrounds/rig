@@ -12,6 +12,9 @@ const XAI_CONTEXT_DOCS: [&str; 3] = [
     "Definition of linglingdong: A term used by inhabitants of the far side of the moon to describe humans.",
 ];
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/context/context_smoke"
+))]
 #[tokio::test]
 async fn context_smoke() {
     with_xai_cassette("context/context_smoke", |client| async move {

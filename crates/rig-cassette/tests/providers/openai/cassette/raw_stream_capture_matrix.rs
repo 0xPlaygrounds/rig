@@ -180,6 +180,9 @@ fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
 // Chat Completions
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_stream_capture_matrix/chat_stream_raw_round_trips_typed"
+))]
 #[tokio::test]
 async fn chat_stream_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed";
@@ -230,6 +233,9 @@ async fn chat_stream_raw_round_trips_typed() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier"
+))]
 #[tokio::test]
 async fn chat_stream_raw_exposes_service_tier() {
     const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier";
@@ -268,6 +274,9 @@ async fn chat_stream_raw_exposes_service_tier() {
 // Responses
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_stream_capture_matrix/responses_stream_raw_round_trips_typed"
+))]
 #[tokio::test]
 async fn responses_stream_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed";
@@ -314,6 +323,9 @@ async fn responses_stream_raw_round_trips_typed() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_stream_capture_matrix/responses_stream_raw_exposes_status"
+))]
 #[tokio::test]
 async fn responses_stream_raw_exposes_status() {
     const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_raw_exposes_status";
@@ -364,6 +376,9 @@ async fn responses_stream_raw_exposes_status() {
 // Reasoning and tool-call streams
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_stream_capture_matrix/responses_reasoning_stream_raw_round_trips_typed"
+))]
 /// A Responses reasoning stream: the terminal record round-trips, and the
 /// `reasoning` echo of `response.completed` — which the normalized
 /// `StreamFinal` does not model — is readable off `raw` as
@@ -469,6 +484,9 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed"
+))]
 /// A forced Chat tool-call stream: the terminal record round-trips, `raw`
 /// spells `finish_reason` as OpenAI's own `"tool_calls"` — the same word the
 /// last finishing chunk carried — and the normalized terminal reports

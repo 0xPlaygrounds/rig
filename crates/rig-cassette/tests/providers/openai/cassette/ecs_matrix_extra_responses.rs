@@ -50,6 +50,9 @@ crate::matrix::case_matrix! {
     despawn_run_waits_for_an_in_flight_stream: ("corpus_breadth/text_delta_stop", despawn_run_waits_for_an_in_flight_stream_17);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_error_preserves_status_and_body"
+))]
 /// The recorded 4xx, unary: the run fails as the provider's response and
 /// the record and the witness carry the same facts.
 #[tokio::test]
@@ -74,6 +77,9 @@ async fn error_facts_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 /// The recorded 4xx on the streaming surface.
 #[tokio::test]
 async fn error_facts_streamed() {

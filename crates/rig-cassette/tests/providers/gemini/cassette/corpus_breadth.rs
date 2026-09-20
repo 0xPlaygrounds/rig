@@ -99,6 +99,9 @@ fn host_bus<H: Socket>(
     (dispatcher, registrar, driver, model_key)
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_breadth/output_tool_streamed"
+))]
 /// `Tool` output mode, streamed with events: the output tool's call as
 /// this wire ids it.
 #[tokio::test]
@@ -129,6 +132,9 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_breadth/text_delta_stop"
+))]
 /// A stop on the first text delta of a long streamed answer: the
 /// completion is cancelled at the delta.
 #[tokio::test]
@@ -169,6 +175,9 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_breadth/tool_dispatch_cancelled"
+))]
 /// `on_dispatch` → `Deny(Cancelled)` on the tool: the completion is
 /// recorded, the tool never reaches the bus.
 #[tokio::test]
@@ -201,6 +210,9 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_breadth/custom_at_outcome"
+))]
 /// A host's custom note inside the tool's dispatch, beside this wire's
 /// tool-call ids.
 #[tokio::test]
@@ -242,6 +254,9 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_breadth/output_tool_unary"
+))]
 /// `Tool` output mode, unary: the output tool's call on the id-less wire.
 #[tokio::test]
 async fn output_tool_unary_effect_log_is_the_golden_fixture() {
@@ -268,6 +283,9 @@ async fn output_tool_unary_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_breadth/embed_prompt"
+))]
 /// The prompt embedded through the host's gemini embedding model.
 #[tokio::test]
 async fn embed_prompt_effect_log_is_the_golden_fixture() {

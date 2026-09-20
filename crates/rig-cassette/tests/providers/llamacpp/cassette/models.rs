@@ -4,6 +4,9 @@ use rig::model::ModelLister;
 
 use super::super::cassette_support::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_llamacpp_cassette("models/list_models_smoke", |client| async move {

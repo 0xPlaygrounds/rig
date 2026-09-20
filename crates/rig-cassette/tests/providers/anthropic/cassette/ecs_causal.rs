@@ -92,6 +92,9 @@ async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effec
     log
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_causal/completion_serial"
+))]
 #[tokio::test]
 async fn completion_serial_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_causal_cassette("corpus_causal/completion_serial", |client| async move {
@@ -108,6 +111,9 @@ async fn completion_serial_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_causal/completion_concurrent"
+))]
 #[tokio::test]
 async fn completion_concurrent_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_causal_cassette(
@@ -127,6 +133,9 @@ async fn completion_concurrent_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_causal/completion_streamed"
+))]
 #[tokio::test]
 async fn completion_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_causal_cassette(

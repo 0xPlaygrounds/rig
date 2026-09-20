@@ -70,6 +70,9 @@ fn assert_single_tool_call(
     assert_eq!(&calls[0].function.arguments, expected_arguments);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/twenty_strict_tools_are_accepted"
+))]
 #[tokio::test]
 async fn twenty_strict_tools_are_accepted() {
     with_anthropic_cassette(
@@ -101,6 +104,9 @@ async fn twenty_strict_tools_are_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/twenty_one_strict_tools_are_rejected"
+))]
 #[tokio::test]
 async fn twenty_one_strict_tools_are_rejected() {
     with_anthropic_cassette(
@@ -132,6 +138,9 @@ async fn twenty_one_strict_tools_are_rejected() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/twenty_four_optional_parameters_in_one_schema_hit_internal_limit"
+))]
 #[tokio::test]
 async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
     with_anthropic_cassette(
@@ -163,6 +172,9 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/twenty_five_optional_parameters_are_rejected"
+))]
 #[tokio::test]
 async fn twenty_five_optional_parameters_are_rejected() {
     with_anthropic_cassette(
@@ -192,6 +204,9 @@ async fn twenty_five_optional_parameters_are_rejected() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/sixteen_union_parameters_in_one_schema_hit_internal_limit"
+))]
 #[tokio::test]
 async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
     with_anthropic_cassette(
@@ -223,6 +238,9 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/twenty_four_optional_parameters_across_tools_are_accepted"
+))]
 #[tokio::test]
 async fn twenty_four_optional_parameters_across_tools_are_accepted() {
     with_anthropic_cassette(
@@ -263,6 +281,9 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/sixteen_union_parameters_across_tools_are_accepted"
+))]
 #[tokio::test]
 async fn sixteen_union_parameters_across_tools_are_accepted() {
     with_anthropic_cassette(
@@ -303,6 +324,9 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_limits/seventeen_union_parameters_are_rejected"
+))]
 #[tokio::test]
 async fn seventeen_union_parameters_are_rejected() {
     with_anthropic_cassette(

@@ -9,6 +9,14 @@
 //! literals, the frames' provenance, the wire's models and its `#[ignore]`
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
+rig_test_support::scripted_family! {
+    const SCRIPTED_SOURCES: "openai", "ecs_faults_responses", [
+        "corpus_faults_responses/setup_unary",
+        "corpus_matrix_responses/hooks_patch_tool_args_streamed",
+        "corpus_matrix_responses/shaping_extra_context_streamed",
+    ]
+}
+
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
@@ -24,7 +32,7 @@ use crate::ecs_matrix::{
     faults::{self, Fault},
     world::{run_scripted, run_world},
 };
-use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
+use crate::stream_faults::{SseShape, scripted, sse_bytes};
 
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
@@ -95,11 +103,11 @@ const TOOL_STREAM: &str = "corpus_matrix_responses/hooks_patch_tool_args_streame
 const SETUP_REPLY: &str = "corpus_faults_responses/setup_unary";
 
 fn recorded(scenario: &str) -> Vec<String> {
-    recorded_sse_frames("openai", scenario, 0)
+    SCRIPTED_SOURCES.recorded_sse_frames(scenario, 0)
 }
 
 fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
-    status_reply("openai", SETUP_REPLY, status, retry_after)
+    SCRIPTED_SOURCES.status_reply(SETUP_REPLY, status, retry_after)
 }
 
 /// The wire over a transport that answers one streaming request with
@@ -148,6 +156,9 @@ crate::matrix::golden_matrix! {
     batch_second_fails_concurrent: ("corpus_faults_responses/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "openai_responses_fault_batch_second_fails_concurrent");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_matrix_responses/endings_tool_outcome_cancelled"
+))]
 /// Row 9 over `endings_tool_outcome_cancelled`'s recording and golden.
 #[tokio::test]
 async fn stop_while_tool_runs() {
@@ -166,6 +177,9 @@ async fn stop_while_tool_runs() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_matrix_responses/resume_tool_turn"
+))]
 /// Row 13 over `resume_tool_turn`'s recording and golden.
 #[tokio::test]
 async fn scene_tool_in_flight() {

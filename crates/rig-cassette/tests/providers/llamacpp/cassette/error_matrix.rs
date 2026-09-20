@@ -119,6 +119,9 @@ fn recorded_error(scenario: &str, expected_status: u16, expected_type: &str) -> 
 // Context overflow
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/context_overflow_blocking"
+))]
 /// A 400 whose body names both sides of the comparison.
 ///
 /// `n_prompt_tokens` and `n_ctx` are llama.cpp's own additions to the OpenAI
@@ -174,6 +177,9 @@ async fn context_overflow_preserves_the_token_counts() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/context_overflow_streaming"
+))]
 /// The same overflow, requested as a stream.
 ///
 /// llama.cpp validates the prompt before it opens the event stream, so this is
@@ -247,6 +253,9 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
 // The model field
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/unknown_model_is_ignored"
+))]
 /// llama.cpp answers 200 to a model it has never heard of.
 ///
 /// A single-model `llama-server` serves whatever GGUF it was started with and
@@ -296,6 +305,9 @@ async fn an_unknown_model_is_ignored_rather_than_rejected() {
 // Authentication
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/missing_api_key_is_401"
+))]
 /// `llama-server --api-key <key>`, reached without one.
 ///
 /// This whole pair was **unreachable before this PR**: the provider being
@@ -337,6 +349,9 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/api_key_is_accepted"
+))]
 /// The same server, reached *with* the key — the capability this PR adds.
 #[tokio::test]
 async fn the_api_key_the_provider_sends_is_accepted() {
@@ -359,6 +374,12 @@ async fn the_api_key_the_provider_sends_is_accepted() {
     assert_eq!(recorded[0].0, 200);
 }
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live("llamacpp/error_matrix/verify_accepts_the_key"),
+    rig_test_support::recording::Scenario::live(
+        "llamacpp/error_matrix/verify_rejects_a_missing_key"
+    )
+)]
 /// `verify()` on a keyed server distinguishes a good credential from a bad one.
 ///
 /// This is why the `LLAMACPP` dialect's `verify_path` quirk is `/props`
@@ -408,6 +429,9 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/model_listing_is_public"
+))]
 /// The claim the `verify_path` quirk rests on, recorded: `GET /v1/models`
 /// answers **200 without a credential** on a server that rejects everything
 /// else.
@@ -464,6 +488,9 @@ async fn the_model_listing_is_public_even_on_a_keyed_server() {
 // Embeddings
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/embeddings_without_the_flag"
+))]
 /// A server started without `--embeddings` answers 501 to the whole capability.
 #[tokio::test]
 async fn embeddings_without_the_flag_are_a_501() {
@@ -503,6 +530,9 @@ async fn embeddings_without_the_flag_are_a_501() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/embeddings_with_pooling_none"
+))]
 /// `--pooling none` returns one vector per *token*, which the OpenAI
 /// embeddings wire cannot express — so llama.cpp refuses with a **400**.
 ///
@@ -543,6 +573,9 @@ async fn embeddings_with_pooling_none_are_a_400() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/embeddings_on_a_causal_lm"
+))]
 /// A **causal LM** served with `--embeddings --pooling mean` answers 200 with
 /// pooled hidden states.
 ///
@@ -584,6 +617,9 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
 // Request-shape failures llama.cpp reports as 5xx
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/tools_without_jinja"
+))]
 /// `tools` on a `--no-jinja` server is a **500**, not a 400.
 ///
 /// Without `--jinja` llama.cpp uses its own built-in ChatML template, which
@@ -627,6 +663,9 @@ async fn tools_without_jinja_are_a_500() {
     recorded_error("error_matrix/tools_without_jinja", 500, "server_error");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/malformed_request_field"
+))]
 /// A body llama.cpp cannot parse is a **500** carrying the parser's own
 /// message.
 ///
@@ -682,6 +721,9 @@ async fn a_malformed_body_keeps_its_parse_error() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/oversized_output_cap"
+))]
 /// An output cap far past the context window is **clamped**, not rejected.
 #[tokio::test]
 async fn an_oversized_output_cap_is_clamped_not_rejected() {
@@ -727,6 +769,9 @@ async fn an_oversized_output_cap_is_clamped_not_rejected() {
 // Reranking
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/rerank_without_a_reranker"
+))]
 /// The rerank route exists on every server and 501s unless `--reranking` was
 /// passed.
 #[tokio::test]
@@ -767,6 +812,9 @@ async fn rerank_without_a_reranker_is_a_501() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/rerank_empty_documents"
+))]
 /// An empty document list is a 400 from the server, not a client-side no-op.
 ///
 /// rig's `RerankModel` has no minimum-length contract, so the request really is
@@ -811,6 +859,9 @@ async fn rerank_with_an_empty_document_list_is_a_400() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/error_matrix/embeddings_input_past_the_batch"
+))]
 /// An embeddings input larger than the server's physical batch is a **500**.
 ///
 /// A different limit from the context window, with a different message and a

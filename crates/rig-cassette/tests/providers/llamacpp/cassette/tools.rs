@@ -10,6 +10,9 @@ use super::super::cassette_support::*;
 
 use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_expected_number};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tools/tools_roundtrip"
+))]
 #[tokio::test]
 async fn tools_roundtrip() {
     with_llamacpp_cassette("tools/tools_roundtrip", |client| async move {
@@ -31,6 +34,9 @@ async fn tools_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tools/tools_smoke"
+))]
 #[tokio::test]
 async fn tools_smoke() {
     with_llamacpp_cassette("tools/tools_smoke", |client| async move {

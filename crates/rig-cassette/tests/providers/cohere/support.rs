@@ -18,13 +18,7 @@ const COHERE_BASE_URL: &str = "https://api.cohere.ai";
 pub(super) type BoundCohere = Bound<Cohere, BoxedHttpClient>;
 
 async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundCohere) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "cohere",
-        spec,
-        COHERE_BASE_URL,
-    )
-    .await;
+    let cassette = rig_test_support::recording::start("cohere", spec, COHERE_BASE_URL).await;
     let cohere = Cohere::new(cassette.api_key("COHERE_API_KEY"))
         .with_base_url(cassette.base_url())
         .bound()

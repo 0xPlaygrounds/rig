@@ -136,6 +136,9 @@ fn assert_answer_hides_secret(answer: &str, tool_produced_secret: bool) {
     .expect("portable result-redaction contract should hold");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/tool_result_rewrite/tool_result_redacted_by_hook_blocking"
+))]
 #[tokio::test]
 async fn tool_result_redacted_by_hook_blocking() {
     let tool = GetUserRecord::default();
@@ -170,6 +173,9 @@ async fn tool_result_redacted_by_hook_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/tool_result_rewrite/tool_result_redacted_by_hook_streaming"
+))]
 #[tokio::test]
 async fn tool_result_redacted_by_hook_streaming() {
     let tool = GetUserRecord::default();

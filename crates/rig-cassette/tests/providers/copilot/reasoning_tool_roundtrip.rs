@@ -42,6 +42,9 @@ async fn streaming() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/reasoning_tool_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_copilot_cassette(

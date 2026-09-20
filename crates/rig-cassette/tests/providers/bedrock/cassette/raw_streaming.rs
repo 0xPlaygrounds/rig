@@ -14,6 +14,9 @@ use crate::support::{
     collect_raw_stream_observation, zero_arg_tool_definition,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_streaming/raw_stream_emits_required_zero_arg_tool_call"
+))]
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_bedrock_cassette(
@@ -33,6 +36,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_streaming/raw_stream_text_response_smoke"
+))]
 #[tokio::test]
 async fn raw_stream_text_response_smoke() {
     with_bedrock_cassette(
@@ -64,6 +70,9 @@ async fn raw_stream_text_response_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_streaming/raw_stream_surfaces_two_distinct_tool_calls"
+))]
 /// Regression: a message carrying several `tool_use` blocks must surface every
 /// one of them. The Converse aggregation used to hold a single tool-call slot
 /// and emit it at `MessageStop`, so all but the last call were dropped.
@@ -112,6 +121,9 @@ async fn raw_stream_surfaces_two_distinct_tool_calls() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_streaming/raw_stream_emits_tool_call_before_text"
+))]
 #[tokio::test]
 async fn raw_stream_emits_tool_call_before_text() {
     with_bedrock_cassette(

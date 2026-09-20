@@ -15,6 +15,9 @@ use rig::providers::openai::wire::GROQ;
 
 use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_groq_cassette_result("models/list_models_smoke", |client| async move {
@@ -54,6 +57,9 @@ async fn list_models_smoke() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/models/list_models_rejected_key_reports_api_error_with_context"
+))]
 /// rig#2079 — the shared fetch path classifies a rejected listing as
 /// `ApiError` carrying provider, path, status and a body preview.
 ///

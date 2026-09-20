@@ -21,6 +21,9 @@ use rig_ecs::{
 mod policies;
 use policies::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/observe_everything"
+))]
 #[tokio::test]
 async fn observe_everything_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/observe_everything", |client| async move {
@@ -93,6 +96,9 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/patch_tool_args"
+))]
 /// `on_dispatch` → `Patch`: the tool record holds the patched arguments,
 /// the model's history keeps the call it made.
 
@@ -144,6 +150,9 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/patch_tool_args_streamed"
+))]
 /// The same, streamed with events kept.
 
 #[tokio::test]
@@ -185,6 +194,9 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/deny_tool"
+))]
 /// `on_dispatch` → `Deny`: no tool record; the model sees the reason as
 /// the tool's result and answers without it.
 
@@ -219,6 +231,9 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/deny_tool_streamed"
+))]
 /// The same, streamed with events kept.
 
 #[tokio::test]
@@ -253,6 +268,9 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/replace_tool_result"
+))]
 /// `on_outcome` → `Replace` on a tool: the record holds the tool's answer,
 /// the transcript the replacement, and the model answers from the latter.
 
@@ -292,6 +310,9 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/replace_answer"
+))]
 /// `on_outcome` → `Replace` on a completion: the run's output is the
 /// replacement, the record the model's text.
 
@@ -332,6 +353,9 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/preamble_override"
+))]
 /// `on_completion_call` → a request patch: the request's system prompt is
 /// the hook's, the spec's preamble is the builder's.
 
@@ -376,6 +400,9 @@ async fn preamble_override_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/demand_done"
+))]
 /// `on_model_turn_finished` → `Retry` with feedback: the first answer lacks
 /// `DONE`, the hook asks again, the second has it. Two completions.
 
@@ -412,6 +439,9 @@ async fn demand_done_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/lookup_before_run"
+))]
 /// A hook that dispatches through the run's bus in `on_run_start`: the
 /// hook's own tool call is the first record, under the tool's key.
 
@@ -453,6 +483,9 @@ async fn lookup_before_run_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/two_hooks"
+))]
 /// Two hooks in a stack: the header names both in registration order, and
 /// both decisions land (the patched call in the record, the replaced
 /// result in the transcript).

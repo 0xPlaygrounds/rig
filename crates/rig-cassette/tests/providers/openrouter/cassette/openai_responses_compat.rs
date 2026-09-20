@@ -12,6 +12,9 @@ use super::super::support::with_openrouter_openai_cassette;
 
 const DEFAULT_OPENAI_COMPAT_MODEL: &str = "google/gemini-3-flash-preview";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata"
+))]
 #[tokio::test]
 async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     with_openrouter_openai_cassette(
@@ -50,6 +53,9 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes"
+))]
 #[tokio::test]
 async fn openai_responses_agent_prompt_against_openrouter_completes() {
     with_openrouter_openai_cassette(
@@ -71,6 +77,9 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/openai_responses_compat/openai_responses_stream_against_openrouter_completes"
+))]
 #[tokio::test]
 async fn openai_responses_stream_against_openrouter_completes() {
     with_openrouter_openai_cassette(

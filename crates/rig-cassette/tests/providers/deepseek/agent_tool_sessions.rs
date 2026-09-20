@@ -445,6 +445,9 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -490,6 +493,9 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -554,6 +560,9 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -604,6 +613,9 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_streaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -635,6 +647,9 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments"
+))]
 #[tokio::test]
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_deepseek_cassette_result(
@@ -678,6 +693,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/long_history_replay_with_tool_result_continuation"
+))]
 #[tokio::test]
 async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_deepseek_cassette_result(
@@ -727,6 +745,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/tool_choice_required_specific_and_none"
+))]
 #[tokio::test]
 async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_deepseek_cassette_result(
@@ -812,6 +833,9 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage"
+))]
 #[tokio::test]
 async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Result<()> {
     with_deepseek_cassette_result(
@@ -882,6 +906,9 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior"
+))]
 #[tokio::test]
 async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
     with_deepseek_cassette_result(
@@ -934,6 +961,9 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/json_object_response_format_roundtrip"
+))]
 #[tokio::test]
 async fn json_object_response_format_roundtrip() -> Result<()> {
     with_deepseek_cassette_result(

@@ -432,13 +432,8 @@ async fn assert_request_body_rejected(
     );
     serde_json::from_str::<serde_json::Value>(&changed).expect("mutation preserves JSON syntax");
 
-    let cassette = crate::cassettes::ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        provider,
-        scenario,
-        "https://checkpoint.invalid",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start(provider, scenario, "https://checkpoint.invalid").await;
     let client = reqwest::Client::builder()
         .no_proxy()
         .build()

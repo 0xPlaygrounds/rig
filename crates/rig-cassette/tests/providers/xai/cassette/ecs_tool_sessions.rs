@@ -14,6 +14,9 @@ use rig::tool::Tool;
 use rig_ecs::systems::RunCommands;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_xai_cassette_result(
@@ -61,6 +64,9 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/agent_tool_sessions/sequential_complex_tool_calls_streaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_xai_cassette_result(
@@ -124,6 +130,9 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_xai_cassette_result(
@@ -174,6 +183,9 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/agent_tool_sessions/parallel_tool_calls_single_turn_streaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_xai_cassette_result(
@@ -207,6 +219,9 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/agent_tool_sessions/multimodal_image_input_mixed_text_ordering"
+))]
 #[tokio::test]
 async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
     use bevy_ecs::prelude::*;

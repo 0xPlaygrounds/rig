@@ -511,6 +511,9 @@ crate::matrix::case_matrix! {
     long_history_replay_with_tool_result_continuation: ("agent_tool_sessions/long_history_replay_with_tool_result_continuation", long_history_replay_with_tool_result_continuation_5);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments"
+))]
 #[tokio::test]
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_mistral_cassette_result(
@@ -548,6 +551,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none"
+))]
 #[tokio::test]
 async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     with_mistral_cassette_result(
@@ -643,6 +649,9 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/agent_tool_sessions/json_object_response_format_roundtrip"
+))]
 #[tokio::test]
 async fn json_object_response_format_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
@@ -685,6 +694,9 @@ struct StructuredChecks {
     replay: bool,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/agent_tool_sessions/json_schema_structured_output_roundtrip"
+))]
 #[tokio::test]
 async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_mistral_cassette_result(

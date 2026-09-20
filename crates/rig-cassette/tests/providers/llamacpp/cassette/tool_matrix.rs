@@ -124,6 +124,9 @@ fn recorded_tool_names(scenario: &str) -> Vec<String> {
 // Arity
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/zero_argument_tool"
+))]
 /// A zero-argument tool is called with `{}`.
 ///
 /// The interesting failure is `arguments: ""` — a wire that sends an empty
@@ -172,6 +175,9 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/one_argument_tool"
+))]
 /// A one-argument tool: the value reaches the tool and the result reaches the
 /// answer.
 #[tokio::test]
@@ -254,6 +260,9 @@ async fn a_one_argument_tool_round_trips_its_value() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/three_tools"
+))]
 /// Three tools are all advertised; the model picks one.
 #[tokio::test]
 async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
@@ -301,6 +310,9 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/parallel_calls"
+))]
 /// Two independent calls in one assistant message.
 #[tokio::test]
 async fn two_independent_calls_arrive_in_one_turn() {
@@ -352,6 +364,9 @@ async fn two_independent_calls_arrive_in_one_turn() {
     assert_eq!(calls.len(), 2, "{calls:?}");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/tool_that_errors"
+))]
 /// A tool that fails hands its error back to the model as a tool result.
 #[tokio::test]
 async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
@@ -434,6 +449,9 @@ async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
 // tool_choice
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/tool_choice_auto"
+))]
 /// `auto`: the model decides, and for an arithmetic prompt it calls the tool.
 #[tokio::test]
 async fn tool_choice_auto_lets_the_model_decide() {
@@ -470,6 +488,9 @@ async fn tool_choice_auto_lets_the_model_decide() {
     assert_eq!(recorded_tool_calls("tool_matrix/tool_choice_auto").len(), 1);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/tool_choice_none"
+))]
 /// `none`: no *parsed* call — and llama.cpp leaks the template's raw tool-call
 /// syntax into the assistant text instead.
 ///
@@ -556,6 +577,9 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/tool_choice_required"
+))]
 /// `required`: a call even when the prompt did not obviously need one.
 #[tokio::test]
 async fn tool_choice_required_forces_a_call() {
@@ -697,6 +721,9 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
 // Tool result payloads
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/tool_result_text"
+))]
 /// A tool result carrying plain text.
 #[tokio::test]
 async fn a_tool_result_carrying_text_reaches_the_model() {
@@ -755,6 +782,9 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/tool_matrix/tool_result_json"
+))]
 /// A tool result carrying a JSON document.
 ///
 /// The Chat Completions wire has no JSON content part, so a structured result

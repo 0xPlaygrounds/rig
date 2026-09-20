@@ -3,8 +3,9 @@
 /// Run the declared cell through the wire and retain its complete observation assertions.
 #[macro_export]
 macro_rules! tool_lifecycle_matrix_case {
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, configured, $cell:expr) => {
-        $(#[$attribute])*
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, configured, $cell:expr) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() -> Result<()> {
             const S: &str = $scenario;
             let c = $cell;
@@ -17,7 +18,7 @@ macro_rules! tool_lifecycle_matrix_case {
             execute(S, c, o).await;
             Ok(())
         }
-    };
+};
 }
 
 pub use tool_lifecycle_matrix_case;

@@ -158,6 +158,9 @@ impl Tool for ModernEcho {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_definitions/rich_json_schema_survives_gemini_conversion"
+))]
 #[tokio::test]
 async fn rich_json_schema_survives_gemini_conversion() {
     with_gemini_cassette(
@@ -192,6 +195,9 @@ async fn rich_json_schema_survives_gemini_conversion() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_definitions/duplicate_tool_name_uses_last_registration"
+))]
 /// Registering two tools under one name dedupes to a single wire declaration:
 /// the last registration's implementation and definition win, keeping the
 /// first registration's position. (Previously both declarations were sent and
@@ -264,37 +270,40 @@ mod derive_macro {
         }
     }
 
+    #[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+        "gemini/tool_definitions/rig_tool_macro_schema_round_trips"
+    ))]
     #[tokio::test]
     async fn rig_tool_macro_schema_round_trips() {
         with_gemini_cassette(
-            "tool_definitions/rig_tool_macro_schema_round_trips",
-            |client| async move {
-                let agent = client
-                    .agent(gemini::completion::GEMINI_2_5_FLASH)
-                    .preamble("You must use the macro_calculator tool for arithmetic, then report the result.")
-                    .temperature(0.0)
-                    .tool(MacroCalculator)
-                    .default_max_turns(3)
-                    .build();
+                "tool_definitions/rig_tool_macro_schema_round_trips",
+                |client| async move {
+                    let agent = client
+                        .agent(gemini::completion::GEMINI_2_5_FLASH)
+                        .preamble("You must use the macro_calculator tool for arithmetic, then report the result.")
+                        .temperature(0.0)
+                        .tool(MacroCalculator)
+                        .default_max_turns(3)
+                        .build();
 
-                let mut history = Vec::<Message>::new();
-                let response = agent
-                    .chat("Multiply 6 by 7.", &mut history)
-                    .await
-                    .expect("macro tool prompt should succeed");
+                    let mut history = Vec::<Message>::new();
+                    let response = agent
+                        .chat("Multiply 6 by 7.", &mut history)
+                        .await
+                        .expect("macro tool prompt should succeed");
 
-                let texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
-                assert_eq!(
-                    texts,
-                    vec!["42".to_string()],
-                    "the macro-generated tool should execute with the model's arguments"
-                );
-                assert!(
-                    response.output.contains("42"),
-                    "final answer should report 42: {response:?}"
-                );
-            },
-        )
-        .await;
+                    let texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
+                    assert_eq!(
+                        texts,
+                        vec!["42".to_string()],
+                        "the macro-generated tool should execute with the model's arguments"
+                    );
+                    assert!(
+                        response.output.contains("42"),
+                        "final answer should report 42: {response:?}"
+                    );
+                },
+            )
+            .await;
     }
 }

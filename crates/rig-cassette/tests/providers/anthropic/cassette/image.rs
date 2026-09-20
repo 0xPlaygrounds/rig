@@ -13,6 +13,9 @@ use crate::support::{
     IMAGE_FIXTURE_PATH, assert_contains_any_case_insensitive, assert_nonempty_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/image/image_prompt_from_fixture"
+))]
 #[tokio::test]
 async fn image_prompt_from_fixture() {
     with_anthropic_cassette("image/image_prompt_from_fixture", |client| async move {

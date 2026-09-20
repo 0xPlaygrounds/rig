@@ -4,6 +4,9 @@ use rig::model::ModelLister;
 
 use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_gemini_cassette("models/list_models_smoke", |client| async move {
@@ -56,6 +59,9 @@ async fn list_models_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/models/list_models_rejected_key_reports_api_error_with_context"
+))]
 /// rig#2079 — a failed Gemini listing must carry provider, path, status and a
 /// body preview.
 ///

@@ -40,6 +40,9 @@ fn inputs() -> Vec<String> {
     EMBEDDING_INPUTS.iter().map(|s| (*s).to_string()).collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embedding_matrix/normalized_response_is_complete"
+))]
 #[tokio::test]
 async fn normalized_response_is_complete() {
     with_cohere_cassette(
@@ -63,6 +66,9 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embedding_matrix/raw_round_trips"
+))]
 #[tokio::test]
 async fn raw_round_trips() {
     with_cohere_cassette("embedding_matrix/raw_round_trips", |client| async move {
@@ -98,6 +104,9 @@ async fn raw_round_trips() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embedding_matrix/raw_route_parity"
+))]
 /// There is one embed seam, so the axis this cell pins is that repeating the
 /// request is stable and that `raw` carries what the normalized response has
 /// no slot for: Cohere bills `meta.billed_units`, which `Usage` cannot hold
@@ -124,6 +133,9 @@ async fn raw_route_parity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embedding_matrix/single_text_convenience"
+))]
 #[tokio::test]
 async fn single_text_convenience() {
     with_cohere_cassette(
@@ -144,6 +156,9 @@ async fn single_text_convenience() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embedding_matrix/error_preserves_provider_body"
+))]
 #[tokio::test]
 async fn error_preserves_provider_body() {
     with_cohere_cassette(
@@ -171,6 +186,9 @@ async fn error_preserves_provider_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embedding_matrix/image_normalized_and_raw_round_trip"
+))]
 /// The image half: one Cohere answer per image, the normalized response
 /// aggregating them and `raw` carrying the per-image array.
 #[tokio::test]

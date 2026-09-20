@@ -112,6 +112,9 @@ fn recorded_terminal_line(scenario: &str) -> Value {
 // 1: raw is the provider terminal record, serialized
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type"
+))]
 #[tokio::test]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
@@ -160,6 +163,9 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 // 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/raw_stream_capture_matrix/stream_raw_exposes_terminal_durations"
+))]
 #[tokio::test]
 async fn stream_raw_exposes_terminal_durations() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations";

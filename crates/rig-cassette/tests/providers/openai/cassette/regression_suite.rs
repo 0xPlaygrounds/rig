@@ -12,6 +12,12 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, collect_stream_final_response_and_provider_final,
 };
 
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live("openai/regression/chat_compat_finish_reason"),
+    rig_test_support::recording::Scenario::live(
+        "openai/regression/chat_compat_finish_reason_natural"
+    )
+)]
 /// B8 — Regression: chat-completions-compatible streaming surfaces
 /// `finish_reason` (issue #2248).
 ///

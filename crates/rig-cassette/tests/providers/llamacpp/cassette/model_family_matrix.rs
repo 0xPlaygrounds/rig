@@ -161,6 +161,9 @@ fn assert_streamed_as_deltas_and_reassembled(scenario: &str, expected_tool: &str
 // Llama 3.2
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/model_family_matrix/llama_blocking_tool_call"
+))]
 #[tokio::test]
 async fn llama_family_calls_a_tool() {
     with_llamacpp_llama_family_cassette(
@@ -204,6 +207,9 @@ async fn llama_family_calls_a_tool() {
         .expect("the wire's stringified arguments must be JSON");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/model_family_matrix/llama_streaming_tool_call"
+))]
 #[tokio::test]
 async fn llama_family_streams_tool_call_arguments_as_deltas() {
     with_llamacpp_llama_family_cassette(
@@ -242,6 +248,9 @@ async fn llama_family_streams_tool_call_arguments_as_deltas() {
 // Mistral Small 3.2
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/model_family_matrix/mistral_blocking_tool_call"
+))]
 #[tokio::test]
 async fn mistral_family_calls_a_tool() {
     with_llamacpp_mistral_family_cassette(
@@ -279,6 +288,9 @@ async fn mistral_family_calls_a_tool() {
     assert_eq!(calls[0].0, "subtract");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/model_family_matrix/mistral_streaming_tool_call"
+))]
 #[tokio::test]
 async fn mistral_family_streams_tool_call_arguments_as_deltas() {
     with_llamacpp_mistral_family_cassette(
@@ -317,6 +329,9 @@ async fn mistral_family_streams_tool_call_arguments_as_deltas() {
 // Gemma 3 — no tool support in the template
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/model_family_matrix/gemma_tool_request_degrades_to_text"
+))]
 /// Gemma's template declares no tool support, so a tool request degrades to
 /// prose.
 ///

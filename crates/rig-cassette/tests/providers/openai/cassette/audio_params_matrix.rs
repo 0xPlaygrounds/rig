@@ -73,6 +73,9 @@ fn container(audio: &[u8]) -> &'static str {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/default_body_returns_mp3"
+))]
 #[tokio::test]
 async fn default_body_returns_mp3() {
     with_openai_audio_cassette(
@@ -94,6 +97,9 @@ async fn default_body_returns_mp3() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/response_format_wav_changes_the_container"
+))]
 #[tokio::test]
 async fn response_format_wav_changes_the_container() {
     with_openai_audio_cassette(
@@ -120,6 +126,9 @@ async fn response_format_wav_changes_the_container() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/response_format_flac_changes_the_container"
+))]
 #[tokio::test]
 async fn response_format_flac_changes_the_container() {
     with_openai_audio_cassette(
@@ -142,6 +151,9 @@ async fn response_format_flac_changes_the_container() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/instructions_reach_the_tts_model"
+))]
 /// `instructions` is the other parameter this endpoint takes, and only the
 /// `gpt-4o-mini-tts` family acts on it — `tts-1` accepts and ignores it, which
 /// is why the rejection cell it would have anchored was dropped (see above).
@@ -167,6 +179,9 @@ async fn instructions_reach_the_tts_model() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/completions_client_shares_the_fixed_body"
+))]
 /// Recorded through the other public completion surface of the same
 /// credential, back when speech was reachable from two client markers. Speech
 /// is one wire now — [`OpenAI`]'s — so replaying this second fixture proves
@@ -195,6 +210,9 @@ async fn completions_client_shares_the_fixed_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/additional_params_can_override_voice"
+))]
 /// Merged last, so a caller can override a key the builder derives.
 #[tokio::test]
 async fn additional_params_can_override_voice() {
@@ -218,6 +236,9 @@ async fn additional_params_can_override_voice() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/audio_params_matrix/non_object_additional_params_are_a_no_op"
+))]
 /// A non-object payload merges nothing and leaves the derived body as it was.
 #[tokio::test]
 async fn non_object_additional_params_are_a_no_op() {

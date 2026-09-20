@@ -20,6 +20,9 @@ use super::super::support::with_bedrock_cassette;
 const GUARDRAIL_ID: &str = "fytaiyvapuzp";
 const GUARDRAIL_VERSION: &str = "DRAFT";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_provider_data/guardrail_trace_survives_into_raw_completion"
+))]
 /// Recorded against a guardrail that blocks a specific phrase: Bedrock stops
 /// the turn with `guardrail_intervened` and explains itself in `trace`.
 #[tokio::test]
@@ -73,6 +76,7 @@ async fn guardrail_trace_survives_into_raw_completion() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("bedrock/raw_provider_data/request_id_survives_into_streamed_terminal").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// Blocking/streaming parity (rig#2265): the same AWS request id semantics on
 /// the streaming surface — the converse-stream operation output's id reaches
 /// the normalized terminal record.
@@ -119,6 +123,9 @@ async fn request_id_survives_into_streamed_terminal() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/raw_provider_data/request_id_survives_into_raw_completion"
+))]
 /// The AWS request id rides an HTTP header, so it is present on every call —
 /// including the ordinary ones — and it is what AWS support asks for.
 #[tokio::test]

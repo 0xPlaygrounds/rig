@@ -78,6 +78,9 @@ fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::Completio
 // 1: raw is the raw_stream FinalResponse, serialized
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type"
+))]
 #[tokio::test]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
@@ -112,6 +115,9 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 // 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_stream_capture_matrix/stream_raw_exposes_envelope_fields"
+))]
 #[tokio::test]
 async fn stream_raw_exposes_envelope_fields() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
@@ -179,6 +185,9 @@ async fn stream_raw_exposes_envelope_fields() {
 // 3: `timings` reach the caller on the streaming path with no provider type
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings"
+))]
 /// llama.cpp's `timings` ride the terminal frame and land under
 /// `additional_params`.
 ///

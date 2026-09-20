@@ -19,6 +19,9 @@ async fn chat_models_route_through_chat_completions() {
     assert_nonempty_response(&response.output);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/routing/codex_models_route_through_responses"
+))]
 #[tokio::test]
 async fn codex_models_route_through_responses() {
     with_copilot_cassette(

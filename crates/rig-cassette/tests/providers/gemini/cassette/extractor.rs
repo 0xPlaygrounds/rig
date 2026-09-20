@@ -18,6 +18,9 @@ pub(super) struct Person {
     pub(super) job: Option<String>,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     let additional_params =
@@ -69,6 +72,9 @@ async fn extractor_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/extractor/extractor_with_additional_params"
+))]
 #[tokio::test]
 async fn extractor_with_additional_params() {
     let params = AdditionalParameters::default().with_config(GenerationConfig::default());

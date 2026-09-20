@@ -147,6 +147,7 @@ fn assert_is_reply_document(raw: &Value, body: &Value, scenario: &str) {
 // Chat-completions route
 // ===========================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_capture_matrix/chat_raw_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_raw_round_trips_provider_type() {
@@ -196,6 +197,7 @@ async fn chat_raw_round_trips_provider_type() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_capture_matrix/chat_raw_exposes_system_fingerprint").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_raw_exposes_system_fingerprint() {
@@ -229,6 +231,7 @@ async fn chat_raw_exposes_system_fingerprint() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// `raw` and the normalized response are two views of one reply, produced by
 /// one decoder: so every normalized field must equal the provider-native field
 /// it was mapped from — read off `raw` through the route's own response type,
@@ -277,6 +280,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
 // Responses route
 // ===========================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_capture_matrix/responses_raw_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_raw_round_trips_provider_type() {
@@ -319,6 +323,7 @@ async fn responses_raw_round_trips_provider_type() {
     assert_is_reply_document(raw, &body, scenario);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_capture_matrix/responses_raw_exposes_envelope").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_raw_exposes_envelope() {
@@ -354,6 +359,7 @@ async fn responses_raw_exposes_envelope() {
     assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// The Responses-route twin of `chat_normalized_fields_equal_raw_renormalized`.
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]

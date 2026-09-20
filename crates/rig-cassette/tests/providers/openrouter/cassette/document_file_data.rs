@@ -206,6 +206,9 @@ fn verifier_suffix(verifier: &str) -> &str {
         .expect("verifier should contain a suffix")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/document_file_data/document_file_data_roundtrip_live"
+))]
 #[tokio::test]
 async fn document_file_data_roundtrip_live() {
     with_openrouter_cassette(
@@ -251,6 +254,9 @@ async fn document_file_data_roundtrip_live() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/document_file_data/streaming_document_file_data_roundtrip_live"
+))]
 #[tokio::test]
 async fn streaming_document_file_data_roundtrip_live() {
     with_openrouter_cassette(

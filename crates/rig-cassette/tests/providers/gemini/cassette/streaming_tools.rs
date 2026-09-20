@@ -23,6 +23,9 @@ fn streaming_tool_params() -> serde_json::Value {
         .expect("Gemini additional params should serialize")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     super::super::support::with_gemini_cassette(
@@ -47,6 +50,9 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/raw_stream_emits_required_zero_arg_tool_call"
+))]
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     super::super::support::with_gemini_cassette(
@@ -67,6 +73,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer"
+))]
 #[tokio::test]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     super::super::support::with_gemini_cassette(
@@ -93,6 +102,9 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/streaming_tools_emit_tool_call_before_later_text"
+))]
 #[tokio::test]
 async fn streaming_tools_emit_tool_call_before_later_text() {
     super::super::support::with_gemini_cassette(
@@ -121,6 +133,9 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/example_streaming_with_tools"
+))]
 #[tokio::test]
 async fn example_streaming_with_tools() {
     super::super::support::with_gemini_cassette(

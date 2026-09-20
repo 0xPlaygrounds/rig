@@ -30,3 +30,5 @@ mod ecs_session;
 mod ecs_cache;
 
 use rig_test_support::matrix;
+
+rig_test_support::cassette_inventory!();

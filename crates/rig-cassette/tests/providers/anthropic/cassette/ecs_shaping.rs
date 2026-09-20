@@ -19,6 +19,9 @@ use rig_ecs::{
 mod policies;
 use policies::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/tool_choice_required_first"
+))]
 #[tokio::test]
 async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette(
@@ -58,6 +61,9 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/tool_choice_none_on_committed_output"
+))]
 /// `tool_choice: None` on turn 2 of a committed `Tool`-mode run: the turn
 /// cannot call the output tool (the engine warns and proceeds); what the
 /// run then does is the record.
@@ -116,6 +122,9 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/extra_context"
+))]
 /// A context document patched into every turn's request.
 
 #[tokio::test]
@@ -155,6 +164,9 @@ async fn extra_context_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/extra_context_streamed"
+))]
 /// The same, streamed with events.
 
 #[tokio::test]
@@ -188,6 +200,9 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/merged_three"
+))]
 /// Three hooks' patches merged in registration order: a preamble, a
 /// document, a first-turn tool choice.
 
@@ -244,6 +259,9 @@ async fn merged_three_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/route_on_first_turn"
+))]
 /// The route selected on the first turn only: `fast` asks, the default
 /// answers.
 
@@ -301,6 +319,9 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/late_route"
+))]
 /// A route registered after build (`register_model`) and selected on
 /// every turn: served, recorded, in the signature and the handler table,
 /// and not in the required row (the row is the builder's).
@@ -363,6 +384,9 @@ async fn late_route_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/max_tokens_second_turn"
+))]
 /// `max_tokens: 5` on turn 2: the answer is cut where the patch says.
 
 #[tokio::test]
@@ -400,6 +424,9 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/thinking_second_turn"
+))]
 /// Extended thinking on turn 2 only (with the temperature it needs).
 
 #[tokio::test]
@@ -439,6 +466,9 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/preamble_second_turn"
+))]
 /// The pirate preamble on turn 2 only.
 
 #[tokio::test]
@@ -484,6 +514,9 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/active_tools_none_second_turn"
+))]
 /// No tools advertised on turn 2 (`active_tools: []`): the answer turn
 /// sees none.
 
@@ -526,6 +559,9 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/history_first_turn"
+))]
 /// A prior exchange patched in as turn 1's history.
 
 #[tokio::test]

@@ -27,6 +27,9 @@ use super::support::with_mistral_capability_cassette;
 /// request would be rejected and only correct chunking can succeed.
 const OVER_ONE_BATCH: usize = 257;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/capability_edges/one_request_over_mistrals_batch_cap_is_rejected"
+))]
 #[tokio::test]
 async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     with_mistral_capability_cassette(
@@ -48,6 +51,9 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/capability_edges/mistral_embed_reports_its_real_dimensions"
+))]
 #[tokio::test]
 async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     with_mistral_capability_cassette(
@@ -66,6 +72,9 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/capability_edges/list_models_keeps_description_and_context_length"
+))]
 #[tokio::test]
 async fn list_models_keeps_description_and_context_length() -> Result<()> {
     with_mistral_capability_cassette(
@@ -113,6 +122,9 @@ fn assert_listing_carries_mistrals_fields(models: &[rig::model::Model]) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/capability_edges/streaming_with_two_candidates_answers_from_the_first"
+))]
 /// `n > 1` streams as interleaved chunks distinguished only by
 /// `choices[].index`. The blocking path answers such a request from candidate
 /// 0 alone; the streamed twin used to concatenate every candidate's deltas
@@ -213,6 +225,9 @@ struct SumReport {
     total: i64,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted"
+))]
 /// Mistral accepts a response format beside tools only under
 /// `tool_choice: auto` — anything that *forces* a call is a 400:
 /// "`json_schema` response type with tools is only compatible with

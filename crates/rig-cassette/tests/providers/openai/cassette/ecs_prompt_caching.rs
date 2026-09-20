@@ -5,6 +5,9 @@ use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/chat_completions_agent_loop"
+))]
 #[tokio::test]
 async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
     super::super::support::with_openai_completions_prompt_caching_cassette(
@@ -24,6 +27,9 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/responses_agent_loop"
+))]
 #[tokio::test]
 async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
     super::super::support::with_openai_prompt_caching_cassette(

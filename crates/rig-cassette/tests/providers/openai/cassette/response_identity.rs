@@ -18,6 +18,9 @@ fn assert_request_id(id: Option<&str>, context: &str) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity/responses_nonstreaming_carries_identity"
+))]
 #[tokio::test]
 async fn responses_nonstreaming_carries_identity() {
     with_openai_cassette(
@@ -47,6 +50,9 @@ async fn responses_nonstreaming_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity/responses_streaming_carries_identity"
+))]
 #[tokio::test]
 async fn responses_streaming_carries_identity() {
     with_openai_cassette(
@@ -76,6 +82,9 @@ async fn responses_streaming_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity/chat_completions_nonstreaming_carries_identity"
+))]
 #[tokio::test]
 async fn chat_completions_nonstreaming_carries_identity() {
     with_openai_completions_cassette(
@@ -102,6 +111,9 @@ async fn chat_completions_nonstreaming_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity/chat_completions_streaming_carries_identity"
+))]
 #[tokio::test]
 async fn chat_completions_streaming_carries_identity() {
     with_openai_completions_cassette(
@@ -131,6 +143,9 @@ async fn chat_completions_streaming_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity/agent_tool_run_reports_per_attempt_identity"
+))]
 /// Agent-run reachability on OpenAI (Responses API): a two-call tool run's
 /// hooks and `completion_calls` report distinct per-attempt request ids.
 #[tokio::test]
@@ -172,6 +187,9 @@ async fn agent_tool_run_reports_per_attempt_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity/streamed_agent_run_reports_identity"
+))]
 /// Streamed agent run on OpenAI: the turn event carries the attempt's
 /// identity from the SSE connection's headers.
 #[tokio::test]

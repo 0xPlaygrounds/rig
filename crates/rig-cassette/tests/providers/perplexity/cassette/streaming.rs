@@ -9,6 +9,9 @@ use crate::support::{
 
 use super::super::support::with_perplexity_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_perplexity_cassette("streaming/streaming_smoke", |client| async move {

@@ -57,6 +57,9 @@ fn assert_dual_ids(calls: &[rig::message::ToolCall]) {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/effect_corpus/streaming_with_events"
+))]
 /// A streamed turn with one tool call, events kept.
 #[tokio::test]
 async fn streaming_with_events_effect_log_is_the_golden_fixture() {
@@ -105,6 +108,9 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/effect_corpus/tool_call_turns"
+))]
 /// Two tool-call turns, blocking: the second turn's request carries the
 /// first turn's dual-id call and its result back to the wire.
 #[tokio::test]

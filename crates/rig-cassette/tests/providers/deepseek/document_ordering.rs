@@ -40,6 +40,9 @@ fn assistant_text(choice: &[AssistantContent]) -> String {
         .join("")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/document_ordering/chat_completions_keeps_documents_after_system_before_history"
+))]
 #[tokio::test]
 async fn chat_completions_keeps_documents_after_system_before_history() {
     with_deepseek_cassette(

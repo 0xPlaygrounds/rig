@@ -197,6 +197,7 @@ crate::matrix::golden_matrix! {
     resume_tool_turn: ("corpus_matrix/resume_tool_turn", cells::RESUME_TOOL_TURN, "venice_resume_tool_turn");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("venice/corpus_matrix/output_tool_with_real_tool").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[ignore = "Venice's gateway never answers the two-turn output-tool program (a 2,200 s hang, then a 500 `cannot send request`); two recordings agreed"]
 #[tokio::test]
 async fn output_tool_with_real_tool() {
@@ -229,6 +230,7 @@ crate::matrix::golden_matrix! {
 
 crate::matrix::case_matrix! {
     wrapper: with_venice_cassette, family: wire_matrix_case;
+    #[cassette_missing("Venice thinking disabled answered directly without the required first-turn add call in all three attempts; record-venice-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted")]
     #[ignore = "Venice thinking disabled answered directly without the required first-turn add call in all three attempts; record-venice-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
     #[tokio::test]
     shaping_thinking_second_turn: ("corpus_matrix/shaping_thinking_second_turn", shaping_thinking_second_turn_9);

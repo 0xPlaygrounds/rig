@@ -11,6 +11,9 @@ use crate::support::{
     collect_stream_observation,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/streaming_tools/streaming_tool_call_roundtrip"
+))]
 #[tokio::test]
 async fn streaming_tool_call_roundtrip() {
     with_cohere_cassette(

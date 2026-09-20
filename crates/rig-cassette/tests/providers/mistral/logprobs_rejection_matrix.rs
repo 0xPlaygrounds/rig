@@ -143,6 +143,9 @@ async fn execute(scenario: &'static str, cell: Cell, observed: SharedError) {
     assert_cell(scenario, cell, observed);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/logprobs_rejection_matrix/blocking_mistral_small"
+))]
 #[tokio::test]
 async fn blocking_mistral_small() -> Result<()> {
     const S: &str = "logprobs_rejection_matrix/blocking_mistral_small";
@@ -161,6 +164,9 @@ async fn blocking_mistral_small() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/logprobs_rejection_matrix/blocking_ministral_3b"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b() -> Result<()> {
     const S: &str = "logprobs_rejection_matrix/blocking_ministral_3b";
@@ -179,6 +185,9 @@ async fn blocking_ministral_3b() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/logprobs_rejection_matrix/streaming_mistral_small"
+))]
 #[tokio::test]
 async fn streaming_mistral_small() -> Result<()> {
     const S: &str = "logprobs_rejection_matrix/streaming_mistral_small";
@@ -197,6 +206,9 @@ async fn streaming_mistral_small() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/logprobs_rejection_matrix/streaming_ministral_3b"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b() -> Result<()> {
     const S: &str = "logprobs_rejection_matrix/streaming_ministral_3b";

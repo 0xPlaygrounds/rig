@@ -39,6 +39,9 @@ crate::matrix::case_matrix! {
     despawn_run_waits_for_an_in_flight_stream: ("corpus_matrix_chat/endings_text_delta_stop", despawn_run_waits_for_an_in_flight_stream_22);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/chat_completions_validation_error_carries_identity"
+))]
 /// The recorded 4xx, unary: the run fails as the provider's response and
 /// the record and the witness carry the same facts.
 #[tokio::test]
@@ -63,6 +66,9 @@ async fn error_facts_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_matrix_chat/error_facts_streamed"
+))]
 /// The recorded 4xx on the streaming surface.
 #[tokio::test]
 async fn error_facts_streamed() {

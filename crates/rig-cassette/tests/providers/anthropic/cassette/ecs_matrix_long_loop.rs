@@ -6,6 +6,12 @@
 //! no cassette and no golden; the negative probe mutates the streamed
 //! recording's last tool result and proves the strict matcher refuses it.
 
+rig_test_support::scripted_family! {
+    const SCRIPTED_SOURCES: "anthropic", "ecs_matrix_long_loop", [
+        "long_loop_matrix/long_unary",
+    ]
+}
+
 use rig::completion::CompletionModel;
 use rig::driver::{Bind, Bound};
 use rig::providers::anthropic::wire::Anthropic;
@@ -85,6 +91,9 @@ crate::matrix::resume_matrix! {
     max_turns_midway: ("long_loop_matrix/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, long_loop::MAX_TURNS_MIDWAY.resume_after, golden_anthropic_long_loop_max_turns_midway);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/long_loop_matrix/output_cap_midway"
+))]
 #[tokio::test]
 async fn output_cap_midway() {
     with_anthropic_cassette("long_loop_matrix/output_cap_midway", |client| async move {

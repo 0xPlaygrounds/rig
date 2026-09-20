@@ -187,6 +187,7 @@ crate::matrix::golden_matrix! {
     reasoning_capped_streamed: ("reasoning_matrix_responses/capped_streamed", cells::REASONING_CAPPED_STREAMED, "openai_responses_reasoning_capped_streamed");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("openai/corpus_matrix_responses/shaping_max_tokens_second_turn").missing("the Responses wire's `max_output_tokens` floor is 16; the corpus's second-turn cap is 5"))]
 #[ignore = "the Responses wire's `max_output_tokens` floor is 16; the corpus's second-turn cap is 5"]
 #[tokio::test]
 async fn shaping_max_tokens_second_turn() {
@@ -206,14 +207,17 @@ async fn shaping_max_tokens_second_turn() {
 
 crate::matrix::case_matrix! {
     wrapper: with_openai_cassette, family: wire_matrix_case;
+    #[cassette_missing("the Responses wire's `max_output_tokens` floor is 16; the corpus's second-turn cap is 5")]
     #[ignore = "gpt-5-mini minimal returned an encrypted reasoning block on the first turn in all three attempts; record-openai-responses-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
     #[tokio::test]
     shaping_thinking_second_turn: ("corpus_matrix_responses/shaping_thinking_second_turn", shaping_thinking_second_turn_9);
+    #[cassette_missing("the Responses wire's `max_output_tokens` floor is 16; the corpus's second-turn cap is 5")]
     #[tokio::test]
     #[ignore = "gpt-5-mini minimal returned an encrypted reasoning part despite zero reasoning usage in all three attempts; record-openai-responses-off-attempt-{1,2,3}.log; three attempts exhausted"]
     reasoning_off: ("reasoning_matrix_responses/off", reasoning_off_12);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("openai/corpus_matrix_responses/causal_completion_serial").missing("gpt-5-mini on the Responses wire calls `lookup` with `leaf: true`, so the tool answers without nesting a completion; three recordings agreed"))]
 #[ignore = "gpt-5-mini on the Responses wire calls `lookup` with `leaf: true`, so the tool answers without nesting a completion; three recordings agreed"]
 #[tokio::test]
 async fn causal_completion_serial() {
@@ -226,6 +230,7 @@ async fn causal_completion_serial() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("openai/corpus_matrix_responses/causal_completion_concurrent").missing("gpt-5-mini on the Responses wire calls `lookup` with `leaf: true`, so the tool answers without nesting a completion; three recordings agreed"))]
 #[ignore = "gpt-5-mini on the Responses wire calls `lookup` with `leaf: true`, so the tool answers without nesting a completion; three recordings agreed"]
 #[tokio::test]
 async fn causal_completion_concurrent() {
@@ -238,6 +243,7 @@ async fn causal_completion_concurrent() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("openai/corpus_matrix_responses/causal_completion_streamed").missing("gpt-5-mini on the Responses wire calls `lookup` with `leaf: true`, so the tool answers without nesting a completion; three recordings agreed"))]
 #[ignore = "gpt-5-mini on the Responses wire calls `lookup` with `leaf: true`, so the tool answers without nesting a completion; three recordings agreed"]
 #[tokio::test]
 async fn causal_completion_streamed() {
@@ -261,6 +267,7 @@ fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone 
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("openai/reasoning_matrix_responses/tool_unary").missing("gpt-5-mini low: attempts 1 and 3 reported zero reasoning tokens on the tool turn; attempt 2 failed an over-strict final-turn assertion before cassette export; record-openai-responses-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"))]
 #[tokio::test]
 #[ignore = "gpt-5-mini low: attempts 1 and 3 reported zero reasoning tokens on the tool turn; attempt 2 failed an over-strict final-turn assertion before cassette export; record-openai-responses-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"]
 async fn reasoning_tool_unary() {

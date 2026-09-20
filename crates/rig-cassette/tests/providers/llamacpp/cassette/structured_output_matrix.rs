@@ -80,6 +80,9 @@ fn recorded_answer(scenario: &str) -> String {
         .to_string()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/json_object_is_a_no_op"
+))]
 /// `json_object` alone constrains nothing.
 #[tokio::test]
 async fn json_object_response_format_constrains_nothing() {
@@ -132,6 +135,9 @@ async fn json_object_response_format_constrains_nothing() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/json_schema_is_enforced"
+))]
 /// `json_schema` is compiled to a GBNF grammar and enforced.
 #[tokio::test]
 async fn json_schema_response_format_is_enforced_by_the_server() {
@@ -179,6 +185,9 @@ async fn json_schema_response_format_is_enforced_by_the_server() {
         .expect("the recorded answer must itself be schema-shaped JSON");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/gbnf_grammar_is_enforced"
+))]
 /// A GBNF grammar sent verbatim through `additional_params`.
 ///
 /// This is llama.cpp's own constraint language and has no OpenAI equivalent,
@@ -226,6 +235,9 @@ async fn a_gbnf_grammar_through_additional_params_is_enforced() {
     assert!(matches!(answer.trim(), "yes" | "no"), "{answer:?}");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/schema_and_grammar_conflict"
+))]
 /// A **top-level** `json_schema` beside a `grammar` is refused — with a 500.
 ///
 /// llama.cpp guards the conflict at `server-common.cpp:1157`:
@@ -281,6 +293,9 @@ async fn a_schema_and_a_grammar_together_are_rejected() {
     assert_eq!(json["error"]["type"], json!("server_error"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/response_format_beats_grammar_silently"
+))]
 /// The **`response_format`** route silently drops the grammar instead.
 ///
 /// The conflict guard above reads the *top-level* `json_schema` field, and
@@ -341,6 +356,9 @@ async fn response_format_and_a_grammar_silently_let_the_schema_win() {
         .expect("the recorded answer follows the schema, not the grammar");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/smoke_tier_cannot_escape_the_grammar"
+))]
 /// The smoke tier cannot violate a schema the *server* enforces.
 ///
 /// The interesting half of the model-tier question. A 1.7B asked politely for
@@ -390,6 +408,9 @@ async fn a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server() {
         .expect("the recorded answer must be schema-shaped JSON");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output_matrix/schema_alongside_tools"
+))]
 /// A schema alongside tools: rig withholds `response_format` until a tool
 /// result exists, and llama.cpp is why that matters.
 ///

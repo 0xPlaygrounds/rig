@@ -11,6 +11,9 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 use crate::support::assert_transport_request_id;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_identity_edge/auth_rejection_carries_identity"
+))]
 /// 401 auth rejection: the auth tier answers before the API proper — the
 /// recorded fixture documents whether the id header still rides it.
 #[tokio::test]
@@ -45,6 +48,9 @@ async fn auth_rejection_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_identity_edge/validation_error_carries_identity"
+))]
 /// 400 validation: an impossible parameter, produced by the request
 /// validator rather than the model-lookup path.
 #[tokio::test]
@@ -85,6 +91,9 @@ async fn validation_error_carries_identity() {
 // accepted and answered normally), and the validation tier it would exercise
 // is already covered by the impossible-temperature cell above.
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_identity_edge/streaming_connect_4xx_matches_blocking_richness"
+))]
 /// Streaming connect 4xx — records the current handshake behavior. See the
 /// PR findings: pre-fix this was a bare status with body, headers, and id
 /// all dropped; the fix threads the same preserved-details error the unary
@@ -135,6 +144,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_identity_edge/streaming_connect_auth_rejection_classifies_with_contract"
+))]
 /// Streaming connect 401: the auth-tier variant of the handshake asymmetry —
 /// post-fix, classified with the contract (id absent on Anthropic's auth
 /// tier, per the recorded census).
@@ -178,6 +190,9 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/error_identity_edge/streamed_agent_run_failure_exposes_error_identity_accessors"
+))]
 /// A streamed agent run against a rejected key: the run's surfaced
 /// `PromptError` exposes the failed call's identity accessors — the agent
 /// surface of the error path, streaming side. (Anthropic's auth tier sends

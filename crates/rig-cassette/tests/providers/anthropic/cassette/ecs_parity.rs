@@ -14,6 +14,9 @@ use crate::{
     },
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
@@ -27,6 +30,9 @@ async fn completion_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_anthropic_cassette("streaming/streaming_smoke", |client| async move {
@@ -55,6 +61,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_anthropic_cassette(

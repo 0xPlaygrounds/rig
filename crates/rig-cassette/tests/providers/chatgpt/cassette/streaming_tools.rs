@@ -32,6 +32,9 @@ fn assert_terminal_response_has_no_output(scenario: &str) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/streaming_tools/tool_call_completed_response_without_output"
+))]
 #[tokio::test]
 async fn nonstreaming_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(
@@ -82,6 +85,9 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/streaming_tools/tool_call_completed_response_without_output"
+))]
 #[tokio::test]
 async fn stream_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(

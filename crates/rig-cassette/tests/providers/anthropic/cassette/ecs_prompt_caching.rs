@@ -6,6 +6,9 @@ use crate::{
 };
 use rig::providers::anthropic;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/conformance_agent_loop"
+))]
 #[tokio::test]
 async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
     super::super::support::with_anthropic_cassette(

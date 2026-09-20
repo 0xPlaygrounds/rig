@@ -8,6 +8,9 @@ use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/noninteractive_oauth/cached_oauth_allows_noninteractive_streaming_completion"
+))]
 #[tokio::test]
 async fn cached_oauth_allows_noninteractive_streaming_completion() {
     with_chatgpt_noninteractive_oauth_cassette(

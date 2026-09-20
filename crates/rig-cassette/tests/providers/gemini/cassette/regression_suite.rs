@@ -17,6 +17,9 @@ use crate::support::{
     assert_smoke_structured_output, collect_stream_final_response_and_provider_final,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/regression/agent_max_tokens_without_additional_params"
+))]
 /// C15 — Regression: agent-level `max_tokens` reaches Gemini's
 /// `generationConfig.maxOutputTokens` when the caller supplies **no**
 /// `additional_params`.
@@ -75,6 +78,9 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/regression/structured_output_without_max_tokens"
+))]
 /// rig#2322 — Regression: a native structured-output turn that sets **no**
 /// `max_tokens` must not acquire one.
 ///
@@ -122,6 +128,9 @@ async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
     assert_recorded_sampling_fields("regression/structured_output_without_max_tokens", &[]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/regression/structured_output_with_max_tokens"
+))]
 /// rig#2322 — Regression: a native structured-output turn that *does* set
 /// `max_tokens` sends the caller's value and still acquires no `temperature`.
 ///
@@ -162,6 +171,9 @@ async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/regression/temperature_without_max_tokens"
+))]
 /// rig#2322 — Regression: the mirror of C15. Setting `temperature` alone must
 /// not acquire a `maxOutputTokens`.
 ///
@@ -194,6 +206,9 @@ async fn temperature_without_max_tokens_sends_no_max_output_tokens() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/regression/thinking_config_without_max_tokens"
+))]
 /// rig#2322 — Regression: a caller who supplies an `additional_params`
 /// `generationConfig` for `thinkingConfig` gets *that* on the wire and nothing
 /// else.
@@ -251,6 +266,9 @@ async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/regression/streaming_structured_output_without_max_tokens"
+))]
 /// rig#2322 — Regression: the streaming surface gets the same request-boundary
 /// guarantee as the blocking one for native structured output.
 ///

@@ -8,6 +8,9 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 
 const EMBEDDING_INPUT: &str = "Rust cassette replay keeps Bedrock tests deterministic.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/embeddings/embeddings_smoke"
+))]
 #[tokio::test]
 async fn embeddings_smoke() {
     with_bedrock_cassette("embeddings/embeddings_smoke", |client| async move {
@@ -29,6 +32,9 @@ async fn embeddings_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/embeddings/embeddings_batch_smoke"
+))]
 #[tokio::test]
 async fn embeddings_batch_smoke() {
     with_bedrock_cassette("embeddings/embeddings_batch_smoke", |client| async move {

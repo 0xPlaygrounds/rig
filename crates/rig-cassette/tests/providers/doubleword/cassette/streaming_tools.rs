@@ -8,6 +8,9 @@ use crate::support::{
     assert_mentions_expected_number, collect_stream_final_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_doubleword_cassette(

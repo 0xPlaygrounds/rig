@@ -58,6 +58,9 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_unary"
+))]
 /// `Tool` mode: the request advertises the synthetic `final_result`
 /// tool and augments the preamble; the model's call to it is the answer,
 /// settled by the run without a dispatch.
@@ -98,6 +101,9 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_streamed"
+))]
 /// The same, streamed with events.
 #[tokio::test]
 async fn tool_streamed_effect_log_is_the_golden_fixture() {
@@ -125,6 +131,9 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/prompted_unary"
+))]
 /// `Prompted` mode: no tool, no native schema; the preamble carries the
 /// schema and the answer is JSON text.
 #[tokio::test]
@@ -161,6 +170,9 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/prompted_streamed"
+))]
 /// The same, streamed with events.
 #[tokio::test]
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
@@ -187,6 +199,9 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_with_real_tool"
+))]
 /// `Tool` mode beside a real tool: the model calls `add` first (a
 /// dispatch), then `final_result` (settled, no dispatch).
 #[tokio::test]
@@ -228,6 +243,9 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/prompted_with_real_tool"
+))]
 /// `Prompted` mode beside a real tool.
 #[tokio::test]
 async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
@@ -267,6 +285,9 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_choice_specific_output"
+))]
 /// `Tool` mode with `tool_choice: Specific(final_result)`: the output
 /// tool is the only call allowed, and it is called.
 #[tokio::test]
@@ -301,6 +322,9 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_choice_required"
+))]
 /// `Tool` mode with `tool_choice: Required`: the forced call is the
 /// output tool's, which settles the run before the choice can force a
 /// second turn.
@@ -334,6 +358,9 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_under_none_degrades"
+))]
 /// `Tool` mode with `tool_choice: None`: the output tool cannot be
 /// called, so the mode resolves to `Native` — a native schema, no tools —
 /// rather than a turn that cannot finalize.
@@ -372,6 +399,9 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_output/tool_thinking"
+))]
 /// `Tool` mode under extended thinking: the record holds a reasoning
 /// block and the output tool's call.
 #[tokio::test]

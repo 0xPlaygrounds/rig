@@ -31,6 +31,9 @@ fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'stat
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_faults_responses/setup_unary"
+))]
 #[tokio::test]
 async fn setup_unary() {
     with_openai_cassette("corpus_faults_responses/setup_unary", |client| async move {
@@ -44,6 +47,9 @@ async fn setup_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn setup_streamed() {
     with_openai_cassette(
@@ -60,6 +66,9 @@ async fn setup_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_faults_responses/tool_error"
+))]
 #[tokio::test]
 async fn tool_error() {
     with_openai_cassette("corpus_faults_responses/tool_error", |client| async move {
@@ -71,6 +80,9 @@ async fn tool_error() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_faults_responses/tool_error_streamed"
+))]
 #[tokio::test]
 async fn tool_error_streamed() {
     with_openai_cassette(
@@ -85,6 +97,9 @@ async fn tool_error_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_faults_responses/batch_second_fails"
+))]
 #[tokio::test]
 async fn batch_second_fails() {
     with_openai_cassette(
@@ -99,6 +114,9 @@ async fn batch_second_fails() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_faults_responses/batch_second_fails"
+))]
 #[tokio::test]
 async fn batch_second_fails_concurrent() {
     with_openai_cassette(

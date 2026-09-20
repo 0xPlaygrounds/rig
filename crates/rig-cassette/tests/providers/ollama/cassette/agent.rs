@@ -10,6 +10,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 const MODEL: &str = "qwen3:4b";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_ollama_cassette("agent/completion_smoke", |client| async move {
@@ -29,6 +32,9 @@ async fn completion_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/agent/max_tokens"
+))]
 /// Guards the native token-limit mapping on the wire.
 ///
 /// `max_tokens` has no top-level field in Ollama's native `/api/chat`; the

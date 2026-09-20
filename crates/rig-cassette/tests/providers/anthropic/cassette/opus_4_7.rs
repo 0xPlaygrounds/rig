@@ -23,6 +23,9 @@ fn opus_4_7_thinking_params() -> serde_json::Value {
     })
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_prompt_smoke"
+))]
 #[tokio::test]
 async fn messages_prompt_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -45,6 +48,9 @@ async fn messages_prompt_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_streaming_prompt_smoke"
+))]
 #[tokio::test]
 async fn messages_streaming_prompt_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -66,6 +72,9 @@ async fn messages_streaming_prompt_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_tools_smoke"
+))]
 #[tokio::test]
 async fn messages_tools_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -91,6 +100,9 @@ async fn messages_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn messages_streaming_tools_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -115,6 +127,9 @@ async fn messages_streaming_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_structured_output_smoke"
+))]
 #[tokio::test]
 async fn messages_structured_output_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -139,6 +154,9 @@ async fn messages_structured_output_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_extractor_smoke"
+))]
 #[tokio::test]
 async fn messages_extractor_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -183,6 +201,9 @@ async fn messages_extractor_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_image_input_smoke"
+))]
 #[tokio::test]
 async fn messages_image_input_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -213,6 +234,9 @@ async fn messages_image_input_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_adaptive_thinking_nonstreaming_smoke"
+))]
 #[tokio::test]
 async fn messages_adaptive_thinking_nonstreaming_smoke() {
     super::super::support::with_anthropic_cassette(
@@ -228,6 +252,9 @@ async fn messages_adaptive_thinking_nonstreaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke"
+))]
 /// Adaptive thinking opens its thinking block with an empty `thinking` and a
 /// complete `signature`, then never sends a `thinking_delta` — a
 /// signature-only block. The streaming path used to gate the block's
@@ -293,6 +320,9 @@ fn assert_turn_two_request_carries_a_signed_thinking_block(scenario: &str) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_adaptive_thinking_tool_roundtrip_smoke"
+))]
 #[tokio::test]
 async fn messages_adaptive_thinking_tool_roundtrip_smoke() {
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -320,6 +350,9 @@ async fn messages_adaptive_thinking_tool_roundtrip_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_7/messages_adaptive_thinking_streaming_tool_roundtrip_smoke"
+))]
 #[tokio::test]
 async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));

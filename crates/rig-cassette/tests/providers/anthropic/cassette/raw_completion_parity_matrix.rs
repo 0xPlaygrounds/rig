@@ -377,6 +377,9 @@ fn assert_streamed_parity(
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_completion_parity_matrix/text_turn_parity"
+))]
 #[tokio::test]
 async fn text_turn_parity() {
     let sink = Observed::default();
@@ -401,6 +404,9 @@ async fn text_turn_parity() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_completion_parity_matrix/tool_call_turn_parity"
+))]
 #[tokio::test]
 async fn tool_call_turn_parity() {
     let sink = Observed::default();
@@ -425,6 +431,9 @@ async fn tool_call_turn_parity() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_completion_parity_matrix/streamed_text_turn_parity"
+))]
 #[tokio::test]
 async fn streamed_text_turn_parity() {
     let sink = Observed::default();
@@ -441,6 +450,9 @@ async fn streamed_text_turn_parity() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_completion_parity_matrix/streamed_tool_call_turn_parity"
+))]
 #[tokio::test]
 async fn streamed_tool_call_turn_parity() {
     let sink = Observed::default();

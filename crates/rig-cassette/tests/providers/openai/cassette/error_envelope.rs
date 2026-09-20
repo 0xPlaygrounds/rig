@@ -13,6 +13,9 @@ use rig::error::ErrorReport;
 
 use super::super::support::with_openai_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn nonexistent_model_error_preserves_status_and_body() {
     with_openai_cassette(
@@ -48,6 +51,9 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_openai_cassette(

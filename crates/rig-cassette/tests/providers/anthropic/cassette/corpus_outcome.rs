@@ -52,6 +52,9 @@ pub(super) fn tool_outcome(log: &rig::cassette::effect_log::EffectLog) -> &rig::
         .expect("a tool record")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/cancel_after_tool_call_delta"
+))]
 /// A streamed tool-call turn whose consumer drops the stream at the first
 /// tool-call delta: the completion is recorded as `Cancelled` and the tool
 /// never runs. The call's arguments are a long note (the first recording,
@@ -100,6 +103,9 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/tool_error"
+))]
 /// A tool that fails: the tool record's outcome is a failed result, the
 /// model sees the failure and answers around it.
 #[tokio::test]
@@ -137,6 +143,9 @@ async fn tool_error_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/tool_error_streamed"
+))]
 /// The same, streamed with events kept.
 #[tokio::test]
 async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
@@ -173,6 +182,9 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/model_error"
+))]
 /// The wire's own error: an invalid key, a 401 envelope. The completion
 /// record's outcome is the provider's error and the run fails at it.
 #[tokio::test]
@@ -208,6 +220,9 @@ async fn model_error_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/model_error_streamed"
+))]
 /// The same, streamed: the error arrives as the stream's first item.
 #[tokio::test]
 async fn model_error_streamed_effect_log_is_the_golden_fixture() {
@@ -241,6 +256,9 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/max_turns_exhausted"
+))]
 /// The runner's budget exhausted with a tool call pending: one model call
 /// allowed, the tool runs, the next call is refused by the budget. Two
 /// records, then `MaxTurnsError`. Its own recording: the run makes one
@@ -280,6 +298,9 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/effect_corpus/tool_call_turn"
+))]
 /// The builder's `default_max_turns` is in the spec the header hashes; the
 /// runner's `max_turns` is not. This cell is the tool-call turn under a
 /// default budget of three and no runner budget: its records are the

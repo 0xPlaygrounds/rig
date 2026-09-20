@@ -5,6 +5,11 @@
 //! record and the history must not change with it, and the trace must name
 //! the fault without carrying the request or its credential.
 
+rig_test_support::scripted_family! {
+    const _SCRIPTED_SOURCES: "gemini", "ecs_stream_faults", [
+    ]
+}
+
 use bytes::Bytes;
 use rig::driver::Bound;
 use rig::error::ErrorKind;
@@ -57,6 +62,9 @@ fn boundary(run: &NativeRun) -> Vec<AdapterEvent> {
     events
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 /// The recorded 404 through the native runtime: the run fails as the
 /// provider's response, streams nothing, commits only the prompt, and the
 /// witness sees the request, the status, the envelope and the ending.
@@ -337,6 +345,9 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming/streaming_smoke"
+))]
 /// The recorded successful stream through the native runtime with a
 /// witness: the answer and the record match an unwitnessed replay, and the
 /// trace carries the dispatch, the verdict, the usage and the settlement.

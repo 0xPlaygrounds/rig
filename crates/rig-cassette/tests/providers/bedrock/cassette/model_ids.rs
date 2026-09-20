@@ -14,6 +14,9 @@ use rig::prelude::*;
 use super::super::support::with_bedrock_cassette;
 use crate::support::assert_nonempty_response;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/model_ids/retired_model_id_preserves_provider_error"
+))]
 /// A retired identifier — every `anthropic.claude-*` constant the crate used
 /// to ship was one of these — answers `ResourceNotFoundException`, and the
 /// provider's own wording has to survive into the Rig error.
@@ -52,6 +55,9 @@ async fn retired_model_id_preserves_provider_error() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/model_ids/bare_profile_only_model_id_is_rejected"
+))]
 /// A model that exists but is profile-only rejects the *bare* identifier. This
 /// is what made `DEEPSEEK_R1` and the Llama 3.3/4 constants unusable: the id
 /// resolves, so the failure is a validation error naming on-demand throughput
@@ -89,6 +95,9 @@ async fn bare_profile_only_model_id_is_rejected() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/model_ids/cross_region_profile_id_completes"
+))]
 /// The replacement form works: the same model invoked through its cross-region
 /// inference profile completes normally.
 #[tokio::test]
@@ -128,6 +137,9 @@ async fn cross_region_profile_id_completes() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/model_ids/claude_profile_constant_completes"
+))]
 /// Anthropic on Bedrock is the flagship pairing and the crate had no working
 /// constant for it; this pins that the replacement Claude identifier is
 /// invocable end-to-end.

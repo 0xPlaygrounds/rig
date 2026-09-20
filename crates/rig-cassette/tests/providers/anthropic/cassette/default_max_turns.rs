@@ -85,6 +85,9 @@ impl Tool for Divide {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/default_max_turns/default_max_turns_allows_multi_step_tool_use"
+))]
 #[tokio::test]
 async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
     super::super::support::with_anthropic_cassette_result(

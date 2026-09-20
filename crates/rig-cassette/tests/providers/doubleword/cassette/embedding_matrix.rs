@@ -29,6 +29,9 @@ fn inputs() -> Vec<String> {
     EMBEDDING_INPUTS.iter().map(|s| (*s).to_string()).collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_matrix/normalized_response_is_complete"
+))]
 #[tokio::test]
 async fn normalized_response_is_complete() {
     with_doubleword_cassette(
@@ -45,6 +48,9 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_matrix/raw_round_trips"
+))]
 /// `raw` is the provider's verbatim payload: it reads back as the shared
 /// OpenAI-compatible embeddings response, and that value's provider-native
 /// fields are the ones the decoder normalized.
@@ -77,6 +83,9 @@ async fn raw_round_trips() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_matrix/raw_route_parity"
+))]
 /// There is one embed seam, so the axis this cell pins is that `encode` is
 /// deterministic — the same inputs produce byte-identical request bodies on
 /// both exchanges — and that `raw` is a faithful second view of the reply it
@@ -119,6 +128,9 @@ async fn raw_route_parity() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_matrix/single_text_convenience"
+))]
 /// The single-text conveniences derive from the full method: same embedding,
 /// same metadata.
 #[tokio::test]
@@ -144,6 +156,9 @@ async fn single_text_convenience() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_matrix/error_preserves_provider_body"
+))]
 /// A rejected request surfaces the provider's own error body, preserved raw.
 #[tokio::test]
 async fn error_preserves_provider_body() {

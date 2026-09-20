@@ -4,6 +4,9 @@ use rig::model::ModelLister;
 
 use super::super::support::with_venice_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/model_listing/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_venice_cassette("model_listing/list_models_smoke", |client| async move {

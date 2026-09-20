@@ -137,6 +137,9 @@ fn responses_text_format() -> Value {
 // Chat Completions — the buggy surface.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_blocking_raw_model_surfaces_refusal"
+))]
 #[tokio::test]
 async fn chat_blocking_raw_model_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_blocking_raw_model_surfaces_refusal";
@@ -165,6 +168,9 @@ async fn chat_blocking_raw_model_surfaces_refusal() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_blocking_agent_prompt_surfaces_refusal"
+))]
 #[tokio::test]
 async fn chat_blocking_agent_prompt_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_blocking_agent_prompt_surfaces_refusal";
@@ -192,6 +198,9 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_blocking_raw_and_normalized_agree"
+))]
 /// The two views of one recorded turn must agree: before the fix the
 /// provider's own reply carried the refusal in its `refusal` field while
 /// normalization reported nothing at all. One call now yields both views.
@@ -231,6 +240,9 @@ async fn chat_blocking_raw_and_normalized_agree() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_blocking_refusal_finishes_with_stop"
+))]
 /// A refusal is a *completed* turn: the provider reports `finish_reason:
 /// "stop"`, and that must reach the caller alongside the text.
 #[tokio::test]
@@ -260,6 +272,9 @@ async fn chat_blocking_refusal_finishes_with_stop() {
     assert_recorded_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_streaming_raw_model_surfaces_refusal"
+))]
 #[tokio::test]
 async fn chat_streaming_raw_model_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_streaming_raw_model_surfaces_refusal";
@@ -288,6 +303,9 @@ async fn chat_streaming_raw_model_surfaces_refusal() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_streaming_agent_surfaces_refusal"
+))]
 #[tokio::test]
 async fn chat_streaming_agent_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_streaming_agent_surfaces_refusal";
@@ -313,6 +331,9 @@ async fn chat_streaming_agent_surfaces_refusal() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_streaming_terminal_carries_usage"
+))]
 /// The refusal must not cost the stream its terminal metadata.
 #[tokio::test]
 async fn chat_streaming_terminal_carries_usage() {
@@ -344,6 +365,9 @@ async fn chat_streaming_terminal_carries_usage() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_streaming_and_blocking_each_deliver_their_refusal_in_full"
+))]
 /// Streaming must not carry *less* than blocking. The two turns are sampled
 /// independently, so their wording differs and the cell cannot compare texts;
 /// what it asserts is that each transport delivered its own turn's refusal in
@@ -418,6 +442,9 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_refusal_turn_survives_into_history"
+))]
 /// The refusal turn has to be replayable: it is appended to the caller's
 /// history and sent back on the next turn, so the wire→rig→wire round trip of
 /// a refusal-only assistant message must survive.
@@ -463,6 +490,9 @@ async fn chat_refusal_turn_survives_into_history() {
 // Chat Completions controls — ordinary turns must be byte-for-byte unaffected.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_control_non_refusing_prompt_is_unchanged"
+))]
 #[tokio::test]
 async fn chat_control_non_refusing_prompt_is_unchanged() {
     const SCENARIO: &str = "refusal_matrix/chat_control_non_refusing_prompt_is_unchanged";
@@ -490,6 +520,9 @@ async fn chat_control_non_refusing_prompt_is_unchanged() {
     assert_recorded_no_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_control_non_refusing_stream_is_unchanged"
+))]
 #[tokio::test]
 async fn chat_control_non_refusing_stream_is_unchanged() {
     const SCENARIO: &str = "refusal_matrix/chat_control_non_refusing_stream_is_unchanged";
@@ -518,6 +551,9 @@ async fn chat_control_non_refusing_stream_is_unchanged() {
     assert_recorded_no_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_control_mini_answers_inside_schema"
+))]
 /// Not every model refuses: `gpt-4o-mini` answers the same prompt *inside* the
 /// schema, with `refusal: null`. This pins why the matrix uses `gpt-4o`.
 #[tokio::test]
@@ -544,6 +580,9 @@ async fn chat_control_mini_answers_inside_schema() {
     assert_recorded_no_chat_refusal(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/chat_control_plain_refusal_is_content_not_refusal"
+))]
 /// Without structured output the same prompt comes back as ordinary
 /// `content`, never the `refusal` field — the bug's blast radius really is
 /// scoped to strict structured-output turns.
@@ -573,6 +612,9 @@ async fn chat_control_plain_refusal_is_content_not_refusal() {
 // Responses API — the surface that already worked, pinned so it stays that way.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/responses_blocking_refusal_part_surfaces"
+))]
 #[tokio::test]
 async fn responses_blocking_refusal_part_surfaces() {
     const SCENARIO: &str = "refusal_matrix/responses_blocking_refusal_part_surfaces";
@@ -598,6 +640,9 @@ async fn responses_blocking_refusal_part_surfaces() {
     assert_recorded_responses_refusal_part(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/responses_streaming_refusal_delta_surfaces"
+))]
 #[tokio::test]
 async fn responses_streaming_refusal_delta_surfaces() {
     const SCENARIO: &str = "refusal_matrix/responses_streaming_refusal_delta_surfaces";
@@ -622,6 +667,9 @@ async fn responses_streaming_refusal_delta_surfaces() {
     assert_recorded_responses_refusal_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/responses_agent_blocking_refusal_surfaces"
+))]
 #[tokio::test]
 async fn responses_agent_blocking_refusal_surfaces() {
     const SCENARIO: &str = "refusal_matrix/responses_agent_blocking_refusal_surfaces";
@@ -649,6 +697,9 @@ async fn responses_agent_blocking_refusal_surfaces() {
     assert_recorded_responses_refusal_part(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/responses_agent_streaming_refusal_surfaces"
+))]
 #[tokio::test]
 async fn responses_agent_streaming_refusal_surfaces() {
     const SCENARIO: &str = "refusal_matrix/responses_agent_streaming_refusal_surfaces";
@@ -674,6 +725,9 @@ async fn responses_agent_streaming_refusal_surfaces() {
     assert_recorded_responses_refusal_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/refusal_matrix/cross_surface_refusal_parity"
+))]
 /// The cross-API parity the bug broke: one client, one prompt, both surfaces,
 /// one cassette. Either both deliver the refusal or the matrix is wrong.
 #[tokio::test]

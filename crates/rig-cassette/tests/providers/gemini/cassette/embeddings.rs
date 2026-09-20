@@ -12,6 +12,9 @@ struct Greetings {
     message: String,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embeddings/embeddings_smoke"
+))]
 #[tokio::test]
 async fn embeddings_smoke() {
     super::super::support::with_gemini_cassette(
@@ -38,6 +41,9 @@ async fn embeddings_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embeddings/derive_document_embeddings"
+))]
 #[tokio::test]
 async fn derive_document_embeddings() {
     super::super::support::with_gemini_cassette(

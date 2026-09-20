@@ -48,6 +48,9 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output/structured_output_smoke"
+))]
 #[tokio::test]
 async fn structured_output_smoke() {
     with_llamacpp_cassette(
@@ -67,6 +70,9 @@ async fn structured_output_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output/prompt_typed_structured_output"
+))]
 #[tokio::test]
 async fn prompt_typed_structured_output() {
     with_llamacpp_cassette("structured_output/prompt_typed_structured_output", |client| async move {
@@ -88,6 +94,9 @@ async fn prompt_typed_structured_output() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output/prompt_typed_extended_details_structured_output"
+))]
 #[tokio::test]
 async fn prompt_typed_extended_details_structured_output() {
     with_llamacpp_cassette("structured_output/prompt_typed_extended_details_structured_output", |client| async move {
@@ -113,6 +122,9 @@ async fn prompt_typed_extended_details_structured_output() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/structured_output/output_schema_structured_output"
+))]
 #[tokio::test]
 async fn output_schema_structured_output() {
     with_llamacpp_cassette("structured_output/output_schema_structured_output", |client| async move {

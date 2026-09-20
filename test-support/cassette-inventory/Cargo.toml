@@ -1,0 +1,19 @@
+[package]
+name = "rig-cassette-inventory"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Compiled declarations for repository cassette tests."
+
+[lints]
+workspace = true
+
+[dependencies]
+inventory = "0.3.21"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+assert_fs.workspace = true
+anyhow.workspace = true

@@ -110,6 +110,9 @@ impl Tool for StressSubtract {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/chat_history/chat_appends_reasoning_tool_turns_to_caller_history"
+))]
 #[tokio::test]
 async fn chat_appends_reasoning_tool_turns_to_caller_history() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -146,6 +149,9 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/chat_history/five_turn_chat_history_stress_preserves_context_and_tools"
+))]
 #[tokio::test]
 async fn five_turn_chat_history_stress_preserves_context_and_tools() {
     let add_count = Arc::new(AtomicUsize::new(0));

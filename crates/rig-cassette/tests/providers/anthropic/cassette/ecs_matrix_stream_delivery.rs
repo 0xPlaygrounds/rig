@@ -16,6 +16,9 @@ fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'stati
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_shaping/extra_context_streamed"
+))]
 #[tokio::test]
 async fn text() {
     with_anthropic_cassette(
@@ -37,6 +40,9 @@ async fn text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 #[tokio::test]
 async fn parallel() {
     with_anthropic_cassette("streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order", |client| async move {

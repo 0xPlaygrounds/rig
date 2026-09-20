@@ -15,6 +15,9 @@ use crate::support::assert_nonempty_response;
 
 const CODEWORD: &str = "ZULU-99";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_patch/preamble_override_forces_codeword_blocking"
+))]
 #[tokio::test]
 async fn preamble_override_forces_codeword_blocking() {
     with_gemini_cassette(
@@ -52,6 +55,9 @@ async fn preamble_override_forces_codeword_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_patch/tool_choice_required_forces_a_tool_call_blocking"
+))]
 #[tokio::test]
 async fn tool_choice_required_forces_a_tool_call_blocking() {
     let add = CountingAdd::default();
@@ -92,6 +98,9 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_patch/history_replacement_injects_prior_fact_blocking"
+))]
 #[tokio::test]
 async fn history_replacement_injects_prior_fact_blocking() {
     with_gemini_cassette(
@@ -127,6 +136,9 @@ async fn history_replacement_injects_prior_fact_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_patch/multi_field_patch_applies_preamble_and_context_blocking"
+))]
 #[tokio::test]
 async fn multi_field_patch_applies_preamble_and_context_blocking() {
     with_gemini_cassette(

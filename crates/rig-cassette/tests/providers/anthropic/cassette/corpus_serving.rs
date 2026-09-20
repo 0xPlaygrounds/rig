@@ -98,6 +98,9 @@ async fn two_tools(
     log
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 #[tokio::test]
 async fn serial_concurrency_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
@@ -114,6 +117,9 @@ async fn serial_concurrency_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 #[tokio::test]
 async fn concurrent_concurrency_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
@@ -126,6 +132,9 @@ async fn concurrent_concurrency_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 #[tokio::test]
 async fn concurrent_concurrency_two_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
@@ -138,6 +147,9 @@ async fn concurrent_concurrency_two_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 /// Events kept under concurrent dispatch: the stream's delivery is the
 /// record, and buffering does not reorder it.
 #[tokio::test]
@@ -155,6 +167,9 @@ async fn concurrent_concurrency_two_events_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order"
+))]
 /// Every buffer at one: the park points are exercised, the trace is the
 /// same.
 #[tokio::test]
@@ -174,6 +189,9 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_hooks/observe_everything"
+))]
 /// Serial serving over memory and a tool: three keys, each served one
 /// command at a time, in dispatch order.
 #[tokio::test]
@@ -217,6 +235,9 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_serving/model_route"
+))]
 /// A second model registered as the route `fast` and selected by the hook
 /// on every turn after the first: the tool-call turn goes to the default
 /// model, the answer to the route, and the header's required row names
@@ -264,6 +285,9 @@ async fn model_route_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/effect_corpus/tool_call_turn"
+))]
 /// The route registered and never selected: the required row still names
 /// it, the record never dispatches to it, and the replay must advertise it
 /// from the row alone.
@@ -379,6 +403,9 @@ async fn over_host_bus(
     log
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_serving/host_bus"
+))]
 #[tokio::test]
 async fn host_bus_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_serving_cassette("corpus_serving/host_bus", |client| async move {
@@ -388,6 +415,9 @@ async fn host_bus_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_serving/host_bus_streamed"
+))]
 #[tokio::test]
 async fn host_bus_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_serving_cassette(

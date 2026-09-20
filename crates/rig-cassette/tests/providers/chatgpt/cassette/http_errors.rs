@@ -8,6 +8,9 @@ use rig::providers::openai::OpenAI;
 
 use super::super::support::with_chatgpt_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/http_errors/nonstreaming_unauthorized_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn nonstreaming_unauthorized_preserves_status_and_body() {
     with_chatgpt_cassette(

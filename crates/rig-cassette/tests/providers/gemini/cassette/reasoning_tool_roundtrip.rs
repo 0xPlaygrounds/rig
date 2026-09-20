@@ -11,6 +11,9 @@ use rig::prelude::*;
 
 use crate::reasoning::{self, WeatherTool};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/reasoning_tool_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -42,6 +45,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/reasoning_tool_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));

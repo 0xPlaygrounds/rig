@@ -93,6 +93,9 @@ fn rejection_body(error: &ImageGenerationError) -> String {
 // D1: the body the endpoint actually accepts.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/unlisted_model_generates_without_response_format"
+))]
 #[tokio::test]
 async fn unlisted_model_generates_without_response_format() {
     const SCENARIO: &str = "image_params_matrix/unlisted_model_generates_without_response_format";
@@ -122,6 +125,9 @@ async fn unlisted_model_generates_without_response_format() {
     assert_recorded_response_echoes(SCENARIO, "quality", "low");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/allowlisted_model_still_generates"
+))]
 #[tokio::test]
 async fn allowlisted_model_still_generates() {
     const SCENARIO: &str = "image_params_matrix/allowlisted_model_still_generates";
@@ -149,6 +155,9 @@ async fn allowlisted_model_still_generates() {
     assert_recorded_request_lacks_response_format(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/retired_model_reaches_model_validation"
+))]
 #[tokio::test]
 async fn retired_model_reaches_model_validation() {
     const SCENARIO: &str = "image_params_matrix/retired_model_reaches_model_validation";
@@ -183,6 +192,9 @@ async fn retired_model_reaches_model_validation() {
 // D2: the caller's parameters reach the endpoint.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_quality_reaches_the_api"
+))]
 #[tokio::test]
 async fn additional_params_quality_reaches_the_api() {
     const SCENARIO: &str = "image_params_matrix/additional_params_quality_reaches_the_api";
@@ -211,6 +223,9 @@ async fn additional_params_quality_reaches_the_api() {
     assert_recorded_response_echoes(SCENARIO, "background", "opaque");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_output_format_reaches_the_api"
+))]
 #[tokio::test]
 async fn additional_params_output_format_reaches_the_api() {
     const SCENARIO: &str = "image_params_matrix/additional_params_output_format_reaches_the_api";
@@ -239,6 +254,9 @@ async fn additional_params_output_format_reaches_the_api() {
     assert_recorded_response_echoes(SCENARIO, "output_format", "jpeg");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/completions_client_shares_the_fixed_body"
+))]
 /// Image generation is one REST route whichever completion API the caller
 /// reaches it through: the Responses wire has no image surface of its own, and
 /// the marker-type swap that used to reach `/images/generations` from the chat
@@ -272,6 +290,9 @@ async fn completions_client_shares_the_fixed_body() {
     assert_recorded_request_lacks_response_format(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_invalid_background_is_rejected"
+))]
 #[tokio::test]
 async fn additional_params_invalid_background_is_rejected() {
     const SCENARIO: &str = "image_params_matrix/additional_params_invalid_background_is_rejected";
@@ -299,6 +320,9 @@ async fn additional_params_invalid_background_is_rejected() {
     assert_recorded_request_has(SCENARIO, "background", &json!("rig-invalid"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_invalid_output_format_is_rejected"
+))]
 #[tokio::test]
 async fn additional_params_invalid_output_format_is_rejected() {
     const SCENARIO: &str =
@@ -327,6 +351,9 @@ async fn additional_params_invalid_output_format_is_rejected() {
     assert_recorded_request_has(SCENARIO, "output_format", &json!("rig-invalid"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_invalid_quality_is_rejected"
+))]
 #[tokio::test]
 async fn additional_params_invalid_quality_is_rejected() {
     const SCENARIO: &str = "image_params_matrix/additional_params_invalid_quality_is_rejected";
@@ -354,6 +381,9 @@ async fn additional_params_invalid_quality_is_rejected() {
     assert_recorded_request_has(SCENARIO, "quality", &json!("rig-invalid"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_override_size"
+))]
 /// `additional_params` is merged *last*, so it can override a key rig derives.
 #[tokio::test]
 async fn additional_params_override_size() {
@@ -382,6 +412,9 @@ async fn additional_params_override_size() {
     assert_recorded_request_has(SCENARIO, "size", &json!("3x3"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_override_model"
+))]
 #[tokio::test]
 async fn additional_params_override_model() {
     const SCENARIO: &str = "image_params_matrix/additional_params_override_model";
@@ -409,6 +442,9 @@ async fn additional_params_override_model() {
     assert_recorded_request_has(SCENARIO, "model", &json!("rig-nonexistent-image-model"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/additional_params_override_prompt"
+))]
 #[tokio::test]
 async fn additional_params_override_prompt() {
     const SCENARIO: &str = "image_params_matrix/additional_params_override_prompt";
@@ -436,6 +472,9 @@ async fn additional_params_override_prompt() {
     assert_recorded_request_has(SCENARIO, "prompt", &json!(""));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/caller_can_reinstate_response_format"
+))]
 /// The compose story for D1: rig no longer sends `response_format`, and a
 /// caller who needs it for a compatible endpoint can put it back — proven by
 /// OpenAI itself rejecting the reinstated field.
@@ -466,6 +505,9 @@ async fn caller_can_reinstate_response_format() {
     assert_recorded_request_has(SCENARIO, "response_format", &json!("b64_json"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/unlisted_dated_snapshot_reaches_its_own_validation"
+))]
 /// A *dated snapshot* of an allowlisted model: the exact shape the hardcoded
 /// `matches!` allowlist could never keep up with.
 #[tokio::test]
@@ -499,6 +541,9 @@ async fn unlisted_dated_snapshot_reaches_its_own_validation() {
     assert_recorded_request_lacks_response_format(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/chatgpt_image_latest_reaches_its_own_validation"
+))]
 #[tokio::test]
 async fn chatgpt_image_latest_reaches_its_own_validation() {
     const SCENARIO: &str = "image_params_matrix/chatgpt_image_latest_reaches_its_own_validation";
@@ -530,6 +575,9 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
     assert_recorded_request_lacks_response_format(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/response_format_is_rejected_before_the_model_is_looked_at"
+))]
 /// The evidence for why the field had to go for *every* model, not just the
 /// ones outside the old allowlist: it is not in the endpoint's request schema
 /// at all, so a request carrying it fails on the field even when the model
@@ -569,6 +617,9 @@ async fn response_format_is_rejected_before_the_model_is_looked_at() {
     assert_recorded_request_has(SCENARIO, "response_format", &json!("b64_json"));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/image_params_matrix/non_object_additional_params_are_a_no_op"
+))]
 /// A non-object `additional_params` payload merges nothing and leaves the
 /// derived body exactly as it was.
 #[tokio::test]

@@ -467,6 +467,9 @@ async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation
 // The literal wrapper calls below are intentionally explicit: cassette safety
 // parses source rather than macro expansion.
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_mistral_small_low_model"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_low_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_mistral_small_low_model";
@@ -488,6 +491,9 @@ async fn blocking_mistral_small_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_mistral_small_low_agent"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_low_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_mistral_small_low_agent";
@@ -509,6 +515,9 @@ async fn blocking_mistral_small_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_mistral_small_mid_model"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_mid_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_mistral_small_mid_model";
@@ -530,6 +539,9 @@ async fn blocking_mistral_small_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_mistral_small_mid_agent"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_mid_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_mistral_small_mid_agent";
@@ -551,6 +563,9 @@ async fn blocking_mistral_small_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_mistral_small_complete_model"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_complete_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_mistral_small_complete_model";
@@ -572,6 +587,9 @@ async fn blocking_mistral_small_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_mistral_small_complete_agent"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_complete_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_mistral_small_complete_agent";
@@ -593,6 +611,9 @@ async fn blocking_mistral_small_complete_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_ministral_3b_low_model"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_low_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_ministral_3b_low_model";
@@ -614,6 +635,9 @@ async fn blocking_ministral_3b_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_ministral_3b_low_agent"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_low_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_ministral_3b_low_agent";
@@ -635,6 +659,9 @@ async fn blocking_ministral_3b_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_ministral_3b_mid_model"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_mid_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_ministral_3b_mid_model";
@@ -656,6 +683,9 @@ async fn blocking_ministral_3b_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_ministral_3b_mid_agent"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_mid_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_ministral_3b_mid_agent";
@@ -677,6 +707,9 @@ async fn blocking_ministral_3b_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_ministral_3b_complete_model"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_complete_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_ministral_3b_complete_model";
@@ -698,6 +731,9 @@ async fn blocking_ministral_3b_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/blocking_ministral_3b_complete_agent"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_complete_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/blocking_ministral_3b_complete_agent";
@@ -719,6 +755,9 @@ async fn blocking_ministral_3b_complete_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_mistral_small_low_model"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_low_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_mistral_small_low_model";
@@ -740,6 +779,9 @@ async fn streaming_mistral_small_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_mistral_small_low_agent"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_low_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_mistral_small_low_agent";
@@ -761,6 +803,9 @@ async fn streaming_mistral_small_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_mistral_small_mid_model"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_mid_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_mistral_small_mid_model";
@@ -782,6 +827,9 @@ async fn streaming_mistral_small_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_mistral_small_mid_agent"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_mid_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_mistral_small_mid_agent";
@@ -803,6 +851,9 @@ async fn streaming_mistral_small_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_mistral_small_complete_model"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_complete_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_mistral_small_complete_model";
@@ -824,6 +875,9 @@ async fn streaming_mistral_small_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_mistral_small_complete_agent"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_complete_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_mistral_small_complete_agent";
@@ -845,6 +899,9 @@ async fn streaming_mistral_small_complete_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_ministral_3b_low_model"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_low_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_ministral_3b_low_model";
@@ -866,6 +923,9 @@ async fn streaming_ministral_3b_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_ministral_3b_low_agent"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_low_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_ministral_3b_low_agent";
@@ -887,6 +947,9 @@ async fn streaming_ministral_3b_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_ministral_3b_mid_model"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_mid_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_ministral_3b_mid_model";
@@ -908,6 +971,9 @@ async fn streaming_ministral_3b_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_ministral_3b_mid_agent"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_mid_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_ministral_3b_mid_agent";
@@ -929,6 +995,9 @@ async fn streaming_ministral_3b_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_ministral_3b_complete_model"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_complete_model() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_ministral_3b_complete_model";
@@ -950,6 +1019,9 @@ async fn streaming_ministral_3b_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/tool_truncation_matrix/streaming_ministral_3b_complete_agent"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_complete_agent() -> Result<()> {
     const S: &str = "tool_truncation_matrix/streaming_ministral_3b_complete_agent";

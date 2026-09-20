@@ -15,6 +15,9 @@ use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract};
 use crate::goldens::families;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag"
+))]
 #[tokio::test]
 async fn two_turns_serial_effect_log_is_the_golden_fixture() {
     with_gemini_cassette(

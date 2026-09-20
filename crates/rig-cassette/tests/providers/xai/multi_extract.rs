@@ -73,6 +73,9 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/multi_extract/batch_multi_extract_chain"
+))]
 #[tokio::test]
 async fn batch_multi_extract_chain() -> Result<()> {
     with_xai_cassette_result(

@@ -14,6 +14,9 @@ use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract, FORCE_TOOLS_PREAMBLE};
 use crate::support::assert_mentions_expected_number;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_server/add_tool_between_turns_appears_in_next_request"
+))]
 #[tokio::test]
 async fn add_tool_between_turns_appears_in_next_request() {
     let add = CountingAdd::default();
@@ -62,6 +65,9 @@ async fn add_tool_between_turns_appears_in_next_request() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_server/remove_tool_between_turns_drops_definition"
+))]
 #[tokio::test]
 async fn remove_tool_between_turns_drops_definition() {
     let add = CountingAdd::default();
@@ -112,6 +118,9 @@ async fn remove_tool_between_turns_drops_definition() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/tool_server/shared_tool_server_handle_updates_all_agents"
+))]
 #[tokio::test]
 async fn shared_tool_server_handle_updates_all_agents() {
     let add = CountingAdd::default();

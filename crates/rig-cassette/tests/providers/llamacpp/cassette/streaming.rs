@@ -8,6 +8,9 @@ use crate::support::{
 
 use super::super::cassette_support::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_llamacpp_cassette("streaming/streaming_smoke", |client| async move {
@@ -26,6 +29,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/streaming/example_streaming_prompt"
+))]
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_llamacpp_cassette("streaming/example_streaming_prompt", |client| async move {

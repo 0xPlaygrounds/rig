@@ -42,6 +42,9 @@ fn raw_schema(value: serde_json::Value) -> schemars::Schema {
     serde_json::from_value(value).expect("raw JSON schema should parse")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/structured_output/raw_with_thinking"
+))]
 /// `output_schema_raw` + `think: true` (no tools): structured output must still
 /// be produced and parsed when the model also emits a `thinking` trace. The
 /// existing `structured_output` cassette uses `think: false`, so this covers the
@@ -87,6 +90,9 @@ async fn structured_output_raw_with_thinking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/agentic/structured_output_with_tools"
+))]
 /// The repo-tagger builder config: `output_schema_raw` + a tool + `think: true`
 /// + the multi-turn non-streaming agent loop. This is the #1928 regression: by
 /// default rig now uses Tool output mode, so the schema is offered as the
@@ -154,6 +160,9 @@ async fn structured_output_with_tools_and_thinking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/agentic/streaming_structured_output_with_tools"
+))]
 /// Streaming counterpart of `structured_output_with_tools_and_thinking`. Under
 /// the default Tool output mode the streamed run finalizes via the synthetic
 /// output-tool call, which carries no assistant text. #1928's streaming fix
@@ -220,6 +229,9 @@ async fn streaming_structured_output_with_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/agentic/native_mode"
+))]
 /// Explicit `OutputMode::Native` is the opt-out / escape hatch: the schema is
 /// sent as the provider's native `format` constraint (the pre-#1928 behavior),
 /// which still produces valid structured output. Callers who know their model
@@ -264,6 +276,9 @@ async fn native_mode_emits_structured_output() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/agentic/prompted_mode"
+))]
 /// `OutputMode::Prompted` injects the schema into the system prompt and parses
 /// the model's final text — no native `format`, no output tool. Useful for
 /// models lacking reliable tool calling or native structured output.

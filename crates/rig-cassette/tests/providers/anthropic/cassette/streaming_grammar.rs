@@ -111,6 +111,9 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_grammar/thinking_multi_block_turn"
+))]
 /// Multi-block turn with extended thinking: the thinking block and the text
 /// block(s) survive aggregation as discrete sibling parts — the block
 /// boundaries the wire drew are the boundaries the choice keeps (the item-4
@@ -177,6 +180,9 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming_grammar/parallel_tool_use"
+))]
 /// Parallel tool use in one turn: both `tool_use` blocks survive aggregation
 /// as distinct parts with their recorded `toolu_*` ids.
 #[tokio::test]

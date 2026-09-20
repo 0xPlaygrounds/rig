@@ -88,6 +88,9 @@ const PREAMBLE: &str = "You are a terse assistant.";
 // Reasoning-class models: these could not be capped at all before the fix.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_gpt5_nano_blocking_cap"
+))]
 #[tokio::test]
 async fn reasoning_gpt5_nano_blocking_cap() {
     with_openai_max_tokens_cassette(
@@ -109,6 +112,9 @@ async fn reasoning_gpt5_nano_blocking_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_gpt5_nano_streaming_cap"
+))]
 #[tokio::test]
 async fn reasoning_gpt5_nano_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -129,6 +135,9 @@ async fn reasoning_gpt5_nano_streaming_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_o4_mini_blocking_cap"
+))]
 #[tokio::test]
 async fn reasoning_o4_mini_blocking_cap() {
     with_openai_max_tokens_cassette(
@@ -150,6 +159,9 @@ async fn reasoning_o4_mini_blocking_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_o4_mini_streaming_cap"
+))]
 #[tokio::test]
 async fn reasoning_o4_mini_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -170,6 +182,9 @@ async fn reasoning_o4_mini_streaming_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_gpt5_nano_agent_blocking_cap"
+))]
 #[tokio::test]
 async fn reasoning_gpt5_nano_agent_blocking_cap() {
     with_openai_max_tokens_cassette(
@@ -194,6 +209,9 @@ async fn reasoning_gpt5_nano_agent_blocking_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_gpt5_nano_agent_streaming_cap"
+))]
 #[tokio::test]
 async fn reasoning_gpt5_nano_agent_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -216,6 +234,9 @@ async fn reasoning_gpt5_nano_agent_streaming_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_cap"
+))]
 #[tokio::test]
 async fn reasoning_gpt5_nano_tool_turn_cap() {
     with_openai_max_tokens_cassette(
@@ -242,6 +263,9 @@ async fn reasoning_gpt5_nano_tool_turn_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_streaming_cap"
+))]
 #[tokio::test]
 async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -270,6 +294,9 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
 // recorded request bodies must be byte-identical to what `main` sends.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/legacy_gpt_4o_mini_blocking_cap"
+))]
 #[tokio::test]
 async fn legacy_gpt_4o_mini_blocking_cap() {
     with_openai_max_tokens_cassette(
@@ -291,6 +318,9 @@ async fn legacy_gpt_4o_mini_blocking_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/legacy_gpt_4o_mini_streaming_cap"
+))]
 #[tokio::test]
 async fn legacy_gpt_4o_mini_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -308,6 +338,9 @@ async fn legacy_gpt_4o_mini_streaming_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/legacy_gpt_4_1_nano_blocking_cap"
+))]
 #[tokio::test]
 async fn legacy_gpt_4_1_nano_blocking_cap() {
     with_openai_max_tokens_cassette(
@@ -326,6 +359,9 @@ async fn legacy_gpt_4_1_nano_blocking_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/legacy_gpt_3_5_turbo_blocking_cap"
+))]
 /// The oldest chat model rig names: the far end of the untouched set.
 #[tokio::test]
 async fn legacy_gpt_3_5_turbo_blocking_cap() {
@@ -348,6 +384,9 @@ async fn legacy_gpt_3_5_turbo_blocking_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/legacy_gpt_3_5_turbo_streaming_cap"
+))]
 #[tokio::test]
 async fn legacy_gpt_3_5_turbo_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -369,6 +408,9 @@ async fn legacy_gpt_3_5_turbo_streaming_cap() {
 // Boundary: no cap at all, and caller-supplied spellings.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/uncapped_blocking_sends_neither_spelling"
+))]
 /// An uncapped request must carry *neither* spelling — the recorded body is
 /// the assertion.
 #[tokio::test]
@@ -389,6 +431,9 @@ async fn uncapped_blocking_sends_neither_spelling() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/uncapped_streaming_sends_neither_spelling"
+))]
 #[tokio::test]
 async fn uncapped_streaming_sends_neither_spelling() {
     with_openai_max_tokens_cassette(
@@ -406,6 +451,9 @@ async fn uncapped_streaming_sends_neither_spelling() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/caller_modern_spelling_wins_over_cap"
+))]
 /// A caller who already spells the modern field keeps their own value; the
 /// legacy key still has to leave the body.
 ///
@@ -435,6 +483,9 @@ async fn caller_modern_spelling_wins_over_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/caller_modern_spelling_alone_survives"
+))]
 #[tokio::test]
 async fn caller_modern_spelling_alone_survives() {
     with_openai_max_tokens_cassette(
@@ -456,6 +507,9 @@ async fn caller_modern_spelling_alone_survives() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/caller_legacy_spelling_is_upgraded"
+))]
 /// A caller who hand-spells the *legacy* field through `additional_params` is
 /// upgraded too: the endpoint rejects the field's mere presence, so leaving it
 /// alone would be a 400 the caller cannot see coming.
@@ -487,6 +541,9 @@ async fn caller_legacy_spelling_is_upgraded() {
 // Control: the Responses surface has its own field and must not move.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/responses_surface_keeps_max_output_tokens"
+))]
 #[tokio::test]
 async fn responses_surface_keeps_max_output_tokens() {
     with_openai_max_tokens_cassette(
@@ -505,6 +562,9 @@ async fn responses_surface_keeps_max_output_tokens() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/responses_surface_reasoning_model_cap"
+))]
 #[tokio::test]
 async fn responses_surface_reasoning_model_cap() {
     with_openai_max_tokens_cassette(
@@ -523,6 +583,9 @@ async fn responses_surface_reasoning_model_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/responses_surface_streaming_cap"
+))]
 #[tokio::test]
 async fn responses_surface_streaming_cap() {
     with_openai_max_tokens_cassette(
@@ -540,6 +603,9 @@ async fn responses_surface_streaming_cap() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/max_completion_tokens_matrix/capped_extractor_turn_on_reasoning_model"
+))]
 /// The extractor drives the same request builder, so a capped extraction on a
 /// reasoning model was unreachable for the same reason.
 #[tokio::test]

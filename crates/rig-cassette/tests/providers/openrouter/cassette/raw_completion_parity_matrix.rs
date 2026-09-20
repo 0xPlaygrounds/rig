@@ -73,6 +73,9 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, contex
 // 1. raw reproduces the response it rode on
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_completion_parity_matrix/raw_with_request_id_reproduces_completion"
+))]
 #[tokio::test]
 async fn raw_reproduces_the_completion_it_rode_on() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion";
@@ -134,6 +137,9 @@ async fn raw_reproduces_the_completion_it_rode_on() {
 // 2. The None-contract statement itself
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_completion_parity_matrix/plain_raw_completion_matches_completion_without_id"
+))]
 #[tokio::test]
 async fn no_request_id_contract_holds_on_both_turns() {
     const SCENARIO: &str =

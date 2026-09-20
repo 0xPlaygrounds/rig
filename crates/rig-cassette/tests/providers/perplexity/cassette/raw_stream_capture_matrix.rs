@@ -81,6 +81,9 @@ fn recorded_terminal_frame(scenario: &str) -> Value {
 // 1. raw round-trips the terminal type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type"
+))]
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
@@ -115,6 +118,9 @@ async fn stream_raw_round_trips_terminal_type() {
 // 2. Terminal-only fields the normalized record lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object"
+))]
 #[tokio::test]
 async fn stream_raw_exposes_terminal_usage_and_object() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object";

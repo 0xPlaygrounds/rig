@@ -262,7 +262,12 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
             .lines()
             .filter_map(|line| line.split_whitespace().next())
             .collect();
-        for name in forbidden.split_whitespace() {
+        for name in forbidden.split_whitespace().chain([
+            "rig-test-support",
+            "rig-cassette-inventory",
+            "rig-cassette-macros",
+            "inventory",
+        ]) {
             assert!(
                 !names.contains(&name),
                 "{features} unexpectedly enables {name}:\n{graph}"

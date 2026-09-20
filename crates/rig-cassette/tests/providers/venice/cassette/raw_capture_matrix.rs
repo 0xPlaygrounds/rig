@@ -64,6 +64,9 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 // 1. raw reads back as Venice's own type — and carries more
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/raw_capture_matrix/raw_round_trips_venice_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_venice_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_venice_type";
@@ -109,6 +112,9 @@ async fn raw_round_trips_venice_type() {
 // 2. Fields the normalized response provably lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/raw_capture_matrix/raw_exposes_venice_parameters_and_cost"
+))]
 #[tokio::test]
 async fn raw_exposes_venice_parameters_and_cost() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_venice_parameters_and_cost";
@@ -150,6 +156,9 @@ async fn raw_exposes_venice_parameters_and_cost() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";

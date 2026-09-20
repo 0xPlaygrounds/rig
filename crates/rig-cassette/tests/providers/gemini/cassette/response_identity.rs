@@ -12,6 +12,9 @@ use rig::streaming::StreamEvent;
 
 use super::super::support::with_gemini_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/response_identity/nonstreaming_request_id_is_none_by_design"
+))]
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
     with_gemini_cassette(
@@ -33,6 +36,9 @@ async fn nonstreaming_request_id_is_none_by_design() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/response_identity/streaming_request_id_is_none_by_design"
+))]
 #[tokio::test]
 async fn streaming_request_id_is_none_by_design() {
     with_gemini_cassette(
@@ -62,6 +68,9 @@ async fn streaming_request_id_is_none_by_design() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/response_identity/agent_run_reports_none_identity"
+))]
 /// The documented `None` propagates through the agent surfaces too: hooks and
 /// `completion_calls` report `provider_request_id: None` for Gemini while the
 /// run itself succeeds — absence is data, never an error.
@@ -96,6 +105,9 @@ async fn agent_run_reports_none_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/response_identity/streamed_agent_run_reports_none_identity"
+))]
 /// Streamed parity for the `None` provider through the agent surfaces.
 #[tokio::test]
 async fn streamed_agent_run_reports_none_identity() {
@@ -128,6 +140,9 @@ async fn streamed_agent_run_reports_none_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/response_identity/provider_error_keeps_transport_shape_and_none_id"
+))]
 /// A provider that reports no request id still classifies a 4xx as its
 /// own response — one funnel — and `provider_request_id()` is `None`:
 /// absence on the error path too, never a secondary failure.
@@ -152,6 +167,9 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/response_identity/auth_rejection_keeps_transport_shape"
+))]
 /// 401/403 control cell (rig#2314 error matrix): the contract-less provider's
 /// auth failure is the provider's response, id `None`.
 #[tokio::test]

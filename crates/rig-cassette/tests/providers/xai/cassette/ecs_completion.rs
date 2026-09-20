@@ -4,6 +4,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use crate::xai::support::with_xai_cassette;
 use rig::providers::xai;
 use rig_ecs::agent::DefaultMaxTurns;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_xai_cassette("agent/completion_smoke", |client| async move {

@@ -20,6 +20,9 @@ use crate::support::{Adder, TOOLS_PREAMBLE};
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_behaviors/strict_tools_opt_in_roundtrip"
+))]
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
     with_chatgpt_cassette(
@@ -76,6 +79,9 @@ async fn strict_tools_opt_in_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_behaviors/store_false_and_prompt_cache_fields_roundtrip"
+))]
 #[tokio::test]
 async fn store_false_and_prompt_cache_fields_roundtrip() {
     let scenario = "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip";
@@ -145,6 +151,9 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_behaviors/explicit_preamble_and_mid_conversation_system_messages_are_instructions"
+))]
 #[tokio::test]
 async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions() {
     with_chatgpt_cassette(
@@ -179,6 +188,9 @@ async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_behaviors/default_instructions_merge_with_explicit_preamble"
+))]
 #[tokio::test]
 async fn default_instructions_merge_with_explicit_preamble() {
     with_chatgpt_cassette_default_instructions(

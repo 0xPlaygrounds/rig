@@ -8,6 +8,9 @@ use serde_json::json;
 use super::support::with_xai_cassette;
 use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/image_generation/image_generation_smoke"
+))]
 #[tokio::test]
 async fn image_generation_smoke() {
     with_xai_cassette(

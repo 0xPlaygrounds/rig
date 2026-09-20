@@ -56,6 +56,9 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 // 1. raw reads back as the terminal type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type"
+))]
 #[tokio::test]
 async fn stream_raw_reads_back_as_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
@@ -91,6 +94,9 @@ async fn stream_raw_reads_back_as_terminal_type() {
 // 2. Terminal-only fields the normalized record lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider"
+))]
 #[tokio::test]
 async fn stream_raw_exposes_terminal_cost_and_provider() {
     const SCENARIO: &str =

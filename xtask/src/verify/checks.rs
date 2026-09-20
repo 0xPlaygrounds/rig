@@ -78,12 +78,23 @@ pub(super) fn all() -> Vec<Check> {
                         "test_dependency_floors.py",
                     ],
                 ),
-                cargo(&["test", "--locked", "-p", "xtask"]),
+                cargo(&[
+                    "test",
+                    "--locked",
+                    "-p",
+                    "xtask",
+                    "-p",
+                    "rig-cassette-inventory",
+                ]),
                 cargo(&[
                     "clippy",
                     "--locked",
                     "-p",
                     "xtask",
+                    "-p",
+                    "rig-cassette-inventory",
+                    "-p",
+                    "rig-cassette-macros",
                     "--all-targets",
                     "--",
                     "-D",
@@ -130,6 +141,12 @@ pub(super) fn all() -> Vec<Check> {
                 "-E",
                 "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay) or test(/(^|::)(ecs|corpus)_/))) and not (package(rig) and test(golden_pairing))",
             ])],
+        ),
+        check(
+            "cassette-inventory",
+            // Reuse the provider binaries built by default-tests, and prove
+            // every fixture directory has compiled declarations and safety tests.
+            vec![cargo(&["xtask", "cassettes", "check"])],
         ),
         // Parity cells have one lane owner; default-tests excludes them. They
         // moved with the cassette-backed provider suites, so the predicate is

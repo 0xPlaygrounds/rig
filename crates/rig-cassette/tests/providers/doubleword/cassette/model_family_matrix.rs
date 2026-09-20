@@ -97,6 +97,9 @@ fn assert_recorded_model(scenario: &str, requested_model: &str, streaming: bool)
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/qwen_3_5_family_blocking"
+))]
 #[tokio::test]
 async fn qwen_3_5_family_blocking() {
     const SCENARIO: &str = "model_family_matrix/qwen_3_5_family_blocking";
@@ -110,6 +113,9 @@ async fn qwen_3_5_family_blocking() {
     assert_recorded_model(SCENARIO, doubleword::QWEN3_5_9B, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/qwen_3_6_family_blocking"
+))]
 #[tokio::test]
 async fn qwen_3_6_family_blocking() {
     const SCENARIO: &str = "model_family_matrix/qwen_3_6_family_blocking";
@@ -123,6 +129,9 @@ async fn qwen_3_6_family_blocking() {
     assert_recorded_model(SCENARIO, doubleword::QWEN3_6_35B_A3B, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/gpt_oss_family_blocking"
+))]
 #[tokio::test]
 async fn gpt_oss_family_blocking() {
     const SCENARIO: &str = "model_family_matrix/gpt_oss_family_blocking";
@@ -136,6 +145,9 @@ async fn gpt_oss_family_blocking() {
     assert_recorded_model(SCENARIO, doubleword::GPT_OSS_20B, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/deepseek_family_blocking"
+))]
 #[tokio::test]
 async fn deepseek_family_blocking() {
     const SCENARIO: &str = "model_family_matrix/deepseek_family_blocking";
@@ -149,6 +161,9 @@ async fn deepseek_family_blocking() {
     assert_recorded_model(SCENARIO, doubleword::DEEPSEEK_V4_FLASH, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/kimi_family_blocking"
+))]
 #[tokio::test]
 async fn kimi_family_blocking() {
     const SCENARIO: &str = "model_family_matrix/kimi_family_blocking";
@@ -162,6 +177,9 @@ async fn kimi_family_blocking() {
     assert_recorded_model(SCENARIO, doubleword::KIMI_K2_6, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/glm_family_blocking"
+))]
 #[tokio::test]
 async fn glm_family_blocking() {
     const SCENARIO: &str = "model_family_matrix/glm_family_blocking";
@@ -175,6 +193,9 @@ async fn glm_family_blocking() {
     assert_recorded_model(SCENARIO, doubleword::GLM_5_2, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/model_family_matrix/default_qwen_family_streaming"
+))]
 #[tokio::test]
 async fn default_qwen_family_streaming() {
     const SCENARIO: &str = "model_family_matrix/default_qwen_family_streaming";

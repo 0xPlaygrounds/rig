@@ -14,3 +14,5 @@ use rig_test_support::support;
 #[cfg(feature = "bedrock")]
 #[path = "providers/bedrock/mod.rs"]
 mod bedrock;
+
+rig_test_support::cassette_inventory!();

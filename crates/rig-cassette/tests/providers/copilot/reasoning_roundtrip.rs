@@ -74,6 +74,9 @@ impl CompletionModel for CapturingProviderFinals {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/reasoning_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_copilot_cassette("reasoning_roundtrip/streaming", |client| async move {
@@ -108,6 +111,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/reasoning_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_copilot_cassette("reasoning_roundtrip/nonstreaming", |client| async move {

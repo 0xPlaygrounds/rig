@@ -13,6 +13,9 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use super::super::support::with_anthropic_cassette;
 use crate::reasoning::{self, WeatherTool};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_tool_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_anthropic_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
@@ -52,6 +55,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_tool_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_anthropic_cassette(

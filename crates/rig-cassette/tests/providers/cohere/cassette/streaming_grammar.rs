@@ -79,6 +79,9 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     run
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/streaming_grammar/thinking_stream"
+))]
 /// A `thinking`-bearing stream: the thinking deltas aggregate into one
 /// reasoning part that survives as a discrete sibling of the answer text.
 #[tokio::test]
@@ -156,6 +159,9 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/streaming_grammar/reasoning_then_tool_call"
+))]
 /// A tool call interrupting an open thinking block: the `ToolCallStart`
 /// handler synthesizes the reasoning block's boundary end before the tool
 /// call starts (`MintedReasoningLifecycle::emit_chunk`, #2262 phase A) — this
@@ -223,6 +229,9 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/streaming_grammar/required_tool_choice_streams_tool_call"
+))]
 #[tokio::test]
 async fn required_tool_choice_streams_tool_call() {
     with_cohere_cassette(
@@ -255,6 +264,9 @@ async fn required_tool_choice_streams_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/streaming_grammar/none_tool_choice_streams_text"
+))]
 #[tokio::test]
 async fn none_tool_choice_streams_text() {
     with_cohere_cassette(

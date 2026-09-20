@@ -4,6 +4,9 @@ use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 use rig::providers::openai;
 use rig_agent::test_utils::validate_extraction_fields;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_openai_cassette("extractor/extractor_smoke", |client| async move {

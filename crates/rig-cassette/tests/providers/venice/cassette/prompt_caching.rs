@@ -52,6 +52,9 @@ pub(super) fn probe() -> CacheProbe {
     CacheProbe::new("venice prompt caching")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
@@ -67,6 +70,9 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     assert_breakpoints_match_support("venice", SCENARIO, &VENICE_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
@@ -82,6 +88,9 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     assert_breakpoints_match_support("venice", SCENARIO, &VENICE_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/prompt_caching/cache_key_stable"
+))]
 /// Venice's `prompt_cache_key` must reach the wire and stay identical across turns.
 ///
 /// The field is Venice's own request extension, reaching the wire through
@@ -128,6 +137,9 @@ async fn live_cache_economics() {
     report_and_assert_live(&observation, &VENICE_CACHE_SUPPORT, "live_cache_economics");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/prompt_caching/agent_loop"
+))]
 /// A real agent loop with a tool round-trip.
 ///
 /// The cell the three-turn probe cannot replace. The probe builds its own

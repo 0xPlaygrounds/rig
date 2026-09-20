@@ -29,6 +29,9 @@ fn first_tool_call(choice: &[AssistantContent]) -> Option<ToolCall> {
     })
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/basic_interaction_returns_id"
+))]
 #[tokio::test]
 async fn basic_interaction_returns_id() {
     super::super::support::with_gemini_interactions_cassette(
@@ -70,6 +73,9 @@ async fn basic_interaction_returns_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/followup_with_previous_interaction_id"
+))]
 #[tokio::test]
 async fn followup_with_previous_interaction_id() {
     super::super::support::with_gemini_interactions_cassette(
@@ -122,6 +128,9 @@ async fn followup_with_previous_interaction_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/google_search_tool_interaction"
+))]
 #[tokio::test]
 async fn google_search_tool_interaction() {
     super::super::support::with_gemini_interactions_cassette(
@@ -161,6 +170,9 @@ async fn google_search_tool_interaction() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/tool_result_roundtrip"
+))]
 #[tokio::test]
 async fn tool_result_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
@@ -236,6 +248,9 @@ async fn tool_result_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/streaming_interaction"
+))]
 #[tokio::test]
 async fn streaming_interaction() {
     super::super::support::with_gemini_interactions_cassette(
@@ -273,6 +288,9 @@ async fn streaming_interaction() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/streaming_final_metadata_exposes_model_version"
+))]
 #[tokio::test]
 async fn streaming_final_metadata_exposes_model_version() {
     super::super::support::with_gemini_interactions_cassette(
@@ -323,6 +341,9 @@ async fn streaming_final_metadata_exposes_model_version() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_api/basic_interaction_returns_id"
+))]
 /// The Interactions surface must surface every token counter it is sent.
 ///
 /// Replays a cassette recorded long before this assertion existed, which is what

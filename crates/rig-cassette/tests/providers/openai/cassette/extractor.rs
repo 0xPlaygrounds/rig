@@ -7,6 +7,9 @@ use rig_agent::test_utils::validate_extraction_fields;
 use super::super::support::with_openai_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_openai_cassette("extractor/extractor_smoke", |client| async move {

@@ -7,6 +7,9 @@ use super::super::{
 use super::ecs_stress_streaming_runtime::{self as runtime, EventTap};
 use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
 use rig::providers::gemini;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_streaming/streaming_text_only_emits_text_deltas_and_stream_finish"
+))]
 #[tokio::test]
 async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
     let tap = EventTap::default();
@@ -51,6 +54,9 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_streaming/streaming_tool_turns_fire_model_turn_finished"
+))]
 #[tokio::test]
 async fn streaming_tool_turns_fire_model_turn_finished() {
     let add = CountingAdd::default();
@@ -98,6 +104,9 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_streaming/streaming_result_redaction_reaches_final_response"
+))]
 #[tokio::test]
 async fn streaming_result_redaction_reaches_final_response() {
     let add = CountingAdd::default();
@@ -137,6 +146,9 @@ async fn streaming_result_redaction_reaches_final_response() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_streaming/streaming_active_tools_narrowing_filters_a_tool"
+))]
 #[tokio::test]
 async fn streaming_active_tools_narrowing_filters_a_tool() {
     let add = CountingAdd::default();
@@ -185,6 +197,9 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_streaming/streaming_skip_leaves_tool_unexecuted"
+))]
 #[tokio::test]
 async fn streaming_skip_leaves_tool_unexecuted() {
     let add = CountingAdd::default();
@@ -225,6 +240,10 @@ async fn streaming_skip_leaves_tool_unexecuted() {
     )
     .await;
 }
+#[rig_test_support::cassette(
+    rig_test_support::recording::Scenario::live("gemini/hook_stress_streaming/parity_blocking"),
+    rig_test_support::recording::Scenario::live("gemini/hook_stress_streaming/parity_streaming")
+)]
 #[tokio::test]
 async fn blocking_and_streaming_produce_same_final_answer() {
     const PROMPT: &str = "First add 10 and 5 with the add tool. Then subtract 3 from that sum with \

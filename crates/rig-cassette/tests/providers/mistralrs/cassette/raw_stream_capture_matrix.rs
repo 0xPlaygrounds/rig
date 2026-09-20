@@ -59,6 +59,7 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("mistralrs/raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// The premise every streaming cell rests on: the scenario recorded exactly
 /// one interaction whose SSE stream's last JSON frame carries `usage`. Returns
 /// `(all frames, terminal frame)`.
@@ -119,6 +120,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 // 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("mistralrs/raw_stream_capture_matrix/stream_raw_exposes_envelope_fields").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn stream_raw_exposes_envelope_fields() {

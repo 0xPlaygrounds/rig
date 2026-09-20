@@ -41,6 +41,9 @@ fn has_redacted_reasoning(content: &AssistantContent) -> bool {
     )
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_thinking/redacted_thinking_roundtrip_nonstreaming"
+))]
 #[tokio::test]
 async fn redacted_thinking_roundtrip_nonstreaming() {
     with_anthropic_cassette(
@@ -99,6 +102,9 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_thinking/static_prefix_ttl_coexists_with_extended_thinking"
+))]
 /// Extended thinking and a 1h static prefix coexist: thinking params ride
 /// `additional_params` while the knob adds prefix `cache_control` markers.
 #[tokio::test]
@@ -145,6 +151,9 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_thinking/redacted_thinking_streaming"
+))]
 #[tokio::test]
 async fn redacted_thinking_streaming() {
     with_anthropic_cassette(

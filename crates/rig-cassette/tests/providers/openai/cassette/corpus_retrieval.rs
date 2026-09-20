@@ -47,6 +47,9 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_retrieval/dynamic_context_one"
+))]
 #[tokio::test]
 async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
@@ -77,6 +80,9 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_retrieval/dynamic_context_one_streamed"
+))]
 #[tokio::test]
 async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
@@ -109,6 +115,9 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_retrieval/retrieved_tools_one"
+))]
 #[tokio::test]
 async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
@@ -150,6 +159,9 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_retrieval/retrieved_tools_one_streamed"
+))]
 #[tokio::test]
 async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
@@ -189,6 +201,9 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/corpus_retrieval/context_and_tools"
+))]
 #[tokio::test]
 async fn context_and_tools_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(

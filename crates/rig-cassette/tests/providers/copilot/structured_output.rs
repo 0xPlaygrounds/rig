@@ -43,6 +43,9 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/structured_output/structured_output_smoke"
+))]
 #[tokio::test]
 async fn structured_output_smoke() {
     with_copilot_cassette(
@@ -62,6 +65,9 @@ async fn structured_output_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/structured_output/prompt_typed_and_output_schema"
+))]
 #[tokio::test]
 async fn prompt_typed_and_output_schema() {
     with_copilot_cassette(

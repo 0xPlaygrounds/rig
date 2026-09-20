@@ -32,6 +32,9 @@ const CACHE_PADDING_SENTENCE: &str = "\
 This cache fixture paragraph is stable provider test padding about request routing, \
 tool schemas, system instructions, and deterministic replay behavior.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/manual_prompt_caching_reuses_tool_cache"
+))]
 #[tokio::test]
 async fn manual_prompt_caching_reuses_tool_cache() {
     with_anthropic_cassette(
@@ -65,6 +68,9 @@ async fn manual_prompt_caching_reuses_tool_cache() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/streaming_prompt_caching_reuses_tool_cache"
+))]
 #[tokio::test]
 async fn streaming_prompt_caching_reuses_tool_cache() {
     with_anthropic_cassette(
@@ -103,6 +109,9 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/prompt_and_automatic_caching_reuses_tool_cache"
+))]
 #[tokio::test]
 async fn prompt_and_automatic_caching_reuses_tool_cache() {
     with_anthropic_cassette(
@@ -375,6 +384,9 @@ const PREFIX_UNSET: Option<CacheTtl> = None;
 const PREFIX_5M: Option<CacheTtl> = Some(CacheTtl::FiveMinutes);
 const PREFIX_1H: Option<CacheTtl> = Some(CacheTtl::OneHour);
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_unset_no_tools_nonstreaming"
+))]
 /// One test per knob combination. Cells deliberately absent from this list:
 ///
 /// - `automatic_1h`/`manual_automatic_1h` × `prefix_5m` (8 cells): the illegal
@@ -406,6 +418,9 @@ async fn manual_prefix_unset_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_unset_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_prefix_unset_no_tools_streaming() {
     with_anthropic_cassette(
@@ -425,6 +440,9 @@ async fn manual_prefix_unset_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_5m_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_prefix_5m_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -444,6 +462,9 @@ async fn manual_prefix_5m_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_5m_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_prefix_5m_tools_streaming() {
     with_anthropic_cassette(
@@ -463,6 +484,9 @@ async fn manual_prefix_5m_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_5m_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_prefix_5m_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -482,6 +506,9 @@ async fn manual_prefix_5m_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_5m_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_prefix_5m_no_tools_streaming() {
     with_anthropic_cassette(
@@ -501,6 +528,9 @@ async fn manual_prefix_5m_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_1h_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_prefix_1h_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -520,6 +550,9 @@ async fn manual_prefix_1h_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_1h_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_prefix_1h_tools_streaming() {
     with_anthropic_cassette(
@@ -539,6 +572,9 @@ async fn manual_prefix_1h_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_1h_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_prefix_1h_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -558,6 +594,9 @@ async fn manual_prefix_1h_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_prefix_1h_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_prefix_1h_no_tools_streaming() {
     with_anthropic_cassette(
@@ -577,6 +616,9 @@ async fn manual_prefix_1h_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_unset_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_unset_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -596,6 +638,9 @@ async fn automatic_prefix_unset_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_unset_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_unset_tools_streaming() {
     with_anthropic_cassette(
@@ -615,6 +660,9 @@ async fn automatic_prefix_unset_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_unset_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_unset_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -634,6 +682,9 @@ async fn automatic_prefix_unset_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_unset_no_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_unset_no_tools_streaming() {
     with_anthropic_cassette(
@@ -653,6 +704,9 @@ async fn automatic_prefix_unset_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_5m_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_5m_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -672,6 +726,9 @@ async fn automatic_prefix_5m_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_5m_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_5m_tools_streaming() {
     with_anthropic_cassette(
@@ -691,6 +748,9 @@ async fn automatic_prefix_5m_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_5m_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_5m_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -710,6 +770,9 @@ async fn automatic_prefix_5m_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_5m_no_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_5m_no_tools_streaming() {
     with_anthropic_cassette(
@@ -729,6 +792,9 @@ async fn automatic_prefix_5m_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_1h_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_1h_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -748,6 +814,9 @@ async fn automatic_prefix_1h_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_1h_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_1h_tools_streaming() {
     with_anthropic_cassette(
@@ -767,6 +836,9 @@ async fn automatic_prefix_1h_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_1h_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_1h_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -786,6 +858,9 @@ async fn automatic_prefix_1h_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_prefix_1h_no_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_prefix_1h_no_tools_streaming() {
     with_anthropic_cassette(
@@ -805,6 +880,9 @@ async fn automatic_prefix_1h_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_unset_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_unset_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -824,6 +902,9 @@ async fn automatic_1h_prefix_unset_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_unset_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_unset_tools_streaming() {
     with_anthropic_cassette(
@@ -843,6 +924,9 @@ async fn automatic_1h_prefix_unset_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_unset_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_unset_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -862,6 +946,9 @@ async fn automatic_1h_prefix_unset_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_unset_no_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_unset_no_tools_streaming() {
     with_anthropic_cassette(
@@ -881,6 +968,9 @@ async fn automatic_1h_prefix_unset_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_1h_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_1h_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -900,6 +990,9 @@ async fn automatic_1h_prefix_1h_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_1h_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_1h_tools_streaming() {
     with_anthropic_cassette(
@@ -919,6 +1012,9 @@ async fn automatic_1h_prefix_1h_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_1h_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_1h_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -938,6 +1034,9 @@ async fn automatic_1h_prefix_1h_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_automatic_1h_prefix_1h_no_tools_streaming"
+))]
 #[tokio::test]
 async fn automatic_1h_prefix_1h_no_tools_streaming() {
     with_anthropic_cassette(
@@ -957,6 +1056,9 @@ async fn automatic_1h_prefix_1h_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_unset_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_unset_tools_streaming() {
     with_anthropic_cassette(
@@ -976,6 +1078,9 @@ async fn manual_automatic_prefix_unset_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_unset_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_unset_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -995,6 +1100,9 @@ async fn manual_automatic_prefix_unset_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_unset_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_unset_no_tools_streaming() {
     with_anthropic_cassette(
@@ -1014,6 +1122,9 @@ async fn manual_automatic_prefix_unset_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_5m_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_5m_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -1033,6 +1144,9 @@ async fn manual_automatic_prefix_5m_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_5m_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_5m_tools_streaming() {
     with_anthropic_cassette(
@@ -1052,6 +1166,9 @@ async fn manual_automatic_prefix_5m_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_5m_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_5m_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -1071,6 +1188,9 @@ async fn manual_automatic_prefix_5m_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_5m_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_5m_no_tools_streaming() {
     with_anthropic_cassette(
@@ -1090,6 +1210,9 @@ async fn manual_automatic_prefix_5m_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_1h_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_1h_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -1109,6 +1232,9 @@ async fn manual_automatic_prefix_1h_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_1h_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_1h_tools_streaming() {
     with_anthropic_cassette(
@@ -1128,6 +1254,9 @@ async fn manual_automatic_prefix_1h_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_1h_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_1h_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -1147,6 +1276,9 @@ async fn manual_automatic_prefix_1h_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_prefix_1h_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_prefix_1h_no_tools_streaming() {
     with_anthropic_cassette(
@@ -1166,6 +1298,9 @@ async fn manual_automatic_prefix_1h_no_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_1h_prefix_unset_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_1h_prefix_unset_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -1185,6 +1320,9 @@ async fn manual_automatic_1h_prefix_unset_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_1h_prefix_unset_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_1h_prefix_unset_tools_streaming() {
     with_anthropic_cassette(
@@ -1204,6 +1342,9 @@ async fn manual_automatic_1h_prefix_unset_tools_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_1h_prefix_unset_no_tools_nonstreaming"
+))]
 #[tokio::test]
 async fn manual_automatic_1h_prefix_unset_no_tools_nonstreaming() {
     with_anthropic_cassette(
@@ -1223,6 +1364,9 @@ async fn manual_automatic_1h_prefix_unset_no_tools_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/matrix_manual_automatic_1h_prefix_unset_no_tools_streaming"
+))]
 #[tokio::test]
 async fn manual_automatic_1h_prefix_unset_no_tools_streaming() {
     with_anthropic_cassette(
@@ -1286,6 +1430,9 @@ async fn static_prefix_5m_with_manual_automatic_1h_errors_client_side_streaming(
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/static_prefix_with_explicit_tool_marker_at_marker_limit"
+))]
 /// Two explicit provider-tool markers plus the knob's system marker plus the
 /// automatic top-level breakpoint lands exactly on Anthropic's 4-marker limit.
 /// (The knob's tool marker is not spent: the final tool already carries an
@@ -1601,6 +1748,9 @@ pub(super) fn conformance_probe() -> CacheProbe {
     CacheProbe::new("anthropic cache conformance")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/conformance_blocking_probe"
+))]
 #[tokio::test]
 async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
     const SCENARIO: &str = "prompt_caching/conformance_blocking_probe";
@@ -1625,6 +1775,9 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
     assert_breakpoints_match_support("anthropic", SCENARIO, &ANTHROPIC_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/conformance_streaming_probe"
+))]
 #[tokio::test]
 async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
     const SCENARIO: &str = "prompt_caching/conformance_streaming_probe";
@@ -1649,6 +1802,9 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
     assert_breakpoints_match_support("anthropic", SCENARIO, &ANTHROPIC_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/prompt_caching/conformance_agent_loop"
+))]
 /// A real agent loop with a tool round-trip.
 ///
 /// The cell the three-turn probe cannot replace: the probe builds its own

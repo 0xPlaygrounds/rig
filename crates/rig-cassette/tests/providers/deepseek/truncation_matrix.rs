@@ -346,6 +346,9 @@ async fn assert_streaming_truncation_survives(
 // A. Blocking budget sweep
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_12_truncates_before_any_tool_call"
+))]
 #[tokio::test]
 async fn blocking_budget_12_truncates_before_any_tool_call() {
     const SCENARIO: &str = "truncation_matrix/blocking_budget_12_truncates_before_any_tool_call";
@@ -384,6 +387,9 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
     assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length"
+))]
 #[tokio::test]
 async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
@@ -423,6 +429,9 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_20_empty_arguments_are_dropped_on_length"
+))]
 #[tokio::test]
 async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
@@ -459,6 +468,9 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
     assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_24_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn blocking_budget_24_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str = "truncation_matrix/blocking_budget_24_truncated_arguments_keep_the_turn";
@@ -472,6 +484,9 @@ async fn blocking_budget_24_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_32_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn blocking_budget_32_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str = "truncation_matrix/blocking_budget_32_truncated_arguments_keep_the_turn";
@@ -485,6 +500,9 @@ async fn blocking_budget_32_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_48_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn blocking_budget_48_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str = "truncation_matrix/blocking_budget_48_truncated_arguments_keep_the_turn";
@@ -498,6 +516,9 @@ async fn blocking_budget_48_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_64_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn blocking_budget_64_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str = "truncation_matrix/blocking_budget_64_truncated_arguments_keep_the_turn";
@@ -511,6 +532,9 @@ async fn blocking_budget_64_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_budget_96_complete_arguments_are_untouched"
+))]
 #[tokio::test]
 async fn blocking_budget_96_complete_arguments_are_untouched() {
     const SCENARIO: &str = "truncation_matrix/blocking_budget_96_complete_arguments_are_untouched";
@@ -552,6 +576,9 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
 // B. Streaming budget sweep (the parity twin)
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_12_truncates_before_any_tool_call"
+))]
 #[tokio::test]
 async fn streaming_budget_12_truncates_before_any_tool_call() {
     const SCENARIO: &str = "truncation_matrix/streaming_budget_12_truncates_before_any_tool_call";
@@ -586,6 +613,9 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
     assert_eq!(recorded_stream_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length"
+))]
 #[tokio::test]
 async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
@@ -626,6 +656,9 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
     assert_eq!(recorded_stream_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_24_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn streaming_budget_24_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str =
@@ -642,6 +675,9 @@ async fn streaming_budget_24_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_32_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn streaming_budget_32_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str =
@@ -658,6 +694,9 @@ async fn streaming_budget_32_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_48_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn streaming_budget_48_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str =
@@ -674,6 +713,9 @@ async fn streaming_budget_48_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_64_truncated_arguments_keep_the_turn"
+))]
 #[tokio::test]
 async fn streaming_budget_64_truncated_arguments_keep_the_turn() {
     const SCENARIO: &str =
@@ -690,6 +732,9 @@ async fn streaming_budget_64_truncated_arguments_keep_the_turn() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_budget_96_complete_arguments_are_untouched"
+))]
 #[tokio::test]
 async fn streaming_budget_96_complete_arguments_are_untouched() {
     const SCENARIO: &str = "truncation_matrix/streaming_budget_96_complete_arguments_are_untouched";
@@ -724,6 +769,9 @@ async fn streaming_budget_96_complete_arguments_are_untouched() {
 // C. Parallel calls: only the truncated one is lost
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_parallel_calls_keep_the_complete_one"
+))]
 #[tokio::test]
 async fn blocking_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/blocking_parallel_calls_keep_the_complete_one";
@@ -768,6 +816,9 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
     assert_unparseable(&arguments[1], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_parallel_calls_keep_the_complete_one"
+))]
 #[tokio::test]
 async fn streaming_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/streaming_parallel_calls_keep_the_complete_one";
@@ -808,6 +859,9 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
 // D. The turn spoke before it was cut: the text must survive too
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_text_before_a_truncated_call_survives"
+))]
 #[tokio::test]
 async fn blocking_text_before_a_truncated_call_survives() {
     const SCENARIO: &str = "truncation_matrix/blocking_text_before_a_truncated_call_survives";
@@ -853,6 +907,9 @@ async fn blocking_text_before_a_truncated_call_survives() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_text_before_a_truncated_call_survives"
+))]
 #[tokio::test]
 async fn streaming_text_before_a_truncated_call_survives() {
     const SCENARIO: &str = "truncation_matrix/streaming_text_before_a_truncated_call_survives";
@@ -891,6 +948,9 @@ async fn streaming_text_before_a_truncated_call_survives() {
 // E. Reasoner turns share the decode
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/blocking_reasoner_truncated_call_keeps_the_reasoning_block"
+))]
 #[tokio::test]
 async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
     const SCENARIO: &str =
@@ -934,6 +994,9 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/streaming_reasoner_truncated_call_keeps_the_reasoning_block"
+))]
 #[tokio::test]
 async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
     const SCENARIO: &str =
@@ -1063,6 +1126,9 @@ impl rig::tool::Tool for ZeroArgumentFileReport {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked"
+))]
 #[tokio::test]
 async fn agent_blocking_truncated_call_is_not_invoked() {
     const SCENARIO: &str = "truncation_matrix/agent_blocking_truncated_call_is_not_invoked";
@@ -1113,6 +1179,9 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
     assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_streaming_truncated_call_is_not_invoked"
+))]
 #[tokio::test]
 async fn agent_streaming_truncated_call_is_not_invoked() {
     const SCENARIO: &str = "truncation_matrix/agent_streaming_truncated_call_is_not_invoked";
@@ -1156,6 +1225,9 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked"
+))]
 /// The empty-arguments boundary is safety-sensitive at agent level: without
 /// consulting the outer `length` reason, `{}` would be dispatched to a
 /// zero-argument side-effect tool even though generation ended before the
@@ -1201,6 +1273,9 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
     assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked"
+))]
 #[tokio::test]
 async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
     const SCENARIO: &str =

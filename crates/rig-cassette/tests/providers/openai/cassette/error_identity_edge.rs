@@ -13,6 +13,9 @@ use super::super::support::{
 };
 use crate::support::assert_transport_request_id;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/auth_rejection_carries_identity"
+))]
 /// 401 auth rejection — the fixture documents whether OpenAI's auth tier
 /// sends `x-request-id` (assertion derived from the recording).
 #[tokio::test]
@@ -39,6 +42,9 @@ async fn auth_rejection_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/nonexistent_previous_response_reference_carries_identity"
+))]
 /// 404 *reference* error: a `previous_response_id` naming a nonexistent
 /// response — the id-reference path, distinct from model-not-found. The
 /// error belongs to the failing call, never the referenced response.
@@ -71,6 +77,9 @@ async fn nonexistent_previous_response_reference_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/chat_completions_validation_error_carries_identity"
+))]
 /// 400 validation on the Chat Completions API (the second unary API's
 /// validation tier).
 #[tokio::test]
@@ -98,6 +107,9 @@ async fn chat_completions_validation_error_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/streaming_connect_4xx_matches_blocking_richness"
+))]
 /// Streaming connect 4xx on the Responses API: post-fix, the handshake error
 /// matches its blocking twin — ProviderResponse with status, body, and id.
 #[tokio::test]
@@ -130,6 +142,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/embeddings_error_preserves_status_and_body"
+))]
 /// Family C: an embeddings 4xx keeps the provider's status and body, and
 /// carries the transport request id the recording shows on the wire — the
 /// embeddings wire reports `x-request-id` like every other route on this
@@ -160,6 +175,9 @@ async fn embeddings_error_preserves_status_and_body() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/model_listing_auth_failure_keeps_api_error_context"
+))]
 /// Family C: the model-listing 401 live — the #2315 review's P1 fix on the
 /// wire: an auth failure classifies as `ApiError` with provider and path
 /// context, not a `RequestError` fallback.
@@ -190,6 +208,9 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/verify_reports_invalid_authentication"
+))]
 /// Family C: `verify()` against a bogus key — the review flagged its
 /// status-match arms as possibly dead under the erroring transport; this
 /// recording settles what actually happens (assertion derived from it).
@@ -212,6 +233,9 @@ async fn verify_reports_invalid_authentication() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_identity_edge/extractor_failure_surfaces_provider_error_context"
+))]
 /// Family C: an extractor run against a failing model — the failure chain
 /// exposes the identity accessors through `StructuredOutputError`'s prompt-error
 /// wrap (or documents the gap).

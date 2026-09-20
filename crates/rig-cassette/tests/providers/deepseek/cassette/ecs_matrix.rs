@@ -211,6 +211,7 @@ crate::matrix::golden_matrix! {
 
 crate::matrix::case_matrix! {
     wrapper: with_deepseek_cassette, family: wire_matrix_case;
+    #[cassette_missing("deepseek-flash rejects enabling thinking after a disabled tool turn with HTTP 400: prior reasoning_content required; record-deepseek-shaping-thinking-second-turn-attempt-1.log and https://api-docs.deepseek.com/guides/thinking_mode/; the model refuses this setting transition")]
     #[ignore = "deepseek-flash rejects enabling thinking after a disabled tool turn with HTTP 400: prior reasoning_content required; record-deepseek-shaping-thinking-second-turn-attempt-1.log and https://api-docs.deepseek.com/guides/thinking_mode/; the model refuses this setting transition"]
     #[tokio::test]
     shaping_thinking_second_turn: ("corpus_matrix/shaping_thinking_second_turn", shaping_thinking_second_turn_18);

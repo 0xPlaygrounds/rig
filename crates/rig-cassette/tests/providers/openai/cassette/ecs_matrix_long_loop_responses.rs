@@ -6,6 +6,13 @@
 //! no cassette and no golden; the negative probe mutates the streamed
 //! recording's last tool result and proves the strict matcher refuses it.
 
+rig_test_support::scripted_family! {
+    const SCRIPTED_SOURCES: "openai", "ecs_matrix_long_loop_responses", [
+        "corpus_faults_responses/setup_unary",
+        "long_loop_matrix_responses/long_unary",
+    ]
+}
+
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::completion::CompletionModel;
@@ -47,7 +54,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
 const SETUP_REPLY: &str = "corpus_faults_responses/setup_unary";
 
 fn fault_reply() -> MockHttpResponse {
-    crate::stream_faults::status_reply("openai", SETUP_REPLY, 503, false)
+    SCRIPTED_SOURCES.status_reply(SETUP_REPLY, 503, false)
 }
 
 crate::matrix::resume_matrix! {
@@ -78,6 +85,9 @@ crate::matrix::resume_matrix! {
     max_turns_midway: ("long_loop_matrix_responses/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, long_loop::MAX_TURNS_MIDWAY.resume_after, golden_openai_responses_long_loop_max_turns_midway);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/long_loop_matrix_responses/output_cap_midway"
+))]
 #[tokio::test]
 async fn output_cap_midway() {
     with_openai_cassette(

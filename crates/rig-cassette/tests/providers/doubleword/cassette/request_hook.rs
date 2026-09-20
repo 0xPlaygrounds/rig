@@ -54,6 +54,9 @@ impl AgentHook for ObservingHook {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/request_hook/request_hook_records_prompt_and_response"
+))]
 #[tokio::test]
 async fn request_hook_records_prompt_and_response() {
     with_doubleword_cassette(

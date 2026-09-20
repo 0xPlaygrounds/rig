@@ -10,6 +10,9 @@ use rig::providers::venice;
 
 use super::super::support::with_venice_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/image_generation/image_generation_smoke"
+))]
 #[tokio::test]
 async fn image_generation_smoke() {
     with_venice_cassette(

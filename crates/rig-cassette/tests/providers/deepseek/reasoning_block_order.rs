@@ -110,6 +110,9 @@ fn assert_reasoning_leads(kinds: &[&str], context: &str) {
 // A. Reasoner turn that calls one tool
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/blocking_reasoner_tool_turn_leads_with_reasoning"
+))]
 #[tokio::test]
 async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
@@ -141,6 +144,9 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
     .expect("blocking_reasoner_tool_turn_leads_with_reasoning should replay from its cassette");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/streaming_reasoner_tool_turn_leads_with_reasoning"
+))]
 #[tokio::test]
 async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
@@ -179,6 +185,9 @@ async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
 // B. Reasoner turn that calls two tools
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/blocking_reasoner_parallel_tool_turn_leads_with_reasoning"
+))]
 #[tokio::test]
 async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
@@ -225,6 +234,9 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
     .expect("blocking_reasoner_parallel_tool_turn_leads_with_reasoning should replay from its cassette");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/streaming_reasoner_parallel_tool_turn_leads_with_reasoning"
+))]
 #[tokio::test]
 async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
@@ -269,6 +281,9 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
 // C. Reasoner turn that only speaks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/blocking_reasoner_text_turn_leads_with_reasoning"
+))]
 #[tokio::test]
 async fn blocking_reasoner_text_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
@@ -298,6 +313,9 @@ async fn blocking_reasoner_text_turn_leads_with_reasoning() {
     .expect("blocking_reasoner_text_turn_leads_with_reasoning should replay from its cassette");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/streaming_reasoner_text_turn_leads_with_reasoning"
+))]
 #[tokio::test]
 async fn streaming_reasoner_text_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
@@ -334,6 +352,9 @@ async fn streaming_reasoner_text_turn_leads_with_reasoning() {
 // D. Controls: a non-thinking turn has no reasoning block on either transport
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/blocking_non_thinking_tool_turn_has_no_reasoning_block"
+))]
 #[tokio::test]
 async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
     with_deepseek_block_order_cassette_result(
@@ -367,6 +388,9 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/streaming_non_thinking_tool_turn_has_no_reasoning_block"
+))]
 #[tokio::test]
 async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
     with_deepseek_block_order_cassette_result(
@@ -411,6 +435,9 @@ async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
 // E. Agent level: the same order reaches persisted history and the stream
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history"
+))]
 #[tokio::test]
 async fn agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history() {
     with_deepseek_block_order_cassette_result(
@@ -460,6 +487,9 @@ async fn agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history() {
     .expect("agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history should replay from its cassette");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/reasoning_block_order/agent_streaming_reasoner_roundtrip_streams_reasoning_first"
+))]
 #[tokio::test]
 async fn agent_streaming_reasoner_roundtrip_streams_reasoning_first() {
     with_deepseek_block_order_cassette_result(

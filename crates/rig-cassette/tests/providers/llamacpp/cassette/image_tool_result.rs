@@ -66,6 +66,9 @@ fn assistant_text(response: &rig::completion::CompletionResponse) -> String {
         .to_lowercase()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/image_tool_result/a_tool_result_image_is_read_by_the_model"
+))]
 /// The image reaches the model through a `role:"tool"` message.
 ///
 /// The assertion is the colour, not a 200. A cell that only checked the request
@@ -107,6 +110,9 @@ async fn a_tool_result_image_is_read_by_the_model() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/image_tool_result/the_same_image_in_a_user_message_is_read_too"
+))]
 /// The control: identical bytes in a `user` message.
 ///
 /// Without this the cell above proves only that *something* produced a colour

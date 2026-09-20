@@ -25,6 +25,9 @@ fn think_params() -> serde_json::Value {
     serde_json::json!({ "think": true })
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/reasoning_tool_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -67,6 +70,9 @@ async fn nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/reasoning_tool_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));

@@ -11,3 +11,5 @@ use rig_test_support::support;
 
 #[path = "providers/cohere/mod.rs"]
 mod cohere;
+
+rig_test_support::cassette_inventory!();

@@ -72,6 +72,9 @@ fn recorded_results(scenario: &str) -> Vec<Value> {
         .clone()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/rerank_matrix/multiple_documents"
+))]
 #[tokio::test]
 async fn multiple_documents_come_back_ranked() {
     with_llamacpp_rerank_cassette("rerank_matrix/multiple_documents", |client| async move {
@@ -138,6 +141,9 @@ async fn multiple_documents_come_back_ranked() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/rerank_matrix/negative_scores"
+))]
 /// Scores are the cross-encoder's raw logits.
 #[tokio::test]
 async fn scores_are_raw_logits_and_may_be_negative() {
@@ -178,6 +184,9 @@ async fn scores_are_raw_logits_and_may_be_negative() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/rerank_matrix/single_document"
+))]
 #[tokio::test]
 async fn a_single_document_is_still_a_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/single_document", |client| async move {
@@ -195,6 +204,9 @@ async fn a_single_document_is_still_a_ranking() {
     assert_eq!(recorded_results("rerank_matrix/single_document").len(), 1);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/rerank_matrix/top_n_beyond_count"
+))]
 /// `top_n` larger than the document count is clamped rather than refused.
 ///
 /// llama.cpp does `elements.resize(std::min(top_n, elements.size()))`, so an
@@ -234,6 +246,9 @@ async fn top_n_beyond_the_document_count_is_clamped() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/rerank_matrix/top_n_truncates"
+))]
 #[tokio::test]
 async fn top_n_below_the_document_count_truncates() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_truncates", |client| async move {
@@ -260,6 +275,9 @@ async fn top_n_below_the_document_count_truncates() {
     assert_eq!(recorded_results("rerank_matrix/top_n_truncates").len(), 1);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/rerank_matrix/top_n_zero"
+))]
 /// `top_n: 0` is an empty ranking, not an error and not "all of them".
 ///
 /// The third arm of the `top_n` dimension, and the one where a clamp

@@ -4,6 +4,9 @@ use rig::model::ModelLister;
 
 use super::super::support::with_openrouter_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_openrouter_cassette("models/list_models_smoke", |client| async move {
@@ -24,6 +27,9 @@ async fn list_models_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/models/list_models_smoke"
+))]
 /// rig#2079 — the entry's `context_length` must survive decoding.
 ///
 /// A stray `rename_all = "camelCase"` on the DTO made serde look for
@@ -58,6 +64,9 @@ async fn list_models_preserves_context_and_output_limits() -> anyhow::Result<()>
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/models/list_models_is_public_and_ignores_a_rejected_key"
+))]
 /// rig#2079 — OpenRouter's listing is **public**: a rejected key still lists.
 ///
 /// Recorded with a deliberately invalid key. This is not an error cell that

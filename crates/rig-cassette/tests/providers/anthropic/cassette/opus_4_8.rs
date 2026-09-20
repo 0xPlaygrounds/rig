@@ -35,6 +35,9 @@ const DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION: &str = "Answer in Spanish only. Use on
 const SERVER_TOOL_USE_SYSTEM_INSTRUCTION: &str =
     "For the rest of this conversation, answer in Spanish only.";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_8/web_search_with_dynamic_filtering_succeeds"
+))]
 #[tokio::test]
 async fn web_search_with_dynamic_filtering_succeeds() {
     super::super::support::with_anthropic_cassette(
@@ -77,6 +80,9 @@ async fn web_search_with_dynamic_filtering_succeeds() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_8/messages_preserve_mid_conversation_system_role"
+))]
 #[tokio::test]
 async fn messages_preserve_mid_conversation_system_role() {
     super::super::support::with_anthropic_cassette(
@@ -114,6 +120,9 @@ async fn messages_preserve_mid_conversation_system_role() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result"
+))]
 #[tokio::test]
 async fn messages_preserve_system_role_after_server_tool_result() {
     super::super::support::with_anthropic_cassette(
@@ -165,6 +174,9 @@ async fn messages_preserve_system_role_after_server_tool_result() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/opus_4_8/documents_keep_leading_system_message_top_level"
+))]
 #[tokio::test]
 async fn documents_keep_leading_system_message_top_level() {
     super::super::support::with_anthropic_cassette(

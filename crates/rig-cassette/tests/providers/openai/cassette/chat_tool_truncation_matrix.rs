@@ -473,6 +473,9 @@ async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation
 // The literal wrapper calls below are intentionally explicit: cassette safety
 // parses source rather than macro expansion.
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt4o_low_model"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_low_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt4o_low_model";
@@ -494,6 +497,9 @@ async fn blocking_gpt4o_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt4o_low_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_low_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt4o_low_agent";
@@ -515,6 +521,9 @@ async fn blocking_gpt4o_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt4o_mid_model"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_mid_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt4o_mid_model";
@@ -536,6 +545,9 @@ async fn blocking_gpt4o_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt4o_mid_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_mid_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt4o_mid_agent";
@@ -557,6 +569,9 @@ async fn blocking_gpt4o_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt4o_complete_model"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_complete_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt4o_complete_model";
@@ -578,6 +593,9 @@ async fn blocking_gpt4o_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt4o_complete_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt4o_complete_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt4o_complete_agent";
@@ -599,6 +617,9 @@ async fn blocking_gpt4o_complete_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt41_low_model"
+))]
 #[tokio::test]
 async fn blocking_gpt41_low_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt41_low_model";
@@ -620,6 +641,9 @@ async fn blocking_gpt41_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt41_low_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt41_low_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt41_low_agent";
@@ -641,6 +665,9 @@ async fn blocking_gpt41_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt41_mid_model"
+))]
 #[tokio::test]
 async fn blocking_gpt41_mid_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt41_mid_model";
@@ -662,6 +689,9 @@ async fn blocking_gpt41_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt41_mid_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt41_mid_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt41_mid_agent";
@@ -683,6 +713,9 @@ async fn blocking_gpt41_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt41_complete_model"
+))]
 #[tokio::test]
 async fn blocking_gpt41_complete_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt41_complete_model";
@@ -704,6 +737,9 @@ async fn blocking_gpt41_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/blocking_gpt41_complete_agent"
+))]
 #[tokio::test]
 async fn blocking_gpt41_complete_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/blocking_gpt41_complete_agent";
@@ -725,6 +761,9 @@ async fn blocking_gpt41_complete_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt4o_low_model"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_low_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt4o_low_model";
@@ -746,6 +785,9 @@ async fn streaming_gpt4o_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt4o_low_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_low_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt4o_low_agent";
@@ -767,6 +809,9 @@ async fn streaming_gpt4o_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt4o_mid_model"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_mid_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt4o_mid_model";
@@ -788,6 +833,9 @@ async fn streaming_gpt4o_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt4o_mid_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_mid_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt4o_mid_agent";
@@ -809,6 +857,9 @@ async fn streaming_gpt4o_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt4o_complete_model"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_complete_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt4o_complete_model";
@@ -830,6 +881,9 @@ async fn streaming_gpt4o_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt4o_complete_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt4o_complete_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt4o_complete_agent";
@@ -851,6 +905,9 @@ async fn streaming_gpt4o_complete_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt41_low_model"
+))]
 #[tokio::test]
 async fn streaming_gpt41_low_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt41_low_model";
@@ -872,6 +929,9 @@ async fn streaming_gpt41_low_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt41_low_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt41_low_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt41_low_agent";
@@ -893,6 +953,9 @@ async fn streaming_gpt41_low_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt41_mid_model"
+))]
 #[tokio::test]
 async fn streaming_gpt41_mid_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt41_mid_model";
@@ -914,6 +977,9 @@ async fn streaming_gpt41_mid_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt41_mid_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt41_mid_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt41_mid_agent";
@@ -935,6 +1001,9 @@ async fn streaming_gpt41_mid_agent() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt41_complete_model"
+))]
 #[tokio::test]
 async fn streaming_gpt41_complete_model() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt41_complete_model";
@@ -956,6 +1025,9 @@ async fn streaming_gpt41_complete_model() -> Result<()> {
     execute(S, c, o).await;
     Ok(())
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/chat_tool_truncation_matrix/streaming_gpt41_complete_agent"
+))]
 #[tokio::test]
 async fn streaming_gpt41_complete_agent() -> Result<()> {
     const S: &str = "chat_tool_truncation_matrix/streaming_gpt41_complete_agent";

@@ -257,6 +257,9 @@ pub(super) fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
 // 1–2: the hook events
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/hooks_observe_raw_blocking"
+))]
 #[tokio::test]
 async fn hooks_observe_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking";
@@ -303,6 +306,9 @@ async fn hooks_observe_raw_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/hooks_observe_raw_streamed"
+))]
 #[tokio::test]
 async fn hooks_observe_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed";
@@ -358,6 +364,9 @@ async fn hooks_observe_raw_streamed() {
 // 3–5: multi-turn tool runs
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking"
+))]
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking";
@@ -406,6 +415,9 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     assert_eq!(probe.model_turns(), raws);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed"
+))]
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed";
@@ -464,6 +476,9 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     assert_eq!(probe.response_streaming_flags(), [true, true]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/streamed_final_carries_final_turn_raw"
+))]
 #[tokio::test]
 async fn streamed_final_carries_final_turn_raw() {
     let scenario = "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw";
@@ -520,6 +535,9 @@ async fn streamed_final_carries_final_turn_raw() {
 // 6–7: a retried turn
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking"
+))]
 #[tokio::test]
 async fn retried_turn_records_retried_attempt_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking";
@@ -568,6 +586,9 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
     assert_eq!(probe.completion_responses(), raws);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed"
+))]
 #[tokio::test]
 async fn retried_turn_records_retried_attempt_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed";

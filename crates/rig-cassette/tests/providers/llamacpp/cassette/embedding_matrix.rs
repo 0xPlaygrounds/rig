@@ -57,6 +57,9 @@ fn recorded_widths(scenario: &str) -> Vec<usize> {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/embedding_matrix/native_width"
+))]
 #[tokio::test]
 async fn the_native_width_comes_back_when_none_is_declared() {
     with_llamacpp_embeddings_cassette("embedding_matrix/native_width", |client| async move {
@@ -81,6 +84,9 @@ async fn the_native_width_comes_back_when_none_is_declared() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/embedding_matrix/declared_width_matches"
+))]
 /// Declaring the width the model actually has is fine, and still sends nothing.
 #[tokio::test]
 async fn a_declared_width_that_matches_is_accepted() {
@@ -106,6 +112,9 @@ async fn a_declared_width_that_matches_is_accepted() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/embedding_matrix/declared_width_mismatches"
+))]
 /// Declaring a width llama.cpp cannot produce fails loudly.
 ///
 /// The request is still sent — llama.cpp is the only thing that knows the
@@ -156,6 +165,9 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/embedding_matrix/batch"
+))]
 #[tokio::test]
 async fn several_inputs_come_back_in_order_at_one_width() {
     with_llamacpp_embeddings_cassette("embedding_matrix/batch", |client| async move {

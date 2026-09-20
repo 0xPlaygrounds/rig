@@ -11,6 +11,9 @@ use crate::{
 };
 use rig::providers::openai;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/responses_stream_preserves_tool_result_flow"
+))]
 #[tokio::test]
 async fn responses_stream_preserves_tool_result_flow() {
     with_openai_cassette(

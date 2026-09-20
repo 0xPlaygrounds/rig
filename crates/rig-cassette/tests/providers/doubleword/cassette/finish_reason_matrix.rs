@@ -118,6 +118,9 @@ async fn streaming_reason(
         .expect("stream should normalize its finish reason")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/finish_reason_matrix/blocking_natural_stop"
+))]
 #[tokio::test]
 async fn blocking_natural_stop() {
     const SCENARIO: &str = "finish_reason_matrix/blocking_natural_stop";
@@ -125,6 +128,9 @@ async fn blocking_natural_stop() {
     assert_eq!(recorded_finish_reason(SCENARIO, false), "stop");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/finish_reason_matrix/streaming_natural_stop"
+))]
 #[tokio::test]
 async fn streaming_natural_stop() {
     const SCENARIO: &str = "finish_reason_matrix/streaming_natural_stop";
@@ -141,6 +147,9 @@ async fn streaming_natural_stop() {
     assert_eq!(recorded_finish_reason(SCENARIO, true), "stop");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/finish_reason_matrix/blocking_token_limit"
+))]
 #[tokio::test]
 async fn blocking_token_limit() {
     const SCENARIO: &str = "finish_reason_matrix/blocking_token_limit";
@@ -148,6 +157,9 @@ async fn blocking_token_limit() {
     assert_eq!(recorded_finish_reason(SCENARIO, false), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/finish_reason_matrix/streaming_token_limit"
+))]
 #[tokio::test]
 async fn streaming_token_limit() {
     const SCENARIO: &str = "finish_reason_matrix/streaming_token_limit";
@@ -164,6 +176,9 @@ async fn streaming_token_limit() {
     assert_eq!(recorded_finish_reason(SCENARIO, true), "length");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/finish_reason_matrix/blocking_tool_calls"
+))]
 #[tokio::test]
 async fn blocking_tool_calls() {
     const SCENARIO: &str = "finish_reason_matrix/blocking_tool_calls";
@@ -175,6 +190,9 @@ async fn blocking_tool_calls() {
     assert_eq!(recorded_finish_reason(SCENARIO, false), "tool_calls");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/finish_reason_matrix/streaming_tool_calls"
+))]
 #[tokio::test]
 async fn streaming_tool_calls() {
     const SCENARIO: &str = "finish_reason_matrix/streaming_tool_calls";

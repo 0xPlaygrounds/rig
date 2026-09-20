@@ -8,6 +8,9 @@ use rig_agent::test_utils::{
 
 use super::super::{DEFAULT_MODEL, TOOL_MODEL, support::with_doubleword_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/zero_argument_tool"
+))]
 #[tokio::test]
 async fn zero_argument_tool_roundtrip() {
     with_doubleword_cassette("conformance/zero_argument_tool", |client| async move {
@@ -18,6 +21,9 @@ async fn zero_argument_tool_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/parallel_tools"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_roundtrip() {
     with_doubleword_cassette("conformance/parallel_tools", |client| async move {
@@ -28,6 +34,9 @@ async fn parallel_tool_calls_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/cancellation_and_max_turns"
+))]
 #[tokio::test]
 async fn cancellation_and_max_turn_diagnostics() {
     with_doubleword_cassette(
@@ -41,6 +50,9 @@ async fn cancellation_and_max_turn_diagnostics() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/tool_output_serialization"
+))]
 #[tokio::test]
 async fn tool_output_types_roundtrip() {
     with_doubleword_cassette(
@@ -54,6 +66,9 @@ async fn tool_output_types_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/invalid_tool_recovery"
+))]
 #[tokio::test]
 async fn invalid_tool_call_recovers() {
     with_doubleword_cassette("conformance/invalid_tool_recovery", |client| async move {
@@ -64,6 +79,9 @@ async fn invalid_tool_call_recovers() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/hook_rewrites_and_request_patch"
+))]
 #[tokio::test]
 async fn hooks_rewrite_tool_flow() {
     with_doubleword_cassette(
@@ -77,6 +95,9 @@ async fn hooks_rewrite_tool_flow() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/streaming_tool"
+))]
 #[tokio::test]
 async fn streaming_tool_roundtrip() {
     with_doubleword_cassette("conformance/streaming_tool", |client| async move {
@@ -87,6 +108,9 @@ async fn streaming_tool_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/structured_after_tool"
+))]
 #[tokio::test]
 async fn structured_output_after_tool() {
     with_doubleword_cassette("conformance/structured_after_tool", |client| async move {
@@ -97,6 +121,9 @@ async fn structured_output_after_tool() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/streaming_structured_after_tool"
+))]
 #[tokio::test]
 async fn streaming_structured_output_after_tool() {
     with_doubleword_cassette(
@@ -110,6 +137,9 @@ async fn streaming_structured_output_after_tool() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/structured_extraction"
+))]
 #[tokio::test]
 async fn structured_extraction_roundtrip() {
     with_doubleword_cassette("conformance/structured_extraction", |client| async move {
@@ -120,6 +150,9 @@ async fn structured_extraction_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/conformance/tool_choice_modes"
+))]
 #[tokio::test]
 async fn tool_choice_modes_roundtrip() {
     with_doubleword_cassette("conformance/tool_choice_modes", |client| async move {

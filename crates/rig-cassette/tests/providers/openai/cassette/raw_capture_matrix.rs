@@ -258,6 +258,9 @@ fn assert_transport_id_is_header_only(scenario: &str, response: &CompletionRespo
 // Chat Completions
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/chat_raw_round_trips_typed"
+))]
 #[tokio::test]
 async fn chat_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_capture_matrix/chat_raw_round_trips_typed";
@@ -304,6 +307,9 @@ async fn chat_raw_round_trips_typed() {
     assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/chat_raw_exposes_service_tier"
+))]
 #[tokio::test]
 async fn chat_raw_exposes_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/chat_raw_exposes_service_tier";
@@ -343,6 +349,9 @@ async fn chat_raw_exposes_service_tier() {
 // Responses
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/responses_raw_round_trips_typed"
+))]
 /// The Responses body is the shape the route rewrites most on the way in —
 /// an `output[]` array of typed items — so reading `raw` back as
 /// `openai::responses_api::CompletionResponse` is real evidence, not a
@@ -392,6 +401,9 @@ async fn responses_raw_round_trips_typed() {
     assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/responses_raw_exposes_service_tier_and_store"
+))]
 #[tokio::test]
 async fn responses_raw_exposes_service_tier_and_store() {
     const SCENARIO: &str = "raw_capture_matrix/responses_raw_exposes_service_tier_and_store";
@@ -457,6 +469,9 @@ fn reasoning_output_item<'a>(scenario: &str, body: &'a Value, what: &str) -> &'a
     item
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/responses_reasoning_raw_round_trips_typed"
+))]
 /// A Responses reasoning turn: the wire's `reasoning` output item — the one
 /// shape the route rewrites most on the way in — is on `raw` verbatim (its
 /// `encrypted_content`, its `summary`), the top-level `reasoning` echo
@@ -559,6 +574,9 @@ async fn responses_reasoning_raw_round_trips_typed() {
     assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/chat_tool_call_raw_round_trips_typed"
+))]
 /// A forced Chat tool call: `raw` keeps the wire's representation — a
 /// `tool_calls` entry whose `function.arguments` is a JSON *string* and a
 /// `finish_reason` spelled `"tool_calls"` — while the normalized response
@@ -660,6 +678,9 @@ async fn chat_tool_call_raw_round_trips_typed() {
     assert_chat_raw_agrees(SCENARIO, &typed, &response);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/raw_capture_matrix/chat_structured_output_raw_exposes_system_fingerprint"
+))]
 /// A Chat structured-output turn (`response_format: json_schema` via the
 /// builder's `output_schema`): `raw` reads back as the chat type, its
 /// message content is the schema-shaped JSON the fixture carries, and

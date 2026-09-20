@@ -14,6 +14,9 @@ use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_respo
 
 const PDF_URL: &str = "https://bitcoin.org/bitcoin.pdf";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/url_pdf_document/url_pdf_document_prompt"
+))]
 #[tokio::test]
 async fn url_pdf_document_prompt() {
     with_openai_cassette(

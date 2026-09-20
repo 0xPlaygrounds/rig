@@ -9,6 +9,9 @@ use super::super::support::with_openrouter_cassette;
 
 const DEEPSEEK_V3_2: &str = "deepseek/deepseek-v3.2";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/provider_selection/provider_selection_scenarios"
+))]
 #[tokio::test]
 async fn provider_selection_scenarios() {
     with_openrouter_cassette(

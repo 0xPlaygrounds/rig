@@ -13,6 +13,9 @@ use anyhow::Result;
 use rig::tool::Tool;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -61,6 +64,9 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming"
+))]
 #[tokio::test]
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -125,6 +131,9 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
@@ -178,6 +187,9 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     )
     .await
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_streaming"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_deepseek_cassette_result(

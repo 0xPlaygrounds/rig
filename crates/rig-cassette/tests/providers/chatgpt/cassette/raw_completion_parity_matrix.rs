@@ -152,6 +152,7 @@ fn assert_response_id_shape(response: &RigCompletionResponse) {
 // 1: text turn — one reply, both views
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("chatgpt/raw_completion_parity_matrix/raw_normalize_reproduces_completion").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_normalize_reproduces_completion() {
@@ -208,6 +209,7 @@ async fn raw_normalize_reproduces_completion() {
 // 2: tool-call turn
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("chatgpt/raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_normalize_reproduces_completion_with_tool_call() {
@@ -306,6 +308,7 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
 // 3: the empty-output fallback branch also carries raw
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("chatgpt/raw_completion_parity_matrix/empty_output_fallback_still_carries_raw").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// Cannot be produced on demand (see the module docs); the body asserts its
 /// premise from the fixture so a recording that did not hit the fallback
 /// fails instead of passing vacuously.

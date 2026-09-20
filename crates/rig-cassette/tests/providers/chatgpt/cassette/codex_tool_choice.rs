@@ -26,6 +26,9 @@ fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_choice/required_forces_a_tool_call"
+))]
 #[tokio::test]
 async fn required_forces_a_tool_call() {
     with_chatgpt_cassette(
@@ -59,6 +62,9 @@ async fn required_forces_a_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_choice/none_suppresses_tool_calls"
+))]
 #[tokio::test]
 async fn none_suppresses_tool_calls() {
     with_chatgpt_cassette(
@@ -99,6 +105,9 @@ async fn none_suppresses_tool_calls() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_choice/specific_single_function_targets_named_tool"
+))]
 #[tokio::test]
 async fn specific_single_function_targets_named_tool() {
     with_chatgpt_cassette(
@@ -158,6 +167,9 @@ async fn specific_single_function_targets_named_tool() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_choice/specific_multiple_functions_use_allowed_tools"
+))]
 #[tokio::test]
 async fn specific_multiple_functions_use_allowed_tools() {
     with_chatgpt_cassette(

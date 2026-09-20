@@ -27,6 +27,9 @@ fn inputs() -> Vec<String> {
     EMBEDDING_INPUTS.iter().map(|s| (*s).to_string()).collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embedding_matrix/normalized_response_is_complete"
+))]
 #[tokio::test]
 async fn normalized_response_is_complete() {
     with_gemini_cassette(
@@ -43,6 +46,9 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embedding_matrix/raw_round_trips"
+))]
 #[tokio::test]
 async fn raw_round_trips() {
     with_gemini_cassette("embedding_matrix/raw_round_trips", |client| async move {
@@ -71,6 +77,9 @@ async fn raw_round_trips() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embedding_matrix/raw_route_parity"
+))]
 /// There is one embed seam, so the axis this cell pins is that repeating the
 /// request is stable and that the captured payload is the reply Gemini sent.
 #[tokio::test]
@@ -92,6 +101,9 @@ async fn raw_route_parity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embedding_matrix/single_text_convenience"
+))]
 #[tokio::test]
 async fn single_text_convenience() {
     with_gemini_cassette(
@@ -110,6 +122,9 @@ async fn single_text_convenience() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embedding_matrix/dimensions_request"
+))]
 /// `output_dimensionality` narrows the vector; the driver reports the width
 /// it was asked for and the wire honors it.
 #[tokio::test]
@@ -127,6 +142,9 @@ async fn dimensions_request() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/embedding_matrix/error_preserves_provider_body"
+))]
 #[tokio::test]
 async fn error_preserves_provider_body() {
     with_gemini_cassette(

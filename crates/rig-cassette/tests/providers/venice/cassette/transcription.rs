@@ -7,6 +7,9 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
 use super::super::support::with_venice_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/transcription/transcription_smoke"
+))]
 #[tokio::test]
 async fn transcription_smoke() {
     with_venice_cassette("transcription/transcription_smoke", |client| async move {

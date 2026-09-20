@@ -16,6 +16,9 @@ use crate::support::{
     assert_mentions_expected_number, assert_nonempty_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/multi_turn_streaming/manual_multi_turn_streaming_loop"
+))]
 #[tokio::test]
 async fn runner_driven_multi_turn_streaming_loop() {
     let add_calls = Arc::new(AtomicUsize::new(0));

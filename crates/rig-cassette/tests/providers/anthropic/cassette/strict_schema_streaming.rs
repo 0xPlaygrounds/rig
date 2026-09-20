@@ -85,6 +85,9 @@ async fn assert_model_streaming_tool_call(
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/zero_argument_strict_tool_streams"
+))]
 #[tokio::test]
 async fn zero_argument_strict_tool_streams() {
     with_anthropic_cassette(
@@ -104,6 +107,9 @@ async fn zero_argument_strict_tool_streams() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/nested_optional_object_streams_with_omission"
+))]
 #[tokio::test]
 async fn nested_optional_object_streams_with_omission() {
     with_anthropic_cassette(
@@ -137,6 +143,9 @@ async fn nested_optional_object_streams_with_omission() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/one_of_and_const_stream_with_specific_choice"
+))]
 #[tokio::test]
 async fn one_of_and_const_stream_with_specific_choice() {
     with_anthropic_cassette(
@@ -183,6 +192,9 @@ async fn one_of_and_const_stream_with_specific_choice() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/automatic_choice_streams_strict_tool_call"
+))]
 #[tokio::test]
 async fn automatic_choice_streams_strict_tool_call() {
     with_anthropic_cassette(
@@ -206,6 +218,9 @@ async fn automatic_choice_streams_strict_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/structured_output_and_strict_tool_use_stream_together"
+))]
 #[tokio::test]
 async fn structured_output_and_strict_tool_use_stream_together() {
     with_anthropic_cassette(
@@ -239,6 +254,9 @@ async fn structured_output_and_strict_tool_use_stream_together() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/manual_prompt_caching_and_strict_tools_stream_together"
+))]
 #[tokio::test]
 async fn manual_prompt_caching_and_strict_tools_stream_together() {
     with_anthropic_cassette(
@@ -266,6 +284,9 @@ async fn manual_prompt_caching_and_strict_tools_stream_together() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_streaming/automatic_prompt_caching_and_strict_tools_stream_together"
+))]
 #[tokio::test]
 async fn automatic_prompt_caching_and_strict_tools_stream_together() {
     with_anthropic_cassette(

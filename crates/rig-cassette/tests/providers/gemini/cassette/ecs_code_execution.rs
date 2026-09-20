@@ -17,6 +17,9 @@ fn agent(model: impl CompletionModel + 'static, params: serde_json::Value) -> Ec
     ecs
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_agent_prompt_answers_after_code_execution"
+))]
 #[tokio::test]
 async fn blocking_agent_prompt_answers_after_code_execution() {
     super::super::support::with_gemini_code_execution_cassette("code_execution_matrix/blocking_agent_prompt_answers_after_code_execution", |client| async move {
@@ -30,6 +33,9 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/streaming_agent_prompt_answers_after_code_execution"
+))]
 #[tokio::test]
 async fn streaming_agent_prompt_answers_after_code_execution() {
     super::super::support::with_gemini_code_execution_cassette("code_execution_matrix/streaming_agent_prompt_answers_after_code_execution", |client| async move {
@@ -45,6 +51,9 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history"
+))]
 #[tokio::test]
 async fn blocking_code_execution_replayed_in_chat_history() {
     super::super::support::with_gemini_code_execution_cassette(
@@ -84,6 +93,9 @@ async fn blocking_code_execution_replayed_in_chat_history() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer"
+))]
 #[tokio::test]
 async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
     super::super::support::with_gemini_stream_terminal_cassette("stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer", |client| async move {

@@ -437,6 +437,9 @@ fn cell(
 // Explicit cells keep the cassette source scanner able to prove a one-to-one
 // mapping between tests and fixtures.
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_mistral_small_plain_auto"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_plain_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_plain_auto";
@@ -457,6 +460,9 @@ async fn blocking_mistral_small_plain_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_mistral_small_plain_any"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_plain_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_plain_any";
@@ -477,6 +483,9 @@ async fn blocking_mistral_small_plain_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_mistral_small_plain_none"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_plain_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_plain_none";
@@ -497,6 +506,9 @@ async fn blocking_mistral_small_plain_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_mistral_small_json_auto"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_json_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_json_auto";
@@ -517,6 +529,9 @@ async fn blocking_mistral_small_json_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_mistral_small_json_any"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_json_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_json_any";
@@ -537,6 +552,9 @@ async fn blocking_mistral_small_json_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_mistral_small_json_none"
+))]
 #[tokio::test]
 async fn blocking_mistral_small_json_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_json_none";
@@ -557,6 +575,9 @@ async fn blocking_mistral_small_json_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_ministral_3b_plain_auto"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_plain_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_plain_auto";
@@ -577,6 +598,9 @@ async fn blocking_ministral_3b_plain_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_ministral_3b_plain_any"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_plain_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_plain_any";
@@ -597,6 +621,9 @@ async fn blocking_ministral_3b_plain_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_ministral_3b_plain_none"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_plain_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_plain_none";
@@ -617,6 +644,9 @@ async fn blocking_ministral_3b_plain_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_ministral_3b_json_auto"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_json_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_json_auto";
@@ -637,6 +667,9 @@ async fn blocking_ministral_3b_json_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_ministral_3b_json_any"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_json_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_json_any";
@@ -657,6 +690,9 @@ async fn blocking_ministral_3b_json_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/blocking_ministral_3b_json_none"
+))]
 #[tokio::test]
 async fn blocking_ministral_3b_json_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_json_none";
@@ -677,6 +713,9 @@ async fn blocking_ministral_3b_json_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_mistral_small_plain_auto"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_plain_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_plain_auto";
@@ -697,6 +736,9 @@ async fn streaming_mistral_small_plain_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_mistral_small_plain_any"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_plain_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_plain_any";
@@ -717,6 +759,9 @@ async fn streaming_mistral_small_plain_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_mistral_small_plain_none"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_plain_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_plain_none";
@@ -737,6 +782,9 @@ async fn streaming_mistral_small_plain_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_mistral_small_json_auto"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_json_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_json_auto";
@@ -757,6 +805,9 @@ async fn streaming_mistral_small_json_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_mistral_small_json_any"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_json_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_json_any";
@@ -777,6 +828,9 @@ async fn streaming_mistral_small_json_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_mistral_small_json_none"
+))]
 #[tokio::test]
 async fn streaming_mistral_small_json_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_json_none";
@@ -797,6 +851,9 @@ async fn streaming_mistral_small_json_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_ministral_3b_plain_auto"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_plain_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_plain_auto";
@@ -817,6 +874,9 @@ async fn streaming_ministral_3b_plain_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_ministral_3b_plain_any"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_plain_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_plain_any";
@@ -837,6 +897,9 @@ async fn streaming_ministral_3b_plain_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_ministral_3b_plain_none"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_plain_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_plain_none";
@@ -857,6 +920,9 @@ async fn streaming_ministral_3b_plain_none() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_ministral_3b_json_auto"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_json_auto() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_json_auto";
@@ -877,6 +943,9 @@ async fn streaming_ministral_3b_json_auto() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_ministral_3b_json_any"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_json_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_json_any";
@@ -897,6 +966,9 @@ async fn streaming_ministral_3b_json_any() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/request_shape_matrix/streaming_ministral_3b_json_none"
+))]
 #[tokio::test]
 async fn streaming_ministral_3b_json_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_json_none";

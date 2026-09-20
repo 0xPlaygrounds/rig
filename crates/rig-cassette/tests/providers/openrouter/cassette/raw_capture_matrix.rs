@@ -57,6 +57,9 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 // 1. raw is the reply document, and reads back as OpenRouter's type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_capture_matrix/raw_round_trips_openrouter_type"
+))]
 #[tokio::test]
 async fn raw_reads_back_as_openrouter_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openrouter_type";
@@ -115,6 +118,9 @@ async fn raw_reads_back_as_openrouter_type() {
 // 2. Fields with no normalized slot reach the caller through raw
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_capture_matrix/raw_exposes_routed_provider"
+))]
 #[tokio::test]
 async fn raw_exposes_routed_provider() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_routed_provider";
@@ -155,6 +161,9 @@ async fn raw_exposes_routed_provider() {
 // 3. The normalized view and raw tell one story
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";

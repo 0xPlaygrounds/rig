@@ -7,6 +7,9 @@ use rig_cassette::agent::AgentReplayExt;
 use super::super::support::with_anthropic_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
@@ -26,6 +29,9 @@ async fn completion_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/agent/completion_smoke"
+))]
 /// The golden effect log: `completion_smoke` recorded as effects. The
 /// committed file (`crates/rig-cassette/fixtures/effects/anthropic_completion_smoke.effects.json`)
 /// is what `rig-cassette`'s two interpreters must both reproduce, kind for
@@ -54,6 +60,9 @@ async fn completion_smoke_effect_log_is_the_golden_fixture() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/agent/completion_smoke"
+))]
 /// Golden `anthropic_memory_conversation`: the same completion over a
 /// conversation memory. The load (empty), the completion and the append
 /// are all records; the request bytes are the smoke cassette's, so no new

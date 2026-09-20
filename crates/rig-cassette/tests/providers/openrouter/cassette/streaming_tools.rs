@@ -22,6 +22,9 @@ use crate::support::{
 
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_openrouter_cassette(
@@ -125,6 +128,9 @@ fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/streaming_tools/stream_encrypted_reasoning_reaches_the_choice"
+))]
 /// OpenRouter delivers encrypted reasoning as a `reasoning_details` entry with
 /// `reasoning: null` and an `rs_*` id of its own, one chunk before the `call_*`
 /// tool call opens. It is the turn's own output, so it must reach the
@@ -195,6 +201,9 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn"
+))]
 /// The round trip: an encrypted reasoning block that reaches the choice is
 /// replayed on the next turn's request, next to the tool call it belongs to.
 ///
@@ -289,6 +298,9 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text"
+))]
 #[tokio::test]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openrouter_cassette(
@@ -319,6 +331,9 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls"
+))]
 #[tokio::test]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_openrouter_cassette(

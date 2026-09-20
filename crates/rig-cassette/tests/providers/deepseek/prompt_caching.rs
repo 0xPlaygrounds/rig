@@ -60,6 +60,9 @@ fn probe() -> CacheProbe {
     CacheProbe::new("deepseek prompt caching")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
@@ -74,6 +77,9 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     assert_prefix_stable("deepseek", SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";

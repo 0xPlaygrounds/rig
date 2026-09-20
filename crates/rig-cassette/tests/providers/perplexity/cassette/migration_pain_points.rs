@@ -11,6 +11,9 @@ use crate::support::{
 
 use super::super::support::with_perplexity_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/migration_pain_points/text_only_content_parts_are_flattened"
+))]
 #[tokio::test]
 async fn text_only_content_parts_are_flattened() {
     with_perplexity_cassette(
@@ -41,6 +44,9 @@ async fn text_only_content_parts_are_flattened() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/migration_pain_points/tool_exchange_history_is_stripped_and_remerged"
+))]
 #[tokio::test]
 async fn tool_exchange_history_is_stripped_and_remerged() {
     with_perplexity_cassette(
@@ -82,6 +88,9 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/migration_pain_points/unsupported_tools_and_multi_name_tool_choice_are_dropped"
+))]
 #[tokio::test]
 async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
     with_perplexity_cassette(
@@ -112,6 +121,9 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/migration_pain_points/output_schema_is_dropped_instead_of_sent_as_response_format"
+))]
 #[tokio::test]
 async fn output_schema_is_dropped_instead_of_sent_as_response_format() {
     with_perplexity_cassette(

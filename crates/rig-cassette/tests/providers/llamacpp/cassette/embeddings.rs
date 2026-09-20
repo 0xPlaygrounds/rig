@@ -21,6 +21,9 @@ struct Greetings {
     message: String,
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/embeddings/embeddings_smoke"
+))]
 #[tokio::test]
 async fn embeddings_smoke() {
     with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
@@ -36,6 +39,9 @@ async fn embeddings_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/embeddings/derive_document_embeddings"
+))]
 #[tokio::test]
 async fn derive_document_embeddings() {
     with_llamacpp_embeddings_cassette(

@@ -6,6 +6,9 @@ use super::super::support::{
     DEFAULT_API_KEY, SYSTEM_PROMPT, model_name, with_mistralrs_raw_cassette,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/tools/raw_chat_completion_emits_requested_tool_call"
+))]
 #[tokio::test]
 async fn raw_chat_completion_emits_requested_tool_call() {
     with_mistralrs_raw_cassette(

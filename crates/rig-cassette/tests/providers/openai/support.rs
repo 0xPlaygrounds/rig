@@ -51,13 +51,8 @@ fn bundled() -> BoxedHttpClient {
 }
 
 async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAiCassette) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        spec,
-        "https://api.openai.com/v1",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("openai", spec, "https://api.openai.com/v1").await;
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
@@ -83,13 +78,8 @@ where
     F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        spec,
-        "https://api.openai.com/v1",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("openai", spec, "https://api.openai.com/v1").await;
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
@@ -113,13 +103,8 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        spec,
-        "https://api.openai.com/v1",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("openai", spec, "https://api.openai.com/v1").await;
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
@@ -388,9 +373,8 @@ where
     F: FnOnce(OpenAiCassette<DirectRecordingHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start_via(
+    let cassette = rig_test_support::recording::start_via(
         rig_cassette::http::Transport::Direct,
-        &crate::cassettes::cassette_root(),
         "openai",
         spec,
         "https://api.openai.com/v1",
@@ -421,13 +405,8 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
     F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        spec,
-        "https://api.openai.com/v1",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("openai", spec, "https://api.openai.com/v1").await;
     let openai = OpenAiCassette::new(
         "sk-invalid-websocket-edge-matrix-key",
         cassette.base_url(),
@@ -446,13 +425,8 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
     F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        spec,
-        "https://api.openai.com/v1",
-    )
-    .await;
+    let cassette =
+        rig_test_support::recording::start("openai", spec, "https://api.openai.com/v1").await;
     let openai = OpenAiCassette::new("sk-invalid-edge-matrix-key", cassette.base_url(), bundled());
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;

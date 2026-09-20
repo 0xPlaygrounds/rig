@@ -55,6 +55,9 @@ use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/unmapped_surface/models_envelope"
+))]
 /// `GET /v1/models` returns a **hybrid** body, and rig reads the right half.
 ///
 /// One response carries an Ollama-style `models: [...]` array *and* OpenAI's
@@ -134,6 +137,9 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/unmapped_surface/props"
+))]
 /// `GET /props` is what a fixture uses to say which model and modalities
 /// produced it.
 ///
@@ -190,6 +196,9 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/unmapped_surface/responses_api"
+))]
 /// `POST /v1/responses` exists and answers — and rig deliberately does not
 /// route this provider to it.
 ///
@@ -246,6 +255,9 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/unmapped_surface/transcription_not_supported"
+))]
 /// `POST /v1/audio/transcriptions` exists and 501s unless the loaded model
 /// hears.
 ///

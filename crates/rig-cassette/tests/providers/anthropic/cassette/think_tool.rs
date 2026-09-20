@@ -7,6 +7,9 @@ use rig::tool::builtin::ThinkTool;
 use super::super::support::with_anthropic_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/think_tool/think_tool_menu_planning"
+))]
 #[tokio::test]
 async fn think_tool_menu_planning() {
     with_anthropic_cassette("think_tool/think_tool_menu_planning", |client| async move {

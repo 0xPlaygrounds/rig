@@ -333,6 +333,9 @@ fn assert_distinct_response_ids(ids: &[Option<String>], context: &str) {
 // 1–2: the hook events
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_agent_matrix/hooks_observe_raw_blocking"
+))]
 #[tokio::test]
 async fn hooks_observe_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking";
@@ -379,6 +382,9 @@ async fn hooks_observe_raw_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_agent_matrix/hooks_observe_raw_streamed"
+))]
 #[tokio::test]
 async fn hooks_observe_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed";
@@ -436,6 +442,9 @@ async fn hooks_observe_raw_streamed() {
 // 3–4: multi-turn tool runs
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking"
+))]
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking";
@@ -508,6 +517,9 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     assert_eq!(probe.model_turns(), raws);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed"
+))]
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed";

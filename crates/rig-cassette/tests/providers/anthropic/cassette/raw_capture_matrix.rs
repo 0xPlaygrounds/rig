@@ -229,6 +229,9 @@ fn assert_raw_round_trips(raw: &Value) -> CompletionResponse {
 // 1: typed round trip
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_matrix/raw_round_trips_into_provider_type"
+))]
 #[tokio::test]
 async fn raw_round_trips_into_provider_type() {
     let sink = Observed::default();
@@ -293,6 +296,9 @@ async fn raw_round_trips_into_provider_type() {
 // 2: a field rig does not normalize
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_matrix/raw_exposes_stop_sequence"
+))]
 #[tokio::test]
 async fn raw_exposes_stop_sequence() {
     let sink = Observed::default();
@@ -361,6 +367,9 @@ async fn raw_exposes_stop_sequence() {
 // 3: raw and the normalized fields tell one story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_matrix/normalized_fields_match_raw_renormalized"
+))]
 /// The normalized response and `raw` describe the same exchange: read `raw`
 /// back into the provider type and its provider-native fields are exactly
 /// what the decoder delivered beside them — message id, stop reason, model,
@@ -438,6 +447,9 @@ async fn normalized_fields_match_raw_renormalized() {
 // 4: an extended-thinking turn — the wire shape with a signature
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_matrix/raw_exposes_thinking_block_and_signature"
+))]
 /// `raw` on a thinking turn is still lossless against the provider type, and
 /// carries the wire's own spelling of the reasoning: a `content[]` block of
 /// `type: "thinking"` with `thinking` text and a `signature`, plus
@@ -579,6 +591,9 @@ async fn raw_exposes_thinking_block_and_signature() {
 // 5: a forced tool call — the wire's tool-call representation
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_matrix/raw_exposes_tool_use_block"
+))]
 /// `raw` on a `tool_use` turn is still lossless against the provider type, and
 /// carries the wire's own tool-call representation: a `content[]` block of
 /// `type: "tool_use"` with `id`, `name` and an `input` *object*, under

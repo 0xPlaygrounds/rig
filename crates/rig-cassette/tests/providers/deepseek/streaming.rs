@@ -6,6 +6,9 @@ use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
 use super::support::with_deepseek_cassette;
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/streaming/streaming_prompt_smoke"
+))]
 #[tokio::test]
 async fn streaming_prompt_smoke() {
     with_deepseek_cassette("streaming/streaming_prompt_smoke", |client| async move {

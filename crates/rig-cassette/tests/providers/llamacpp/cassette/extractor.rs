@@ -5,6 +5,9 @@ use rig::prelude::*;
 
 use super::super::cassette_support::*;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_llamacpp_cassette("extractor/extractor_smoke", |client| async move {

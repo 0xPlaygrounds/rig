@@ -191,6 +191,9 @@ async fn drain(mut stream: rig::streaming::StreamingCompletionResponse) -> Drain
 
 // --- 1-8: the bug, over the shapes live traffic produces ------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_keeps_the_text_after_the_first_finish"
+))]
 #[tokio::test]
 async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
     const SCENARIO: &str =
@@ -240,6 +243,9 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
     assert_recorded_stream_finishes_early(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_blocking_twin_has_the_same_answer"
+))]
 #[tokio::test]
 async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
     // The yardstick, not a comparison: the blocking transport never had this
@@ -270,6 +276,9 @@ async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer"
+))]
 #[tokio::test]
 async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
     const SCENARIO: &str =
@@ -311,6 +320,9 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
     assert_recorded_stream_finishes_early(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage"
+))]
 #[tokio::test]
 async fn two_terminal_stream_terminal_carries_the_last_usage() {
     const SCENARIO: &str =
@@ -373,6 +385,9 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
     assert_recorded_stream_finishes_early(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_with_visible_thoughts"
+))]
 #[tokio::test]
 async fn two_terminal_stream_with_visible_thoughts() {
     const SCENARIO: &str = "stream_terminal_matrix/two_terminal_stream_with_visible_thoughts";
@@ -419,6 +434,9 @@ async fn two_terminal_stream_with_visible_thoughts() {
     assert_recorded_stream_finishes_early(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/gemini_3_flash_does_not_emit_the_intermediate_finish"
+))]
 #[tokio::test]
 async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
     const SCENARIO: &str =
@@ -460,6 +478,9 @@ async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
     assert_recorded_stream_finishes_early(SCENARIO, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_through_raw_stream"
+))]
 #[tokio::test]
 async fn two_terminal_stream_through_raw_stream() {
     const SCENARIO: &str = "stream_terminal_matrix/two_terminal_stream_through_raw_stream";
@@ -520,6 +541,9 @@ async fn two_terminal_stream_through_raw_stream() {
     assert_recorded_stream_finishes_early(SCENARIO, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/two_terminal_stream_unicode_answer_after_the_first_finish"
+))]
 #[tokio::test]
 async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
     const SCENARIO: &str =
@@ -567,6 +591,9 @@ async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
 
 // --- 9-12: regression guards for ordinary single-terminal streams ---------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/single_terminal_text_stream_is_unchanged"
+))]
 #[tokio::test]
 async fn single_terminal_text_stream_is_unchanged() {
     with_gemini_stream_terminal_cassette(
@@ -604,6 +631,9 @@ async fn single_terminal_text_stream_is_unchanged() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/single_terminal_tool_call_stream_is_unchanged"
+))]
 #[tokio::test]
 async fn single_terminal_tool_call_stream_is_unchanged() {
     with_gemini_stream_terminal_cassette(
@@ -649,6 +679,9 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/max_tokens_truncated_stream_still_reports_length"
+))]
 #[tokio::test]
 async fn max_tokens_truncated_stream_still_reports_length() {
     with_gemini_stream_terminal_cassette(
@@ -685,6 +718,9 @@ async fn max_tokens_truncated_stream_still_reports_length() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/stream_terminal_matrix/thinking_stream_terminal_is_unchanged"
+))]
 #[tokio::test]
 async fn thinking_stream_terminal_is_unchanged() {
     with_gemini_stream_terminal_cassette(

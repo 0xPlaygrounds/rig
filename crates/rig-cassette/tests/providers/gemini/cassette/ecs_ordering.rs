@@ -15,6 +15,9 @@ use rig::providers::gemini::completion::gemini_api_types::{
 };
 use rig_ecs::agent::AdditionalParams;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/streaming_tools_emit_tool_call_before_later_text"
+))]
 #[tokio::test]
 async fn streaming_tools_emit_tool_call_before_later_text() {
     with_gemini_cassette(
@@ -48,6 +51,9 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer"
+))]
 #[tokio::test]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     use crate::support::{

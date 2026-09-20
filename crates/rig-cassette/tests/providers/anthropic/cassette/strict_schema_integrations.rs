@@ -52,6 +52,9 @@ fn assert_one_call(
     assert_eq!(calls[0].1, expected_arguments);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/default_model_remains_non_strict"
+))]
 #[tokio::test]
 async fn default_model_remains_non_strict() {
     with_anthropic_cassette(
@@ -75,6 +78,9 @@ async fn default_model_remains_non_strict() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/strict_mode_without_tools_is_a_noop"
+))]
 #[tokio::test]
 async fn strict_mode_without_tools_is_a_noop() {
     with_anthropic_cassette(
@@ -106,6 +112,9 @@ async fn strict_mode_without_tools_is_a_noop() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/automatic_choice_calls_a_strict_tool"
+))]
 #[tokio::test]
 async fn automatic_choice_calls_a_strict_tool() {
     with_anthropic_cassette(
@@ -132,6 +141,9 @@ async fn automatic_choice_calls_a_strict_tool() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/none_choice_suppresses_a_strict_tool"
+))]
 #[tokio::test]
 async fn none_choice_suppresses_a_strict_tool() {
     with_anthropic_cassette(
@@ -157,6 +169,9 @@ async fn none_choice_suppresses_a_strict_tool() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/specific_choice_selects_one_of_multiple_strict_tools"
+))]
 #[tokio::test]
 async fn specific_choice_selects_one_of_multiple_strict_tools() {
     with_anthropic_cassette(
@@ -187,6 +202,9 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/rig_strict_and_provider_non_strict_tools_coexist"
+))]
 #[tokio::test]
 async fn rig_strict_and_provider_non_strict_tools_coexist() {
     with_anthropic_cassette(
@@ -225,6 +243,9 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted"
+))]
 #[tokio::test]
 async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
     with_anthropic_cassette(
@@ -263,6 +284,9 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/manual_prompt_caching_coexists_with_strict_tools"
+))]
 #[tokio::test]
 async fn manual_prompt_caching_coexists_with_strict_tools() {
     with_anthropic_cassette(
@@ -289,6 +313,9 @@ async fn manual_prompt_caching_coexists_with_strict_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/automatic_prompt_caching_coexists_with_strict_tools"
+))]
 #[tokio::test]
 async fn automatic_prompt_caching_coexists_with_strict_tools() {
     with_anthropic_cassette(
@@ -314,6 +341,9 @@ async fn automatic_prompt_caching_coexists_with_strict_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools"
+))]
 #[tokio::test]
 async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
     with_anthropic_cassette(
@@ -357,6 +387,9 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools"
+))]
 #[tokio::test]
 async fn one_hour_automatic_caching_coexists_with_strict_tools() {
     with_anthropic_cassette(
@@ -382,6 +415,9 @@ async fn one_hour_automatic_caching_coexists_with_strict_tools() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/structured_output_and_strict_tool_use_coexist"
+))]
 #[tokio::test]
 async fn structured_output_and_strict_tool_use_coexist() {
     with_anthropic_cassette(
@@ -418,6 +454,9 @@ async fn structured_output_and_strict_tool_use_coexist() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_integrations/parallel_strict_tool_calls_preserve_each_schema"
+))]
 #[tokio::test]
 async fn parallel_strict_tool_calls_preserve_each_schema() {
     with_anthropic_cassette(

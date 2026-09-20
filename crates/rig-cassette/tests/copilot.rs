@@ -13,3 +13,5 @@ use rig_test_support::support;
 
 #[path = "providers/copilot/mod.rs"]
 mod copilot;
+
+rig_test_support::cassette_inventory!();

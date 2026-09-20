@@ -27,3 +27,5 @@ mod ecs_observation;
 mod ecs_session;
 
 use rig_test_support::matrix;
+
+rig_test_support::cassette_inventory!();

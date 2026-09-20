@@ -51,6 +51,9 @@ fn assert_raw_agrees_with_normalized(response: &EmbeddingResponse) {
     assert_eq!(response.usage.total_tokens, Some(usage.total_tokens as u64));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/embedding_matrix/normalized_response_is_complete"
+))]
 #[tokio::test]
 async fn normalized_response_is_complete() {
     with_openai_cassette(
@@ -69,6 +72,9 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/embedding_matrix/raw_round_trips"
+))]
 /// `raw` is the provider's own payload, verbatim: it deserializes back to the
 /// provider's own response type, whose native fields are what the normalized
 /// view reports.
@@ -88,6 +94,9 @@ async fn raw_round_trips() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/embedding_matrix/raw_route_parity"
+))]
 /// Two identical live exchanges in one recording: each reply carries both
 /// views, so the second reply's `raw` agrees with its own normalized view
 /// just as the first one's does, and the two exchanges report the same model.
@@ -113,6 +122,9 @@ async fn raw_route_parity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/embedding_matrix/single_text_convenience"
+))]
 /// The single-text conveniences derive from the full method: same embedding,
 /// same metadata.
 #[tokio::test]
@@ -140,6 +152,9 @@ async fn single_text_convenience() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/embedding_matrix/dimensions_request"
+))]
 /// An embedding wire asked for an explicit width round-trips it — the
 /// provider either honors it or the driver errors honestly with
 /// `MismatchedDimensions`; a silent mismatch is the bug this cell exists to
@@ -162,6 +177,9 @@ async fn dimensions_request() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/embedding_matrix/error_preserves_provider_body"
+))]
 /// A rejected request surfaces the provider's own error body, preserved raw.
 #[tokio::test]
 async fn error_preserves_provider_body() {

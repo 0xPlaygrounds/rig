@@ -19,6 +19,9 @@ use crate::support::{
 
 const MODEL: &str = anthropic::completion::CLAUDE_SONNET_4_6;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/lifecycle_matrix/middleware_unary"
+))]
 #[tokio::test]
 async fn middleware_phases_observe_a_unary_completion() {
     let probe = WireProbe::default();
@@ -39,6 +42,9 @@ async fn middleware_phases_observe_a_unary_completion() {
     probe.assert_single_exchange();
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/lifecycle_matrix/middleware_streaming"
+))]
 #[tokio::test]
 async fn middleware_response_phase_precedes_stream_consumption() {
     let probe = WireProbe::default();
@@ -69,6 +75,9 @@ async fn middleware_response_phase_precedes_stream_consumption() {
     assert_eq!(hook.starts.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/lifecycle_matrix/run_start_rewrite"
+))]
 #[tokio::test]
 async fn run_start_rewrite_reaches_the_provider() {
     let hook = LifecycleHookProbe::rewriting_to(
@@ -102,6 +111,9 @@ async fn run_start_rewrite_reaches_the_provider() {
     assert_eq!(hook.settle_outcomes(), ["response"]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/lifecycle_matrix/entry_log_order"
+))]
 #[tokio::test]
 async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
     let probe = crate::support::EntryLogProbe::default();
@@ -136,6 +148,9 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
     probe.assert_phases(2);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/lifecycle_matrix/run_settled_tool_run"
+))]
 #[tokio::test]
 async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
     let hook = LifecycleHookProbe::default();

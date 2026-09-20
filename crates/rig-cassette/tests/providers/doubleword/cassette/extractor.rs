@@ -6,6 +6,9 @@ use rig_agent::test_utils::validate_extraction_fields;
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_doubleword_cassette("extractor/extractor_smoke", |client| async move {

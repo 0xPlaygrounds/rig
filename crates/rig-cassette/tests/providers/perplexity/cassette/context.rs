@@ -7,6 +7,9 @@ use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_inse
 
 use super::super::support::with_perplexity_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "perplexity/context/context_smoke"
+))]
 #[tokio::test]
 async fn context_smoke() {
     with_perplexity_cassette("context/context_smoke", |client| async move {

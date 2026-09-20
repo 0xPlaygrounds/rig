@@ -160,6 +160,9 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 // 1. raw round-trips the terminal type
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type"
+))]
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
@@ -201,6 +204,9 @@ async fn stream_raw_round_trips_terminal_type() {
 // 2. A terminal-only field the normalized record lacks
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier"
+))]
 #[tokio::test]
 async fn stream_raw_exposes_terminal_service_tier() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier";
@@ -237,6 +243,9 @@ async fn stream_raw_exposes_terminal_service_tier() {
 // 3. A forced tool call: the terminal round-trips and reports ToolCalls
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type"
+))]
 #[tokio::test]
 async fn stream_tool_call_raw_round_trips_terminal_type() {
     const SCENARIO: &str =

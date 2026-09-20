@@ -13,6 +13,9 @@ use rig::providers::openai;
 use super::super::support::with_openai_cassette;
 use crate::support::{IdentityProbe, assert_transport_request_id};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity_edge/structured_output_and_identity"
+))]
 /// Family A: `output_schema` reshapes the request (structured output);
 /// identity still rides it.
 #[tokio::test]
@@ -42,6 +45,9 @@ async fn structured_output_and_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity_edge/previous_response_id_chain_keeps_axes_distinct"
+))]
 /// Family A: a `previous_response_id` chain — exactly where response-scoped
 /// and transport ids are most likely to be crossed. The second call reuses
 /// the first's *response id* on the wire, yet reports its own transport id.
@@ -94,6 +100,9 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity_edge/blocking_hook_retry_uses_second_attempts_id"
+))]
 /// Family B: a live hook-driven retry on the blocking surface — the second
 /// event's identity is the second attempt's.
 #[tokio::test]
@@ -147,6 +156,9 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity_edge/provider_error_response_surfaces_cleanly"
+))]
 /// A provider 4xx carries the failed call's transport request id (rig#2314):
 /// the recorded error response's `x-request-id` header reaches the error's
 /// `provider_request_id()` accessor, alongside the preserved status and body.
@@ -174,6 +186,9 @@ async fn provider_error_response_carries_request_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/response_identity_edge/raw_and_normalized_views_agree_on_identity"
+))]
 /// Family D: one interaction, two views — the provider-native Responses reply
 /// carried in [`rig::completion::CompletionResponse::raw`] and the normalized
 /// response describe the same interaction. The transport id rides the

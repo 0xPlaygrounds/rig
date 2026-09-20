@@ -5,6 +5,9 @@ use rig::prelude::*;
 use crate::copilot::{LIVE_MODEL, with_copilot_noninteractive_oauth_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/noninteractive_oauth/cached_oauth_allows_noninteractive_completion"
+))]
 #[tokio::test]
 async fn cached_oauth_allows_noninteractive_completion() {
     with_copilot_noninteractive_oauth_cassette(

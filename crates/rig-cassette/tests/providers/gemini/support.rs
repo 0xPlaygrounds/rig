@@ -295,8 +295,7 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 pub(super) type BoundGemini = Bound<Gemini, BoxedHttpClient>;
 
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGemini) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = rig_test_support::recording::start(
         "gemini",
         spec,
         "https://generativelanguage.googleapis.com",
@@ -324,8 +323,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(BoundGemini) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = rig_test_support::recording::start(
         "gemini",
         spec,
         "https://generativelanguage.googleapis.com",
@@ -462,8 +460,7 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     F: FnOnce(BoundGemini) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = rig_test_support::recording::start(
         "gemini",
         spec,
         "https://generativelanguage.googleapis.com",

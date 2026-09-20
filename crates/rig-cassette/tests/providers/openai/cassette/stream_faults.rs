@@ -7,6 +7,13 @@
 //! hypothesis is that the fault surfaces as its own kind, with nothing
 //! recorded, committed or executed after it.
 
+rig_test_support::scripted_family! {
+    const SCRIPTED_SOURCES: "openai", "stream_faults", [
+        "streaming/streaming_smoke",
+        "streaming_tools/streaming_tools_smoke",
+    ]
+}
+
 use bytes::Bytes;
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
@@ -23,7 +30,7 @@ use super::super::support::with_openai_cassette;
 use crate::{
     goldens::families,
     stream_faults::{
-        CountedSubtract, Invocations, SseShape, assert_setup_failure, drain, recorded_sse_frames,
+        CountedSubtract, Invocations, SseShape, assert_setup_failure, drain,
         recorded_stream_errors, scripted, sole_failed_completion, sse_bytes,
     },
     support::{
@@ -53,8 +60,10 @@ pub(super) const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 
 /// The frames of the recorded text stream up to, not including, the text
 /// item's completion: content deltas, then nothing.
-pub(super) fn text_prefix_frames() -> Vec<String> {
-    SseShape::Responses.text_prefix(&recorded_sse_frames("openai", TEXT_STREAM, 0))
+pub(super) fn text_prefix_frames(
+    sources: &rig_test_support::recording::ScriptedFamily,
+) -> Vec<String> {
+    SseShape::Responses.text_prefix(&sources.recorded_sse_frames(TEXT_STREAM, 0))
 }
 
 /// The text the deltas of `frames` carry.
@@ -64,8 +73,10 @@ pub(super) fn delta_text(frames: &[String]) -> String {
 
 /// The frames of the recorded tool-call turn up to, not including, the
 /// response's completion: the whole `subtract` call, then nothing.
-pub(super) fn tool_call_prefix_frames() -> Vec<String> {
-    SseShape::Responses.tool_prefix(&recorded_sse_frames("openai", TOOL_STREAM, 0))
+pub(super) fn tool_call_prefix_frames(
+    sources: &rig_test_support::recording::ScriptedFamily,
+) -> Vec<String> {
+    SseShape::Responses.tool_prefix(&sources.recorded_sse_frames(TOOL_STREAM, 0))
 }
 
 /// A client over a transport that answers one streaming request with
@@ -74,6 +85,9 @@ pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<OpenAI, SequencedStre
     OpenAI::new(SCRIPTED_KEY).bind(scripted(chunks))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 /// The model refuses the request before any frame: the run fails with the
 /// recorded 400 and its body, streams nothing, and records the one
 /// completion as that failure.
@@ -115,7 +129,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 /// is assembled, and the record holds the truncation.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
-    let frames = text_prefix_frames();
+    let frames = text_prefix_frames(&SCRIPTED_SOURCES);
     let prefix = delta_text(&frames);
     assert!(
         !prefix.is_empty(),
@@ -155,7 +169,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 /// truncation with the one completion recorded.
 #[tokio::test]
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
-    let frames = tool_call_prefix_frames();
+    let frames = tool_call_prefix_frames(&SCRIPTED_SOURCES);
     let invocations = Invocations::default();
     let client = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
@@ -194,7 +208,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
 /// after the content items.
 #[tokio::test]
 async fn error_event_after_content_fails_with_the_provider_error() {
-    let mut frames = text_prefix_frames();
+    let mut frames = text_prefix_frames(&SCRIPTED_SOURCES);
     let prefix = delta_text(&frames);
     frames.push(ERROR_EVENT.to_owned());
     let client = scripted_client(vec![sse_bytes(&frames)]);
@@ -237,6 +251,9 @@ async fn error_event_after_content_fails_with_the_provider_error() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming/streaming_smoke"
+))]
 /// The consumer drops the recorded stream at its first text delta: the
 /// completion is recorded as cancelled and no answer is assembled. The
 /// replay marked the interaction consumed when it matched the request, so

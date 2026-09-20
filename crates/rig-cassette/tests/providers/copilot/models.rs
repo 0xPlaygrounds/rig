@@ -24,6 +24,9 @@
 use crate::copilot::with_copilot_cassette;
 use rig::model::ModelLister;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/models/list_models_smoke"
+))]
 #[tokio::test]
 async fn list_models_smoke() {
     with_copilot_cassette("models/list_models_smoke", |client| async move {

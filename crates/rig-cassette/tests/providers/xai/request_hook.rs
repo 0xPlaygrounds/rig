@@ -70,6 +70,9 @@ impl AgentHook for SessionIdHook<'_> {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/request_hook/request_hook_records_prompt_and_response"
+))]
 #[tokio::test]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_xai_cassette_result(

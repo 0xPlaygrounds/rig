@@ -165,6 +165,9 @@ where
     Usage::default()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_hand_driven_multi_turn_run_completes"
+))]
 #[tokio::test]
 async fn streamed_hand_driven_multi_turn_run_completes() {
     with_gemini_cassette(
@@ -259,6 +262,9 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream"
+))]
 #[tokio::test]
 async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
     with_gemini_cassette(
@@ -318,6 +324,9 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream"
+))]
 #[tokio::test]
 async fn streamed_repair_continues_the_same_stream() {
     with_gemini_cassette(
@@ -390,6 +399,9 @@ async fn streamed_repair_continues_the_same_stream() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers"
+))]
 #[tokio::test]
 async fn streamed_skip_abandons_the_turn_and_recovers() {
     with_gemini_cassette(
@@ -489,6 +501,9 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message"
+))]
 #[tokio::test]
 async fn builtin_streaming_max_turns_error_carries_pending_message() {
     with_gemini_cassette(
@@ -562,6 +577,9 @@ impl AgentHook for CancelOnToolCall {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn"
+))]
 #[tokio::test]
 async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
     with_gemini_cassette(

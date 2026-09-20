@@ -6,6 +6,9 @@ use rig::providers::gemini;
 use super::super::support::with_gemini_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_gemini_cassette("agent/completion_smoke", |client| async move {

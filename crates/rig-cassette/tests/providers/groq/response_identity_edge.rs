@@ -12,6 +12,9 @@ use super::support::with_groq_cassette_result;
 
 const MODEL: &str = "llama-3.3-70b-versatile";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/response_identity_edge/blocking_response_carries_identity"
+))]
 #[tokio::test]
 async fn blocking_response_carries_identity() -> Result<()> {
     with_groq_cassette_result(
@@ -36,6 +39,9 @@ async fn blocking_response_carries_identity() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/response_identity_edge/streaming_terminal_carries_identity"
+))]
 #[tokio::test]
 async fn streaming_terminal_carries_identity() -> Result<()> {
     use futures::StreamExt;
@@ -71,6 +77,9 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/response_identity_edge/provider_error_response_carries_request_id"
+))]
 /// A provider 4xx carries the failed call's transport request id (rig#2314).
 #[tokio::test]
 async fn provider_error_response_carries_request_id() -> Result<()> {
@@ -95,6 +104,9 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
     .await
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "groq/response_identity_edge/auth_rejection_classifies_with_contract"
+))]
 /// 401 auth rejection (rig#2314 error matrix): Groq's auth tier carries the
 /// id its 4xx errors do (recorded).
 #[tokio::test]

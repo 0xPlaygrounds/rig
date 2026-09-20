@@ -54,6 +54,9 @@ fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::Completio
         .build()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/raw_completion_parity_matrix/raw_try_into_matches_completion"
+))]
 #[tokio::test]
 async fn raw_try_into_matches_completion() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_try_into_matches_completion";

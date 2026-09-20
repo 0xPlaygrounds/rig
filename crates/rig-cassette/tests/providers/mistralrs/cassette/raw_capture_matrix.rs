@@ -91,6 +91,7 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
 // 1: raw is the reply document, and the shared type reads it back
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("mistralrs/raw_capture_matrix/raw_round_trips_provider_type").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn raw_is_the_reply_document() {
@@ -146,6 +147,7 @@ async fn raw_is_the_reply_document() {
 // 2: envelope fields rig does not normalize are readable from raw
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("mistralrs/raw_capture_matrix/raw_exposes_envelope_fields").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn raw_exposes_envelope_fields() {
@@ -191,6 +193,7 @@ async fn raw_exposes_envelope_fields() {
 // 3: raw and the normalized view tell one story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("mistralrs/raw_capture_matrix/normalized_fields_equal_raw_renormalized").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 /// The normalized fields are the fields the reply document carries: there is
 /// one decoder and one mapping, so the provider-native view read back out of
 /// `raw` — and the recorded wire body it came from — must agree with the

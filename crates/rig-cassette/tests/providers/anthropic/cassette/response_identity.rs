@@ -23,6 +23,9 @@ fn assert_request_id(id: Option<&str>, context: &str) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity/nonstreaming_response_carries_identity"
+))]
 #[tokio::test]
 async fn nonstreaming_response_carries_identity() {
     with_anthropic_cassette(
@@ -50,6 +53,9 @@ async fn nonstreaming_response_carries_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity/streaming_terminal_carries_identity"
+))]
 #[tokio::test]
 async fn streaming_terminal_carries_identity() {
     with_anthropic_cassette(
@@ -123,6 +129,9 @@ impl AgentHook for IdentityCapture {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity/agent_run_records_per_attempt_identity"
+))]
 /// A two-call tool run: each `CompletionCall` and each hook observation
 /// carries the identity of its *own* attempt — two different request ids, not
 /// stale run state.
@@ -191,6 +200,9 @@ async fn agent_run_records_per_attempt_identity() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity/streamed_agent_run_hook_observes_identity"
+))]
 /// Streaming agent-run parity: the same `CompletionResponse` hook fires on
 /// the streaming driver once the stream is assembled, and observes the same
 /// identity metadata it does on the blocking driver.
@@ -242,6 +254,9 @@ fn _tool_trait_in_scope() -> &'static str {
     Adder::NAME
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/response_identity/streamed_agent_tool_run_reports_per_attempt_identity"
+))]
 /// A *streamed* tool run: every accepted turn — the tool-only turn included
 /// — fires both `CompletionResponse` and `ModelTurnFinished`, each carrying
 /// the attempt's full identity, and each of the run's attempts reports its

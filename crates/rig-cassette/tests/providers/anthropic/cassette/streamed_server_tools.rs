@@ -62,6 +62,9 @@ fn raw_block_type(content: &AssistantContent) -> Option<String> {
     raw.get("type")?.as_str().map(str::to_string)
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streamed_server_tools/streamed_web_search_preserves_server_tool_blocks"
+))]
 #[tokio::test]
 async fn streamed_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
@@ -125,6 +128,9 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streamed_server_tools/blocking_web_search_preserves_server_tool_blocks"
+))]
 /// Blocking twin: the same prompt through the unary path must preserve the
 /// same server-tool block kinds, so the streamed turn is not carrying less.
 #[tokio::test]

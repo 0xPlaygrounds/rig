@@ -11,3 +11,5 @@ use rig_test_support::support;
 
 #[path = "providers/perplexity/mod.rs"]
 mod perplexity;
+
+rig_test_support::cassette_inventory!();

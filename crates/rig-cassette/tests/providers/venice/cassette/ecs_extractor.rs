@@ -3,6 +3,9 @@ use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson};
 use rig_agent::test_utils::validate_extraction_fields;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "venice/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_venice_cassette("extractor/extractor_smoke", |client| async move {

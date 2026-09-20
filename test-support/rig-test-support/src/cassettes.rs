@@ -1,6 +1,7 @@
 //! Rig repository paths for the reusable cassette engine.
 #![allow(dead_code, unused_imports)]
 
+pub use crate::recording::ProviderCassette;
 pub use rig_cassette::http::*;
 use std::path::PathBuf;
 
@@ -106,12 +107,18 @@ pub async fn checkpoint_attempt(cassette: &ProviderCassette, provider: &str, sce
     else {
         return;
     };
-    let path = PathBuf::from(directory)
-        .join(provider)
-        .join(format!("{scenario}.yaml"));
-    let written = cassette.checkpoint_recording(&path).await;
-    eprintln!(
-        "CHECKPOINT_ATTEMPT cassette={} completed_exchanges_saved={written}",
-        path.display()
-    );
+    let path = cassette
+        .checkpoint_attempt(std::path::Path::new(&directory))
+        .await
+        .unwrap_or_else(|error| panic!("checkpoint attempt: {error:#}"));
+    if let Some(path) = path {
+        eprintln!(
+            "CHECKPOINT_ATTEMPT cassette={} completed_exchanges_saved=true",
+            path.display()
+        );
+    } else {
+        eprintln!(
+            "CHECKPOINT_ATTEMPT cassette={provider}/{scenario} completed_exchanges_saved=false"
+        );
+    }
 }

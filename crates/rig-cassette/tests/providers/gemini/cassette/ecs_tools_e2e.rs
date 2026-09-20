@@ -14,6 +14,9 @@ use runtime::{configured, execute};
 const CHAINED_PROMPT: &str =
     "Calculate 12 - 5 using the subtract tool, then add 30 to that result using the add tool.";
 const CHAINED_RESULT: i32 = 37;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_tools/nonstreaming_multi_turn_executes_tools_and_reports_usage"
+))]
 #[tokio::test]
 async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
     let add = CountingAdd::default();
@@ -58,6 +61,9 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_tools/streaming_multi_turn_executes_tools_via_builtin_driver"
+))]
 #[tokio::test]
 async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
     let add = CountingAdd::default();
@@ -113,6 +119,9 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_tools/parallel_tool_calls_land_in_one_tool_result_message"
+))]
 #[tokio::test]
 async fn parallel_tool_calls_land_in_one_tool_result_message() {
     with_gemini_cassette(
@@ -129,6 +138,9 @@ async fn parallel_tool_calls_land_in_one_tool_result_message() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_tools/tool_concurrency_one_preserves_parallel_call_contract"
+))]
 #[tokio::test]
 async fn tool_concurrency_one_preserves_parallel_call_contract() {
     with_gemini_cassette(
@@ -145,6 +157,9 @@ async fn tool_concurrency_one_preserves_parallel_call_contract() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_tools/zero_arg_tool_call_round_trips"
+))]
 #[tokio::test]
 async fn zero_arg_tool_call_round_trips() {
     with_gemini_cassette(
@@ -159,6 +174,9 @@ async fn zero_arg_tool_call_round_trips() {
     )
     .await;
 }
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/agent_tools/string_output_verbatim_struct_output_json"
+))]
 #[tokio::test]
 async fn string_output_sent_verbatim_and_struct_output_serialized_as_json() {
     with_gemini_cassette(

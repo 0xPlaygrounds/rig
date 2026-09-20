@@ -125,6 +125,9 @@ fn assert_has_text(response: &CompletionResponse) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/gpt_5_6_reasoning/effort_max"
+))]
 #[tokio::test]
 async fn effort_max() {
     with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
@@ -145,6 +148,9 @@ async fn effort_max() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/gpt_5_6_reasoning/mode_pro_with_independent_effort"
+))]
 #[tokio::test]
 async fn mode_pro_with_independent_effort() {
     with_openai_cassette(
@@ -168,6 +174,9 @@ async fn mode_pro_with_independent_effort() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/gpt_5_6_reasoning/context_current_turn"
+))]
 #[tokio::test]
 async fn context_current_turn() {
     with_openai_cassette(
@@ -194,6 +203,9 @@ async fn context_current_turn() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/gpt_5_6_reasoning/five_turn_metadata_roundtrip"
+))]
 #[tokio::test]
 async fn five_turn_reasoning_metadata_roundtrip() {
     with_openai_cassette(
@@ -306,6 +318,9 @@ async fn five_turn_reasoning_metadata_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip"
+))]
 #[tokio::test]
 async fn five_turn_streaming_reasoning_metadata_roundtrip() {
     with_openai_cassette(
@@ -467,6 +482,9 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/gpt_5_6_reasoning/streaming_metadata"
+))]
 #[tokio::test]
 async fn streaming_reasoning_metadata() {
     with_openai_cassette(

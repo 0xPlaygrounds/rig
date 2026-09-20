@@ -198,6 +198,9 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
 // 1: typed access is recoverable
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response"
+))]
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
@@ -247,6 +250,9 @@ async fn raw_roundtrips_streaming_completion_response() {
 // 2: terminal-only fields are readable and match the wire
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_stream_capture_matrix/raw_exposes_terminal_only_fields"
+))]
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
@@ -300,6 +306,9 @@ async fn raw_exposes_terminal_only_fields() {
 // 3: a forced tool call keeps the wire's STOP while the terminal says ToolCalls
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call"
+))]
 #[tokio::test]
 async fn raw_terminal_keeps_stop_on_forced_function_call() {
     const SCENARIO: &str =

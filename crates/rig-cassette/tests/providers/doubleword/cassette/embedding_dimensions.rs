@@ -191,6 +191,9 @@ fn assert_rejected_call(calls: &[RecordedEmbeddingCall], expected_on_the_wire: u
 // Width sweep, single input
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_default_single"
+))]
 #[tokio::test]
 async fn width_default_single() {
     // The `default_ndims` half of the bug, in its purest form: no caller
@@ -204,6 +207,9 @@ async fn width_default_single() {
     assert_recorded(&calls, &[None], NATIVE_WIDTH, &[1]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_32_single"
+))]
 #[tokio::test]
 async fn width_32_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -214,6 +220,9 @@ async fn width_32_single() {
     assert_single_input_width(calls, 32);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_64_single"
+))]
 #[tokio::test]
 async fn width_64_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -224,6 +233,9 @@ async fn width_64_single() {
     assert_single_input_width(calls, 64);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_128_single"
+))]
 #[tokio::test]
 async fn width_128_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -234,6 +246,9 @@ async fn width_128_single() {
     assert_single_input_width(calls, 128);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_256_single"
+))]
 #[tokio::test]
 async fn width_256_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -244,6 +259,9 @@ async fn width_256_single() {
     assert_single_input_width(calls, 256);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_512_single"
+))]
 #[tokio::test]
 async fn width_512_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -254,6 +272,9 @@ async fn width_512_single() {
     assert_single_input_width(calls, 512);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_1024_single"
+))]
 #[tokio::test]
 async fn width_1024_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -264,6 +285,9 @@ async fn width_1024_single() {
     assert_single_input_width(calls, 1_024);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_2048_single"
+))]
 #[tokio::test]
 async fn width_2048_single() {
     let calls = with_doubleword_embedding_cassette(
@@ -274,6 +298,9 @@ async fn width_2048_single() {
     assert_single_input_width(calls, 2_048);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_4095_single"
+))]
 #[tokio::test]
 async fn width_4095_single() {
     // One below the ceiling: still a truncation request, so it must reach the
@@ -287,6 +314,9 @@ async fn width_4095_single() {
     assert_single_input_width(calls, 4_095);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_4096_single_is_not_sent"
+))]
 #[tokio::test]
 async fn width_4096_single_is_not_sent() {
     // Naming the native width explicitly must produce the *same* request as
@@ -304,6 +334,9 @@ async fn width_4096_single_is_not_sent() {
 // Width sweep, batched inputs
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_32_batch"
+))]
 #[tokio::test]
 async fn width_32_batch() {
     let calls = with_doubleword_embedding_cassette(
@@ -314,6 +347,9 @@ async fn width_32_batch() {
     assert_recorded(&calls, &[Some(32)], 32, &[BATCH.len()]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_128_batch"
+))]
 #[tokio::test]
 async fn width_128_batch() {
     let calls = with_doubleword_embedding_cassette(
@@ -324,6 +360,9 @@ async fn width_128_batch() {
     assert_recorded(&calls, &[Some(128)], 128, &[BATCH.len()]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/width_512_batch"
+))]
 #[tokio::test]
 async fn width_512_batch() {
     let calls = with_doubleword_embedding_cassette(
@@ -338,6 +377,9 @@ async fn width_512_batch() {
 // Adjacent entry points that share the same hook
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/usage_survives_a_requested_width"
+))]
 #[tokio::test]
 async fn usage_survives_a_requested_width() {
     // `embed_texts_response` is a second entry point into the same request
@@ -366,6 +408,9 @@ async fn usage_survives_a_requested_width() {
     assert_recorded(&calls, &[Some(256)], 256, &[1]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/usage_at_the_default_width"
+))]
 #[tokio::test]
 async fn usage_at_the_default_width() {
     // The `with_usage` entry point on the other side of the fix: no caller
@@ -394,6 +439,9 @@ async fn usage_at_the_default_width() {
     assert_recorded(&calls, &[None], NATIVE_WIDTH, &[1]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/builder_documents_at_a_requested_width"
+))]
 #[tokio::test]
 async fn builder_documents_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
@@ -421,6 +469,9 @@ async fn builder_documents_at_a_requested_width() {
     assert_recorded(&calls, &[Some(128)], 128, &[2]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/builder_documents_at_the_default_width"
+))]
 #[tokio::test]
 async fn builder_documents_at_the_default_width() {
     // The builder path with no caller width: the `ndims() == 0` half of the
@@ -454,6 +505,9 @@ async fn builder_documents_at_the_default_width() {
 // Input classes, all at one truncated width
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/unicode_input_at_a_requested_width"
+))]
 #[tokio::test]
 async fn unicode_input_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
@@ -466,6 +520,9 @@ async fn unicode_input_at_a_requested_width() {
     assert_single_input_width(calls, 512);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/empty_input_at_a_requested_width"
+))]
 #[tokio::test]
 async fn empty_input_at_a_requested_width() {
     // Doubleword rejects an empty input outright. Recorded because the
@@ -488,6 +545,9 @@ async fn empty_input_at_a_requested_width() {
 // `empty_input_at_a_requested_width` *is* stable (400 on six of six) and
 // covers the contentless-input class.
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/long_input_at_a_requested_width"
+))]
 #[tokio::test]
 async fn long_input_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
@@ -501,6 +561,9 @@ async fn long_input_at_a_requested_width() {
     assert_single_input_width(calls, 512);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/repeated_input_at_a_requested_width"
+))]
 #[tokio::test]
 async fn repeated_input_at_a_requested_width() {
     // Identical inputs in one batch: the truncation must apply per vector, not
@@ -517,6 +580,9 @@ async fn repeated_input_at_a_requested_width() {
 // Two widths in one scenario, and the unknown-model escape hatch
 // ================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/two_widths_in_one_scenario_stay_independent"
+))]
 #[tokio::test]
 async fn two_widths_in_one_scenario_stay_independent() {
     // Same client, same text, two models at different widths: the width is a
@@ -537,6 +603,9 @@ async fn two_widths_in_one_scenario_stay_independent() {
     assert_eq!(calls[1].returned_widths, vec![1_024]);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire"
+))]
 #[tokio::test]
 async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
     // rig polices only the range it has a table for. For a model it does not

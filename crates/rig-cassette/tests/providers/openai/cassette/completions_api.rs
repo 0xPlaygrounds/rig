@@ -17,6 +17,9 @@ use crate::support::{
     zero_arg_tool_definition,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_agent_prompt"
+))]
 #[tokio::test]
 async fn completions_api_agent_prompt() {
     with_openai_completions_cassette(
@@ -39,6 +42,9 @@ async fn completions_api_agent_prompt() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_raw_response_text_matches_normalized_choice_text"
+))]
 #[tokio::test]
 async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
@@ -88,6 +94,9 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_streams_two_tool_calls_before_final_answer"
+))]
 #[tokio::test]
 async fn completions_api_streams_two_tool_calls_before_final_answer() {
     with_openai_completions_cassette(
@@ -113,6 +122,9 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call"
+))]
 #[tokio::test]
 async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
     with_openai_completions_cassette(
@@ -132,6 +144,9 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta"
+))]
 #[tokio::test]
 async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
     with_openai_completions_cassette(
@@ -161,6 +176,9 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text"
+))]
 #[tokio::test]
 async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openai_completions_cassette(
@@ -191,6 +209,9 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_stream_emits_tool_call_before_later_text"
+))]
 #[tokio::test]
 async fn completions_api_stream_emits_tool_call_before_later_text() {
     with_openai_completions_cassette(
@@ -218,6 +239,9 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls"
+))]
 #[tokio::test]
 async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() {
     with_openai_completions_cassette(

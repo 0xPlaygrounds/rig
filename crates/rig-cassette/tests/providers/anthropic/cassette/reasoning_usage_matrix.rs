@@ -361,6 +361,9 @@ async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 
 // ------------------------------------------------------------- blocking ---
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_budget_thinking"
+))]
 #[tokio::test]
 async fn blocking_budget_thinking() {
     let observed = Observed::new();
@@ -384,6 +387,9 @@ async fn blocking_budget_thinking() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_adaptive_declines_to_think"
+))]
 #[tokio::test]
 async fn blocking_adaptive_declines_to_think() {
     let observed = Observed::new();
@@ -408,6 +414,9 @@ async fn blocking_adaptive_declines_to_think() {
         .assert_breakdown_present_and_zero(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_larger_budget"
+))]
 #[tokio::test]
 async fn blocking_larger_budget() {
     let observed = Observed::new();
@@ -431,6 +440,9 @@ async fn blocking_larger_budget() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_with_tools"
+))]
 #[tokio::test]
 async fn blocking_with_tools() {
     let observed = Observed::new();
@@ -454,6 +466,9 @@ async fn blocking_with_tools() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_tool_use_terminal"
+))]
 #[tokio::test]
 async fn blocking_tool_use_terminal() {
     let observed = Observed::new();
@@ -477,6 +492,9 @@ async fn blocking_tool_use_terminal() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_with_preamble"
+))]
 #[tokio::test]
 async fn blocking_with_preamble() {
     let observed = Observed::new();
@@ -500,6 +518,9 @@ async fn blocking_with_preamble() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_with_prompt_caching"
+))]
 #[tokio::test]
 async fn blocking_with_prompt_caching() {
     let observed = Observed::new();
@@ -527,6 +548,9 @@ async fn blocking_with_prompt_caching() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_redacted_thinking"
+))]
 #[tokio::test]
 async fn blocking_redacted_thinking() {
     let observed = Observed::new();
@@ -551,6 +575,9 @@ async fn blocking_redacted_thinking() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_max_tokens_truncation"
+))]
 /// A turn cut off by `max_tokens` still bills the thinking it did, so the
 /// breakdown must survive a truncated turn. The cell asserts the truncation
 /// itself from the fixture — otherwise a turn that happened to finish early
@@ -583,6 +610,9 @@ async fn blocking_max_tokens_truncation() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_opus_model"
+))]
 #[tokio::test]
 async fn blocking_opus_model() {
     let observed = Observed::new();
@@ -609,6 +639,9 @@ async fn blocking_opus_model() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_long_reasoning"
+))]
 #[tokio::test]
 async fn blocking_long_reasoning() {
     let observed = Observed::new();
@@ -637,6 +670,9 @@ async fn blocking_long_reasoning() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_thinking_disabled_control"
+))]
 #[tokio::test]
 async fn blocking_thinking_disabled_control() {
     let observed = Observed::new();
@@ -658,6 +694,9 @@ async fn blocking_thinking_disabled_control() {
     observed.assert_breakdown_absent(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/blocking_haiku_no_thinking_control"
+))]
 #[tokio::test]
 async fn blocking_haiku_no_thinking_control() {
     let observed = Observed::new();
@@ -681,6 +720,9 @@ async fn blocking_haiku_no_thinking_control() {
 
 // ------------------------------------------------------------ streaming ---
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_budget_thinking"
+))]
 #[tokio::test]
 async fn streaming_budget_thinking() {
     let observed = Observed::new();
@@ -704,6 +746,9 @@ async fn streaming_budget_thinking() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_adaptive_declines_to_think"
+))]
 #[tokio::test]
 async fn streaming_adaptive_declines_to_think() {
     let observed = Observed::new();
@@ -728,6 +773,9 @@ async fn streaming_adaptive_declines_to_think() {
         .assert_breakdown_present_and_zero(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_larger_budget"
+))]
 #[tokio::test]
 async fn streaming_larger_budget() {
     let observed = Observed::new();
@@ -751,6 +799,9 @@ async fn streaming_larger_budget() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_with_tools"
+))]
 #[tokio::test]
 async fn streaming_with_tools() {
     let observed = Observed::new();
@@ -774,6 +825,9 @@ async fn streaming_with_tools() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_tool_use_terminal"
+))]
 #[tokio::test]
 async fn streaming_tool_use_terminal() {
     let observed = Observed::new();
@@ -797,6 +851,9 @@ async fn streaming_tool_use_terminal() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_with_preamble"
+))]
 #[tokio::test]
 async fn streaming_with_preamble() {
     let observed = Observed::new();
@@ -820,6 +877,9 @@ async fn streaming_with_preamble() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_with_prompt_caching"
+))]
 #[tokio::test]
 async fn streaming_with_prompt_caching() {
     let observed = Observed::new();
@@ -847,6 +907,9 @@ async fn streaming_with_prompt_caching() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_redacted_thinking"
+))]
 #[tokio::test]
 async fn streaming_redacted_thinking() {
     let observed = Observed::new();
@@ -871,6 +934,9 @@ async fn streaming_redacted_thinking() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_max_tokens_truncation"
+))]
 #[tokio::test]
 async fn streaming_max_tokens_truncation() {
     let observed = Observed::new();
@@ -899,6 +965,9 @@ async fn streaming_max_tokens_truncation() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_opus_model"
+))]
 #[tokio::test]
 async fn streaming_opus_model() {
     let observed = Observed::new();
@@ -923,6 +992,9 @@ async fn streaming_opus_model() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_long_reasoning"
+))]
 #[tokio::test]
 async fn streaming_long_reasoning() {
     let observed = Observed::new();
@@ -951,6 +1023,9 @@ async fn streaming_long_reasoning() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/streaming_thinking_disabled_control"
+))]
 #[tokio::test]
 async fn streaming_thinking_disabled_control() {
     let observed = Observed::new();
@@ -974,6 +1049,9 @@ async fn streaming_thinking_disabled_control() {
 
 // ----------------------------------------------------- adjacent surfaces ---
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/normalized_stream_budget_thinking"
+))]
 /// The normalized stream shares the terminal record the raw stream exposes, so
 /// `StreamingCompletionResponse::usage()` must report the same breakdown.
 #[tokio::test]
@@ -1003,6 +1081,9 @@ async fn normalized_stream_budget_thinking() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/reasoning_usage_matrix/agent_blocking_thinking"
+))]
 /// The agent surface reaches the same mapping by a different route: usage
 /// arrives through the runner's per-call record
 /// (`completion_calls[].usage`) rather than off a `CompletionResponse`

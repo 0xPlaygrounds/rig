@@ -22,6 +22,9 @@ use crate::support::assert_nonempty_response;
 // Argument rewriting.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_tools/arg_rewrite_sets_one_key_preserving_rest_blocking"
+))]
 #[tokio::test]
 async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
     let add = CountingAdd::default();
@@ -75,6 +78,9 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_tools/two_arg_rewrites_chain_blocking"
+))]
 #[tokio::test]
 async fn two_arg_rewrites_chain_blocking() {
     let add = CountingAdd::default();
@@ -141,6 +147,9 @@ async fn two_arg_rewrites_chain_blocking() {
 // Result rewriting.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_tools/two_result_rewrites_chain_redact_then_wrap_blocking"
+))]
 #[tokio::test]
 async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
     let add = CountingAdd::default();
@@ -197,6 +206,9 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_tools/result_truncation_reaches_model_blocking"
+))]
 #[tokio::test]
 async fn result_truncation_reaches_model_blocking() {
     with_gemini_cassette(
@@ -241,6 +253,9 @@ async fn result_truncation_reaches_model_blocking() {
 // Terminate from a ToolResult (post-execution).
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_tools/terminate_from_tool_result_cancels_after_execution_blocking"
+))]
 #[tokio::test]
 async fn terminate_from_tool_result_cancels_after_execution_blocking() {
     let add = CountingAdd::default();
@@ -293,6 +308,9 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
 // Model-driven recovery from a tool error.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/hook_stress_tools/tool_error_guidance_drives_model_retry_blocking"
+))]
 #[tokio::test]
 async fn tool_error_guidance_drives_model_retry_blocking() {
     let lookup = CodewordLookup::default();

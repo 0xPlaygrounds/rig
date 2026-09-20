@@ -339,6 +339,9 @@ fn document_file_id_wire_assertions_cover_roundtrip_paths() {
     assert_anthropic_wire_file_source(provider_native_roundtrip_message, file_id);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/document_file_id/messages_document_file_id_roundtrip_live"
+))]
 #[tokio::test]
 async fn messages_document_file_id_roundtrip_live() {
     with_anthropic_files_cassette(
@@ -401,6 +404,9 @@ async fn messages_document_file_id_roundtrip_live() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/document_file_id/streaming_document_file_id_roundtrip_live"
+))]
 #[tokio::test]
 async fn streaming_document_file_id_roundtrip_live() {
     with_anthropic_files_cassette(

@@ -103,6 +103,9 @@ fn assert_recorded_reasoning(scenario: &str, model: &str, streaming: bool) {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/reasoning_matrix/qwen_reasoning_blocking"
+))]
 #[tokio::test]
 async fn qwen_reasoning_blocking() {
     const SCENARIO: &str = "reasoning_matrix/qwen_reasoning_blocking";
@@ -116,6 +119,9 @@ async fn qwen_reasoning_blocking() {
     assert_recorded_reasoning(SCENARIO, doubleword::QWEN3_5_9B, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/reasoning_matrix/qwen_reasoning_streaming"
+))]
 #[tokio::test]
 async fn qwen_reasoning_streaming() {
     const SCENARIO: &str = "reasoning_matrix/qwen_reasoning_streaming";
@@ -129,6 +135,9 @@ async fn qwen_reasoning_streaming() {
     assert_recorded_reasoning(SCENARIO, doubleword::QWEN3_5_9B, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/reasoning_matrix/gpt_oss_reasoning_blocking"
+))]
 #[tokio::test]
 async fn gpt_oss_reasoning_blocking() {
     const SCENARIO: &str = "reasoning_matrix/gpt_oss_reasoning_blocking";
@@ -142,6 +151,9 @@ async fn gpt_oss_reasoning_blocking() {
     assert_recorded_reasoning(SCENARIO, doubleword::GPT_OSS_20B, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/reasoning_matrix/gpt_oss_reasoning_streaming"
+))]
 #[tokio::test]
 async fn gpt_oss_reasoning_streaming() {
     const SCENARIO: &str = "reasoning_matrix/gpt_oss_reasoning_streaming";
@@ -155,6 +167,9 @@ async fn gpt_oss_reasoning_streaming() {
     assert_recorded_reasoning(SCENARIO, doubleword::GPT_OSS_20B, true);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/reasoning_matrix/deepseek_reasoning_blocking"
+))]
 #[tokio::test]
 async fn deepseek_reasoning_blocking() {
     const SCENARIO: &str = "reasoning_matrix/deepseek_reasoning_blocking";
@@ -168,6 +183,9 @@ async fn deepseek_reasoning_blocking() {
     assert_recorded_reasoning(SCENARIO, doubleword::DEEPSEEK_V4_FLASH, false);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/reasoning_matrix/deepseek_reasoning_streaming"
+))]
 #[tokio::test]
 async fn deepseek_reasoning_streaming() {
     const SCENARIO: &str = "reasoning_matrix/deepseek_reasoning_streaming";

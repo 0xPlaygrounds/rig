@@ -5,15 +5,17 @@
 macro_rules! golden_matrix {
     (
         wrapper: $wrapper:path, wire: $wire:path, run: $run:path, oracle: $oracle:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $golden:literal); )*
+        $( $(#[$($attribute:tt)*])* $name:ident: ($scenario:literal, $cell:path, $golden:literal); )*
     ) => {
         $(
-            $(#[$attribute])*
-            async fn $name() {
-                $wrapper($scenario, |client| async move {
-                    $run(&$wire(&client), &$cell, |log| $oracle($golden, log)).await;
-                }).await;
-            }
+            #[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+                $(#[$($attribute)*])*
+                async fn $name() {
+                    $wrapper($scenario, |client| async move {
+                        $run(&$wire(&client), &$cell, |log| $oracle($golden, log)).await;
+                    }).await;
+                }
+
         )*
     };
 }
@@ -25,17 +27,19 @@ pub use golden_matrix;
 macro_rules! resume_matrix {
     (
         wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $oracle:path); )*
+        $( $(#[$($attribute:tt)*])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $oracle:path); )*
     ) => {
         $(
-            $(#[$attribute])*
-            async fn $name() {
-                $wrapper($scenario, |client| async move {
-                    let mut cell = $cell;
-                    cell.resume_after = $resume;
-                    $run(&$wire(&client), &cell, $oracle).await;
-                }).await;
-            }
+            #[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+                $(#[$($attribute)*])*
+                async fn $name() {
+                    $wrapper($scenario, |client| async move {
+                        let mut cell = $cell;
+                        cell.resume_after = $resume;
+                        $run(&$wire(&client), &cell, $oracle).await;
+                    }).await;
+                }
+
         )*
     };
 }
@@ -47,18 +51,18 @@ pub use resume_matrix;
 macro_rules! case_matrix {
     (
         family: $family:ident;
-        $( $(#[$attribute:meta])* $name:ident: $case:ident; )*
+        $( $(#[$($attribute:tt)*])* $name:ident: $case:ident; )*
     ) => {
         $(
-            $crate::matrix::$family!($(#[$attribute])* $name, $case);
+            $crate::matrix::$family!($(#[$($attribute)*])* $name, $case);
         )*
     };
     (
         wrapper: $wrapper:path, family: $family:ident;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $case:ident $(, $cell:expr)?); )*
+        $( $(#[$($attribute:tt)*])* $name:ident: ($scenario:literal, $case:ident $(, $cell:expr)?); )*
     ) => {
         $(
-            $crate::matrix::$family!($(#[$attribute])* $name, $wrapper, $scenario, $case $(, $cell)?);
+            $crate::matrix::$family!($(#[$($attribute)*])* $name, $wrapper, $scenario, $case $(, $cell)?);
         )*
     };
 }

@@ -47,6 +47,9 @@ fn assert_history_tool_calls(history: &[Message], expected: &[&str], forbidden: 
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/tool_choice/required_forces_function_call"
+))]
 #[tokio::test]
 async fn required_forces_function_call() {
     with_bedrock_cassette(
@@ -86,6 +89,9 @@ async fn required_forces_function_call() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/tool_choice/specific_add_raw_nonstreaming"
+))]
 #[tokio::test]
 async fn specific_add_raw_nonstreaming_allows_only_add() {
     with_bedrock_cassette(
@@ -138,6 +144,9 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/tool_choice/specific_add_raw_streaming"
+))]
 #[tokio::test]
 async fn specific_add_raw_streaming_allows_only_add() {
     with_bedrock_cassette(
@@ -191,6 +200,9 @@ async fn specific_add_raw_streaming_allows_only_add() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/tool_choice/none_nonstreaming_no_tools"
+))]
 #[tokio::test]
 async fn none_nonstreaming_does_not_emit_tool_calls() {
     with_bedrock_cassette(
@@ -222,6 +234,9 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/tool_choice/none_streaming_no_tools"
+))]
 #[tokio::test]
 async fn none_streaming_does_not_emit_tool_calls() {
     with_bedrock_cassette("tool_choice/none_streaming_no_tools", |client| async move {

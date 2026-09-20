@@ -4,6 +4,9 @@ use crate::doubleword::support::with_doubleword_cassette;
 use crate::ecs_agent::EcsAgent;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use rig_ecs::agent::DefaultMaxTurns;
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_doubleword_cassette("agent/completion_smoke", |client| async move {

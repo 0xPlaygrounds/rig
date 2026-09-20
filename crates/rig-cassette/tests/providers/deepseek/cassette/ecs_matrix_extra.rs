@@ -38,6 +38,9 @@ crate::matrix::case_matrix! {
     despawn_run_waits_for_an_in_flight_stream: ("corpus_matrix/endings_text_delta_stop", despawn_run_waits_for_an_in_flight_stream_22);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body"
+))]
 /// The recorded 4xx, unary: the run fails as the provider's response and
 /// the record and the witness carry the same facts.
 #[tokio::test]
@@ -64,6 +67,9 @@ async fn error_facts_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "deepseek/corpus_matrix/error_facts_streamed"
+))]
 /// The recorded 4xx on the streaming surface.
 #[tokio::test]
 async fn error_facts_streamed() {

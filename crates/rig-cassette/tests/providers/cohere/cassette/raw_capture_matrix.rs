@@ -87,6 +87,9 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 // 1: typed access is recoverable, and agrees with the normalized fields
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/raw_capture_matrix/raw_roundtrips_cohere_completion_response"
+))]
 #[tokio::test]
 async fn raw_roundtrips_cohere_completion_response() {
     const SCENARIO: &str = "raw_capture_matrix/raw_roundtrips_cohere_completion_response";
@@ -153,6 +156,9 @@ async fn raw_roundtrips_cohere_completion_response() {
 // 2: un-normalized billing metadata is readable and matches the wire
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/raw_capture_matrix/raw_exposes_billing_metadata"
+))]
 #[tokio::test]
 async fn raw_exposes_billing_metadata() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_billing_metadata";

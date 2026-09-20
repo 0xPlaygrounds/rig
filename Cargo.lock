@@ -6413,6 +6413,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "io-uring"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10519,6 +10528,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-cassette-inventory"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "assert_fs",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "rig-cassette-macros"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
 name = "rig-cassette-minimal"
 version = "0.0.0"
 dependencies = [
@@ -10937,6 +10966,7 @@ name = "rig-test-support"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "assert_fs",
  "async-stream",
  "base64 0.22.1",
  "bevy_app",
@@ -10945,9 +10975,12 @@ dependencies = [
  "bytes",
  "futures",
  "http 1.4.2",
+ "httpmock",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-cassette",
+ "rig-cassette-inventory",
+ "rig-cassette-macros",
  "rig-core",
  "rig-ecs",
  "rig-reqwest",
@@ -15116,8 +15149,11 @@ checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 name = "xtask"
 version = "0.42.0"
 dependencies = [
+ "anyhow",
+ "assert_fs",
  "proc-macro2",
  "quote",
+ "rig-cassette-inventory",
  "serde_json",
  "syn 2.0.117",
  "thiserror 2.0.18",

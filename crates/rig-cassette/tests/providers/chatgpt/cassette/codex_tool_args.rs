@@ -153,6 +153,9 @@ fn assert_expected_plan_trip_arguments(arguments: &serde_json::Value) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_args/zero_argument_tool_call_streaming"
+))]
 #[tokio::test]
 async fn zero_argument_tool_call_streaming() {
     with_chatgpt_cassette(
@@ -176,6 +179,9 @@ async fn zero_argument_tool_call_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming"
+))]
 #[tokio::test]
 async fn zero_argument_tool_call_nonstreaming() {
     with_chatgpt_cassette(
@@ -212,6 +218,9 @@ async fn zero_argument_tool_call_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_args/nested_arguments_roundtrip_nonstreaming"
+))]
 #[tokio::test]
 async fn nested_arguments_roundtrip_nonstreaming() {
     with_chatgpt_cassette(
@@ -257,6 +266,9 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_args/nested_arguments_streaming"
+))]
 #[tokio::test]
 async fn nested_arguments_streaming() {
     with_chatgpt_cassette(
@@ -293,6 +305,9 @@ async fn nested_arguments_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "chatgpt/codex_tool_args/unicode_arguments_streaming"
+))]
 #[tokio::test]
 async fn unicode_arguments_streaming() {
     with_chatgpt_cassette(

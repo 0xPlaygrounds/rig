@@ -4,6 +4,9 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 use super::super::support::with_openrouter_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_roundtrip/streaming"
+))]
 #[tokio::test]
 async fn streaming() {
     with_openrouter_cassette("reasoning_roundtrip/streaming", |client| async move {
@@ -19,6 +22,9 @@ async fn streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_roundtrip/nonstreaming"
+))]
 #[tokio::test]
 async fn nonstreaming() {
     with_openrouter_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
@@ -34,6 +40,9 @@ async fn nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/reasoning_delta_hook/streaming"
+))]
 #[tokio::test]
 async fn reasoning_delta_hook_streaming() {
     with_openrouter_cassette("reasoning_delta_hook/streaming", |client| async move {

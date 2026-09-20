@@ -11,3 +11,5 @@ use rig_test_support::support;
 mod mistral;
 
 use rig_test_support::matrix;
+
+rig_test_support::cassette_inventory!();

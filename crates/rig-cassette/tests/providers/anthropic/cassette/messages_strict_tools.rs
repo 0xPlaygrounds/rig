@@ -69,6 +69,9 @@ pub(super) async fn strict_tool_call_arguments(
     tool_calls[0].function.arguments.clone()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/strict_tools_opt_in_roundtrip"
+))]
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
     with_anthropic_cassette(
@@ -123,6 +126,9 @@ async fn strict_tools_opt_in_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/optional_scalar_can_be_omitted"
+))]
 #[tokio::test]
 async fn optional_scalar_can_be_omitted() {
     with_anthropic_cassette(
@@ -151,6 +157,9 @@ async fn optional_scalar_can_be_omitted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/optional_scalar_can_be_included_after_constraint_transform"
+))]
 #[tokio::test]
 async fn optional_scalar_can_be_included_after_constraint_transform() {
     with_anthropic_cassette(
@@ -183,6 +192,9 @@ async fn optional_scalar_can_be_included_after_constraint_transform() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/nested_optional_object_can_be_omitted"
+))]
 #[tokio::test]
 async fn nested_optional_object_can_be_omitted() {
     with_anthropic_cassette(
@@ -215,6 +227,9 @@ async fn nested_optional_object_can_be_omitted() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/nested_optional_object_can_be_partially_populated"
+))]
 #[tokio::test]
 async fn nested_optional_object_can_be_partially_populated() {
     with_anthropic_cassette(
@@ -258,6 +273,9 @@ async fn nested_optional_object_can_be_partially_populated() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/nullable_union_can_emit_null"
+))]
 #[tokio::test]
 async fn nullable_union_can_emit_null() {
     with_anthropic_cassette(
@@ -289,6 +307,9 @@ async fn nullable_union_can_emit_null() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/discriminated_any_of_preserves_const"
+))]
 #[tokio::test]
 async fn discriminated_any_of_preserves_const() {
     with_anthropic_cassette(
@@ -338,6 +359,9 @@ async fn discriminated_any_of_preserves_const() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/all_of_composition_roundtrip"
+))]
 #[tokio::test]
 async fn all_of_composition_roundtrip() {
     with_anthropic_cassette(
@@ -368,6 +392,9 @@ async fn all_of_composition_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/defs_ref_preserves_optional_member"
+))]
 #[tokio::test]
 async fn defs_ref_preserves_optional_member() {
     with_anthropic_cassette(
@@ -402,6 +429,9 @@ async fn defs_ref_preserves_optional_member() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/draft7_definitions_ref_preserves_optional_member"
+))]
 #[tokio::test]
 async fn draft7_definitions_ref_preserves_optional_member() {
     with_anthropic_cassette(
@@ -437,6 +467,9 @@ async fn draft7_definitions_ref_preserves_optional_member() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_strict_tools/array_items_and_formats_roundtrip"
+))]
 #[tokio::test]
 async fn array_items_and_formats_roundtrip() {
     with_anthropic_cassette(

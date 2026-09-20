@@ -18,6 +18,9 @@ fn decode_image(encoded: &str) -> Vec<u8> {
         .expect("embedded cassette image should be valid base64")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embeddings/embed_texts_smoke"
+))]
 #[tokio::test]
 async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
@@ -36,6 +39,9 @@ async fn embed_texts_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embeddings/embed_search_query_smoke"
+))]
 #[tokio::test]
 async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
@@ -54,6 +60,9 @@ async fn embed_search_query_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embeddings/embed_classification_smoke"
+))]
 #[tokio::test]
 async fn embed_classification_smoke() {
     with_cohere_cassette(
@@ -75,6 +84,9 @@ async fn embed_classification_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embeddings/embed_image_smoke"
+))]
 #[tokio::test]
 async fn embed_image_smoke() {
     with_cohere_cassette("embeddings/embed_image_smoke", |client| async move {
@@ -93,6 +105,9 @@ async fn embed_image_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "cohere/embeddings/embed_images_preserves_batch_order"
+))]
 #[tokio::test]
 async fn embed_images_preserves_batch_order() {
     with_cohere_cassette(

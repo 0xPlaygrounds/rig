@@ -82,6 +82,9 @@ fn streaming_tools_smoke_cassette_sse_events_parse() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/streaming_tools_smoke"
+))]
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_openai_cassette(
@@ -107,6 +110,9 @@ async fn streaming_tools_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/example_streaming_with_tools"
+))]
 #[tokio::test]
 async fn example_streaming_with_tools() {
     with_openai_cassette("streaming_tools/example_streaming_with_tools", |client| async move {
@@ -132,6 +138,9 @@ async fn example_streaming_with_tools() {
     }).await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/responses_stream_preserves_tool_result_flow"
+))]
 #[tokio::test]
 async fn responses_stream_preserves_tool_result_flow() {
     with_openai_cassette(
@@ -160,6 +169,9 @@ async fn responses_stream_preserves_tool_result_flow() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering"
+))]
 #[tokio::test]
 async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_openai_cassette(

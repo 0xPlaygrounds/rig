@@ -102,6 +102,9 @@ pub(super) fn probe() -> CacheProbe {
     }))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/blocking_probe"
+))]
 #[tokio::test]
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
@@ -117,6 +120,9 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     assert_breakpoints_match_support("gemini", SCENARIO, &GEMINI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/streaming_probe"
+))]
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
@@ -132,6 +138,9 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     assert_breakpoints_match_support("gemini", SCENARIO, &GEMINI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/agent_loop"
+))]
 #[tokio::test]
 async fn agent_loop_keeps_hitting_across_tool_turns() {
     const SCENARIO: &str = "prompt_caching/agent_loop";
@@ -236,6 +245,9 @@ async fn create_probe_cache(
         .expect("creating a gemini cached content should succeed")
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/explicit_cache_lifecycle"
+))]
 /// The whole resource lifecycle, in one recording.
 ///
 /// The delete is both the last step of the lifecycle and the cleanup that has
@@ -297,6 +309,9 @@ async fn explicit_cache_lifecycle() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/explicit_cache_hit_ratio"
+))]
 /// The headline: explicit caching serves the prefix from turn one.
 #[tokio::test]
 async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
@@ -344,6 +359,9 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/explicit_cache_across_conversations"
+))]
 /// One cache, two conversations that share nothing else.
 ///
 /// This is the property implicit caching structurally cannot have: it keys on a
@@ -503,6 +521,9 @@ fn user(text: &str) -> rig::message::Message {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/below_minimum_does_not_cache"
+))]
 /// A prompt under the model's documented minimum must not cache.
 ///
 /// The cell that gives every other cell's padding its meaning. If Gemini cached
@@ -552,6 +573,9 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/temperature_change_still_hits"
+))]
 /// `generationConfig` is not part of the cached prefix.
 ///
 /// Asserted as a **hit**: temperature changes between turns constantly in real
@@ -598,6 +622,9 @@ async fn changing_temperature_still_hits() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/changed_system_instruction_miss"
+))]
 /// Changing one word of the system instruction must cost the cache.
 ///
 /// The complement of every hit assertion in this file: those prove caching
@@ -645,6 +672,9 @@ async fn changing_the_system_instruction_misses() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/prompt_caching/explicit_cache_expired"
+))]
 /// A handle that no longer exists must surface as
 /// [`CachedContentError::Expired`], not as a raw status code.
 ///

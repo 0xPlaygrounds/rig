@@ -90,6 +90,7 @@ fn recorded_json_bodies(scenario: &str) -> Vec<Value> {
 // 1: chat route — raw and normalized are two views of one reply
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_raw_with_request_id_reproduces_completion() {
@@ -146,6 +147,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
 // 2: responses route — the same, on the other body shape
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("copilot/raw_completion_parity_matrix/responses_raw_completion_carries_request_id").missing("no committed capture yet; the producing cell is #[ignore]d until the wire can be recorded"))]
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_raw_completion_carries_request_id() {

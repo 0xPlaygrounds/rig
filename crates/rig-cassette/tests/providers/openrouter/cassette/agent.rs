@@ -6,6 +6,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_openrouter_cassette("agent/completion_smoke", |client| async move {

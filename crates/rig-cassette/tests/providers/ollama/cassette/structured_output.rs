@@ -12,6 +12,9 @@ use crate::support::{
 
 const MODEL: &str = "qwen3:4b";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/structured_output/structured_output_smoke"
+))]
 #[tokio::test]
 async fn structured_output_smoke() {
     with_ollama_cassette(

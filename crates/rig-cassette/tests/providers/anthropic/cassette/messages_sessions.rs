@@ -90,6 +90,9 @@ fn result_index_for_call(results: &[ToolEvent], call: &ToolEvent) -> usize {
         .message_index
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_sessions/sequential_tool_calls_nonstreaming"
+))]
 #[tokio::test]
 async fn sequential_tool_calls_nonstreaming() {
     with_anthropic_cassette(
@@ -143,6 +146,9 @@ async fn sequential_tool_calls_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_sessions/sequential_tool_calls_streaming"
+))]
 #[tokio::test]
 async fn sequential_tool_calls_streaming() {
     with_anthropic_cassette(
@@ -191,6 +197,9 @@ async fn sequential_tool_calls_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_sessions/parallel_tool_use_single_turn_nonstreaming"
+))]
 #[tokio::test]
 async fn parallel_tool_use_single_turn_nonstreaming() {
     with_anthropic_cassette(
@@ -261,6 +270,9 @@ async fn parallel_tool_use_single_turn_nonstreaming() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_sessions/long_history_replay_nonstreaming"
+))]
 #[tokio::test]
 async fn long_history_replay_nonstreaming() {
     with_anthropic_cassette(
@@ -376,6 +388,9 @@ async fn long_history_replay_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_sessions/usage_accumulates_across_streaming_multi_turn"
+))]
 #[tokio::test]
 async fn usage_accumulates_across_streaming_multi_turn() {
     with_anthropic_cassette(

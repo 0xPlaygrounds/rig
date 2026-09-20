@@ -2,6 +2,9 @@
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openrouter/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_openrouter_cassette("extractor/extractor_smoke", |client| async move {

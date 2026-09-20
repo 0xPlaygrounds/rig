@@ -75,6 +75,9 @@ fn recorded_call(scenario: &str) -> (String, Option<String>) {
     )
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/truncation_matrix/tool_call_cut_mid_arguments"
+))]
 /// A tool call cut mid-arguments must not take the turn down with it.
 #[tokio::test]
 async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
@@ -137,6 +140,9 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/truncation_matrix/streaming_tool_call_cut_mid_arguments"
+))]
 /// The streaming path applies the same boundary.
 #[tokio::test]
 async fn the_streaming_path_drops_the_same_cut_call() {
@@ -211,6 +217,9 @@ async fn the_streaming_path_drops_the_same_cut_call() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/truncation_matrix/complete_call_control"
+))]
 /// The control: the same request with room to finish yields a usable call.
 ///
 /// Without it, the two cells above would pass against a provider that had

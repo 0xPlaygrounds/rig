@@ -114,6 +114,9 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
 // 1: raw is the reply document, and it reads back as the provider's type
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_capture_matrix/raw_round_trips_provider_type"
+))]
 #[tokio::test]
 async fn raw_reads_back_as_the_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
@@ -166,6 +169,9 @@ async fn raw_reads_back_as_the_provider_type() {
 // 2: envelope fields rig does not normalize are readable from raw
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_capture_matrix/raw_exposes_envelope_fields"
+))]
 #[tokio::test]
 async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
@@ -211,6 +217,9 @@ async fn raw_exposes_envelope_fields() {
 // 3: the normalized view agrees with the provider-native one it came from
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_capture_matrix/normalized_fields_equal_raw_renormalized"
+))]
 /// Every normalized field must equal the provider-native field on `raw` that
 /// produced it.
 ///
@@ -274,6 +283,9 @@ async fn normalized_fields_match_the_typed_raw() {
 // 4: `timings` — the field the shared OpenAI type has nowhere to put
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "llamacpp/raw_capture_matrix/raw_preserves_timings"
+))]
 /// `raw` carries llama.cpp's `timings`; reading the same bytes as the shared
 /// OpenAI type loses them.
 ///

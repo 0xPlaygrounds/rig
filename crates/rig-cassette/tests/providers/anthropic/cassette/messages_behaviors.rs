@@ -13,6 +13,9 @@ use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_cassette;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text"
+))]
 #[tokio::test]
 async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
     with_anthropic_cassette(

@@ -17,6 +17,9 @@ use rig::completion::FinishReason;
 use rig::providers::anthropic;
 use rig_ecs::agent::{MaxTokens, Temperature};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap"
+))]
 #[tokio::test]
 async fn blocking_truncated_turn_reports_length_and_cap() {
     {
@@ -65,6 +68,9 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap"
+))]
 #[tokio::test]
 async fn streaming_truncated_turn_reports_length_and_cap() {
     {
@@ -103,6 +109,9 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap"
+))]
 #[tokio::test]
 async fn blocking_completed_turn_reports_stop_and_cap() {
     {
@@ -141,6 +150,9 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap"
+))]
 #[tokio::test]
 async fn streaming_completed_turn_reports_stop_and_cap() {
     {
@@ -173,6 +185,9 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/blocking_tool_turn_reports_tool_calls"
+))]
 #[tokio::test]
 async fn blocking_tool_turn_reports_tool_calls() {
     {
@@ -215,6 +230,9 @@ async fn blocking_tool_turn_reports_tool_calls() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/streaming_tool_turn_reports_tool_calls"
+))]
 #[tokio::test]
 async fn streaming_tool_turn_reports_tool_calls() {
     {
@@ -251,6 +269,9 @@ async fn streaming_tool_turn_reports_tool_calls() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap"
+))]
 #[tokio::test]
 async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
     {
@@ -301,6 +322,9 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap"
+))]
 #[tokio::test]
 async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
     {

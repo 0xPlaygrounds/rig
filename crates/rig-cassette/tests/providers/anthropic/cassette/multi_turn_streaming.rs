@@ -160,6 +160,9 @@ impl Tool for Divide {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/multi_turn_streaming/multi_turn_streaming_tools"
+))]
 #[tokio::test]
 async fn multi_turn_streaming_tools() {
     let add_calls = Arc::new(AtomicUsize::new(0));

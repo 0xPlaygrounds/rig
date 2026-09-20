@@ -128,11 +128,20 @@ responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
 The engine retains secret and generated-identifier scrubbing, strict request
-matching, and safety validation. Repository-specific source scans and fixture
-censuses remain with each caller. Rig's adapter in
-`test-support/rig-test-support/src/cassettes.rs` is a thin path binding that
-supplies `crates/rig-cassette/fixtures/cassettes`; a downstream can supply
-`fixtures/cassettes` of its own instead. `Retry-After` response headers retain
+matching, and safety validation. Repository recording policy remains with the
+caller, not in the published engine. Rig's unpublished test support binds
+`crates/rig-cassette/fixtures/cassettes` and checks compiled test declarations
+before opening a recording session. Unknown, derived and synthetic destinations
+cannot be recorded; intentional first captures need an explicit allowance.
+A downstream can supply `fixtures/cassettes` of its own without adopting Rig's
+repository policy or changing its engine calls.
+
+Use `cargo xtask cassettes list|plan|record` for repository capture workflows.
+`list` and `plan` compile native tests offline and inspect their inventory
+without provider credentials or provider contact. `record` executes exact tests
+under the same scenario permissions, and requires successful capture-finalization
+receipts. See [the contributor test guide](../../tests/README.md#cassette-provider-tests)
+for declarations, derived recipes, scripted-source restrictions and ignored cells. `Retry-After` response headers retain
 canonical seconds or HTTP dates for replay diagnostics; malformed values are
 discarded instead of persisting arbitrary server text. Generated request IDs
 remain placeholdered.
@@ -141,9 +150,11 @@ remain placeholdered.
 
 `fixtures/cassettes/<provider>/` holds the recorded HTTP interactions the
 provider suites in this package replay. `fixtures/effects/` holds the
-effect-log goldens the verification suite replays. Both are data: they are
-re-recorded by their producer, never edited by hand, and never regenerated to
-make a check pass. `.gitattributes` exempts the cassettes from the
+effect-log goldens the verification suite replays. Live fixtures are re-recorded
+by their producer. Deliberately derived or synthetic fixtures have explicit
+protected declarations and are rebuilt according to their documented recipes,
+never by live recording. Neither corpus is regenerated merely to make a check
+pass. `.gitattributes` exempts the cassettes from the
 blank-at-eof whitespace check because SSE bodies legitimately end in a blank
 line.
 

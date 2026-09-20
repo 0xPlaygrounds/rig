@@ -108,6 +108,9 @@ fn setup(client: &Bound<Anthropic>) -> EcsAgent {
     ecs
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/hooks_observe_raw_blocking"
+))]
 #[tokio::test]
 async fn hooks_observe_raw_blocking() {
     let mut observed = None;
@@ -142,6 +145,9 @@ async fn hooks_observe_raw_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/hooks_observe_raw_streamed"
+))]
 #[tokio::test]
 async fn hooks_observe_raw_streamed() {
     let mut observed = None;
@@ -287,6 +293,9 @@ fn assert_two_attempts(
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking"
+))]
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     let mut observed = None;
@@ -307,6 +316,9 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed"
+))]
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     let mut observed = None;
@@ -327,6 +339,9 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/streamed_final_carries_final_turn_raw"
+))]
 #[tokio::test]
 async fn streamed_final_carries_final_turn_raw() {
     let mut observed = None;
@@ -347,6 +362,9 @@ async fn streamed_final_carries_final_turn_raw() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking"
+))]
 #[tokio::test]
 async fn retried_turn_records_retried_attempt_raw_blocking() {
     let mut observed = None;
@@ -367,6 +385,9 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed"
+))]
 #[tokio::test]
 async fn retried_turn_records_retried_attempt_raw_streamed() {
     let mut observed = None;

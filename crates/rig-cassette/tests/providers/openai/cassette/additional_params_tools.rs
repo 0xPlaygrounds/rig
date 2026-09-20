@@ -16,6 +16,9 @@ use rig::message::{AssistantContent, ToolChoice};
 use super::super::support::with_openai_completions_cassette;
 use crate::support::zero_arg_tool_definition;
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/additional_params_tools/builder_tools_survive_additional_params_tools"
+))]
 #[tokio::test]
 async fn builder_tools_survive_additional_params_tools() {
     with_openai_completions_cassette(

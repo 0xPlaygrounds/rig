@@ -155,6 +155,9 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/reasoning_summary_stream"
+))]
 /// Streaming reasoning-summary turn: every emitted summary part must survive
 /// into the aggregated choice exactly once — no duplicated reasoning text.
 ///
@@ -250,6 +253,9 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/encrypted_reasoning_multi_part"
+))]
 /// Multi-part reasoning with encrypted content
 /// (`include: ["reasoning.encrypted_content"]`, `store: false`): the
 /// aggregated choice must retain both the encrypted payload and every
@@ -337,6 +343,9 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/parallel_tool_calls"
+))]
 /// Parallel tool calls streamed in one turn: both calls must land in the
 /// aggregated choice and the terminal record must report `ToolCalls`.
 #[tokio::test]
@@ -394,6 +403,9 @@ async fn parallel_tool_calls_both_survive_aggregation() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/tool_then_followup_text"
+))]
 /// Tool call then follow-up text across turns: turn one ends in `ToolCalls`
 /// with the call aggregated; the follow-up turn (fed the tool result) ends in
 /// `Stop` with text that uses the result.
@@ -472,6 +484,9 @@ async fn tool_call_then_followup_text_across_turns() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/three_turn_tool_session"
+))]
 /// Three-turn tool session with encrypted reasoning (`store: false`): every
 /// turn's reasoning items carry real `rs_*` ids that are sent back verbatim on
 /// the following turn, exercising the Responses provenance gate on real ids
@@ -626,6 +641,9 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/incomplete_mid_tool_call"
+))]
 /// `response.incomplete` cut mid-tool-call: forced tool use with a minimal
 /// `max_output_tokens` budget. The stream must still terminate cleanly with a
 /// `Length` finish, and any tool call that did surface must carry object
@@ -679,6 +697,9 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/structured_output_stream"
+))]
 /// Structured-output streaming (`text.format` json_schema): the streamed text
 /// parses as the requested schema and matches the aggregated text part.
 #[tokio::test]
@@ -746,6 +767,9 @@ async fn structured_output_stream_yields_schema_conformant_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/previous_response_id_chain"
+))]
 /// `previous_response_id`-chained turn: turn one is stored, turn two chains
 /// off its recorded `resp_*` id (derived from the turn, never minted) and can
 /// see the earlier turn's content.
@@ -818,6 +842,9 @@ async fn previous_response_id_chains_server_side_state() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/incomplete_max_output_tokens"
+))]
 /// `response.incomplete` via a small `max_output_tokens` budget: the stream
 /// still terminates with a terminal record, the finish reason normalizes to
 /// `Length`, and whatever partial output arrived is kept.
@@ -854,6 +881,9 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/streaming_grammar/reasoning_then_text"
+))]
 /// Reasoning and answer text in one streamed turn aggregate as *discrete*
 /// parts: the reasoning item(s) and the message item keep their wire
 /// boundaries, and the answer text lands in exactly one text part carrying

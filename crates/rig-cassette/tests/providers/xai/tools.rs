@@ -84,6 +84,7 @@ impl Tool for Subtract {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live("xai/tools/tools_smoke"))]
 #[tokio::test]
 async fn tools_smoke() {
     with_xai_cassette("tools/tools_smoke", |client| async move {

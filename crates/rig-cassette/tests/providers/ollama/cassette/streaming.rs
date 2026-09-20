@@ -12,6 +12,9 @@ use crate::support::{
 
 const MODEL: &str = "qwen3:4b";
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "ollama/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_ollama_cassette("streaming/streaming_smoke", |client| async move {

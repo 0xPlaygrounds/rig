@@ -47,6 +47,9 @@ async fn assert_strict_schema_rejected(
     assert_eq!(body["error"]["type"], "invalid_request_error");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/empty_object_schema_roundtrip"
+))]
 #[tokio::test]
 async fn empty_object_schema_roundtrip() {
     with_anthropic_cassette(
@@ -65,6 +68,9 @@ async fn empty_object_schema_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/primitive_types_roundtrip"
+))]
 #[tokio::test]
 async fn primitive_types_roundtrip() {
     with_anthropic_cassette(
@@ -99,6 +105,9 @@ async fn primitive_types_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/scalar_enum_and_const_roundtrip"
+))]
 #[tokio::test]
 async fn scalar_enum_and_const_roundtrip() {
     with_anthropic_cassette(
@@ -126,6 +135,9 @@ async fn scalar_enum_and_const_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/explicit_any_of_roundtrip"
+))]
 #[tokio::test]
 async fn explicit_any_of_roundtrip() {
     with_anthropic_cassette(
@@ -158,6 +170,9 @@ async fn explicit_any_of_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_all_of_object_schema_roundtrip"
+))]
 #[tokio::test]
 async fn root_all_of_object_schema_roundtrip() {
     with_anthropic_cassette(
@@ -192,6 +207,9 @@ async fn root_all_of_object_schema_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_all_of_local_defs_ref_branch_roundtrip"
+))]
 #[tokio::test]
 async fn root_all_of_local_defs_ref_branch_roundtrip() {
     with_anthropic_cassette(
@@ -226,6 +244,9 @@ async fn root_all_of_local_defs_ref_branch_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_all_of_local_draft7_ref_branch_roundtrip"
+))]
 #[tokio::test]
 async fn root_all_of_local_draft7_ref_branch_roundtrip() {
     with_anthropic_cassette(
@@ -260,6 +281,9 @@ async fn root_all_of_local_draft7_ref_branch_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/top_level_any_of_is_rejected_for_tool_input"
+))]
 #[tokio::test]
 async fn top_level_any_of_is_rejected_for_tool_input() {
     with_anthropic_cassette(
@@ -290,6 +314,9 @@ async fn top_level_any_of_is_rejected_for_tool_input() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/top_level_one_of_is_rejected_for_tool_input"
+))]
 #[tokio::test]
 async fn top_level_one_of_is_rejected_for_tool_input() {
     with_anthropic_cassette(
@@ -320,6 +347,9 @@ async fn top_level_one_of_is_rejected_for_tool_input() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/scalar_root_schema_is_rejected_for_tool_input"
+))]
 #[tokio::test]
 async fn scalar_root_schema_is_rejected_for_tool_input() {
     with_anthropic_cassette(
@@ -337,6 +367,9 @@ async fn scalar_root_schema_is_rejected_for_tool_input() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/boolean_root_schema_is_rejected_for_tool_input"
+))]
 #[tokio::test]
 async fn boolean_root_schema_is_rejected_for_tool_input() {
     with_anthropic_cassette(
@@ -354,6 +387,9 @@ async fn boolean_root_schema_is_rejected_for_tool_input() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_defs_ref_roundtrip"
+))]
 #[tokio::test]
 async fn root_defs_ref_roundtrip() {
     with_anthropic_cassette(
@@ -384,6 +420,9 @@ async fn root_defs_ref_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_draft7_definitions_ref_roundtrip"
+))]
 #[tokio::test]
 async fn root_draft7_definitions_ref_roundtrip() {
     with_anthropic_cassette(
@@ -414,6 +453,9 @@ async fn root_draft7_definitions_ref_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_ref_retains_sibling_definitions"
+))]
 #[tokio::test]
 async fn root_ref_retains_sibling_definitions() {
     with_anthropic_cassette(
@@ -452,6 +494,9 @@ async fn root_ref_retains_sibling_definitions() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_ref_preserves_sibling_properties_and_required"
+))]
 #[tokio::test]
 async fn root_ref_preserves_sibling_properties_and_required() {
     with_anthropic_cassette(
@@ -486,6 +531,9 @@ async fn root_ref_preserves_sibling_properties_and_required() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_ref_preserves_sibling_all_of"
+))]
 #[tokio::test]
 async fn root_ref_preserves_sibling_all_of() {
     with_anthropic_cassette(
@@ -522,6 +570,9 @@ async fn root_ref_preserves_sibling_all_of() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_ref_sibling_unions_become_guidance"
+))]
 #[tokio::test]
 async fn root_ref_sibling_unions_become_guidance() {
     with_anthropic_cassette(
@@ -569,6 +620,9 @@ async fn root_ref_sibling_unions_become_guidance() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_ref_keeps_document_defs_authoritative_on_collision"
+))]
 #[tokio::test]
 async fn root_ref_keeps_document_defs_authoritative_on_collision() {
     with_anthropic_cassette(
@@ -600,6 +654,9 @@ async fn root_ref_keeps_document_defs_authoritative_on_collision() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/root_ref_keeps_document_definitions_authoritative_on_collision"
+))]
 #[tokio::test]
 async fn root_ref_keeps_document_definitions_authoritative_on_collision() {
     with_anthropic_cassette(
@@ -631,6 +688,9 @@ async fn root_ref_keeps_document_definitions_authoritative_on_collision() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/chained_root_refs_roundtrip"
+))]
 #[tokio::test]
 async fn chained_root_refs_roundtrip() {
     with_anthropic_cassette(
@@ -659,6 +719,9 @@ async fn chained_root_refs_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/escaped_json_pointer_root_ref_roundtrip"
+))]
 #[tokio::test]
 async fn escaped_json_pointer_root_ref_roundtrip() {
     with_anthropic_cassette(
@@ -686,6 +749,9 @@ async fn escaped_json_pointer_root_ref_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/dangling_local_root_ref_is_rejected"
+))]
 #[tokio::test]
 async fn dangling_local_root_ref_is_rejected() {
     with_anthropic_cassette(
@@ -711,6 +777,9 @@ async fn dangling_local_root_ref_is_rejected() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/external_root_ref_is_rejected"
+))]
 #[tokio::test]
 async fn external_root_ref_is_rejected() {
     with_anthropic_cassette(
@@ -728,6 +797,9 @@ async fn external_root_ref_is_rejected() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/scalar_root_ref_is_rejected_for_tool_input"
+))]
 #[tokio::test]
 async fn scalar_root_ref_is_rejected_for_tool_input() {
     with_anthropic_cassette(
@@ -748,6 +820,9 @@ async fn scalar_root_ref_is_rejected_for_tool_input() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/cyclic_root_ref_aliases_are_rejected"
+))]
 #[tokio::test]
 async fn cyclic_root_ref_aliases_are_rejected() {
     with_anthropic_cassette(
@@ -771,6 +846,9 @@ async fn cyclic_root_ref_aliases_are_rejected() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/recursive_ref_is_rejected_by_strict_compiler"
+))]
 #[tokio::test]
 async fn recursive_ref_is_rejected_by_strict_compiler() {
     with_anthropic_cassette(
@@ -805,6 +883,9 @@ async fn recursive_ref_is_rejected_by_strict_compiler() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/supported_array_minimums_roundtrip"
+))]
 #[tokio::test]
 async fn supported_array_minimums_roundtrip() {
     with_anthropic_cassette(
@@ -838,6 +919,9 @@ async fn supported_array_minimums_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/nested_arrays_roundtrip"
+))]
 #[tokio::test]
 async fn nested_arrays_roundtrip() {
     with_anthropic_cassette(
@@ -868,6 +952,9 @@ async fn nested_arrays_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/every_numeric_constraint_becomes_guidance"
+))]
 #[tokio::test]
 async fn every_numeric_constraint_becomes_guidance() {
     with_anthropic_cassette(
@@ -900,6 +987,9 @@ async fn every_numeric_constraint_becomes_guidance() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/unsupported_array_constraints_become_guidance"
+))]
 #[tokio::test]
 async fn unsupported_array_constraints_become_guidance() {
     with_anthropic_cassette(
@@ -933,6 +1023,9 @@ async fn unsupported_array_constraints_become_guidance() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/unsupported_object_constraints_become_guidance"
+))]
 #[tokio::test]
 async fn unsupported_object_constraints_become_guidance() {
     with_anthropic_cassette(
@@ -965,6 +1058,9 @@ async fn unsupported_object_constraints_become_guidance() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/conditionals_and_dependencies_become_guidance"
+))]
 #[tokio::test]
 async fn conditionals_and_dependencies_become_guidance() {
     with_anthropic_cassette(
@@ -995,6 +1091,9 @@ async fn conditionals_and_dependencies_become_guidance() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/annotations_become_guidance_without_overwriting_description"
+))]
 #[tokio::test]
 async fn annotations_become_guidance_without_overwriting_description() {
     with_anthropic_cassette(
@@ -1030,6 +1129,9 @@ async fn annotations_become_guidance_without_overwriting_description() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/properties_without_explicit_object_type_roundtrip"
+))]
 #[tokio::test]
 async fn properties_without_explicit_object_type_roundtrip() {
     with_anthropic_cassette(
@@ -1051,6 +1153,9 @@ async fn properties_without_explicit_object_type_roundtrip() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/boolean_true_subschema_is_rejected_by_strict_compiler"
+))]
 #[tokio::test]
 async fn boolean_true_subschema_is_rejected_by_strict_compiler() {
     with_anthropic_cassette(
@@ -1072,6 +1177,9 @@ async fn boolean_true_subschema_is_rejected_by_strict_compiler() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/strict_schema_matrix/required_and_optional_property_order_schema_is_accepted"
+))]
 #[tokio::test]
 async fn required_and_optional_property_order_schema_is_accepted() {
     with_anthropic_cassette(

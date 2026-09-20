@@ -138,6 +138,9 @@ fn assert_two_recorded_turns(scenario: &str, status_pointer: &str, status: &str)
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_completion_parity_matrix/rest_raw_try_into_matches_completion"
+))]
 #[tokio::test]
 async fn rest_raw_try_into_matches_completion() {
     const SCENARIO: &str = "raw_completion_parity_matrix/rest_raw_try_into_matches_completion";
@@ -197,6 +200,9 @@ async fn rest_raw_try_into_matches_completion() {
     assert_two_recorded_turns(SCENARIO, "/candidates/0/finishReason", "STOP");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/raw_completion_parity_matrix/interactions_raw_try_into_matches_completion"
+))]
 #[tokio::test]
 async fn interactions_raw_try_into_matches_completion() {
     const SCENARIO: &str =

@@ -139,6 +139,9 @@ fn assert_units_were_injected(observations: &[ObservedCall]) {
     .expect("portable argument-rewrite contract should hold");
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/tool_call_rewrite_args/tool_call_args_rewritten_by_hook_blocking"
+))]
 #[tokio::test]
 async fn tool_call_args_rewritten_by_hook_blocking() {
     let weather = GetWeather::default();
@@ -169,6 +172,9 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
     assert_units_were_injected(&probe.observations());
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/tool_call_rewrite_args/tool_call_args_rewritten_by_hook_streaming"
+))]
 #[tokio::test]
 async fn tool_call_args_rewritten_by_hook_streaming() {
     let weather = GetWeather::default();

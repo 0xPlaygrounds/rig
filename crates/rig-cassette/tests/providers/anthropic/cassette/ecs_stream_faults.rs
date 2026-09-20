@@ -19,6 +19,9 @@ use crate::{
     support::{BASIC_PREAMBLE, BASIC_PROMPT},
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/corpus_outcome/model_error_streamed"
+))]
 /// The recorded 401 through the native runtime: the run fails as the
 /// provider's response, streams nothing, commits only the prompt, and the
 /// witness sees the request, the status, the envelope and the ending.

@@ -3,8 +3,9 @@
 /// Emit registered test rows with the shared execution body.
 #[macro_export]
 macro_rules! ecs_termination_case {
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_truncated_turn_reports_length_and_cap_7) => {
-        $(#[$attribute])*
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, blocking_truncated_turn_reports_length_and_cap_7) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -41,9 +42,10 @@ macro_rules! ecs_termination_case {
                 assert_recorded_request_cap(SCENARIO, TINY_CAP);
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_truncated_turn_reports_length_and_cap_8) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, streaming_truncated_turn_reports_length_and_cap_8) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -70,9 +72,10 @@ macro_rules! ecs_termination_case {
                 assert_recorded_request_cap(SCENARIO, TINY_CAP);
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_completed_turn_reports_stop_and_cap_9) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, blocking_completed_turn_reports_stop_and_cap_9) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -99,9 +102,10 @@ macro_rules! ecs_termination_case {
                 assert_recorded_wire_reason(SCENARIO, "stop");
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_completed_turn_reports_stop_and_cap_10) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, streaming_completed_turn_reports_stop_and_cap_10) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -122,9 +126,10 @@ macro_rules! ecs_termination_case {
                 assert_recorded_wire_reason(SCENARIO, "stop");
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_tool_turn_reports_tool_calls_11) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, blocking_tool_turn_reports_tool_calls_11) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -156,9 +161,10 @@ macro_rules! ecs_termination_case {
                 assert_recorded_wire_reason(SCENARIO, "tool_calls");
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_tool_turn_reports_tool_calls_12) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, streaming_tool_turn_reports_tool_calls_12) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -184,9 +190,10 @@ macro_rules! ecs_termination_case {
                 assert_recorded_wire_reason(SCENARIO, "tool_calls");
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_escalating_retry_reports_each_attempts_own_cap_13) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, blocking_escalating_retry_reports_each_attempts_own_cap_13) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -222,9 +229,10 @@ macro_rules! ecs_termination_case {
                 );
             }
         }
-    };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_escalating_retry_reports_each_attempts_own_cap_14) => {
-        $(#[$attribute])*
+};
+    ($(#[$($attribute:tt)*])* $name:ident, $wrapper:path, $scenario:literal, streaming_escalating_retry_reports_each_attempts_own_cap_14) => {
+#[$crate::cassette($crate::recording::Scenario::live(format!("{}/{}", env!("CARGO_CRATE_NAME"), $scenario)))]
+        $(#[$($attribute)*])*
         async fn $name() {
             {
                 const SCENARIO: &str = $scenario;
@@ -254,7 +262,7 @@ macro_rules! ecs_termination_case {
                 assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
             }
         }
-    };
+};
 }
 
 pub use ecs_termination_case;

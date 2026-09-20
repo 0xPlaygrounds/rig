@@ -92,6 +92,9 @@ fn keyed_probe() -> CacheProbe {
     }))
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/responses_blocking_probe"
+))]
 /// The Responses surface caches reliably **when rig sends a cache key**.
 ///
 /// The un-keyed behavior is recorded separately in
@@ -120,6 +123,9 @@ async fn responses_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     assert_cache_key_stable("openai", SCENARIO, &OPENAI_RESPONSES_KEYED_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/responses_unkeyed_probe"
+))]
 /// Measured Responses behavior without `prompt_cache_key`: turn 2 misses.
 ///
 /// This is a **provider** property, not a rig defect, and it is recorded rather
@@ -179,6 +185,9 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
     assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/chat_completions_blocking_probe"
+))]
 #[tokio::test]
 async fn chat_completions_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/chat_completions_blocking_probe";
@@ -201,6 +210,9 @@ async fn chat_completions_blocking_probe_hits_and_keeps_hitting_as_the_prefix_gr
     assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/responses_streaming_probe"
+))]
 #[tokio::test]
 async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/responses_streaming_probe";
@@ -223,6 +235,9 @@ async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/chat_completions_streaming_probe"
+))]
 #[tokio::test]
 async fn chat_completions_streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/chat_completions_streaming_probe";
@@ -245,6 +260,9 @@ async fn chat_completions_streaming_probe_survives_the_streaming_accumulator() {
     assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/chat_completions_agent_loop"
+))]
 /// A real agent loop with a tool round-trip, on the chat-completions wire.
 ///
 /// The cell the rest of the suite cannot replace: the three-turn probe builds
@@ -288,6 +306,9 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
     assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/prompt_caching/responses_agent_loop"
+))]
 /// The Responses twin of [`chat_completions_agent_loop_keeps_hitting_across_tool_turns`].
 #[tokio::test]
 async fn responses_agent_loop_keeps_hitting_across_tool_turns() {

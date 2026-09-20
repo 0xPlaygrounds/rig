@@ -107,6 +107,9 @@ fn provider_choice_text(choice: &Choice) -> Option<String> {
 // Chat Completions — the surface that threw the diagnostic away.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_reasoning_budget_exhausted"
+))]
 #[tokio::test]
 async fn chat_blocking_reasoning_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_reasoning_budget_exhausted";
@@ -134,6 +137,9 @@ async fn chat_blocking_reasoning_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted"
+))]
 #[tokio::test]
 async fn chat_blocking_o4_mini_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted";
@@ -157,6 +163,9 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_gpt_5_1_budget_exhausted"
+))]
 #[tokio::test]
 async fn chat_blocking_gpt_5_1_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_gpt_5_1_budget_exhausted";
@@ -185,6 +194,9 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_usage_survives_the_empty_turn"
+))]
 /// The usage went out with the error too — including the reasoning-token count
 /// that explains where the budget went.
 #[tokio::test]
@@ -216,6 +228,9 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_raw_and_normalized_agree"
+))]
 #[tokio::test]
 async fn chat_blocking_raw_and_normalized_agree() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_blocking_raw_and_normalized_agree";
@@ -252,6 +267,9 @@ async fn chat_blocking_raw_and_normalized_agree() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_tools_present_budget_exhausted"
+))]
 /// A turn cut short before it could call anything: the request carried tools,
 /// so the empty choice is not "the model chose to say nothing".
 #[tokio::test]
@@ -279,6 +297,9 @@ async fn chat_blocking_tools_present_budget_exhausted() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_agent_reports_the_truncation"
+))]
 /// At agent level the truncation must still be legible rather than an opaque
 /// provider failure.
 #[tokio::test]
@@ -315,6 +336,9 @@ async fn chat_blocking_agent_reports_the_truncation() {
     assert_recorded_empty_truncated_chat_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_partial_text_truncation"
+))]
 /// Control: a *non-reasoning* model truncated mid-sentence keeps partial text,
 /// which always worked — the fix must not disturb it.
 #[tokio::test]
@@ -348,6 +372,9 @@ async fn chat_blocking_partial_text_truncation() {
 // Streaming: the transport that was already right, pinned as the parity anchor.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_streaming_reasoning_budget_exhausted"
+))]
 #[tokio::test]
 async fn chat_streaming_reasoning_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_streaming_reasoning_budget_exhausted";
@@ -376,6 +403,9 @@ async fn chat_streaming_reasoning_budget_exhausted() {
     assert_recorded_truncated_chat_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_streaming_partial_text_truncation"
+))]
 #[tokio::test]
 async fn chat_streaming_partial_text_truncation() {
     const SCENARIO: &str = "truncated_turn_matrix/chat_streaming_partial_text_truncation";
@@ -404,6 +434,9 @@ async fn chat_streaming_partial_text_truncation() {
     assert_recorded_truncated_chat_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_transports_agree_on_truncation"
+))]
 /// The parity claim itself: one prompt, one cap, both transports, one
 /// cassette — the caller must learn the same thing either way.
 #[tokio::test]
@@ -452,6 +485,9 @@ async fn chat_transports_agree_on_truncation() {
     assert_recorded_truncated_chat_stream(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/chat_blocking_completed_turn_is_unaffected"
+))]
 /// Control: an ordinary completed turn still normalizes exactly as before.
 #[tokio::test]
 async fn chat_blocking_completed_turn_is_unaffected() {
@@ -478,6 +514,9 @@ async fn chat_blocking_completed_turn_is_unaffected() {
 // Responses API — the rule this fix copied, pinned so it stays the reference.
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/responses_blocking_reasoning_budget_exhausted"
+))]
 #[tokio::test]
 async fn responses_blocking_reasoning_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/responses_blocking_reasoning_budget_exhausted";
@@ -501,6 +540,9 @@ async fn responses_blocking_reasoning_budget_exhausted() {
     assert_recorded_incomplete_responses_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/responses_streaming_reasoning_budget_exhausted"
+))]
 #[tokio::test]
 async fn responses_streaming_reasoning_budget_exhausted() {
     const SCENARIO: &str = "truncated_turn_matrix/responses_streaming_reasoning_budget_exhausted";
@@ -528,6 +570,9 @@ async fn responses_streaming_reasoning_budget_exhausted() {
     assert_recorded_incomplete_responses_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/responses_blocking_partial_text_truncation"
+))]
 #[tokio::test]
 async fn responses_blocking_partial_text_truncation() {
     const SCENARIO: &str = "truncated_turn_matrix/responses_blocking_partial_text_truncation";
@@ -555,6 +600,9 @@ async fn responses_blocking_partial_text_truncation() {
     assert_recorded_incomplete_responses_turn(SCENARIO);
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/truncated_turn_matrix/cross_surface_truncation_parity"
+))]
 /// The gap the bug actually was: one client, one prompt, one cap, both API
 /// surfaces, one cassette.
 #[tokio::test]

@@ -93,6 +93,9 @@ fn assert_recorded_completed_interaction(scenario: &str) -> Value {
 // 1: typed access is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_raw_capture_matrix/raw_roundtrips_interaction"
+))]
 #[tokio::test]
 async fn raw_roundtrips_interaction() {
     const SCENARIO: &str = "interactions_raw_capture_matrix/raw_roundtrips_interaction";
@@ -147,6 +150,9 @@ async fn raw_roundtrips_interaction() {
 // 2: un-normalized lifecycle fields are readable and match the wire
 // ---------------------------------------------------------------------------
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/interactions_raw_capture_matrix/raw_exposes_lifecycle_fields"
+))]
 #[tokio::test]
 async fn raw_exposes_lifecycle_fields() {
     const SCENARIO: &str = "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields";

@@ -33,6 +33,9 @@ fn missing<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + 
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_faults/setup_unary"
+))]
 #[tokio::test]
 async fn setup_unary() {
     with_gemini_cassette("corpus_faults/setup_unary", |client| async move {
@@ -44,6 +47,9 @@ async fn setup_unary() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body"
+))]
 #[tokio::test]
 async fn setup_streamed() {
     with_gemini_cassette(
@@ -60,6 +66,9 @@ async fn setup_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_faults/tool_error"
+))]
 #[tokio::test]
 async fn tool_error() {
     with_gemini_cassette("corpus_faults/tool_error", |client| async move {
@@ -71,6 +80,9 @@ async fn tool_error() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_faults/tool_error_streamed"
+))]
 #[tokio::test]
 async fn tool_error_streamed() {
     with_gemini_cassette("corpus_faults/tool_error_streamed", |client| async move {
@@ -82,6 +94,9 @@ async fn tool_error_streamed() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_faults/batch_second_fails"
+))]
 #[tokio::test]
 async fn batch_second_fails() {
     with_gemini_cassette("corpus_faults/batch_second_fails", |client| async move {
@@ -93,6 +108,9 @@ async fn batch_second_fails() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/corpus_faults/batch_second_fails"
+))]
 #[tokio::test]
 async fn batch_second_fails_concurrent() {
     with_gemini_cassette("corpus_faults/batch_second_fails", |client| async move {

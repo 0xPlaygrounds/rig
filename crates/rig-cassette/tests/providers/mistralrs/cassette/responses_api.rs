@@ -11,6 +11,9 @@ use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_respo
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/responses_api/responses_api_no_think_returns_text"
+))]
 #[tokio::test]
 async fn responses_api_no_think_returns_text() {
     with_mistralrs_cassette(
@@ -38,6 +41,9 @@ async fn responses_api_no_think_returns_text() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/responses_api/responses_api_reasoning_plus_answer_completes"
+))]
 #[tokio::test]
 async fn responses_api_reasoning_plus_answer_completes() {
     with_mistralrs_cassette(
@@ -87,6 +93,9 @@ async fn responses_api_reasoning_plus_answer_completes() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistralrs/responses_api/responses_api_multi_turn_replays_history"
+))]
 #[tokio::test]
 async fn responses_api_multi_turn_replays_history() {
     with_mistralrs_cassette(

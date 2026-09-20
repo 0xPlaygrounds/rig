@@ -95,6 +95,9 @@ fn observable(error: &CompletionError) -> (Option<u16>, bool, bool) {
     )
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id"
+))]
 #[tokio::test]
 async fn handshake_rejection_carries_status_body_and_request_id() {
     with_openai_websocket_cassette(
@@ -127,6 +130,9 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "openai/websocket_error_identity_matrix/handshake_rejection_matches_the_http_twin"
+))]
 /// The parity the bug broke, driven rather than described: **both transports
 /// run**, against the same credential and the same path, inside one cassette —
 /// the upgrade `GET /v1/responses` and the unary `POST /v1/responses` — and

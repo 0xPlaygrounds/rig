@@ -9,6 +9,9 @@ use crate::support::{
     collect_stream_final_response_and_provider_final,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_anthropic_cassette("streaming/streaming_smoke", |client| async move {
@@ -30,6 +33,9 @@ async fn streaming_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming/gateway_message_delta_metadata"
+))]
 /// Regression: the streamed terminal must carry the metadata the provider puts
 /// on `message_delta`.
 ///
@@ -106,6 +112,9 @@ async fn gateway_reports_input_tokens_on_message_delta() {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/streaming/input_tokens_agree_across_frames"
+))]
 /// Regression: the premise the `input_tokens` preference rests on — Anthropic
 /// proper reports the prompt size on **both** `message_start` and the terminal
 /// `message_delta`, and the two agree.

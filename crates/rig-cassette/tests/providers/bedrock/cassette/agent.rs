@@ -11,6 +11,9 @@ use crate::support::{
     assert_mentions_expected_number, assert_nonempty_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/agent/completion_smoke"
+))]
 #[tokio::test]
 async fn completion_smoke() {
     with_bedrock_cassette("agent/completion_smoke", |client| async move {
@@ -30,6 +33,9 @@ async fn completion_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/agent/completion_with_context_smoke"
+))]
 #[tokio::test]
 async fn completion_with_context_smoke() {
     with_bedrock_cassette("agent/completion_with_context_smoke", |client| async move {
@@ -52,6 +58,9 @@ async fn completion_with_context_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/agent/tool_roundtrip_smoke"
+))]
 #[tokio::test]
 async fn tool_roundtrip_smoke() {
     with_bedrock_cassette("agent/tool_roundtrip_smoke", |client| async move {
@@ -75,6 +84,9 @@ async fn tool_roundtrip_smoke() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "bedrock/agent/prompt_caching_completion_smoke"
+))]
 #[tokio::test]
 async fn prompt_caching_completion_smoke() {
     with_bedrock_cassette(

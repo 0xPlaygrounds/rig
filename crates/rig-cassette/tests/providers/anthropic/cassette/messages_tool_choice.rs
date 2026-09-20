@@ -25,6 +25,9 @@ fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
         .collect()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_tool_choice/required_maps_to_any_and_forces_tool_use"
+))]
 #[tokio::test]
 async fn required_maps_to_any_and_forces_tool_use() {
     with_anthropic_cassette(
@@ -65,6 +68,9 @@ async fn required_maps_to_any_and_forces_tool_use() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_tool_choice/none_suppresses_tool_use"
+))]
 #[tokio::test]
 async fn none_suppresses_tool_use() {
     with_anthropic_cassette(
@@ -114,6 +120,9 @@ async fn none_suppresses_tool_use() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "anthropic/messages_tool_choice/specific_tool_targets_named_tool"
+))]
 #[tokio::test]
 async fn specific_tool_targets_named_tool() {
     with_anthropic_cassette(

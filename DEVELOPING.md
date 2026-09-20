@@ -112,7 +112,8 @@ compiling anything; a missing tool is a failed run.
 
 ## Hosted CI
 
-- `ci.yaml`, the PR gate: guards (fmt, source guards, layout, xtask's tests),
+- `ci.yaml`, the PR gate: guards (fmt, source guards, layout, xtask's and
+  cassette-inventory's tests),
   release-document freeze, the default-feature type check, the default/bedrock
   sweep, the cross-crate guards (core-all, bus verification, macro hygiene,
   out-of-facade conformance), rig-derive, loom, doctests, docs, clippy, the
@@ -146,6 +147,9 @@ dependencies on the concrete cassette/log implementation.
 
 The default sweep excludes the parity cells and the two verification targets;
 the cassette library's own tests and every provider target stay in it.
+The following `cassette-inventory` check compiles provider declarations, verifies
+exact libtest identities and safety-test coverage for every fixture directory,
+and checks fixture ownership and derived/scripted dependencies without recording.
 `ecs-parity` owns the parity cells (both configurations, including the
 extracted ECS helper regressions in `rig-test-support`), the golden pairing
 guard that stayed in the facade's `core` target, and the separate

@@ -5,6 +5,9 @@ use rig::prelude::*;
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "copilot/extractor/extractor_smoke"
+))]
 #[tokio::test]
 async fn extractor_smoke() {
     with_copilot_cassette("extractor/extractor_smoke", |client| async move {

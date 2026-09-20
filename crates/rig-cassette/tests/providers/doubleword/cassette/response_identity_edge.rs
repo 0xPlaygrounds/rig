@@ -26,6 +26,9 @@ use rig::completion::CompletionModel;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/response_identity_edge/blocking_identity_contract_vs_reality"
+))]
 #[tokio::test]
 async fn blocking_identity_contract_vs_reality() {
     with_doubleword_cassette(
@@ -48,6 +51,9 @@ async fn blocking_identity_contract_vs_reality() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "doubleword/response_identity_edge/streaming_identity_contract_vs_reality"
+))]
 #[tokio::test]
 async fn streaming_identity_contract_vs_reality() {
     use futures::StreamExt;

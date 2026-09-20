@@ -11,3 +11,5 @@ use rig_test_support::support;
 mod groq;
 
 use rig_test_support::matrix;
+
+rig_test_support::cassette_inventory!();

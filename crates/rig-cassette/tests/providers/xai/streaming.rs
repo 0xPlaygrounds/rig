@@ -8,6 +8,9 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "xai/streaming/streaming_smoke"
+))]
 #[tokio::test]
 async fn streaming_smoke() {
     with_xai_cassette("streaming/streaming_smoke", |client| async move {

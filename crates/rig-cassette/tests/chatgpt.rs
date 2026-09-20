@@ -9,3 +9,5 @@ use rig_test_support::support;
 
 #[path = "providers/chatgpt/mod.rs"]
 mod chatgpt;
+
+rig_test_support::cassette_inventory!();

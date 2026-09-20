@@ -59,6 +59,9 @@ fn output_tool_response(name: &str) -> String {
     .to_string()
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/structured_output/structured_output_smoke"
+))]
 #[tokio::test]
 async fn structured_output_smoke() {
     with_gemini_cassette(

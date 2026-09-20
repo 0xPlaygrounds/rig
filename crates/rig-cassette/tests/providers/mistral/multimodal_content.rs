@@ -171,6 +171,9 @@ fn assert_recorded_chunk_count(scenario: &str, chunk_type: &str, expected: usize
 // Images
 // =====================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_raw_model_sends_a_base64_image"
+))]
 #[tokio::test]
 async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -208,6 +211,9 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/streaming_raw_model_sends_a_base64_image"
+))]
 #[tokio::test]
 async fn streaming_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -234,6 +240,9 @@ async fn streaming_raw_model_sends_a_base64_image() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_agent_prompt_sends_a_base64_image"
+))]
 #[tokio::test]
 async fn blocking_agent_prompt_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -263,6 +272,9 @@ async fn blocking_agent_prompt_sends_a_base64_image() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_image_only_message_carries_no_text_part"
+))]
 #[tokio::test]
 async fn blocking_image_only_message_carries_no_text_part() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -293,6 +305,9 @@ async fn blocking_image_only_message_carries_no_text_part() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_two_images_in_one_message"
+))]
 #[tokio::test]
 async fn blocking_two_images_in_one_message() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -326,6 +341,9 @@ async fn blocking_two_images_in_one_message() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_image_url_reference_is_sent"
+))]
 #[tokio::test]
 async fn blocking_image_url_reference_is_sent() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -362,6 +380,9 @@ async fn blocking_image_url_reference_is_sent() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_image_on_a_second_model_family"
+))]
 #[tokio::test]
 async fn blocking_image_on_a_second_model_family() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -391,6 +412,9 @@ async fn blocking_image_on_a_second_model_family() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_image_survives_a_replayed_history"
+))]
 #[tokio::test]
 async fn blocking_image_survives_a_replayed_history() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -423,6 +447,9 @@ async fn blocking_image_survives_a_replayed_history() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/streaming_image_survives_a_replayed_history"
+))]
 #[tokio::test]
 async fn streaming_image_survives_a_replayed_history() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -455,6 +482,9 @@ async fn streaming_image_survives_a_replayed_history() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_unicode_text_beside_an_image"
+))]
 #[tokio::test]
 async fn blocking_unicode_text_beside_an_image() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -491,6 +521,9 @@ async fn blocking_unicode_text_beside_an_image() -> Result<()> {
 // Documents
 // =====================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_raw_model_reads_an_attached_pdf"
+))]
 #[tokio::test]
 async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -527,6 +560,9 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/streaming_agent_reads_an_attached_pdf"
+))]
 #[tokio::test]
 async fn streaming_agent_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -553,6 +589,9 @@ async fn streaming_agent_reads_an_attached_pdf() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_agent_reads_an_attached_pdf"
+))]
 #[tokio::test]
 async fn blocking_agent_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -587,6 +626,9 @@ async fn blocking_agent_reads_an_attached_pdf() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_document_only_message_carries_no_text_part"
+))]
 #[tokio::test]
 async fn blocking_document_only_message_carries_no_text_part() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -611,6 +653,9 @@ async fn blocking_document_only_message_carries_no_text_part() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_document_and_image_in_one_message"
+))]
 #[tokio::test]
 async fn blocking_document_and_image_in_one_message() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -645,6 +690,9 @@ async fn blocking_document_and_image_in_one_message() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_document_on_a_second_model_family"
+))]
 #[tokio::test]
 async fn blocking_document_on_a_second_model_family() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -678,6 +726,9 @@ async fn blocking_document_on_a_second_model_family() -> Result<()> {
 // Audio
 // =====================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_raw_model_sends_audio"
+))]
 #[tokio::test]
 async fn blocking_raw_model_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -715,6 +766,9 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/streaming_agent_sends_audio"
+))]
 #[tokio::test]
 async fn streaming_agent_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -741,6 +795,9 @@ async fn streaming_agent_sends_audio() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_agent_sends_audio"
+))]
 #[tokio::test]
 async fn blocking_agent_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -777,6 +834,9 @@ async fn blocking_agent_sends_audio() -> Result<()> {
 // Controls — the text-only shape must not move
 // =====================================================================
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_text_only_content_still_flattens_to_a_string"
+))]
 #[tokio::test]
 async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -810,6 +870,9 @@ async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/streaming_text_only_content_still_flattens_to_a_string"
+))]
 #[tokio::test]
 async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -841,6 +904,9 @@ async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> 
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_text_document_still_flattens_into_the_prompt"
+))]
 #[tokio::test]
 async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -923,6 +989,9 @@ impl rig::tool::Tool for RecordColour {
     }
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/blocking_image_with_a_tool_configured"
+))]
 #[tokio::test]
 async fn blocking_image_with_a_tool_configured() -> Result<()> {
     with_mistral_multimodal_cassette(
@@ -959,6 +1028,9 @@ async fn blocking_image_with_a_tool_configured() -> Result<()> {
     Ok(())
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "mistral/multimodal_content/streaming_image_with_a_tool_configured"
+))]
 #[tokio::test]
 async fn streaming_image_with_a_tool_configured() -> Result<()> {
     with_mistral_multimodal_cassette(

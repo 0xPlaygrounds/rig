@@ -150,6 +150,9 @@ fn assert_expected_plan_trip_arguments(arguments: &serde_json::Value) {
     );
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_tool_args/nested_arguments_roundtrip_nonstreaming"
+))]
 #[tokio::test]
 async fn nested_arguments_roundtrip_nonstreaming() {
     with_gemini_cassette(
@@ -196,6 +199,9 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_tool_args/nested_arguments_streaming"
+))]
 #[tokio::test]
 async fn nested_arguments_streaming() {
     with_gemini_cassette(
@@ -233,6 +239,9 @@ async fn nested_arguments_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_tool_args/unicode_arguments_streaming"
+))]
 #[tokio::test]
 async fn unicode_arguments_streaming() {
     with_gemini_cassette(
@@ -298,6 +307,9 @@ async fn unicode_arguments_streaming() {
     .await;
 }
 
+#[rig_test_support::cassette(rig_test_support::recording::Scenario::live(
+    "gemini/generate_tool_args/optional_nullable_argument_omitted_when_not_requested"
+))]
 #[tokio::test]
 async fn optional_nullable_argument_omitted_when_not_requested() {
     with_gemini_cassette(
