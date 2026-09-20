@@ -172,10 +172,3 @@ fn binary_compiles_cassette_scan(source: &Path) -> bool {
 fn repo_path(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(path)
 }
-
-fn display_repo_path(path: &Path) -> String {
-    path.strip_prefix(env!("CARGO_MANIFEST_DIR"))
-        .unwrap_or(path)
-        .display()
-        .to_string()
-}
