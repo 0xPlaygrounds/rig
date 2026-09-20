@@ -286,6 +286,35 @@ impl CassetteMode {
     }
 }
 
+/// Whether the caller must abandon a test instead of recording it.
+///
+/// A few committed cassettes hold bytes no provider will ever return: they
+/// were hand-built from a live capture, or deliberately corrupted to pin a
+/// parser regression. A bulk `RIG_PROVIDER_TEST_MODE=record` sweep would
+/// overwrite exactly the property such a fixture exists to hold, so the test
+/// that owns it returns early instead, naming `reason` on stderr.
+///
+/// ```no_run
+/// # use rig_cassette::http::skip_when_recording;
+/// # async fn test() {
+/// if skip_when_recording("fixture is hand-corrupted tool JSON") {
+///     return;
+/// }
+/// # }
+/// ```
+#[must_use]
+pub fn skip_when_recording(reason: &str) -> bool {
+    skips_recording(CassetteMode::current(), reason)
+}
+
+fn skips_recording(mode: CassetteMode, reason: &str) -> bool {
+    if mode.records() {
+        eprintln!("skip (not live-recordable): {reason}");
+        return true;
+    }
+    false
+}
+
 /// Recorder for transports that bypass the HTTP proxy, including binary bodies.
 #[derive(Clone, Debug)]
 pub struct DirectRecorder {

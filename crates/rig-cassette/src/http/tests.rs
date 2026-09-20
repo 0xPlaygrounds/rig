@@ -20,6 +20,17 @@ fn scrubbing_an_empty_value_invents_nothing() {
     );
 }
 
+/// The marker exists so a bulk re-record sweep abandons the tests whose
+/// fixture was hand-built, instead of overwriting it. Replay, where those
+/// fixtures are the point, must be unaffected.
+#[test]
+fn the_recording_marker_stops_only_a_recording_run() {
+    assert!(skips_recording(CassetteMode::Record, "hand-derived"));
+    assert!(!skips_recording(CassetteMode::Replay, "hand-derived"));
+    // The ambient mode of the test process is replay, so a marked test runs.
+    assert!(!skip_when_recording("hand-derived"));
+}
+
 fn query_pair(name: &str, value: &str) -> NameValue {
     NameValue {
         name: name.to_string(),

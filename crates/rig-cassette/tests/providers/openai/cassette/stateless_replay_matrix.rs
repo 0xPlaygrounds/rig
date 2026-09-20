@@ -160,6 +160,11 @@ async fn phase_round_trips_on_follow_up() {
 
 #[tokio::test]
 async fn compaction_item_decodes_on_the_response() {
+    if crate::cassettes::skip_when_recording(
+        "cell 2 is hand-derived from cell 1: the compaction item on the response output is not what the API returned",
+    ) {
+        return;
+    }
     with_openai_cassette(
         "stateless_replay_matrix/compaction_item_decodes_on_the_response",
         |client| async move {

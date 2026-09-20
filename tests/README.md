@@ -145,6 +145,24 @@ RIG_PROVIDER_TEST_MODE=record \
 cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
 ```
 
+A handful of committed cassettes hold bytes no provider will return: they are
+hand-derived from a live capture, or deliberately corrupted to pin a parser
+regression. The test that owns such a fixture marks itself, so the sweep above
+abandons it instead of healing it:
+
+```rust
+if crate::cassettes::skip_when_recording(
+    "cell 3 is hand-derived from cell 2: the tool input carries a control byte",
+) {
+    return;
+}
+```
+
+Hand-editing a committed cassette means adding that line, with a reason naming
+why the bytes are not obtainable live. Scripted fault families need no marker:
+they borrow frames from another scenario's fixture and never open a recording
+session of their own.
+
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
 
 Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS
