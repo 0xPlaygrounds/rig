@@ -33,11 +33,6 @@ const REASONING_TEXT: &str =
 
 #[tokio::test]
 async fn nonstreaming_reasoning_content_tool_roundtrip() {
-    if cassettes::skip_when_recording(
-        "the fixture holds handwritten replies from the local server below, not provider traffic",
-    ) {
-        return;
-    }
     with_local_reasoning_content_cassette(
         "openai_compatible/reasoning_content_tool_roundtrip",
         |client| async move {
@@ -182,7 +177,10 @@ fn first_tool_call_response() -> (StatusCode, Json<Value>) {
                             "type": "reasoning_text"
                         }
                     ],
-                    "encrypted_content": "",
+                    // Non-empty so the scrubber writes its placeholder and
+                    // the follow-up request has an opaque blob to echo back;
+                    // an empty value is left as-is and never round-trips.
+                    "encrypted_content": "llamacpp-opaque-reasoning-blob",
                     "status": "completed"
                 },
                 {
