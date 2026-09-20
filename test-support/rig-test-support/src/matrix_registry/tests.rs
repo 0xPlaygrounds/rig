@@ -10,7 +10,7 @@ fn parse(rows: &str) -> syn::Result<GoldenMatrix> {
 fn literal_rows_preserve_ignored_status_and_qualified_paths() {
     let matrix = parse(r#"
         #[tokio::test] normal: ("matrix/normal", cells::NORMAL, "normal");
-        #[tokio::test] #[ignore = "not recorded"] absent: ("matrix/absent", cells::ABSENT, "absent");
+        #[ignore = "not recorded"] #[tokio::test] absent: ("matrix/absent", cells::ABSENT, "absent");
     "#).expect("valid rows");
     assert_eq!(
         matrix.wrapper.segments.last().expect("wrapper").ident,
@@ -27,7 +27,10 @@ fn literal_rows_preserve_ignored_status_and_qualified_paths() {
             .ident,
         "ecs_goldens"
     );
+    assert_eq!(matrix.rows[0].name, "normal");
+    assert_eq!(matrix.rows[1].name, "absent");
     assert_eq!(matrix.rows[0].scenario.value(), "matrix/normal");
+    assert_eq!(matrix.rows[1].scenario.value(), "matrix/absent");
     assert_eq!(matrix.rows[0].golden.value(), "normal");
     assert!(!matrix.rows[0].ignored);
     assert!(matrix.rows[1].ignored);
@@ -72,9 +75,11 @@ fn resume_rows_preserve_scenarios_and_validate_registration() {
         matrix.wrapper.segments.last().expect("wrapper").ident,
         "with_cassette"
     );
-    assert_eq!(matrix.rows[0].0.value(), "recording");
-    assert!(!matrix.rows[0].1);
-    assert!(matrix.rows[1].1);
+    assert_eq!(matrix.rows[0].0, "cut");
+    assert_eq!(matrix.rows[1].0, "end");
+    assert_eq!(matrix.rows[0].1.value(), "recording");
+    assert!(!matrix.rows[0].2);
+    assert!(matrix.rows[1].2);
     for row in [
         "",
         "cut: (\"recording\", CELL, None, golden);",
@@ -92,6 +97,18 @@ fn scripted_rows_have_no_cassette_and_still_require_test_registration() {
     ).unwrap();
     assert!(matrix.wrapper.is_none());
     assert!(matrix.rows.is_empty());
+    let recorded: CaseMatrix = syn::parse_str(
+        "wrapper: with_cassette, family: tool; #[tokio::test] named: (\"scenario\", text_prefix);",
+    )
+    .expect("recorded case");
+    assert!(
+        recorded
+            .wrapper
+            .is_some_and(|p| p.is_ident("with_cassette"))
+    );
+    assert_eq!(recorded.rows[0].0, "named");
+    assert_eq!(recorded.rows[0].1.value(), "scenario");
+    assert!(!recorded.rows[0].2);
     for source in [
         "family: scripted_case; missing_attribute: text_prefix;",
         "family: scripted_case; #[tokio::test] dynamic: make_case();",

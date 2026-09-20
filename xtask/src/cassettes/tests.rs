@@ -731,28 +731,6 @@ fn listing_renders_every_provenance() {
 // ------------------------------------------------------------ discovery
 
 #[test]
-fn matrix_rows_are_scenarios_with_test_names() {
-    let matrix = parse_matrix(
-        r#"wrapper: with_openai_cassette, wire: w, run: r, oracle: o;
-           #[tokio::test]
-           first: ("a/one", cell::path, "golden_one");
-           #[ignore]
-           #[tokio::test]
-           second: ("a/two", cell::path, "golden_two");"#
-            .parse()
-            .expect("tokens"),
-    )
-    .expect("parse matrix");
-    assert_eq!(matrix.wrapper.as_deref(), Some("with_openai_cassette"));
-    let rows: Vec<(&str, &str, bool)> = matrix
-        .rows
-        .iter()
-        .map(|row| (row.name.as_str(), row.scenario.as_str(), row.ignored))
-        .collect();
-    assert_eq!(rows, [("first", "a/one", false), ("second", "a/two", true)]);
-}
-
-#[test]
 fn a_helper_that_opens_the_cassette_belongs_to_its_callers() {
     let repo = Repo::new();
     let mut manifest = base_manifest();

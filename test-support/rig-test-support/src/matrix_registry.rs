@@ -21,11 +21,13 @@ pub struct GoldenMatrix {
 
 /// One generated test and its fixed fixture references.
 pub struct Row {
+    /// Generated test function name.
+    pub name: String,
     /// Cassette path relative to the provider directory.
     pub scenario: LitStr,
     /// Original golden name without a file extension.
     pub golden: LitStr,
-    /// Whether this row requires no recording because it is ignored.
+    /// Whether the generated test is ignored by default.
     pub ignored: bool,
 }
 
@@ -38,7 +40,10 @@ fn field(input: ParseStream<'_>, name: &str) -> syn::Result<Path> {
     input.parse()
 }
 
-fn registration(input: ParseStream<'_>, names: &mut BTreeSet<String>) -> syn::Result<bool> {
+fn registration(
+    input: ParseStream<'_>,
+    names: &mut BTreeSet<String>,
+) -> syn::Result<(String, bool)> {
     let attrs = input.call(Attribute::parse_outer)?;
     let name: Ident = input.parse()?;
     if !names.insert(name.to_string()) {
@@ -68,7 +73,7 @@ fn registration(input: ParseStream<'_>, names: &mut BTreeSet<String>) -> syn::Re
         ));
     }
     let ignored = attrs.iter().any(|attr| attr.path().is_ident("ignore"));
-    Ok(ignored)
+    Ok((name.to_string(), ignored))
 }
 
 impl Parse for GoldenMatrix {
@@ -84,7 +89,7 @@ impl Parse for GoldenMatrix {
         let mut rows = Vec::new();
         let mut names = BTreeSet::new();
         while !input.is_empty() {
-            let ignored = registration(input, &mut names)?;
+            let (name, ignored) = registration(input, &mut names)?;
             input.parse::<Token![:]>()?;
             let args;
             parenthesized!(args in input);
@@ -98,6 +103,7 @@ impl Parse for GoldenMatrix {
             }
             input.parse::<Token![;]>()?;
             rows.push(Row {
+                name,
                 scenario,
                 golden,
                 ignored,
@@ -119,8 +125,8 @@ impl Parse for GoldenMatrix {
 pub struct ResumeMatrix {
     /// The wire-specific cassette wrapper called by each generated test.
     pub wrapper: Path,
-    /// Scenario literals and whether each row is ignored.
-    pub rows: Vec<(LitStr, bool)>,
+    /// Test names, scenario literals, and ignored status.
+    pub rows: Vec<(String, LitStr, bool)>,
 }
 
 impl Parse for ResumeMatrix {
@@ -134,7 +140,7 @@ impl Parse for ResumeMatrix {
         let mut rows = Vec::new();
         let mut names = BTreeSet::new();
         while !input.is_empty() {
-            let ignored = registration(input, &mut names)?;
+            let (name, ignored) = registration(input, &mut names)?;
             input.parse::<Token![:]>()?;
             let args;
             parenthesized!(args in input);
@@ -149,7 +155,7 @@ impl Parse for ResumeMatrix {
                 return Err(args.error("expected scenario, cell, resume point and oracle path"));
             }
             input.parse::<Token![;]>()?;
-            rows.push((scenario, ignored));
+            rows.push((name, scenario, ignored));
         }
         if rows.is_empty() {
             return Err(input.error("matrix must register at least one test"));
@@ -163,8 +169,8 @@ impl Parse for ResumeMatrix {
 pub struct CaseMatrix {
     /// The cassette wrapper, or none for rows using only local scripted transports.
     pub wrapper: Option<Path>,
-    /// Scenario literals and whether each row is ignored.
-    pub rows: Vec<(LitStr, bool)>,
+    /// Test names, scenario literals, and ignored status.
+    pub rows: Vec<(String, LitStr, bool)>,
 }
 
 impl Parse for CaseMatrix {
@@ -187,7 +193,7 @@ impl Parse for CaseMatrix {
         let mut rows = Vec::new();
         let mut names = BTreeSet::new();
         while !input.is_empty() {
-            let ignored = registration(input, &mut names)?;
+            let (name, ignored) = registration(input, &mut names)?;
             input.parse::<Token![:]>()?;
             if wrapper.is_none() {
                 input.parse::<Ident>()?;
@@ -207,7 +213,7 @@ impl Parse for CaseMatrix {
                 return Err(args.error("expected scenario and case selector"));
             }
             input.parse::<Token![;]>()?;
-            rows.push((scenario, ignored));
+            rows.push((name, scenario, ignored));
         }
         if names.is_empty() {
             return Err(input.error("matrix must register at least one test"));

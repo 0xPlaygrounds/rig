@@ -10,9 +10,9 @@ mod manifest;
 #[cfg(test)]
 mod tests;
 
-use discovery::{Discovery, collect_files, discover};
 #[cfg(test)]
-use discovery::{module_path, parse_matrix};
+use discovery::module_path;
+use discovery::{Discovery, collect_files, discover};
 use manifest::{Category, Manifest, ProviderScenarios, RECORD_SCOPE_ENV};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;

@@ -10945,7 +10945,6 @@ dependencies = [
  "bytes",
  "futures",
  "http 1.4.2",
- "proc-macro2",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-cassette",

@@ -151,12 +151,7 @@ impl ProviderScenarios {
     }
 
     pub(crate) fn validate(&self) -> Result<(), String> {
-        text(&self.provider, "provider", 1)?;
-        if !self
-            .provider
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
-        {
+        if !canonical_segment(&self.provider) {
             return Err(format!(
                 "provider {:?} is not a canonical path segment",
                 self.provider
@@ -164,7 +159,6 @@ impl ProviderScenarios {
         }
         text(&self.source_dir, "source_dir", 1)?;
         strings(&self.wrappers, "wrappers", true)?;
-        strings(&self.live, "live", false)?;
         unique(self.live_modules.iter().map(String::as_str), "live module")?;
         for module in &self.live_modules {
             if Path::new(module).extension().is_none_or(|ext| ext != "rs")
@@ -178,13 +172,11 @@ impl ProviderScenarios {
             }
         }
         for entry in &self.derived {
-            text(&entry.scenario, "derived.scenario", 1)?;
             strings(&entry.sources, "derived.sources", true)?;
             text(&entry.reason, "derived.reason", 3)?;
             text(&entry.rebuild, "derived.rebuild", 3)?;
         }
         for entry in &self.unrecorded {
-            text(&entry.scenario, "unrecorded.scenario", 1)?;
             text(&entry.reason, "unrecorded.reason", 3)?;
         }
         for entry in &self.scripted {
@@ -246,17 +238,17 @@ fn strings(values: &[String], field: &str, required: bool) -> Result<(), String>
     Ok(())
 }
 
+fn canonical_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+}
+
 fn unique<'a>(values: impl IntoIterator<Item = &'a str>, kind: &str) -> Result<(), String> {
     let mut seen = BTreeSet::new();
     for value in values {
-        if kind == "scenario"
-            && !value.split('/').all(|part| {
-                !part.is_empty()
-                    && part
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
-            })
-        {
+        if kind == "scenario" && !value.split('/').all(canonical_segment) {
             return Err(format!(
                 "scenario {value:?} is not canonical; recording would sanitize its destination"
             ));

@@ -5,10 +5,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use proc_macro2::TokenStream;
-use syn::parse::{ParseStream, Parser};
 use syn::visit::{self, Visit};
-use syn::{Attribute, Expr, ExprCall, ExprLit, Item, Lit, LitStr, Token, parenthesized};
+use syn::{Attribute, Expr, ExprCall, ExprLit, Item, Lit};
+
+// Golden pairing consumes the oracle/golden fields; this host inventory does not.
+#[allow(dead_code)]
+#[path = "matrix_registry.rs"]
+mod matrix_registry;
 
 use super::manifest::{Manifest, ProviderScenarios};
 
@@ -149,24 +152,24 @@ impl FileScan {
                         self.items(inner, &format!("{prefix}::{}", module.ident), wrappers)?;
                     }
                 }
-                Item::Macro(item)
-                    if item.mac.path.segments.last().is_some_and(|s| {
-                        ["golden_matrix", "resume_matrix", "case_matrix"]
-                            .iter()
-                            .any(|m| s.ident == m)
-                    }) =>
-                {
-                    let matrix = parse_matrix(item.mac.tokens.clone())?;
+                Item::Macro(item) => {
+                    let Some(matrix) = parse_matrix(&item.mac) else {
+                        continue;
+                    };
+                    let matrix = matrix.map_err(|error| error.to_string())?;
                     if matrix
                         .wrapper
-                        .as_deref()
-                        .is_some_and(|w| wrappers.contains(w))
+                        .as_ref()
+                        .and_then(|path| path.segments.last())
+                        .is_some_and(|segment| {
+                            wrappers.contains(segment.ident.to_string().as_str())
+                        })
                     {
-                        for row in matrix.rows {
+                        for (name, scenario, ignored) in matrix.rows {
                             self.matrix.push((
-                                row.scenario,
-                                format!("{prefix}::{}", row.name),
-                                row.ignored,
+                                scenario.value(),
+                                format!("{prefix}::{name}"),
+                                ignored,
                             ));
                         }
                     }
@@ -276,63 +279,25 @@ fn has_attribute(attrs: &[Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
-pub(crate) struct Matrix {
-    pub(crate) wrapper: Option<String>,
-    pub(crate) rows: Vec<MatrixRow>,
-}
-
-pub(crate) struct MatrixRow {
-    pub(crate) name: String,
-    pub(crate) scenario: String,
-    pub(crate) ignored: bool,
-}
-
-pub(crate) fn parse_matrix(tokens: TokenStream) -> Result<Matrix, String> {
-    let parser = |input: ParseStream<'_>| -> syn::Result<Matrix> {
-        let mut wrapper = None;
-        loop {
-            let key: syn::Ident = input.parse()?;
-            input.parse::<Token![:]>()?;
-            let path: syn::Path = input.parse()?;
-            if key == "wrapper" {
-                wrapper = path.segments.last().map(|s| s.ident.to_string());
-            }
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-                continue;
-            }
-            input.parse::<Token![;]>()?;
-            break;
-        }
-        let mut rows = Vec::new();
-        while !input.is_empty() {
-            let attrs = input.call(Attribute::parse_outer)?;
-            let name: syn::Ident = input.parse()?;
-            input.parse::<Token![:]>()?;
-            let mut scenario = None;
-            if input.peek(syn::token::Paren) {
-                let arguments;
-                parenthesized!(arguments in input);
-                let literal: LitStr = arguments.parse()?;
-                scenario = Some(literal.value());
-                arguments.parse::<TokenStream>()?;
-            } else {
-                while !input.is_empty() && !input.peek(Token![;]) {
-                    input.parse::<proc_macro2::TokenTree>()?;
-                }
-            }
-            input.parse::<Token![;]>()?;
-            if let Some(scenario) = scenario {
-                rows.push(MatrixRow {
-                    name: name.to_string(),
-                    scenario,
-                    ignored: has_attribute(&attrs, "ignore"),
-                });
-            }
-        }
-        Ok(Matrix { wrapper, rows })
-    };
-    parser.parse2(tokens).map_err(|error| error.to_string())
+fn parse_matrix(mac: &syn::Macro) -> Option<syn::Result<matrix_registry::CaseMatrix>> {
+    use matrix_registry::{CaseMatrix, GoldenMatrix, ResumeMatrix};
+    let tokens = mac.tokens.clone();
+    Some(match mac.path.segments.last()?.ident.to_string().as_str() {
+        "golden_matrix" => syn::parse2::<GoldenMatrix>(tokens).map(|matrix| CaseMatrix {
+            wrapper: Some(matrix.wrapper),
+            rows: matrix
+                .rows
+                .into_iter()
+                .map(|r| (r.name, r.scenario, r.ignored))
+                .collect(),
+        }),
+        "resume_matrix" => syn::parse2::<ResumeMatrix>(tokens).map(|matrix| CaseMatrix {
+            wrapper: Some(matrix.wrapper),
+            rows: matrix.rows,
+        }),
+        "case_matrix" => syn::parse2(tokens),
+        _ => return None,
+    })
 }
 
 pub(crate) fn module_path(root: &Path, file: &Path) -> Result<String, String> {

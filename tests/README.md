@@ -474,9 +474,10 @@ Matrix declarations keep literal scenario names and explicit per-cell parameters
 checkpoint cut and its named oracle, and `case_matrix!` selects a family body.
 A `case_matrix!` declaration without a wrapper contains only scripted rows;
 it registers tests without claiming cassette scenarios.
-Their parsers reject malformed rows and exclude ignored rows from the recording
-inventory. Keep a compiled listing when changing declarations: source discovery
-alone does not establish that a configuration registers or executes a test.
+Shared parsers reject malformed rows and retain test names and ignored status
+for provenance discovery and golden pairing. Keep a compiled listing when changing
+declarations: source discovery alone does not establish that a configuration
+registers or executes a test.
 
 ## Agent/ECS regression scenarios
 

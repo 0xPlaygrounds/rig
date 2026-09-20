@@ -111,6 +111,10 @@ and after `finish_after_test_result` returns a test's own error. Invalid
 fixtures and failed assertions panic, preserving the original test-support
 behavior.
 
+Recording requires a `CassetteSpec` explicitly marked with
+`.with_provenance(rig_cassette::http::Provenance::Live)`; unset, derived, and
+scripted provenance cannot record.
+
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
 upstream and overwrites the selected fixture after scrubbing; `start` and
 `start_via` read the mode from the environment, and a recording reaches the
@@ -141,10 +145,11 @@ remain placeholdered.
 
 `fixtures/cassettes/<provider>/` holds the recorded HTTP interactions the
 provider suites in this package replay. `fixtures/effects/` holds the
-effect-log goldens the verification suite replays. Both are data: they are
-re-recorded by their producer and never regenerated to make a check pass. The
-one exception is the handful of `derived` cassettes, each declared in
-`fixtures/scenarios.yaml` with its live source and exact rebuild recipe.
+effect-log goldens the verification suite replays. Both are data, never
+regenerated merely to make a check pass. Live captures and effect logs come from
+their producers; derived and committed scripted cassettes are maintained as
+declared in `fixtures/scenarios.yaml`. Derived entries retain their live sources
+and exact rebuild recipes.
 The manifest also authorizes live modules and first captures; see
 [scenario declarations](../../tests/README.md#scenario-provenance). `cargo xtask check-cassette-provenance` fails an undeclared
 fixture or a declaration with nothing behind it. `.gitattributes` exempts the
