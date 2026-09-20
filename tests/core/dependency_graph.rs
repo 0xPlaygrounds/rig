@@ -83,6 +83,44 @@ fn cargo_stdout(args: &[&str]) -> String {
     String::from_utf8(output.stdout).expect("cargo output is utf-8")
 }
 
+/// Resolve `probe`'s graph offline, exactly as a downstream consumer would
+/// see it. `--target all` reaches the `cfg(rig_loom)` dependency too, whose
+/// `.crate` nothing in an ordinary build downloads, so a runner whose
+/// package cache was never populated for it fails the offline resolve
+/// instead of reporting a graph. Populate the cache from the workspace's own
+/// lock — the same versions the probe is seeded with — and resolve again.
+/// The second attempt stays offline: the graph is still decided by the
+/// committed lock, never by whatever the registry index holds today.
+fn offline_probe_tree(probe: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let cargo = || Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    let output = cargo()
+        .current_dir(probe)
+        .args(args)
+        .output()
+        .expect("resolve isolated downstream");
+    if output.status.success() {
+        return output;
+    }
+    if !String::from_utf8_lossy(&output.stderr).contains("--offline was specified") {
+        return output;
+    }
+    let fetched = cargo()
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args(["fetch", "--locked"])
+        .output()
+        .expect("populate the package cache");
+    assert!(
+        fetched.status.success(),
+        "cargo fetch failed:\n{}",
+        String::from_utf8_lossy(&fetched.stderr)
+    );
+    cargo()
+        .current_dir(probe)
+        .args(args)
+        .output()
+        .expect("resolve isolated downstream")
+}
+
 /// `cargo tree -e normal --prefix none` for `package` under `features`, as the
 /// package names in the resolved graph.
 fn normal_dependency_names(package: &str, features: &str) -> Vec<String> {
@@ -236,9 +274,9 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
         .expect("consumer manifest");
         std::fs::copy(root.join("Cargo.lock"), scratch.path().join("Cargo.lock"))
             .expect("seed locked dependency versions");
-        let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
-            .current_dir(scratch.path())
-            .args([
+        let output = offline_probe_tree(
+            scratch.path(),
+            &[
                 "tree",
                 "--offline",
                 "-e",
@@ -249,9 +287,8 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
                 "none",
                 "--format",
                 "{p} {f}",
-            ])
-            .output()
-            .expect("resolve isolated downstream");
+            ],
+        );
         assert!(
             output.status.success(),
             "{features}: {}",
