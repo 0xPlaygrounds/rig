@@ -64,6 +64,20 @@ fn an_undeclared_scenario_has_no_provenance() {
 }
 
 #[test]
+fn a_scripted_family_retains_its_declared_sources() {
+    let family = ScriptedFamily::new("openai", "stream_faults");
+    assert_eq!(family.provider(), "openai");
+    family.assert_declared_source("streaming/streaming_smoke");
+}
+
+#[test]
+#[should_panic(expected = "not one of its declared sources")]
+fn a_scripted_family_cannot_borrow_an_undeclared_source() {
+    ScriptedFamily::new("openai", "stream_faults")
+        .assert_declared_source("not_a_scenario/never_declared");
+}
+
+#[test]
 #[should_panic(expected = "is not declared in")]
 fn an_undeclared_scripted_family_is_refused() {
     ScriptedFamily::new("anthropic", "not_a_scripted_family");

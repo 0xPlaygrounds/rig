@@ -163,7 +163,7 @@ fn unknown_keys_are_rejected() {
             "derived":[],"scripted":[],"provenance":"live"}]}"#,
     )
     .expect_err("unknown key");
-    assert!(error.contains("unknown key \"provenance\""), "{error}");
+    assert!(error.contains("unknown field `provenance`"), "{error}");
 }
 
 /// `derived`, `scripted` and `unrecorded` are absent-means-empty, but the
@@ -186,7 +186,7 @@ fn missing_keys_are_rejected() {
     ] {
         let error = Manifest::parse(json).expect_err("missing key");
         assert!(
-            error.contains(&format!("missing key {missing:?}")),
+            error.contains(&format!("missing field `{missing}`")),
             "{error}"
         );
     }
@@ -194,18 +194,73 @@ fn missing_keys_are_rejected() {
 
 #[test]
 fn a_derivation_must_explain_and_reproduce_itself() {
-    for (field, replacement) in [
-        ("reason", r#""reason":"""#),
-        ("rebuild", r#""rebuild":" ""#),
-    ] {
-        let json = format!(
-            r#"{{"providers":[{{"provider":"p","source_dir":"d","wrappers":["w"],"live":["a"],
-               "derived":[{{"scenario":"b","sources":["p/a"],"reason":"because","rebuild":"copy a",
-               {replacement}}}],"scripted":[]}}]}}"#
-        );
-        let error = Manifest::parse(&json).expect_err("empty justification");
-        assert!(error.contains(field), "{field}: {error}");
+    for field in ["reason", "rebuild"] {
+        for value in ["", " ", "ab"] {
+            let mut manifest = base_manifest();
+            manifest["providers"][0]["derived"][0][field] = json!(value);
+            let error = Manifest::parse(&manifest.to_string()).expect_err("short justification");
+            assert!(error.contains(field), "{field}: {error}");
+        }
     }
+}
+
+#[test]
+fn schema_validation_rejects_wrong_types_and_nested_unknown_fields() {
+    for (pointer, value) in [
+        ("/providers/0/live", json!(null)),
+        ("/providers/0/live/0", json!(1)),
+        ("/providers/0/derived", json!(null)),
+        ("/providers/0/scripted", json!({})),
+        ("/providers/0/unrecorded", json!("pending")),
+        (
+            "/providers/0/derived/0",
+            json!({"scenario": "x", "extra": true}),
+        ),
+        (
+            "/providers/0/scripted/0",
+            json!({"family": "x", "extra": true}),
+        ),
+        (
+            "/providers/0/unrecorded/0",
+            json!({"scenario": "x", "extra": true}),
+        ),
+    ] {
+        let mut manifest = base_manifest();
+        *manifest.pointer_mut(pointer).expect("existing field") = value;
+        assert!(Manifest::parse(&manifest.to_string()).is_err(), "{pointer}");
+    }
+}
+
+#[test]
+fn semantic_validation_rejects_empty_fields_and_duplicate_owners() {
+    for (pointer, value) in [
+        ("/providers/0/provider", json!(" ")),
+        ("/providers/0/source_dir", json!("")),
+        ("/providers/0/wrappers", json!([])),
+        ("/providers/0/wrappers/0", json!("")),
+        ("/providers/0/live/0", json!("")),
+        ("/providers/0/derived/0/scenario", json!("")),
+        ("/providers/0/derived/0/sources", json!([])),
+        ("/providers/0/derived/0/sources/0", json!("")),
+        ("/providers/0/scripted/0/family", json!("")),
+        ("/providers/0/scripted/0/module", json!("")),
+        ("/providers/0/scripted/0/sources/0", json!("")),
+        ("/providers/0/scripted/0/reason", json!("ab")),
+        ("/providers/0/scripted/0/cases", json!([])),
+        ("/providers/0/scripted/0/cases/0", json!("")),
+        ("/providers/0/unrecorded/0/scenario", json!("")),
+        ("/providers/0/unrecorded/0/reason", json!("ab")),
+        ("/providers/1/provider", json!("p0")),
+        ("/providers/0/live/1", json!("bulk/s0")),
+    ] {
+        let mut manifest = base_manifest();
+        *manifest.pointer_mut(pointer).expect("existing field") = value;
+        assert!(Manifest::parse(&manifest.to_string()).is_err(), "{pointer}");
+    }
+    let mut manifest = base_manifest();
+    let family = manifest["providers"][0]["scripted"][0].clone();
+    manifest["providers"][0]["scripted"] = json!([family, family]);
+    assert!(Manifest::parse(&manifest.to_string()).is_err());
 }
 
 #[test]

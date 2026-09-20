@@ -8,7 +8,6 @@
 //! lookup here is what turns a scenario literal in a test into a recordable
 //! one. A scenario nobody declared stays unrecordable.
 
-use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use rig_cassette::http::{CassetteSpec, Provenance};
@@ -24,39 +23,12 @@ mod tests;
 #[derive(Debug)]
 pub struct ScriptedFamily {
     provider: &'static str,
-    family: &'static str,
+    declaration: &'static manifest::ScriptedFamilyDecl,
 }
 
-struct Declarations {
-    /// `provider` -> `scenario` -> provenance.
-    scenarios: BTreeMap<String, BTreeMap<String, Provenance>>,
-    /// `provider` -> `family` -> declared source scenarios (`provider/scenario`).
-    scripted: BTreeMap<String, BTreeMap<String, Vec<String>>>,
-}
-
-static DECLARATIONS: LazyLock<Declarations> = LazyLock::new(|| {
-    let root = crate::cassettes::workspace_root();
-    let manifest = manifest::Manifest::load(&root)
-        .unwrap_or_else(|error| panic!("cassette scenario declarations: {error}"));
-    let mut scenarios: BTreeMap<String, BTreeMap<String, Provenance>> = BTreeMap::new();
-    let mut scripted: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
-    for provider in &manifest.providers {
-        let declared = scenarios.entry(provider.provider.clone()).or_default();
-        for scenario in provider.live_scenarios() {
-            declared.insert(scenario.to_owned(), Provenance::Live);
-        }
-        for scenario in &provider.derived {
-            declared.insert(scenario.scenario.clone(), Provenance::Derived);
-        }
-        let families = scripted.entry(provider.provider.clone()).or_default();
-        for family in &provider.scripted {
-            families.insert(family.family.clone(), family.sources.clone());
-        }
-    }
-    Declarations {
-        scenarios,
-        scripted,
-    }
+static DECLARATIONS: LazyLock<manifest::Manifest> = LazyLock::new(|| {
+    manifest::Manifest::load(&crate::cassettes::workspace_root())
+        .unwrap_or_else(|error| panic!("cassette scenario declarations: {error}"))
 });
 
 /// The declared provenance of one provider scenario. An undeclared scenario
@@ -64,10 +36,20 @@ static DECLARATIONS: LazyLock<Declarations> = LazyLock::new(|| {
 /// capture.
 pub fn scenario_provenance(provider: &str, scenario: &str) -> Provenance {
     DECLARATIONS
-        .scenarios
-        .get(provider)
-        .and_then(|scenarios| scenarios.get(scenario))
-        .copied()
+        .provider(provider)
+        .and_then(|provider| {
+            if provider.live_scenarios().contains(&scenario) {
+                Some(Provenance::Live)
+            } else if provider
+                .derived
+                .iter()
+                .any(|entry| entry.scenario == scenario)
+            {
+                Some(Provenance::Derived)
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| {
             panic!(
                 "{provider}/{scenario} has no entry in {}; declare it as live, derived or \
@@ -88,16 +70,20 @@ impl ScriptedFamily {
     /// The declared scripted family of one test module. Panics when the
     /// module scripts provider behaviour nobody declared.
     pub fn new(provider: &'static str, family: &'static str) -> Self {
-        assert!(
-            DECLARATIONS
-                .scripted
-                .get(provider)
-                .is_some_and(|families| families.contains_key(family)),
-            "scripted family {provider}/{family} is not declared in {}; declare the family, its \
-             sources and the behaviour it injects",
-            manifest::MANIFEST_PATH
-        );
-        Self { provider, family }
+        let declaration = DECLARATIONS
+            .provider(provider)
+            .and_then(|provider| provider.scripted.iter().find(|entry| entry.family == family))
+            .unwrap_or_else(|| {
+                panic!(
+                    "scripted family {provider}/{family} is not declared in {}; declare the family, \
+                     its sources and the behaviour it injects",
+                    manifest::MANIFEST_PATH
+                )
+            });
+        Self {
+            provider,
+            declaration,
+        }
     }
 
     /// The provider whose wire this family scripts.
@@ -124,19 +110,13 @@ impl ScriptedFamily {
 
     fn assert_declared_source(&self, scenario: &str) {
         let qualified = format!("{}/{scenario}", self.provider);
-        let sources = DECLARATIONS
-            .scripted
-            .get(self.provider)
-            .and_then(|families| families.get(self.family))
-            .unwrap_or_else(|| {
-                panic!("scripted family {}/{} vanished", self.provider, self.family)
-            });
+        let sources = &self.declaration.sources;
         assert!(
             sources.iter().any(|source| source == &qualified),
             "scripted family {}/{} borrows {qualified}, which is not one of its declared \
              sources {sources:?}; declare the source in {}",
             self.provider,
-            self.family,
+            self.declaration.family,
             manifest::MANIFEST_PATH
         );
     }

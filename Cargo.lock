@@ -15118,6 +15118,7 @@ version = "0.42.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "serde",
  "serde_json",
  "syn 2.0.117",
  "thiserror 2.0.18",
