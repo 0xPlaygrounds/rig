@@ -65,9 +65,10 @@ struct MockTurnResponse {
     provider_request_id: Option<String>,
     finish_reason: Option<crate::completion::FinishReason>,
     /// A scripted provider document, when the test supplies one; otherwise
-    /// the turn itself, serialized, is the mock's document. Not part of the
-    /// serialized turn so the document never nests itself.
-    #[serde(skip)]
+    /// the turn itself, serialized, is the mock's document. Absent from the
+    /// serialized turn when unscripted, so that document never nests
+    /// itself; a scripted one survives a serde round trip of the script.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     raw: Option<serde_json::Value>,
 }
 

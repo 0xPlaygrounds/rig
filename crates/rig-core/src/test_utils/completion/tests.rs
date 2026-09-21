@@ -243,11 +243,17 @@ fn a_script_is_serde_in_and_serde_out() {
     let turns = vec![
         MockTurn::text("hello"),
         MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 1})),
+        MockTurn::text("scripted").with_raw(serde_json::json!({"id": "resp_1"})),
         MockTurn::error("boom"),
     ];
     let json = serde_json::to_string(&turns).expect("turns serialize");
     let restored: Vec<MockTurn> = serde_json::from_str(&json).expect("turns deserialize");
     assert_eq!(restored, turns);
+    assert_eq!(
+        restored[2].raw().expect("a document"),
+        serde_json::json!({"id": "resp_1"}),
+        "a scripted document survives the round trip"
+    );
 
     let model = MockCompletionModel::from_turns(restored);
     assert_eq!(model.script(), turns);
