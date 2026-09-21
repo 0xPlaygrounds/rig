@@ -387,11 +387,15 @@ where
     /// The provider descriptor name is an *input* rather than a constant:
     /// this record is shared by every dialect on the wire, so baking in
     /// `"openai"` would mislabel Groq, Together, DeepSeek and the rest.
-    pub fn into_stream_final(self, provider: &str) -> StreamFinal {
-        StreamFinal::new(provider, self.usage.map(Into::into).unwrap_or_default())
-            .with_optional_finish_reason(self.finish_reason)
-            .with_optional_response_id(self.response_id)
-            .with_optional_provider_request_id(self.provider_request_id)
-            .with_optional_model(self.model)
+    pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
+        StreamFinal::new(
+            provider,
+            self.usage.map(Into::into).unwrap_or_default(),
+            raw,
+        )
+        .with_optional_finish_reason(self.finish_reason)
+        .with_optional_response_id(self.response_id)
+        .with_optional_provider_request_id(self.provider_request_id)
+        .with_optional_model(self.model)
     }
 }

@@ -141,7 +141,10 @@
             "message_id": null,
             "response_id": null,
             "provider": "mock",
-            "model": null
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
           }
         }
       },
@@ -218,7 +221,10 @@
             "message_id": null,
             "response_id": null,
             "provider": "mock",
-            "model": null
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
           }
         }
       ]
@@ -368,7 +374,10 @@
             "message_id": null,
             "response_id": null,
             "provider": "mock",
-            "model": null
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
           }
         }
       },
@@ -402,7 +411,10 @@
             "message_id": null,
             "response_id": null,
             "provider": "mock",
-            "model": null
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
           }
         }
       ]

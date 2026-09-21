@@ -59,6 +59,7 @@ impl Serve for WithErrors {
             Ok(StreamEvent::Final(StreamFinal::new(
                 "mock",
                 Usage::default(),
+                serde_json::json!({}),
             ))),
             Err(ErrorReport::new(ErrorKind::Provider, "after final")),
         ])))
@@ -261,6 +262,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
         .unbounded_send(Ok(StreamEvent::Final(StreamFinal::new(
             "mock",
             Usage::default(),
+            serde_json::json!({}),
         ))))
         .unwrap();
     drop(sender);
@@ -427,6 +429,7 @@ fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
         let terminal = Ok(StreamEvent::Final(StreamFinal::new(
             "mock",
             Usage::default(),
+            serde_json::json!({}),
         )));
         sender.unbounded_send(terminal.clone()).unwrap();
         drop(sender);
@@ -471,7 +474,11 @@ impl Serve for RetryingStream {
                 .unwrap();
             if !first {
                 writer
-                    .finish(StreamFinal::new("mock", Usage::default()))
+                    .finish(StreamFinal::new(
+                        "mock",
+                        Usage::default(),
+                        serde_json::json!({}),
+                    ))
                     .await
                     .unwrap();
             }

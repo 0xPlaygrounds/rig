@@ -65,13 +65,6 @@ pub(crate) mod shared_parts {
     }
 }
 
-/// The usage record on a `streamGenerateContent` chunk.
-///
-/// Identical to the unary wire's [`UsageMetadata`] — Gemini sends the same
-/// `usageMetadata` object on streaming frames — so the streaming name is an
-/// alias, not a second declaration that can drift from it.
-pub type PartialUsage = UsageMetadata;
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamGenerateContentResponse {
@@ -84,7 +77,7 @@ pub struct StreamGenerateContentResponse {
     /// it is the whole answer.
     pub prompt_feedback: Option<PromptFeedback>,
     pub model_version: Option<String>,
-    pub usage_metadata: Option<PartialUsage>,
+    pub usage_metadata: Option<UsageMetadata>,
     /// Gemini's error envelope, sent as a frame of its own when the
     /// service aborts a stream in-band (`{"error":{"code":500,"message":
     /// …,"status":"INTERNAL"}}`). The provider's verdict, not an unknown
@@ -96,7 +89,7 @@ pub struct StreamGenerateContentResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
-    pub usage_metadata: PartialUsage,
+    pub usage_metadata: UsageMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -164,7 +157,7 @@ pub struct GenerateContentDecoder {
     /// Per-reply minter for the raw-content blocks a part the stream
     /// vocabulary cannot express rides on (see `GEMINI_RAW_CONTENT_KEY`).
     raw_ids: crate::streaming::SyntheticIds,
-    final_usage: Option<PartialUsage>,
+    final_usage: Option<UsageMetadata>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
     final_model_version: Option<String>,
@@ -415,11 +408,10 @@ impl Decoder<Completion> for GenerateContentDecoder {
         };
         let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
         out.final_record(
-            streaming::StreamFinal::new(PROVIDER_NAME, usage)
+            streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
                 .with_optional_finish_reason(finish_reason)
                 .with_optional_response_id(native.response_id)
-                .with_optional_model(native.model_version)
-                .with_raw(raw),
+                .with_optional_model(native.model_version),
         );
     }
 

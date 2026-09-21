@@ -1804,7 +1804,9 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     while let Some(item) = within(stream.next()).await {
         item.expect("a clean stream");
     }
-    let streamed = stream.finish();
+    let streamed = stream
+        .finish()
+        .expect("the stream produced a terminal record");
     assert_eq!(
         streamed.provider, unary.provider,
         "the terminal record names the provider"

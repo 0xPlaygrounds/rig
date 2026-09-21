@@ -30,10 +30,7 @@ use rig_core::{
 use schemars::{JsonSchema, Schema, schema_for};
 
 use crate::{
-    agent::{
-        AgentHook, CompletionCallAction, CompletionCallEvent as CompletionCall, HookContext,
-        RequestPatch,
-    },
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
     completion::message::ToolChoice,
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,
@@ -56,7 +53,7 @@ impl AgentHook for DynamicContext {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
-        event: CompletionCall<'_>,
+        event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let query = event.prompt.rag_text().or_else(|| {
             event

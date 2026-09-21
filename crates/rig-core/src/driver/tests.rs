@@ -145,6 +145,7 @@ fn terminal(out: &mut Output<Completion>, usage: Usage) {
                 output_tokens: Some(usage.output_tokens),
                 ..crate::completion::Usage::default()
             },
+            serde_json::json!({}),
         )
         .with_model("echo-1"),
     );
@@ -220,7 +221,9 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
     );
     let mut response = streaming.stream(prompt()).await.expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response.finish();
+    let streamed = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);

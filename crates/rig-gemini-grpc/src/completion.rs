@@ -127,11 +127,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
@@ -462,6 +458,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
+        // The provider's own document, captured before the response is
+        // consumed into normalized content.
+        let raw = serde_json::to_value(&response)?;
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
@@ -569,7 +568,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .and_then(|candidate| map_finish_reason(candidate.finish_reason));
         let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
         Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
                 .with_optional_finish_reason(finish_reason)
                 .with_optional_response_id(
                     Some(response.response_id.clone()).filter(|id| !id.is_empty()),

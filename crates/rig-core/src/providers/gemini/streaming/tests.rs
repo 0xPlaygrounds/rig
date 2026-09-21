@@ -451,7 +451,7 @@ fn test_deserialize_stream_response_with_empty_parts() {
 
 #[test]
 fn test_partial_usage_token_calculation() {
-    let usage = PartialUsage {
+    let usage = UsageMetadata {
         total_token_count: 100,
         cached_content_token_count: Some(20),
         candidates_token_count: Some(30),
@@ -476,7 +476,7 @@ fn test_partial_usage_token_calculation() {
 
 #[test]
 fn test_partial_usage_with_missing_counts() {
-    let usage = PartialUsage {
+    let usage = UsageMetadata {
         total_token_count: 50,
         cached_content_token_count: None,
         candidates_token_count: Some(30),
@@ -502,7 +502,7 @@ fn test_partial_usage_with_missing_counts() {
 fn test_partial_usage_deserializes_without_total_token_count() {
     // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
     // so `totalTokenCount` is absent on short/empty/blocked generations.
-    let usage: PartialUsage =
+    let usage: UsageMetadata =
         serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
     assert_eq!(usage.total_token_count, 0);
     assert_eq!(usage.prompt_token_count, 12);
@@ -513,7 +513,7 @@ fn test_streaming_completion_response_has_finish_reason_and_model_version() {
     use super::super::completion::gemini_api_types::FinishReason;
 
     let response = StreamingCompletionResponse {
-        usage_metadata: PartialUsage::default(),
+        usage_metadata: UsageMetadata::default(),
         finish_reason: Some(FinishReason::Stop),
         finish_message: None,
         model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
@@ -541,7 +541,7 @@ fn test_streaming_completion_response_has_finish_reason_and_model_version() {
 #[test]
 fn test_streaming_completion_response_token_usage() {
     let response = StreamingCompletionResponse {
-        usage_metadata: PartialUsage {
+        usage_metadata: UsageMetadata {
             total_token_count: 150,
             cached_content_token_count: None,
             candidates_token_count: Some(75),
@@ -598,7 +598,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
         "trafficType": "PROVISIONED_THROUGHPUT"
     });
 
-    let usage: PartialUsage = serde_json::from_value(json_data).unwrap();
+    let usage: UsageMetadata = serde_json::from_value(json_data).unwrap();
     assert_eq!(usage.prompt_token_count, 100);
     assert_eq!(usage.cached_content_token_count, Some(25));
     assert_eq!(usage.candidates_token_count, Some(50));

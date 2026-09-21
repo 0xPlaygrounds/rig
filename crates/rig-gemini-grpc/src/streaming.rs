@@ -15,11 +15,8 @@ use rig_core::streaming;
 use rig_core::wasm_compat::WasmCompatSend;
 
 use super::Client;
-use super::GenerateContentResponse;
 use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
 use super::proto;
-
-pub type StreamingCompletionResponse = GenerateContentResponse;
 
 /// The Gemini gRPC typed wire as a [`Decoder`](rig_core::wire::Decoder) over
 /// protobuf frames: the chunk carrying a finish reason is the terminal, and
@@ -212,17 +209,14 @@ fn terminal_record(
         .first()
         .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
 
-    Ok(
-        streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage)
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_response_id(
-                Some(response.response_id.clone()).filter(|id| !id.is_empty()),
-            )
-            .with_optional_model(
-                Some(response.model_version.clone()).filter(|model| !model.is_empty()),
-            )
-            .with_raw(serde_json::to_value(response)?),
+    Ok(streaming::StreamFinal::new(
+        super::completion::PROVIDER_NAME,
+        usage,
+        serde_json::to_value(response)?,
     )
+    .with_optional_finish_reason(finish_reason)
+    .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
+    .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty())))
 }
 
 /// Drive already-typed `GenerateContentResponse` events through the full

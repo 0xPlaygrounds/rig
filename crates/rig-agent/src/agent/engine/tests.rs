@@ -457,7 +457,7 @@ impl AgentHook for TurnIdentityHook {
 
 fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent {
     MockStreamEvent::FinalResponse(
-        rig_core::streaming::StreamFinal::new("mock", Usage::default())
+        rig_core::streaming::StreamFinal::new("mock", Usage::default(), serde_json::json!({}))
             .with_response_id(response_id)
             .with_provider_request_id(request_id),
     )
@@ -722,7 +722,7 @@ fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::strea
         total_tokens: Some(total_tokens),
         ..Default::default()
     };
-    rig_core::streaming::StreamFinal::new("mock", usage)
+    rig_core::streaming::StreamFinal::new("mock", usage, serde_json::json!({}))
         .with_response_id(format!("resp-{attempt}"))
         .with_provider_request_id(format!("req-{attempt}"))
 }
@@ -9244,12 +9244,15 @@ async fn streaming_feedback_retry_matches_blocking_history_and_usage() {
     assert_eq!(streaming.usage, blocking.usage);
     // `raw` is the one field that legitimately differs by medium: the
     // streamed calls carry the mock's terminal record serialized, the
-    // blocking ones nothing (the turns were scripted without a payload).
+    // blocking ones the mock's scripted turn serialized.
     let without_raw = |calls: &[crate::agent::CompletionCall]| -> Vec<_> {
         calls
             .iter()
             .cloned()
-            .map(|call| call.with_raw(serde_json::Value::Null))
+            .map(|mut call| {
+                call.raw = serde_json::Value::Null;
+                call
+            })
             .collect()
     };
     assert_eq!(

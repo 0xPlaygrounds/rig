@@ -843,11 +843,9 @@ pub struct Outputs {
     /// Whether the answer is complete.
     pub done: bool,
     /// Whether this turn's completed provider usage has entered the run total.
-    /// Invalid-call decisions may now precede completion and survive its arrival.
-    #[serde(default)]
+    /// Invalid-call decisions may precede completion and survive its arrival.
     pub usage_recorded: bool,
     /// Number of delivered stream events already checked for invalid names.
-    #[serde(default)]
     pub stream_validated: usize,
 }
 

@@ -393,18 +393,15 @@ pub struct CompletionResponse {
     ///
     /// An escape hatch for provider-specific data rig does not normalize — it
     /// never replaces a normalized field, and every normalized field means the
-    /// same thing whatever this holds. `Value::Null` means the value was built
-    /// without a provider behind it — [`CompletionResponse::new`] without
-    /// `with_raw` (test doubles, hand-built responses), or a response
-    /// persisted before the field existed — never that the provider sent
-    /// nothing: no provider seam produces `Null`.
+    /// same thing whatever this holds. Required at construction: a response
+    /// is built from the document that produced it, so there is no response
+    /// without one and no sentinel for its absence.
     ///
     /// Typed access is recoverable: provider reply types are `Deserialize`,
     /// so `provider::CompletionResponse::deserialize(&raw)` returns the
     /// provider's own type. There is no second mapping to convert it
     /// forward — this response IS the fold of that document, produced once
     /// by the provider's decoder.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
 
@@ -433,8 +430,15 @@ pub struct ResponseIdentity {
 
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
-    /// unset and is filled in with the `with_*` helpers.
-    pub fn new(choice: Vec<AssistantContent>, usage: Usage, provider: impl Into<String>) -> Self {
+    /// unset and is filled in with the `with_*` helpers. `raw` is the
+    /// provider's own document for this response, serialized; see
+    /// [`Self::raw`].
+    pub fn new(
+        choice: Vec<AssistantContent>,
+        usage: Usage,
+        provider: impl Into<String>,
+        raw: serde_json::Value,
+    ) -> Self {
         Self {
             choice,
             usage,
@@ -444,7 +448,7 @@ impl CompletionResponse {
             finish_reason: None,
             provider: provider.into(),
             model: None,
-            raw: serde_json::Value::Null,
+            raw,
         }
     }
 
@@ -512,10 +516,6 @@ struct CompletionResponseRepr {
     provider: String,
     #[serde(default)]
     model: Option<String>,
-    // `default` because persisted responses predate the field; a missing key
-    // loads as `Null`, which is exactly what "no provider response behind this
-    // value" means.
-    #[serde(default)]
     raw: serde_json::Value,
 }
 
@@ -532,13 +532,12 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             model,
             raw,
         } = repr;
-        Self::new(choice, usage, provider)
+        Self::new(choice, usage, provider, raw)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
             .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
-            .with_raw(raw)
     }
 }
 

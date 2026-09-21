@@ -672,7 +672,9 @@ async fn stream_conversion_carries_live_identity() {
             }
             assert_transport_request_id(terminal_id.as_deref(), "live terminal");
 
-            let response: rig::completion::CompletionResponse = stream.finish();
+            let response: rig::completion::CompletionResponse = stream
+                .finish()
+                .expect("the stream produced a terminal record");
             assert_eq!(
                 response.provider_request_id, terminal_id,
                 "conversion carries the live terminal's id"

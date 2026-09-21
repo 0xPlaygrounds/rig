@@ -113,7 +113,35 @@
           "response_id": null,
           "finish_reason": null,
           "provider": "mock",
-          "model": null
+          "model": null,
+          "raw": {
+            "choice": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call-1"
+                },
+                "provider": {
+                  "call_id": "call-1"
+                },
+                "function": {
+                  "name": "final_result",
+                  "arguments": {
+                    "title": "Seattle Rust Meetup",
+                    "category": "Technology"
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "usage": {},
+            "message_id": null,
+            "response_id": null,
+            "provider_request_id": null,
+            "finish_reason": null
+          }
         }
       }
     },
@@ -251,7 +279,36 @@
           "response_id": null,
           "finish_reason": null,
           "provider": "mock",
-          "model": null
+          "model": null,
+          "raw": {
+            "choice": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call-2"
+                },
+                "provider": {
+                  "call_id": "call-2"
+                },
+                "function": {
+                  "name": "final_result",
+                  "arguments": {
+                    "title": "Seattle Rust Meetup",
+                    "category": "Technology",
+                    "summary": "A meetup."
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "usage": {},
+            "message_id": null,
+            "response_id": null,
+            "provider_request_id": null,
+            "finish_reason": null
+          }
         }
       }
     }

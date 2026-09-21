@@ -80,6 +80,7 @@ impl Serve for Flaky {
                 choice,
                 Usage::default(),
                 "flaky",
+                serde_json::json!({}),
             ))),
             Some(Err(report)) => Err(report),
             None => Err(ErrorReport::new(ErrorKind::Provider, "the script ran out")),
@@ -499,6 +500,7 @@ impl Serve for Truncating {
             done(),
             Usage::default(),
             "whole",
+            serde_json::json!({}),
         ))))
     }
 }

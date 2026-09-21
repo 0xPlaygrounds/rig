@@ -139,6 +139,7 @@ async fn main() -> Result<()> {
                     response.usage,
                     tool_names.clone(),
                     tool_names,
+                    response.raw.clone(),
                 ))?;
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {
                     eprintln!("model called unknown tool `{}`", context.tool_name);

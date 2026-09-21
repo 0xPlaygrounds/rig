@@ -75,6 +75,7 @@ impl Serve for BrowserModel {
                     vec![AssistantContent::text("hello from the browser")],
                     Usage::default(),
                     "browser",
+                    serde_json::json!({ "provider": "browser" }),
                 );
                 Reply::Outcome(Ok(Outcome::Completion(response)))
             }
@@ -93,7 +94,11 @@ impl Serve for BrowserModel {
                         }
                     }
                     let _ = out
-                        .finish(StreamFinal::new("browser", Usage::default()))
+                        .finish(StreamFinal::new(
+                            "browser",
+                            Usage::default(),
+                            serde_json::json!({ "provider": "browser" }),
+                        ))
                         .await;
                 })
             }
@@ -346,7 +351,11 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let (release, wait) = futures::channel::oneshot::channel::<()>();
         let mut stream = Reply::written(move |writer| async move {
             writer
-                .finish(StreamFinal::new("local", Usage::default()))
+                .finish(StreamFinal::new(
+                    "local",
+                    Usage::default(),
+                    serde_json::json!({ "provider": "local" }),
+                ))
                 .await
                 .unwrap();
             wait.await.unwrap();

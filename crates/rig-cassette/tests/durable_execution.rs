@@ -225,6 +225,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     response.usage,
                     executable,
                     allowed,
+                    response.raw,
                 ))
                 .expect("a model turn");
             }

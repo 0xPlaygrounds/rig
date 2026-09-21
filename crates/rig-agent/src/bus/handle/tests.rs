@@ -202,7 +202,10 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
                     while let Some(event) = within(stream.next()).await {
                         event.unwrap();
                     }
-                    assert_eq!(stream.finish().choice, vec![AssistantContent::text("same")]);
+                    assert_eq!(
+                        stream.finish().expect("a terminal record").choice,
+                        vec![AssistantContent::text("same")]
+                    );
                 }
             };
             tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
@@ -250,7 +253,7 @@ async fn model_handle_completes_and_streams() {
         }
     }
     assert_eq!(text, "streamed");
-    let finished = stream.finish();
+    let finished = stream.finish().expect("a terminal record");
     assert_eq!(finished.choice, vec![AssistantContent::text("streamed")]);
     assert_eq!(finished.usage.total_tokens, Some(4));
 }

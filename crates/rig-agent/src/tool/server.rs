@@ -46,9 +46,6 @@ use crate::{
 /// The per-process counter behind a registry's default owner label.
 static NEXT_REGISTRY: AtomicU64 = AtomicU64::new(0);
 
-/// The per-request snapshot of the registry: a [`ToolCatalog`].
-pub type ToolRegistrySnapshot = ToolCatalog;
-
 /// A retrieval index registered for tool retrieval: its bus key and how
 /// many tools to sample.
 #[derive(Clone)]
@@ -601,7 +598,7 @@ impl ToolServerHandle {
     }
 
     /// The always-exposed registrations, pinned.
-    pub fn snapshot(&self) -> ToolRegistrySnapshot {
+    pub fn snapshot(&self) -> ToolCatalog {
         let (tools, leases) = self.with_registry(|state| snapshot_registered_tools(state, &[]));
         ToolCatalog::from_registered(tools).with_leases(leases)
     }
@@ -672,7 +669,7 @@ impl ToolServerHandle {
 
     /// The registrations a request advertises: the always-exposed ones plus
     /// the retrieved tools named by `dynamic_tool_ids`.
-    pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolRegistrySnapshot {
+    pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolCatalog {
         let (tools, leases) =
             self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids));
         ToolCatalog::from_registered(tools).with_leases(leases)
@@ -685,7 +682,7 @@ impl ToolServerHandle {
     pub(crate) async fn snapshot_tool_defs(
         &self,
         prompt: Option<String>,
-    ) -> Result<ToolRegistrySnapshot, ToolServerError> {
+    ) -> Result<ToolCatalog, ToolServerError> {
         let retrieval_indexes = {
             let state = self.state();
             state.retrieval_indexes.clone()
@@ -798,7 +795,7 @@ fn snapshot_registered_tools(
 const _: () = {
     const fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<ToolSet>();
-    assert_send_sync_static::<ToolRegistrySnapshot>();
+    assert_send_sync_static::<ToolCatalog>();
     assert_send_sync_static::<ToolServerHandle>();
 };
 

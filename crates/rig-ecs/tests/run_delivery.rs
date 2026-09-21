@@ -112,6 +112,7 @@ impl Serve for Latched {
             choice,
             Usage::default(),
             "latched",
+            serde_json::json!({}),
         ))))
     }
 }
@@ -253,7 +254,12 @@ fn answer_coincident_models(
         commands
             .entity(entity)
             .insert(rig_ecs::bus::WorldOutcome::new(Ok(Outcome::Completion(
-                CompletionResponse::new(choice, Usage::default(), "coincident"),
+                CompletionResponse::new(
+                    choice,
+                    Usage::default(),
+                    "coincident",
+                    serde_json::json!({}),
+                ),
             ))));
     }
 }

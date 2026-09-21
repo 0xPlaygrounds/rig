@@ -19,8 +19,9 @@
 //! The `tool_output` field is required: `null` explicitly records no
 //! publication, an object records published values (possibly empty). Omission
 //! cannot establish whether values were lost and is rejected when decoding.
-//! Legacy header `format` fields are ignored and are never written. The
-//! separate [`Checkpoint`] envelope still has its own [`CHECKPOINT_FORMAT`].
+//! A log header has no global format number and refuses any key this rig
+//! does not know, `format` included. The separate [`Checkpoint`] envelope
+//! has its own [`CHECKPOINT_FORMAT`].
 //!
 //! Custom outcomes use an explicit `payload` field beneath the `outcome`
 //! tag, so strings, numbers, booleans, null, arrays and objects retain their

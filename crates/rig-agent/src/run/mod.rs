@@ -255,16 +255,13 @@ pub struct ModelTurn {
     /// Why the model stopped generating on this turn, when the provider
     /// reported it. Carried so the blocking surface records the same terminal
     /// reason the streamed surface does (rig#2322).
-    #[serde(default)]
     pub finish_reason: Option<FinishReason>,
     /// The provider's own response for this attempt — see
     /// `CompletionResponse::raw`. Carried so the blocking
     /// surface records the same payload on its [`CompletionCall`] that the
     /// streamed surface records via
-    /// [`AgentRun::record_streamed_completion_call`]. `default` because
-    /// persisted run state predates the field; `Value::Null` for a turn built
-    /// without a provider response behind it.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    /// [`AgentRun::record_streamed_completion_call`]. Required: a turn is
+    /// built from the response that produced it.
     pub raw: serde_json::Value,
 }
 
@@ -305,20 +302,22 @@ impl ModelTurn {
             resp.usage,
             executable_tool_names,
             allowed_tool_names,
+            resp.raw.clone(),
         )
         .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
         .with_finish_reason(resp.finish_reason())
-        .with_raw(resp.raw.clone())
     }
 
-    /// Create a model turn from response parts and the tool names advertised
-    /// for the turn.
+    /// Create a model turn from response parts, the tool names advertised
+    /// for the turn, and the provider's own response `raw` (see
+    /// [`Self::raw`]).
     pub fn new(
         message_id: Option<String>,
         choice: Vec<AssistantContent>,
         usage: Usage,
         executable_tool_names: BTreeSet<String>,
         allowed_tool_names: BTreeSet<String>,
+        raw: serde_json::Value,
     ) -> Self {
         Self {
             message_id,
@@ -329,7 +328,7 @@ impl ModelTurn {
             executable_tool_names,
             allowed_tool_names,
             finish_reason: None,
-            raw: serde_json::Value::Null,
+            raw,
         }
     }
 
@@ -347,12 +346,6 @@ impl ModelTurn {
     /// Attach the terminal finish reason this attempt reported.
     pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
         self.finish_reason = finish_reason;
-        self
-    }
-
-    /// Attach the provider's own response this attempt produced.
-    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
-        self.raw = raw;
         self
     }
 }
@@ -440,7 +433,6 @@ struct TurnState {
     skipped: BTreeMap<usize, UserContent>,
     /// `(tool_call_id, block_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
-    #[serde(default)]
     block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
 }
 
@@ -468,29 +460,32 @@ enum RunState {
 
 /// The sans-IO agent loop state machine. See the [module docs](self) for the
 /// driving protocol.
+/// The persisted envelope is versioned: [`RUN_FORMAT`] is written on every
+/// serialization and checked on every deserialization, and an unknown key
+/// is refused. State written by another format is refused by name rather
+/// than loaded with defaults filled in.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AgentRun {
+    /// The envelope format ([`RUN_FORMAT`]).
+    #[serde(deserialize_with = "run_format")]
+    format: u32,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
     /// See [`RunSpec::unhandled_invalid_tool_call`].
-    #[serde(default)]
     unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     tool_choice: Option<ToolChoice>,
     /// Name of the synthetic output tool when the agent uses Tool output mode
     /// (see #1928). A model turn calling this tool finalizes the run with the
     /// call's arguments as the response, instead of executing it as a tool.
-    #[serde(default)]
     output_tool_name: Option<String>,
     /// JSON schema the Tool-mode output must satisfy, used to re-prompt on
     /// missing required fields before finalizing best-effort (#1928).
-    #[serde(default)]
     output_schema: Option<serde_json::Value>,
     /// Budget for re-prompting the model in Tool output mode when it finalizes
     /// without calling the output tool, or calls it with arguments missing
     /// required fields. Exhausting it finalizes best-effort.
-    #[serde(default)]
     max_output_retries: usize,
-    #[serde(default)]
     output_retries: usize,
     chat_history: Option<Vec<Message>>,
     new_messages: Vec<Message>,
@@ -501,12 +496,10 @@ pub struct AgentRun {
     invalid_tool_call_retries: usize,
     /// Set while a streamed turn rollback awaits its completion-call record;
     /// see [`AgentRun::record_streamed_completion_call`].
-    #[serde(default)]
     rollback_pending: bool,
     /// Set once the current streamed model turn's completion call has been
     /// recorded, rejecting duplicate records; reset when the next
     /// [`AgentRunStep::CallModel`] is emitted.
-    #[serde(default)]
     streamed_completion_call_recorded: bool,
     /// The model behind the run's preceding issued completion attempt, as
     /// the driver advances it immediately before the attempt is issued
@@ -514,20 +507,34 @@ pub struct AgentRun {
     /// error still counts). Persisted so a resumed run's model-selection
     /// hook sees the model the run last asked, as a fresh run's would,
     /// rather than a run that has asked none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_model: Option<rig_core::completion::ModelRef>,
     /// The tool definitions the driver advertised to the model for a turn,
     /// recorded with [`AgentRun::advertise_tools`]. Protocol data, so a second
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     turn_tools: Option<TurnTools>,
     /// Hook- and driver-appended records — see [`RunEntry`]. Protocol data
     /// like [`TurnTools`]: append-only, stored verbatim, never interpreted by
     /// the run and never part of a provider request. Vec order is append
     /// order, which is also the replay order.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     entries: Vec<RunEntry>,
     state: RunState,
+}
+
+/// The [`AgentRun`] envelope format this crate writes and reads.
+pub const RUN_FORMAT: u32 = 1;
+
+/// Deserialize the envelope's `format`, refusing any other than
+/// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
+/// with defaults filled in.
+fn run_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    let format = u32::deserialize(deserializer)?;
+    if format == RUN_FORMAT {
+        Ok(format)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "resume refused: the run is format {format}, this rig reads format {RUN_FORMAT}"
+        )))
+    }
 }
 
 /// One hook- or driver-appended record in an [`AgentRun`]'s log.
@@ -580,6 +587,7 @@ impl AgentRun {
     /// budget, and no invalid tool-call retries.
     pub fn new(prompt: impl Into<Message>) -> Self {
         Self {
+            format: RUN_FORMAT,
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
@@ -1355,10 +1363,9 @@ impl AgentRun {
         finish_reason: Option<FinishReason>,
         raw: serde_json::Value,
     ) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage)
+        let call = CompletionCall::new(self.completion_call_index, usage, raw)
             .with_identity(identity)
-            .with_finish_reason(finish_reason)
-            .with_raw(raw);
+            .with_finish_reason(finish_reason);
         self.completion_call_index += 1;
         self.completion_calls.push(call.clone());
         self.usage += usage;
@@ -1733,7 +1740,8 @@ impl AgentRun {
     /// `raw` is the stream's terminal record as carried on `StreamFinal::raw`
     /// — read off the same terminal the driver reads `identity` and
     /// `finish_reason` from, so the recorded call carries *this* attempt's
-    /// payload; `Value::Null` when no terminal record arrived.
+    /// payload. A stream that produced no terminal record is truncated and
+    /// has no call to record.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
@@ -1896,36 +1904,22 @@ impl AgentRun {
     /// Remaining tool calls are validated fail-fast — mid-stream resolution
     /// already had recovery-hook access — and the turn then advances through
     /// [`AgentRun::next_step`] exactly like a non-streamed one.
+    ///
+    /// Exactly one [`CompletionCall`] is recorded per model call, and its
+    /// payload lives on the stream's terminal record, which only the driver
+    /// sees: the driver records it with
+    /// [`AgentRun::record_streamed_completion_call`] before feeding the
+    /// turn, and a turn fed without that record is a protocol violation.
     pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<(), PromptError> {
         if !matches!(self.state, RunState::AwaitingModel) {
             return Err(
                 self.protocol_violation("streamed_turn called without a pending CallModel step")
             );
         }
-
-        // Guarantee exactly one CompletionCall per model call: drivers that
-        // never learned usage (no record before the turn completed) still get
-        // the call recorded, with no reported usage.
         if !self.streamed_completion_call_recorded {
-            // `Usage::default()` is the additive identity for `Usage`'s `AddAssign`,
-            // so routing the no-usage fallback through `record_completion_call`
-            // leaves the run total unchanged while unifying the accounting.
-            // Identity carries the turn's message id — the same value written
-            // into run history below — so `completion_calls` and `messages()`
-            // agree even for a hand-driven driver that never recorded usage.
-            self.record_completion_call(
-                Usage::default(),
-                ResponseIdentity {
-                    message_id: turn.message_id.clone(),
-                    ..ResponseIdentity::default()
-                },
-                turn.finish_reason,
-                // A streamed turn's raw lives on the terminal record, which
-                // this fallback never saw; the driver records it via
-                // `record_streamed_completion_call` when it has one.
-                serde_json::Value::Null,
-            );
-            self.streamed_completion_call_recorded = true;
+            return Err(self.protocol_violation(
+                "streamed_turn called before record_streamed_completion_call recorded the turn's completion call",
+            ));
         }
 
         let has_tool_calls = has_tool_calls(&turn.choice);

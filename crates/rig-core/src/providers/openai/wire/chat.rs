@@ -1470,7 +1470,7 @@ impl ChatDecoder {
         // The provider's own terminal record rides along serialized — the
         // same capture the unary path performed before normalizing.
         match serde_json::to_value(&native) {
-            Ok(raw) => out.final_record(native.into_stream_final(self.provider).with_raw(raw)),
+            Ok(raw) => out.final_record(native.into_stream_final(self.provider, raw)),
             Err(error) => out.error(CompletionError::from(error)),
         }
     }

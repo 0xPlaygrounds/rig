@@ -120,7 +120,9 @@ async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionRes
     );
     let mut response = bound.stream(prompt()).await.expect("the stream opens");
     while response.next().await.is_some() {}
-    response.finish()
+    response
+        .finish()
+        .expect("the stream produced a terminal record")
 }
 
 fn openai() -> Responses {

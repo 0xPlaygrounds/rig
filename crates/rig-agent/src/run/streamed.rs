@@ -137,7 +137,6 @@ pub struct StreamedInvalidToolCall {
     /// Tools allowed by the active tool choice for this turn.
     pub allowed_tool_names: BTreeSet<String>,
     /// Why the call was rejected.
-    #[serde(default)]
     pub reason: InvalidToolCallReason,
 }
 
@@ -248,13 +247,11 @@ pub struct StreamedTurn {
     /// `(tool_call_id, block_id)` pairs for this turn's tool calls,
     /// in emission order. Carried into the run state so a resumed process
     /// keeps the IDs consumers already saw in tool-call deltas.
-    #[serde(default)]
     pub block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
     /// Why the provider stopped generating this turn, when it reported a
     /// reason — the streamed analogue of `ModelTurn::finish_reason`, so a
     /// driver that feeds turns through `streamed_turn` records the same
     /// terminal reason the blocking surface does (rig#2322).
-    #[serde(default)]
     pub finish_reason: Option<FinishReason>,
 }
 
@@ -329,6 +326,11 @@ pub enum StreamedTurnEvent {
         /// at the output-token limit reached the driver indistinguishable from
         /// one that simply stopped (rig#2322).
         finish_reason: Option<FinishReason>,
+        /// The provider's own terminal record, as carried on
+        /// `StreamFinal::raw`: what the driver records with
+        /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call)
+        /// so the call carries this attempt's payload.
+        raw: serde_json::Value,
     },
 }
 
@@ -950,6 +952,7 @@ impl StreamedTurnAssembler {
                     usage,
                     emit_final,
                     finish_reason,
+                    raw: final_response.raw.clone(),
                 }])
             }
             StreamEvent::Unknown(payload) => {

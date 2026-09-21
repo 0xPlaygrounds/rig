@@ -510,8 +510,8 @@ fn typed_prompt_response_deserializes_with_deserialize_only_output() {
 fn prompt_response_serializes_completion_calls_with_missing_usage() {
     let reported_usage = usage(3, 4);
     let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
-        CompletionCall::new(0, Usage::default()),
-        CompletionCall::new(1, reported_usage),
+        CompletionCall::new(0, Usage::default(), json!({"id": "resp_0"})),
+        CompletionCall::new(1, reported_usage, json!({"id": "resp_1"})),
     ]);
 
     let value = serde_json::to_value(&response).expect("serialize prompt response");
@@ -523,7 +523,8 @@ fn prompt_response_serializes_completion_calls_with_missing_usage() {
         Some(&json!([
             {
                 "call_index": 0,
-                "usage": {}
+                "usage": {},
+                "raw": {"id": "resp_0"}
             },
             {
                 "call_index": 1,
@@ -531,7 +532,8 @@ fn prompt_response_serializes_completion_calls_with_missing_usage() {
                     "input_tokens": 3,
                     "output_tokens": 4,
                     "total_tokens": 7,
-                }
+                },
+                "raw": {"id": "resp_1"}
             }
         ]))
     );
@@ -541,8 +543,8 @@ fn prompt_response_serializes_completion_calls_with_missing_usage() {
     assert_eq!(
         response.completion_calls(),
         &[
-            CompletionCall::new(0, Usage::default()),
-            CompletionCall::new(1, reported_usage)
+            CompletionCall::new(0, Usage::default(), json!({"id": "resp_0"})),
+            CompletionCall::new(1, reported_usage, json!({"id": "resp_1"}))
         ]
     );
     assert_eq!(response.requests(), 2);
@@ -673,7 +675,7 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
     // the shape: `content` present, `completion_calls` omitted only when
     // empty, and the value round-trips.
     let response = PromptResponse::new("hi", usage(1, 2))
-        .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2))]);
+        .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2), json!({}))]);
 
     let from_response = serde_json::to_value(&response).expect("serialize response");
     assert!(from_response.get("content").is_some());
@@ -685,7 +687,7 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
     assert_eq!(round.usage(), usage(1, 2));
     assert_eq!(
         round.completion_calls(),
-        &[CompletionCall::new(0, usage(1, 2))]
+        &[CompletionCall::new(0, usage(1, 2), json!({}))]
     );
 
     // The omission direction of `completion_calls`' skip-when-empty:
@@ -700,7 +702,9 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
 
 #[tokio::test]
 async fn prompt_response_records_completion_call_without_reported_usage() {
-    let model = MockCompletionModel::new([MockTurn::text("ok")]);
+    let turn = MockTurn::text("ok");
+    let raw = turn.raw().expect("a scripted turn has a document");
+    let model = MockCompletionModel::new([turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent.prompt("say ok").await.expect("prompt should succeed");
@@ -709,7 +713,7 @@ async fn prompt_response_records_completion_call_without_reported_usage() {
     assert_eq!(response.usage, Usage::default());
     assert_eq!(
         response.completion_calls(),
-        &[CompletionCall::new(0, Usage::default())]
+        &[CompletionCall::new(0, Usage::default(), raw)]
     );
 }
 
@@ -721,8 +725,9 @@ async fn typed_prompt_response_preserves_completion_calls() {
         total_tokens: Some(10),
         ..Usage::default()
     };
-    let model =
-        MockCompletionModel::new([MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage)]);
+    let turn = MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage);
+    let raw = turn.raw().expect("a scripted turn has a document");
+    let model = MockCompletionModel::new([turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent
@@ -739,7 +744,7 @@ async fn typed_prompt_response_preserves_completion_calls() {
     assert_eq!(response.usage, call_usage);
     assert_eq!(
         response.completion_calls(),
-        &[CompletionCall::new(0, call_usage)]
+        &[CompletionCall::new(0, call_usage, raw)]
     );
 }
 
@@ -1706,12 +1711,13 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         total_tokens: Some(2),
         ..Usage::default()
     };
-    let model = MockCompletionModel::new([
-        MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
-            .with_call_id("call_1")
-            .with_usage(first_call_usage),
-        MockTurn::text("").with_usage(second_call_usage),
-    ]);
+    let first_turn = MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
+        .with_call_id("call_1")
+        .with_usage(first_call_usage);
+    let second_turn = MockTurn::text("").with_usage(second_call_usage);
+    let first_raw = first_turn.raw().expect("a scripted turn has a document");
+    let second_raw = second_turn.raw().expect("a scripted turn has a document");
+    let model = MockCompletionModel::new([first_turn, second_turn]);
     let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
 
     let response = agent
@@ -1733,8 +1739,8 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     assert_eq!(
         response.completion_calls(),
         &[
-            CompletionCall::new(0, first_call_usage),
-            CompletionCall::new(1, second_call_usage)
+            CompletionCall::new(0, first_call_usage, first_raw),
+            CompletionCall::new(1, second_call_usage, second_raw)
         ]
     );
 
@@ -2263,16 +2269,17 @@ async fn memory_append_error_does_not_drop_response() {
     assert!(!response.memory_append.as_ref().unwrap().is_acknowledged());
 }
 
-/// Serde compatibility (rig#2265): run records persisted before the
-/// identity fields existed still load, with every identity field `None`.
+/// The identity fields are skipped when `None` (rig#2265), so a record
+/// written without them loads with every identity field `None`.
 #[test]
-fn completion_call_without_identity_fields_still_deserializes() {
+fn completion_call_without_identity_fields_deserializes() {
     let call: CompletionCall = serde_json::from_str(
         r#"{"call_index": 3, "usage": {"input_tokens": 1, "output_tokens": 2,
                 "total_tokens": 3, "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0, "reasoning_tokens": 0}}"#,
+                "cache_creation_input_tokens": 0, "reasoning_tokens": 0},
+                "raw": {}}"#,
     )
-    .expect("pre-identity CompletionCall JSON should load");
+    .expect("a CompletionCall without identity fields should load");
     assert_eq!(call.call_index, 3);
     assert_eq!(call.identity(), ResponseIdentity::default());
 }
@@ -2280,13 +2287,12 @@ fn completion_call_without_identity_fields_still_deserializes() {
 /// And a populated record round-trips the identity losslessly.
 #[test]
 fn completion_call_identity_round_trips() {
-    let call = CompletionCall::new(0, crate::completion::Usage::default()).with_identity(
-        ResponseIdentity {
+    let call = CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
+        .with_identity(ResponseIdentity {
             message_id: Some("msg_1".into()),
             response_id: Some("resp_1".into()),
             provider_request_id: Some("req_1".into()),
-        },
-    );
+        });
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);

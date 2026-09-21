@@ -112,7 +112,9 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response.finish();
+    let streamed = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(text_of(&buffered.choice), "The ocean,");
     assert_eq!(buffered.choice, streamed.choice);

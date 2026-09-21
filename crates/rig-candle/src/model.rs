@@ -408,9 +408,12 @@ impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> f
 /// serializing the local record onto [`StreamFinal::raw`].
 fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, serde_json::Error> {
     let usage = response.into();
-    Ok(StreamFinal::new(crate::types::PROVIDER_NAME, usage)
-        .with_finish_reason(response.finish_reason.into())
-        .with_raw(serde_json::to_value(response)?))
+    Ok(StreamFinal::new(
+        crate::types::PROVIDER_NAME,
+        usage,
+        serde_json::to_value(response)?,
+    )
+    .with_finish_reason(response.finish_reason.into()))
 }
 
 /// Drive already-typed generation events through the full shared pipeline —
@@ -543,11 +546,7 @@ impl CompletionModel for CandleModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        // Capture the local model's own record — what `raw_completion`
-        // returns — before `into_normalized` consumes it.
-        let inferred = self.infer_completion(request).await?;
-        let captured = serde_json::to_value(&inferred.response)?;
-        Ok(inferred.into_normalized().with_raw(captured))
+        Ok(self.infer_completion(request).await?.into_normalized()?)
     }
 
     async fn stream(

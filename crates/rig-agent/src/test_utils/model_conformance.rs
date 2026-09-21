@@ -1417,6 +1417,7 @@ where
                 response.usage,
                 BTreeSet::new(),
                 BTreeSet::new(),
+                response.raw.clone(),
             ));
             OutcomeAction::stop("captured conformance model turn")
         }
@@ -1461,6 +1462,7 @@ where
         response.usage,
         executable,
         allowed,
+        response.raw,
     );
 
     let mut fail = restricted_recovery_run(PROMPT, turn.clone(), 0)?;

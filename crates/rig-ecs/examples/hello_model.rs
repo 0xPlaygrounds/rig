@@ -99,6 +99,7 @@ impl Serve for Mock {
             vec![AssistantContent::text("hello from the world")],
             Usage::default(),
             "mock",
+            serde_json::json!({}),
         );
         rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
     }

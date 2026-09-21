@@ -250,6 +250,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     response.usage,
                     executable,
                     allowed,
+                    response.raw,
                 ))
                 .expect("a model turn");
             }
