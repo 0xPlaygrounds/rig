@@ -153,6 +153,183 @@ fn test_auto_ids() {
     );
 }
 
+fn generated_id_document(text: &str) -> (&str, Vec<Embedding>) {
+    (
+        text,
+        vec![Embedding {
+            document: text.to_owned(),
+            vec: vec![1.0, 0.0],
+        }],
+    )
+}
+
+fn check_generated_id_documents(
+    store: &InMemoryVectorStore<&str>,
+    expected: &[(&str, &str)],
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        store.len() == expected.len(),
+        "expected {} documents, found {}",
+        expected.len(),
+        store.len()
+    );
+    for &(id, text) in expected {
+        anyhow::ensure!(
+            store.embeddings.get(id) == Some(&generated_id_document(text)),
+            "document or embeddings changed for {id}"
+        );
+    }
+    if matches!(store.index_strategy, IndexStrategy::LSH { .. }) {
+        anyhow::ensure!(
+            store.lsh_index.is_some(),
+            "LSH must not fall back to a scan"
+        );
+    }
+
+    // Identical vectors guarantee matching LSH buckets without relying on
+    // approximate recall or a particular set of random hyperplanes.
+    let query = Embedding {
+        document: "query".to_owned(),
+        vec: vec![1.0, 0.0],
+    };
+    let mut results: Vec<_> = store
+        .vector_search(&query, expected.len(), None, None)?
+        .into_iter()
+        .map(|Reverse(RankingItem(_, id, doc, text))| (id.as_str(), *doc, text.as_str()))
+        .collect();
+    results.sort_unstable();
+    let mut expected_results: Vec<_> = expected
+        .iter()
+        .map(|&(id, text)| (id, text, text))
+        .collect();
+    expected_results.sort_unstable();
+    anyhow::ensure!(
+        results == expected_results,
+        "search lost or changed documents: {results:?} != {expected_results:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_document_ids_preserve_existing_documents() -> anyhow::Result<()> {
+    for strategy in [
+        IndexStrategy::BruteForce,
+        IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        },
+    ] {
+        let (_, embeddings) = generated_id_document("original");
+        let mut store = InMemoryVectorStore::builder()
+            .index_strategy(strategy)
+            .documents_with_ids([("doc1", "original", embeddings)])
+            .build();
+        store.add_documents(["first", "second"].map(generated_id_document));
+        let mut expected = vec![("doc1", "original"), ("doc2", "first"), ("doc3", "second")];
+        check_generated_id_documents(&store, &expected)?;
+
+        let explicit = [
+            ("doc0", "gap"),
+            ("doc7", "seven"),
+            ("doc8", "eight"),
+            ("doc10", "ten"),
+            ("custom", "custom document"),
+        ];
+        store.add_documents_with_ids(explicit.map(|(id, text)| {
+            let (doc, embeddings) = generated_id_document(text);
+            (id, doc, embeddings)
+        }));
+        expected.extend(explicit);
+        store.add_documents(["third", "fourth"].map(generated_id_document));
+        store.add_documents(["fifth", "sixth"].map(generated_id_document));
+        store.add_documents([]);
+        expected.extend([
+            ("doc9", "third"),
+            ("doc11", "fourth"),
+            ("doc12", "fifth"),
+            ("doc13", "sixth"),
+        ]);
+        check_generated_id_documents(&store, &expected)?;
+
+        let (_, embeddings) = generated_id_document("replacement");
+        store.add_documents_with_ids([("doc1", "replacement", embeddings)]);
+        expected.retain(|(id, _)| *id != "doc1");
+        expected.push(("doc1", "replacement"));
+        check_generated_id_documents(&store, &expected)?;
+
+        store.add_documents_with_id_f([generated_id_document("function replacement")], |_| {
+            "doc1".to_owned()
+        });
+        expected.retain(|(id, _)| *id != "doc1");
+        expected.push(("doc1", "function replacement"));
+        check_generated_id_documents(&store, &expected)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_builder_ids_preserve_existing_documents() -> anyhow::Result<()> {
+    for strategy in [
+        IndexStrategy::BruteForce,
+        IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        },
+    ] {
+        let (_, embeddings) = generated_id_document("original");
+        let explicit = [
+            ("doc0", "gap"),
+            ("doc7", "seven"),
+            ("doc8", "eight"),
+            ("doc10", "ten"),
+            ("custom", "custom document"),
+        ];
+        let store = InMemoryVectorStore::builder()
+            .index_strategy(strategy)
+            .documents_with_ids([("doc1", "original", embeddings)])
+            .documents(["first", "second"].map(generated_id_document))
+            .documents_with_ids(explicit.map(|(id, text)| {
+                let (doc, embeddings) = generated_id_document(text);
+                (id, doc, embeddings)
+            }))
+            .documents(["third", "fourth"].map(generated_id_document))
+            .documents(["fifth", "sixth"].map(generated_id_document))
+            .documents([])
+            .build();
+        let mut expected = vec![
+            ("doc1", "original"),
+            ("doc2", "first"),
+            ("doc3", "second"),
+            ("doc9", "third"),
+            ("doc11", "fourth"),
+            ("doc12", "fifth"),
+            ("doc13", "sixth"),
+        ];
+        expected.extend(explicit);
+        check_generated_id_documents(&store, &expected)?;
+
+        // Explicit IDs still replace both explicit and generated documents.
+        let (_, replacement) = generated_id_document("replacement");
+        let (_, generated_replacement) = generated_id_document("generated replacement");
+        let store = InMemoryVectorStore::builder()
+            .index_strategy(store.index_strategy.clone())
+            .documents_with_ids(
+                store
+                    .iter()
+                    .map(|(id, (doc, embeddings))| (id, *doc, embeddings.clone())),
+            )
+            .documents_with_ids([
+                ("doc1", "replacement", replacement),
+                ("doc2", "generated replacement", generated_replacement),
+            ])
+            .build();
+        expected.retain(|(id, _)| *id != "doc1" && *id != "doc2");
+        expected.extend([("doc1", "replacement"), ("doc2", "generated replacement")]);
+        check_generated_id_documents(&store, &expected)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn test_single_embedding() {
     let vector_store = InMemoryVectorStore::builder()

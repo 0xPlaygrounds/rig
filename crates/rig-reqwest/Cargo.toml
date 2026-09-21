@@ -6,6 +6,7 @@ license = "MIT"
 readme = "README.md"
 description = "The bundled reqwest HTTP transport for Rig, plus the default-transport conveniences the `rig` facade re-exports."
 repository = "https://github.com/0xPlaygrounds/rig"
+exclude = ["tests/middleware_features.rs", "tests/fixtures/middleware_features"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -1,7 +1,7 @@
 use quote::ToTokens;
 use syn::{ExprPath, meta::ParseNestedMeta};
 
-use super::EMBED;
+use super::{EMBED, field_member};
 
 const EMBED_WITH: &str = "embed_with";
 
@@ -9,17 +9,18 @@ const EMBED_WITH: &str = "embed_with";
 /// Also returns the "..." part of the tag (ie. the custom function).
 pub(crate) fn custom_embed_fields(
     data_struct: &syn::DataStruct,
-) -> syn::Result<Vec<(&syn::Field, syn::ExprPath)>> {
+) -> syn::Result<Vec<(syn::Member, syn::ExprPath)>> {
     data_struct
         .fields
         .iter()
-        .filter_map(|field| {
+        .enumerate()
+        .filter_map(|(index, field)| {
             field
                 .attrs
                 .iter()
                 .filter_map(|attribute| match attribute.is_custom() {
                     Ok(true) => match attribute.expand_tag() {
-                        Ok(path) => Some(Ok((field, path))),
+                        Ok(path) => Some(Ok((field_member(index, field), path))),
                         Err(e) => Some(Err(e)),
                     },
                     Ok(false) => None,

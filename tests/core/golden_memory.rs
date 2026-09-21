@@ -34,7 +34,9 @@ async fn memory_failing_load_effect_log_is_the_golden_fixture() {
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Memory]);
     assert!(
-        matches!(&log.records[0].outcome, Err(report) if report.kind == rig::error::ErrorKind::MemoryBackend),
+        matches!(&log.records[0].outcome, Err(report)
+            if report.kind == rig::error::ErrorKind::MemoryBackend
+                && report.source_chain == ["the store refused the load"]),
         "{:?}",
         log.records[0].outcome
     );

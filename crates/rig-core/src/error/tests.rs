@@ -34,6 +34,203 @@ fn retrieval_wrapping_preserves_embedding_error_classification() {
     }
 }
 
+/// These are normalization contracts over captured parts, not provider wire behavior.
+#[test]
+fn vector_http_reports_preserve_response_details() {
+    let body = " {\n  \"error\": {\"code\": \"quota_exceeded\", \"message\": \"café\"}\n}\n";
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    headers.append("x-metadata", http::HeaderValue::from_static("first"));
+    headers.append("x-metadata", http::HeaderValue::from_static("second"));
+    let Ok(opaque) = http::HeaderValue::from_bytes(b"\x80") else {
+        panic!("opaque header must be representable");
+    };
+    headers.insert("x-opaque", opaque);
+    let mut request_id = http::HeaderValue::from_static("not-provider-identified");
+    request_id.set_sensitive(true);
+    headers.insert("x-request-id", request_id);
+    let transport = http_client::Error::non_success_with_details(
+        StatusCode::TOO_MANY_REQUESTS,
+        headers.clone(),
+        body.to_owned(),
+    );
+    let chain = vec![transport.to_string()];
+    let error = VectorStoreError::from(transport);
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    assert_eq!(report.http_status, Some(429));
+    assert_eq!(
+        report.provider_response_status(),
+        Some(StatusCode::TOO_MANY_REQUESTS)
+    );
+    assert_eq!(report.provider_response_body(), Some(body));
+    assert_eq!(report.provider_response_headers(), Some(&headers));
+    assert!(
+        report
+            .provider_response_headers()
+            .and_then(|headers| headers.get("x-request-id"))
+            .is_some_and(http::HeaderValue::is_sensitive)
+    );
+    assert_eq!(report.code.as_deref(), Some("quota_exceeded"));
+    assert!(report.retryable);
+    assert!(!report.refusal);
+    assert_eq!(report.provider_request_id(), None);
+    assert_eq!(
+        report.provider_response,
+        Some(
+            ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, body)
+                .with_headers(Some(headers))
+        )
+    );
+    assert_eq!(report.message, error.to_string());
+    assert_eq!(report.source_chain, chain);
+    assert_eq!(ErrorReport::from(error), report);
+}
+
+/// Both store reply paths must use the existing response code and status policy.
+#[test]
+fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
+    let bodies = [
+        (
+            r#"{"error":{"code":"quota_exceeded","status":"ignored","type":"ignored"}}"#,
+            Some("quota_exceeded"),
+        ),
+        (
+            r#"{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}"#,
+            Some("RESOURCE_EXHAUSTED"),
+        ),
+        (
+            r#"{"error":{"code":null,"type":"authentication_error"}}"#,
+            Some("authentication_error"),
+        ),
+        (
+            r#"{"error":{"code":"","status":"","type":"overloaded_error"}}"#,
+            Some("overloaded_error"),
+        ),
+        (r#"{"error":{"code":429}}"#, None),
+        (r#"{"error":{"code":""}}"#, None),
+        (r#"{"error":"slow down"}"#, None),
+        (" plain text\n", None),
+        ("{malformed", None),
+        ("", None),
+    ];
+    for (status, retryable) in [
+        (100, false),
+        (200, false),
+        (302, false),
+        (400, false),
+        (401, false),
+        (403, false),
+        (408, true),
+        (425, true),
+        (429, true),
+        (500, true),
+        (503, true),
+        (599, true),
+        (600, false),
+    ] {
+        let Ok(status) = StatusCode::from_u16(status) else {
+            panic!("invalid test status");
+        };
+        for (body, code) in bodies {
+            let transport = http_client::Error::non_success_with_details(
+                status,
+                http::HeaderMap::new(),
+                body.to_owned(),
+            );
+            let transport_chain = vec![transport.to_string()];
+            for (error, headers, chain) in [
+                (
+                    VectorStoreError::ExternalAPIError(status, body.to_owned()),
+                    None,
+                    Vec::new(),
+                ),
+                (
+                    VectorStoreError::from(transport),
+                    Some(http::HeaderMap::new()),
+                    transport_chain,
+                ),
+            ] {
+                let report = ErrorReport::from(&error);
+                assert_eq!(report.kind, ErrorKind::ProviderResponse, "{error}");
+                assert_eq!(report.http_status, Some(status.as_u16()));
+                assert_eq!(report.provider_response_status(), Some(status));
+                assert_eq!(report.retryable, retryable, "{error}");
+                assert_eq!(report.code.as_deref(), code, "{error}");
+                assert_eq!(report.provider_response_body(), Some(body));
+                assert_eq!(report.provider_response_headers(), headers.as_ref());
+                assert_eq!(
+                    report.provider_response,
+                    Some(ProviderResponseError::new(status, body).with_headers(headers))
+                );
+                assert!(!report.refusal);
+                assert_eq!(report.provider_request_id(), None);
+                assert_eq!(report.message, error.to_string());
+                assert_eq!(report.source_chain, chain);
+                assert_eq!(ErrorReport::from(error), report);
+            }
+        }
+    }
+}
+
+#[test]
+fn vector_response_less_transport_reports_preserve_classification_and_sources() {
+    #[derive(Debug, thiserror::Error)]
+    #[error("socket reset")]
+    struct Reset;
+    #[derive(Debug, thiserror::Error)]
+    #[error("transport backend")]
+    struct Backend(#[source] Reset);
+
+    let Err(invalid_header) = http::HeaderValue::from_bytes(b"\x00") else {
+        panic!("NUL must be an invalid header value");
+    };
+    let Err(protocol) = http::Request::builder().header("x-invalid", "\n").body(()) else {
+        panic!("a newline must be an invalid request header value");
+    };
+    let protocol_source = protocol.to_string();
+    let header_source = invalid_header.to_string();
+    for (transport, retryable, sources) in [
+        (http_client::Error::StreamEnded, true, Vec::new()),
+        (
+            http_client::Error::instance(Backend(Reset)),
+            true,
+            vec!["transport backend".to_owned(), "socket reset".to_owned()],
+        ),
+        (
+            http_client::Error::Protocol(protocol),
+            false,
+            vec![protocol_source],
+        ),
+        (
+            http_client::Error::InvalidHeaderValue(invalid_header),
+            false,
+            vec![header_source],
+        ),
+        (http_client::Error::NoHeaders, false, Vec::new()),
+        (
+            http_client::Error::InvalidContentType(http::HeaderValue::from_static("text/html")),
+            false,
+            Vec::new(),
+        ),
+    ] {
+        let mut chain = vec![transport.to_string()];
+        chain.extend(sources);
+        let error = VectorStoreError::from(transport);
+        let report = ErrorReport::from(&error);
+        assert_eq!(report.kind, ErrorKind::Http, "{error}");
+        assert_eq!(report.retryable, retryable, "{error}");
+        assert_eq!(report.http_status, None);
+        assert_eq!(report.provider_response, None);
+        assert_eq!(report.code, None);
+        assert_eq!(report.provider_request_id(), None);
+        assert!(!report.refusal);
+        assert_eq!(report.message, error.to_string());
+        assert_eq!(report.source_chain, chain);
+        assert_eq!(ErrorReport::from(error), report);
+    }
+}
+
 #[test]
 fn retry_table_per_status() {
     // Each (status, decision) row is a sign-off entry: 408/425/429/5xx retry,
@@ -387,4 +584,32 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
         assert!(report.retryable);
         assert!(report.request_id.is_none());
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("backend failed")]
+struct NestedBackendError(#[source] std::io::Error);
+
+#[test]
+fn wrapped_memory_error_retains_nested_sources() {
+    let error = MemoryError::backend(NestedBackendError(std::io::Error::other("disk")));
+    assert!(
+        std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.source_chain, vec!["backend failed", "disk"]);
+    assert_eq!(report.message, error.to_string());
+}
+
+#[test]
+fn wrapped_document_error_retains_nested_sources() {
+    let error = EmbeddingError::DocumentError(Box::new(NestedBackendError(std::io::Error::other(
+        "document",
+    ))));
+    assert!(
+        std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.source_chain, vec!["backend failed", "document"]);
+    assert_eq!(report.message, error.to_string());
 }

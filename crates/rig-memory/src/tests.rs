@@ -3,6 +3,7 @@ use rig_core::message::{
     AssistantContent, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent,
     UserContent,
 };
+use rig_core::transcript::validate_canonical;
 use std::sync::Mutex;
 
 fn user(text: &str) -> Message {
@@ -111,6 +112,127 @@ fn token_window_drops_leading_orphan_tool_result() {
     assert_eq!(out.len(), 1);
     assert!(matches!(out.first(), Some(Message::User { content })
         if matches!(content.first(), Some(UserContent::Text(_)))));
+}
+
+fn mixed_tool_exchange() -> Vec<Message> {
+    let ids = ["call_1", "call_2"].map(|id| ToolCallId::new_or_minted(id, 0));
+    let calls = ids
+        .iter()
+        .cloned()
+        .map(|id| {
+            AssistantContent::ToolCall(ToolCall::new(
+                id,
+                ToolFunction::new("t".into(), serde_json::json!({})),
+            ))
+        })
+        .collect();
+    let mut results = vec![UserContent::text("Results follow:")];
+    // Canonical results may be interleaved with text and answer calls in
+    // a different order, but all calls must be answered in one user message.
+    for id in ids.into_iter().rev() {
+        results.push(UserContent::tool_result_for(
+            id,
+            None,
+            "t",
+            vec![ToolResultContent::text("ok")],
+        ));
+        results.push(UserContent::text("Result received."));
+    }
+    vec![
+        Message::Assistant {
+            id: None,
+            content: calls,
+        },
+        Message::User { content: results },
+    ]
+}
+
+fn window_policies(limit: usize) -> [Box<dyn MemoryPolicy>; 2] {
+    [
+        Box::new(SlidingWindowMemory::last_messages(limit)),
+        Box::new(TokenWindowMemory::new(limit, |_: &Message| 1)),
+    ]
+}
+
+fn assert_window_partition(policy: &dyn MemoryPolicy, history: &[Message], demoted_len: usize) {
+    let (kept, demoted) = policy.apply_with_demoted(history.to_vec()).unwrap();
+    assert_eq!(validate_canonical(&kept), Ok(()));
+    assert_eq!(kept, history[demoted_len..]);
+    assert_eq!(demoted, history[..demoted_len]);
+    assert_eq!(policy.apply(history.to_vec()).unwrap(), kept);
+    assert_eq!(demoted.into_iter().chain(kept).collect::<Vec<_>>(), history);
+}
+
+fn assert_mixed_content_cleanup(policy: &dyn MemoryPolicy) {
+    let mut history = mixed_tool_exchange();
+    history.extend([tool_call_msg(), tool_result_msg(), assistant("done")]);
+    assert_eq!(validate_canonical(&history), Ok(()));
+    // The first call is truncated; the later complete exchange must survive.
+    assert_window_partition(policy, &history, 2);
+}
+
+/// Pure canonical-history transformation; no provider traffic is involved.
+#[test]
+fn sliding_window_demotes_mixed_content_orphan_results() {
+    assert_mixed_content_cleanup(&SlidingWindowMemory::last_messages(4));
+}
+
+/// Pure canonical-history transformation; no provider traffic is involved.
+#[test]
+fn token_window_demotes_mixed_content_orphan_results() {
+    assert_mixed_content_cleanup(&TokenWindowMemory::new(4, |_: &Message| 1));
+}
+
+#[test]
+fn window_policies_demote_orphan_results_after_system_messages() {
+    let mut history = mixed_tool_exchange();
+    history.insert(1, Message::system("context between call and results"));
+    history.extend([Message::system("keep this context"), assistant("done")]);
+    assert_eq!(validate_canonical(&history), Ok(()));
+    for policy in window_policies(4) {
+        assert_window_partition(policy.as_ref(), &history, 3);
+    }
+}
+
+#[test]
+fn window_policies_demote_all_neighboring_orphan_result_messages() {
+    // Separate result messages are not canonical (all results belong in the
+    // next user message), but boundary cleanup must not stop after one orphan
+    // in histories loaded from other backends. It is not a general validator.
+    let mut history = mixed_tool_exchange();
+    history.truncate(1);
+    history.push(tool_result_msg());
+    history.push(Message::User {
+        content: vec![
+            UserContent::text("Another result:"),
+            UserContent::tool_result_for(
+                ToolCallId::new_or_minted("call_2", 0),
+                None,
+                "t",
+                vec![ToolResultContent::text("second result")],
+            ),
+        ],
+    });
+    history.extend([tool_call_msg(), tool_result_msg(), assistant("done")]);
+    assert!(validate_canonical(&history).is_err());
+    for policy in window_policies(5) {
+        assert_window_partition(policy.as_ref(), &history, 3);
+    }
+}
+
+#[test]
+fn window_policies_preserve_complete_mixed_exchanges_and_empty_boundaries() {
+    let mut history = vec![user("old")];
+    history.extend(mixed_tool_exchange());
+    assert_eq!(validate_canonical(&history), Ok(()));
+    // Covers no truncation, a whole retained exchange, an all-orphan window,
+    // zero capacity, and empty input on both policy paths.
+    for (limit, demoted_len) in [(4, 0), (3, 0), (2, 1), (1, 3), (0, 3)] {
+        for policy in window_policies(limit) {
+            assert_window_partition(policy.as_ref(), &history, demoted_len);
+            assert_window_partition(policy.as_ref(), &[], 0);
+        }
+    }
 }
 
 #[test]
@@ -359,6 +481,47 @@ impl DemotionHook for CountingHook {
                 .push((conversation_id.to_string(), messages));
             Ok(())
         })
+    }
+}
+
+#[tokio::test]
+async fn demoting_windows_deliver_mixed_orphan_prefix_once_in_order() {
+    for policy in window_policies(2) {
+        let hook = Arc::new(CountingHook::default());
+        let mem =
+            DemotingPolicyMemory::new(InMemoryConversationMemory::new(), policy, hook.clone());
+        let id: ConversationId = "mixed-results".into();
+        let mut history = mixed_tool_exchange();
+        history.push(assistant("done"));
+        assert_eq!(validate_canonical(&history), Ok(()));
+        mem.append(&id, history.clone()).await.unwrap();
+        for _ in 0..2 {
+            assert_eq!(mem.load(&id).await.unwrap(), history[2..]);
+        }
+        assert_eq!(hook.calls(), 1);
+        assert_eq!(hook.seen.lock().unwrap()[0].1, history[..2]);
+
+        // Advancing the nominal boundary onto an already-demoted result
+        // must not deliver that result twice or skip the next real eviction.
+        let next = [user("next"), assistant("latest")];
+        mem.append(&id, vec![next[0].clone()]).await.unwrap();
+        assert_eq!(
+            mem.load(&id).await.unwrap(),
+            vec![history[2].clone(), next[0].clone()]
+        );
+        assert_eq!(hook.calls(), 1);
+        mem.append(&id, vec![next[1].clone()]).await.unwrap();
+        for _ in 0..2 {
+            assert_eq!(mem.load(&id).await.unwrap(), next);
+        }
+        let seen = hook.seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[1].1, history[2..]);
+        let delivered: Vec<_> = seen
+            .iter()
+            .flat_map(|(_, messages)| messages.clone())
+            .collect();
+        assert_eq!(delivered, history);
     }
 }
 

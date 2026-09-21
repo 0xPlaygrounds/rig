@@ -21,12 +21,12 @@ crate::provider_response::provider_error_enum!(
     #[cfg(not(target_family = "wasm"))]
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
-    DocumentError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    DocumentError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     #[cfg(target_family = "wasm")]
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
-    DocumentError(Box<dyn std::error::Error + 'static>),
+    DocumentError(#[source] Box<dyn std::error::Error + 'static>),
     } {
     /// The provider does not support an embedding request parameter configured on the model.
     #[error("{provider} embeddings do not support the `{parameter}` parameter")]

@@ -1,9 +1,8 @@
 //! All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
 
 use super::Client;
-use crate::types::{
-    completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
-};
+use crate::types::completion_request::VertexCompletionRequest;
+pub use crate::types::completion_response::VertexGenerateContentOutput;
 use rig_core::completion::{
     CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
@@ -62,7 +61,9 @@ impl CompletionModel {
     ///
     /// This is the escape hatch for fields rig does not normalize;
     /// [`CompletionModelTrait::completion`] calls it and maps the result, so
-    /// there is exactly one RPC either way.
+    /// there is exactly one RPC either way. The returned type is publicly named
+    /// [`VertexGenerateContentOutput`] in this module and can also be deserialized
+    /// from a normalized [`CompletionResponse::raw`].
     pub async fn raw_completion(
         &self,
         request: CompletionRequest,
