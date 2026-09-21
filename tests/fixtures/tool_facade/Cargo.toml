@@ -56,4 +56,5 @@ all_root = [
     "rig/reqwest-middleware",
     "rig/reqwest-middleware-rustls",
     "rig/reqwest-middleware-native-tls",
+    "rig/typesafeai",
 ]

@@ -1,7 +1,7 @@
 //! `check-packaging`: what the workspace publishes, and what it claims to need.
 //!
-//! Two properties a downstream consumer pays for and no build catches,
-//! because neither stops the workspace compiling:
+//! Three properties a downstream consumer pays for and no build catches,
+//! because none of them stops the workspace compiling:
 //!
 //! 1. **The facade ships its source, not the repository** (#2349). `rig`'s
 //!    library is one file, but the package directory is the whole workspace
@@ -13,6 +13,9 @@
 //!    source ever names is still resolved, still built and still part of every
 //!    consumer's supply chain. `rig-bedrock` pulled the `rig-derive`
 //!    proc-macro into every consumer for the sake of two examples.
+//! 3. **The facade feature guard covers every facade feature.** The additivity
+//!    fixture's `all_root` is the only place every `rig` feature is compiled
+//!    together; a feature missing from that list is a feature nothing guards.
 //!
 //! Manifest data comes from `cargo metadata` and the file list from
 //! `cargo package --list`, so this checks what Cargo will actually do rather
@@ -36,7 +39,7 @@
 //! condition rather than an estimate, which is what lets it be trusted without
 //! ever building a tarball.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -100,11 +103,13 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     failures.extend(facade_ships_only_its_source(workspace)?);
     failures.extend(packages_stay_under_the_ceiling(workspace, &packages)?);
     failures.extend(dependencies_are_used(&packages)?);
+    failures.extend(facade_guard_covers_every_feature(workspace, &packages)?);
 
     if failures.is_empty() {
         println!(
-            "ok: the facade publishes only its allowlist, and {} published crates are under \
-             {SIZE_CEILING} B uncompressed and name only dependencies their sources use",
+            "ok: the facade publishes only its allowlist, {} published crates are under \
+             {SIZE_CEILING} B uncompressed and name only dependencies their sources use, and \
+             the facade guard covers every root feature",
             packages.len()
         );
         return Ok(());
@@ -233,6 +238,57 @@ fn dependencies_are_used(packages: &BTreeMap<String, Package>) -> Result<Vec<Str
     Ok(failures)
 }
 
+/// 4. The facade additivity fixture enables every root feature.
+fn facade_guard_covers_every_feature(
+    workspace: &Path,
+    packages: &BTreeMap<String, Package>,
+) -> Result<Vec<String>, String> {
+    let fixture = workspace.join("tests/fixtures/tool_facade/Cargo.toml");
+    // The fixture is its own workspace and is `publish = false`, so it is read
+    // directly rather than through the published-package map.
+    let metadata = metadata(
+        workspace,
+        &["--no-deps", "--manifest-path", &fixture.to_string_lossy()],
+    )?;
+    let guard: BTreeSet<String> = field(&metadata, "packages")
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|package| field(field(package, "features"), "all_root").as_array())
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter_map(|entry| entry.strip_prefix("rig/").map(str::to_owned))
+        .collect();
+    if guard.is_empty() {
+        return Err(format!(
+            "the facade fixture at {} declares no `all_root` feature list",
+            fixture.display()
+        ));
+    }
+    let facade = packages
+        .get("rig")
+        .ok_or_else(|| "the workspace has no `rig` package".to_string())?;
+    // `default` is what the guard's other rows already build, and
+    // `facade-build-tests` only selects the guard itself.
+    let exempt = ["default", "facade-build-tests"];
+    let mut missing: Vec<&str> = facade
+        .features
+        .keys()
+        .map(String::as_str)
+        .filter(|feature| !exempt.contains(feature) && !guard.contains(*feature))
+        .collect();
+    missing.sort_unstable();
+    if missing.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(vec![format!(
+        "  rig: {} facade feature(s) are outside the additivity guard; add them to `all_root` \
+         in tests/fixtures/tool_facade/Cargo.toml:\n{}",
+        missing.len(),
+        indent(&missing)
+    )])
+}
+
 /// Whether `source` uses `identifier` as a crate name: a whole word, not a
 /// substring of a longer path segment (`serde` must not match `serde_json`).
 fn names(source: &str, identifier: &str) -> bool {
@@ -275,6 +331,7 @@ fn package_listing(workspace: &Path, name: &str) -> Result<Vec<String>, String> 
 struct Package {
     root: std::path::PathBuf,
     dependencies: Vec<Dependency>,
+    features: BTreeMap<String, Vec<String>>,
 }
 
 struct Dependency {
@@ -363,11 +420,32 @@ fn packages(metadata: &Value) -> Result<BTreeMap<String, Package>, String> {
                 rename: field(dependency, "rename").as_str().map(str::to_owned),
             })
             .collect();
+        let features = field(package, "features")
+            .as_object()
+            .map(|features| {
+                features
+                    .iter()
+                    .map(|(feature, enables)| {
+                        let enables = enables
+                            .as_array()
+                            .map(|entries| {
+                                entries
+                                    .iter()
+                                    .filter_map(|entry| entry.as_str().map(str::to_owned))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        (feature.clone(), enables)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         packages.insert(
             name,
             Package {
                 root: manifest.parent().unwrap_or(manifest).to_path_buf(),
                 dependencies,
+                features,
             },
         );
     }

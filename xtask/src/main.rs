@@ -13,7 +13,7 @@
 //! that CI runs and that need a real parser rather than a grep.
 //!
 //! ```console
-//! cargo xtask check-packaging     # fail on stowaways and unused dependencies
+//! cargo xtask check-packaging     # fail on stowaways, bloat and unused deps
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
 //! ```
@@ -56,7 +56,8 @@ tasks:
   verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
   verify --check ID           run one check by id (CI runs one per job)
   check-packaging             fail if the published facade carries files that
-                              are not its source, if a manifest names a
+                              are not its source, if a publishable crate grows
+                              past the size ceiling, if a manifest names a
                               dependency its sources never use, or if a facade
                               feature is outside the additivity guard
   check-test-layout           fail if any crates/*/src file has an inline
