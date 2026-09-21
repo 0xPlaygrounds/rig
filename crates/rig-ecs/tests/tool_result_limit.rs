@@ -17,8 +17,7 @@ use rig_ecs::{
     agent::{
         MessageParts, Turn,
         content::parts::{
-            EditTarget, RequestPartEdit, TOOL_RESULT_LIMIT_MARKER, TextPart, ToolResultLimit,
-            ToolResultPart,
+            ContentPart, EditTarget, RequestPartEdit, TOOL_RESULT_LIMIT_MARKER, ToolResultLimit,
         },
     },
     bus::{PendingEffect, RigSchedule},
@@ -140,9 +139,12 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim() {
     // The graph and a checkpoint keep the full text.
     assert_eq!(graph_messages(&mut world, run), before);
     let parts: Vec<_> = world
-        .query::<&TextPart>()
+        .query::<&ContentPart>()
         .iter(&world)
-        .map(|part| part.0.text.clone())
+        .filter_map(|part| match part {
+            ContentPart::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
         .collect();
     assert!(parts.contains(&LONG.to_owned()));
     assert!(parts.iter().all(|text| !text.contains("omitted")));
@@ -258,16 +260,15 @@ fn an_edit_is_applied_before_the_limit() {
     let (mut world, _, run, turn) = fixture("short");
     let before = graph_messages(&mut world, run);
     let result = world
-        .query::<(Entity, &ToolResultPart)>()
+        .query::<(Entity, &ContentPart)>()
         .iter(&world)
-        .map(|(entity, _)| entity)
-        .next()
+        .find_map(|(entity, part)| matches!(part, ContentPart::ToolResult { .. }).then_some(entity))
         .unwrap();
     let text_item = world
         .get::<Children>(result)
         .unwrap()
         .iter()
-        .find(|child| world.get::<TextPart>(*child).is_some())
+        .find(|child| matches!(world.get::<ContentPart>(*child), Some(ContentPart::Text(_))))
         .unwrap();
     world.spawn((
         RequestPartEdit::Text(LONG.to_owned()),
@@ -288,5 +289,7 @@ fn an_edit_is_applied_before_the_limit() {
         "the edited text is what the limit cuts"
     );
     assert_eq!(graph_messages(&mut world, run), before);
-    assert_eq!(world.get::<TextPart>(text_item).unwrap().0.text, "short");
+    assert!(
+        matches!(world.get::<ContentPart>(text_item), Some(ContentPart::Text(text)) if text.text == "short")
+    );
 }

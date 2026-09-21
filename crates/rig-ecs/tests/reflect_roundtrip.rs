@@ -246,6 +246,44 @@ fn populated() -> bevy_app::App {
 }
 
 #[test]
+fn content_variants_are_reflected_enum_data() {
+    use bevy_reflect::{PartialReflect, ReflectRef};
+    use rig_ecs::agent::content::parts::ContentPart;
+    use std::collections::BTreeSet;
+
+    let mut app = populated();
+    let world = app.world_mut();
+    let variants: BTreeSet<_> = world
+        .query::<&ContentPart>()
+        .iter(world)
+        .map(|part| {
+            let ReflectRef::Enum(value) = part.reflect_ref() else {
+                panic!("content must be reflected enum data");
+            };
+            assert!(value.field_len() > 0);
+            value.variant_name().to_owned()
+        })
+        .collect();
+    assert_eq!(
+        variants,
+        BTreeSet::from(
+            [
+                "Text",
+                "Image",
+                "Audio",
+                "Video",
+                "Document",
+                "ToolCall",
+                "ToolResult",
+                "Reasoning",
+                "Json",
+            ]
+            .map(str::to_owned)
+        )
+    );
+}
+
+#[test]
 fn every_component_round_trips_through_reflection() {
     let mut app = populated();
     let world = app.world_mut();

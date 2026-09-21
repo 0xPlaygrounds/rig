@@ -11,6 +11,23 @@ fn world(parts: MessageParts) -> (World, Entity) {
     (world, entity)
 }
 
+fn assert_checkpoint_round_trip(world: &mut World, expected: &MessageParts) {
+    use rig_ecs::checkpoint::{Checkpoint, load_world, register_types, save_world};
+
+    register_types(world);
+    let saved = save_world(world).unwrap();
+    let saved = Checkpoint::from_json(&saved.to_json().unwrap()).unwrap();
+    let mut restored = World::new();
+    rig_ecs::bus::BusPlugin::with_policy(rig_core::serve::ServingPolicy::default())
+        .install(&mut restored);
+    rig_ecs::systems::AgentPlugin::install(&mut restored);
+    register_types(&mut restored);
+    let loaded = load_world(&saved, &mut restored).unwrap();
+    let utterances = loaded.with::<Utterance>(&restored);
+    assert_eq!(utterances.len(), 1);
+    assert_eq!(&read_message(&restored, utterances[0]).unwrap(), expected);
+}
+
 #[test]
 fn all_user_kinds_nested_results_and_metadata_round_trip() {
     let text: Text = serde_json::from_value(serde_json::json!({"text":"hello","additional_params":{"annotations":[{"kind":"citation","url":"https://example.org"}]}})).unwrap();
@@ -18,7 +35,10 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
         data: DocumentSourceKind::Base64("Zg==".into()),
         media_type: Some(ImageMediaType::PNG),
         detail: Some(ImageDetail::High),
-        additional_params: None,
+        additional_params: AdditionalParams::from_entries([(
+            "image_metadata",
+            serde_json::json!(true),
+        )]),
     };
     let parts = MessageParts::User {
         content: vec![
@@ -28,19 +48,35 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
             UserContent::Image(image.clone()),
             UserContent::Audio(Audio {
                 data: DocumentSourceKind::Raw(b"f".to_vec()),
-                ..Default::default()
+                media_type: Some(AudioMediaType::MP3),
+                additional_params: AdditionalParams::from_entries([(
+                    "audio_metadata",
+                    serde_json::json!(true),
+                )]),
             }),
             UserContent::Video(Video {
                 data: DocumentSourceKind::Url("https://invalid.invalid/video".into()),
-                ..Default::default()
+                media_type: Some(VideoMediaType::MP4),
+                additional_params: AdditionalParams::from_entries([(
+                    "video_metadata",
+                    serde_json::json!(true),
+                )]),
             }),
             UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-1".into()),
-                ..Default::default()
+                media_type: Some(DocumentMediaType::PDF),
+                additional_params: AdditionalParams::from_entries([(
+                    "document_metadata",
+                    serde_json::json!(true),
+                )]),
             }),
             UserContent::ToolResult(ToolResult {
                 call: ToolCallId::new("call-1").unwrap(),
-                provider: None,
+                provider: Some(
+                    ProviderCallId::new("provider-call-1")
+                        .unwrap()
+                        .with_item_id("item-1"),
+                ),
                 name: "read".into(),
                 content: vec![
                     ToolResultContent::Text(text),
@@ -59,9 +95,24 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
     );
     assert_eq!(read_message(&world, entity).unwrap(), parts);
     assert_eq!(world.resource::<BinaryAssets>().len(), 1);
-    assert_eq!(world.query::<&ImagePart>().iter(&world).count(), 3);
+    assert_eq!(
+        world
+            .query::<&ContentPart>()
+            .iter(&world)
+            .filter(|part| matches!(part, ContentPart::Image(_)))
+            .count(),
+        3
+    );
     assert_eq!(world.query::<&ContentPart>().iter(&world).count(), 11);
-    assert_eq!(world.query::<&JsonPart>().iter(&world).count(), 1);
+    assert_eq!(
+        world
+            .query::<&ContentPart>()
+            .iter(&world)
+            .filter(|part| matches!(part, ContentPart::Json(_)))
+            .count(),
+        1
+    );
+    assert_checkpoint_round_trip(&mut world, &parts);
 }
 
 #[test]
@@ -102,12 +153,13 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
             }),
         ],
     };
-    let (world, entity) = world(parts.clone());
+    let (mut world, entity) = world(parts.clone());
     assert_eq!(
         serde_json::to_vec(&read_message(&world, entity).unwrap().to_message()).unwrap(),
         serde_json::to_vec(&parts.to_message()).unwrap(),
     );
     assert_eq!(read_message(&world, entity).unwrap(), parts);
+    assert_checkpoint_round_trip(&mut world, &parts);
 }
 
 #[test]
@@ -119,8 +171,14 @@ fn part_edits_do_not_change_siblings_and_order_is_semantic() {
     let children: Vec<_> = world.get::<Children>(entity).unwrap().iter().collect();
     let first = *children.first().unwrap();
     let second = *children.get(1).unwrap();
-    world.get_mut::<TextPart>(first).unwrap().0.text = "edited".into();
-    assert_eq!(world.get::<TextPart>(second).unwrap().0.text, "second");
+    let mut part = world.get_mut::<ContentPart>(first).unwrap();
+    let ContentPart::Text(text) = &mut *part else {
+        panic!("a text part");
+    };
+    text.text = "edited".into();
+    assert!(
+        matches!(world.get::<ContentPart>(second), Some(ContentPart::Text(text)) if text.text == "second")
+    );
     world.entity_mut(entity).insert_children(0, &[second]);
     assert_eq!(
         read_message(&world, entity).unwrap(),
@@ -131,7 +189,7 @@ fn part_edits_do_not_change_siblings_and_order_is_semantic() {
 }
 
 #[test]
-fn missing_conflicting_or_wrong_role_components_are_rejected() {
+fn missing_or_wrong_role_components_are_rejected() {
     let (mut world, entity) = world(MessageParts::User {
         content: vec![UserContent::text("text")],
     });
@@ -143,12 +201,198 @@ fn missing_conflicting_or_wrong_role_components_are_rejected() {
         .unwrap();
     world
         .entity_mut(child)
-        .insert(JsonPart(serde_json::json!(3)));
+        .insert(ContentPart::Json(serde_json::json!(3)));
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
-    world.entity_mut(child).remove::<TextPart>();
+    world.entity_mut(child).remove::<ContentPart>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
     world.entity_mut(entity).remove::<Role>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Missing));
+}
+
+#[test]
+fn replacing_a_variant_cannot_leave_a_conflicting_payload() {
+    let (mut world, entity) = world(MessageParts::User {
+        content: vec![UserContent::text("text")],
+    });
+    let child = world
+        .get::<Children>(entity)
+        .unwrap()
+        .iter()
+        .next()
+        .unwrap();
+    world
+        .entity_mut(child)
+        .insert(ContentPart::Image(ImagePart {
+            source: PartSource::Url("https://example.org/image".into()),
+            media_type: None,
+            additional_params: None,
+            detail: None,
+        }));
+    assert_eq!(
+        read_message(&world, entity).unwrap(),
+        MessageParts::User {
+            content: vec![UserContent::Image(Image {
+                data: DocumentSourceKind::Url("https://example.org/image".into()),
+                ..Default::default()
+            })],
+        }
+    );
+    assert_eq!(world.query::<&ContentPart>().iter(&world).count(), 1);
+}
+
+#[test]
+fn leaf_children_and_nested_results_are_rejected_even_when_removed() {
+    use bevy_ecs::system::SystemState;
+    use std::collections::BTreeMap;
+
+    for nested_result in [false, true] {
+        let (mut world, utterance) = world(MessageParts::User {
+            content: vec![UserContent::ToolResult(ToolResult {
+                call: ToolCallId::new("call").unwrap(),
+                provider: None,
+                name: "tool".into(),
+                content: vec![ToolResultContent::text("child")],
+            })],
+        });
+        let parent = world
+            .get::<Children>(utterance)
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap();
+        let child = world
+            .get::<Children>(parent)
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap();
+        if nested_result {
+            let result = world.get::<ContentPart>(parent).unwrap().clone();
+            world.entity_mut(child).insert(result);
+        } else {
+            world
+                .entity_mut(parent)
+                .insert(ContentPart::Text(Text::new("invalid parent")));
+        }
+        assert_eq!(read_message(&world, utterance), Err(ContentError::Shape));
+        let mut state: SystemState<ContentGraph> = SystemState::new(&mut world);
+        assert_eq!(
+            state.get(&world).unwrap().message_with(
+                utterance,
+                &BTreeMap::from([(parent, RequestPartEdit::Remove)]),
+            ),
+            Err(ContentError::Shape)
+        );
+    }
+}
+
+#[test]
+fn adding_a_payload_exposes_its_parent_and_sibling_membership() {
+    #[derive(Resource, Default)]
+    struct Seen(usize);
+
+    let mut world = World::new();
+    world.init_resource::<Seen>();
+    world.add_observer(
+        |added: On<Add, ContentPart>,
+         relations: Query<&ChildOf>,
+         parents: Query<&Children>,
+         mut seen: ResMut<Seen>| {
+            let parent = relations.get(added.entity).unwrap().parent();
+            assert!(
+                parents
+                    .get(parent)
+                    .is_ok_and(|children| children.iter().any(|child| child == added.entity)),
+                "the content relationship must precede payload publication"
+            );
+            seen.0 += 1;
+        },
+    );
+    let utterance = world.spawn(Utterance).id();
+    write_message(
+        &mut world,
+        utterance,
+        MessageParts::User {
+            content: vec![
+                UserContent::text("outer"),
+                UserContent::tool_result("call", "tool", vec![ToolResultContent::text("nested")]),
+            ],
+        },
+    )
+    .unwrap();
+    assert_eq!(world.resource::<Seen>().0, 3);
+}
+
+#[test]
+fn removal_cannot_hide_a_missing_nested_binary() {
+    use bevy_ecs::system::SystemState;
+    use std::collections::BTreeMap;
+
+    let (mut world, utterance) = world(MessageParts::User {
+        content: vec![UserContent::tool_result(
+            "call",
+            "tool",
+            vec![ToolResultContent::Image(Image {
+                data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+                ..Default::default()
+            })],
+        )],
+    });
+    let result = world.get::<Children>(utterance).unwrap()[0];
+    let image = world.get::<Children>(result).unwrap()[0];
+    world.insert_resource(BinaryAssets::default());
+    let mut state: SystemState<ContentGraph> = SystemState::new(&mut world);
+    for target in [result, image] {
+        assert_eq!(
+            state.get(&world).unwrap().message_with(
+                utterance,
+                &BTreeMap::from([(target, RequestPartEdit::Remove)]),
+            ),
+            Err(ContentError::Binary(BinaryError::Missing))
+        );
+    }
+}
+
+#[test]
+fn late_preparation_failure_preserves_assistant_id_and_children() {
+    let original = MessageParts::Assistant {
+        id: Some("retained-message".into()),
+        content: vec![AssistantContent::text("retained")],
+    };
+    let (mut world, utterance) = world(original.clone());
+    let children: Vec<_> = world.get::<Children>(utterance).unwrap().iter().collect();
+    let rejected = MessageParts::User {
+        content: vec![
+            UserContent::text("prepared first"),
+            UserContent::tool_result(
+                "call",
+                "tool",
+                vec![
+                    ToolResultContent::Image(Image {
+                        data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+                        ..Default::default()
+                    }),
+                    ToolResultContent::Image(Image {
+                        data: DocumentSourceKind::Base64("invalid!".into()),
+                        ..Default::default()
+                    }),
+                ],
+            ),
+        ],
+    };
+    assert_eq!(
+        write_message(&mut world, utterance, rejected),
+        Err(ContentError::Binary(BinaryError::Base64))
+    );
+    assert_eq!(read_message(&world, utterance).unwrap(), original);
+    assert_eq!(
+        world
+            .get::<Children>(utterance)
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        children
+    );
 }
 
 #[test]
@@ -236,7 +480,14 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
             content: vec![UserContent::text("hello")]
         }
     );
-    assert_eq!(world.query::<&TextPart>().iter(&world).count(), 1);
+    assert_eq!(
+        world
+            .query::<&ContentPart>()
+            .iter(&world)
+            .filter(|part| matches!(part, ContentPart::Text(_)))
+            .count(),
+        1
+    );
     let request = world
         .query::<&PendingEffect>()
         .iter(&world)

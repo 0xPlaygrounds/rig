@@ -594,7 +594,7 @@ fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
 
 #[test]
 fn a_part_patch_is_not_sticky_on_a_judge_retry() {
-    use rig_ecs::agent::content::parts::{EditTarget, RequestPartEdit, TextPart};
+    use rig_ecs::agent::content::parts::{ContentPart, EditTarget, RequestPartEdit};
     let mut app = app();
     let (agent, requests) = scripted_agent(
         &mut app,
@@ -611,9 +611,9 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
     let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
     let target = app
         .world_mut()
-        .query::<(Entity, &TextPart)>()
+        .query::<(Entity, &ContentPart)>()
         .iter(app.world())
-        .find(|(_, text)| text.0.text == "say it")
+        .find(|(_, part)| matches!(part, ContentPart::Text(text) if text.text == "say it"))
         .unwrap()
         .0;
     add_system(
@@ -649,8 +649,7 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
             "user:End with DONE."
         ]
     );
-    assert_eq!(
-        app.world().get::<TextPart>(target).unwrap().0.text,
-        "say it"
+    assert!(
+        matches!(app.world().get::<ContentPart>(target), Some(ContentPart::Text(text)) if text.text == "say it")
     );
 }

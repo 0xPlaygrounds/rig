@@ -52,7 +52,7 @@ pub type CheckpointEntity = serde_json::Map<String, serde_json::Value>;
 type Reflected<'a> = Vec<(&'a str, Box<dyn PartialReflect>)>;
 
 /// The [`Checkpoint`] envelope format this crate writes and reads.
-pub const CHECKPOINT_FORMAT: u32 = 1;
+pub const CHECKPOINT_FORMAT: u32 = 2;
 
 /// The world as reflected data.
 ///
@@ -454,13 +454,19 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
                 .ok_or_else(|| refused("content part has no parent"))?
                 .parent();
             if world.get::<Utterance>(parent).is_none()
-                && world.get::<ToolResultPart>(parent).is_none()
+                && !matches!(
+                    world.get::<ContentPart>(parent),
+                    Some(ContentPart::ToolResult { .. })
+                )
             {
                 return Err(refused("content part has an invalid parent"));
             }
         }
         if world.get::<ToolResultStatus>(entity).is_some()
-            && world.get::<ToolResultPart>(entity).is_none()
+            && !matches!(
+                world.get::<ContentPart>(entity),
+                Some(ContentPart::ToolResult { .. })
+            )
         {
             return Err(refused("tool result status is not on a tool result part"));
         }
@@ -531,6 +537,12 @@ fn wire_expansion(world: &mut World) -> Result<(), ErrorReport> {
 /// saved id. Install application observers after loading: an insertion
 /// observer would otherwise see a partially restored entity.
 pub fn load_world(checkpoint: &Checkpoint, world: &mut World) -> Result<Loaded, ErrorReport> {
+    if checkpoint.format != CHECKPOINT_FORMAT {
+        return Err(refused(format!(
+            "load refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
+            checkpoint.format
+        )));
+    }
     let registry = world
         .get_resource::<AppTypeRegistry>()
         .ok_or_else(|| refused("the world has no type registry: install RigPlugin first"))?
