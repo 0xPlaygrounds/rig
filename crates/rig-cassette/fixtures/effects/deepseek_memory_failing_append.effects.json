@@ -178,7 +178,9 @@
           "code": null,
           "http_status": null,
           "refusal": false,
-          "source_chain": []
+          "source_chain": [
+            "the store refused the append"
+          ]
         }
       }
     }

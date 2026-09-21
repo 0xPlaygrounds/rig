@@ -379,7 +379,9 @@ async fn append_fails(
     let log = agent.stamp(recorder.take());
     assert_eq!(memory_ops(&log), ["load", "append"]);
     assert!(
-        matches!(&log.records[2].outcome, Err(report) if report.kind == rig::error::ErrorKind::MemoryBackend),
+        matches!(&log.records[2].outcome, Err(report)
+            if report.kind == rig::error::ErrorKind::MemoryBackend
+                && report.source_chain == ["the store refused the append"]),
         "{:?}",
         log.records[2].outcome
     );
