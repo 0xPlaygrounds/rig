@@ -9,6 +9,10 @@ use rig_core::message::{
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
 use serde::{Deserialize, Serialize};
 
+/// Vertex AI's SDK reply, returned by
+/// [`CompletionModel::raw_completion`](crate::completion::CompletionModel::raw_completion).
+///
+/// It can also be recovered from a normalized [`CompletionResponse::raw`].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct VertexGenerateContentOutput(pub vertexai::model::GenerateContentResponse);
 

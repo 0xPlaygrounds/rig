@@ -16,7 +16,9 @@
 //! constructing a client.
 //!
 //! The root `rig` facade re-exports this crate as `rig::vertexai` when the
-//! `vertexai` feature is enabled.
+//! `vertexai` feature is enabled. The raw-response escape hatch returns
+//! [`completion::VertexGenerateContentOutput`], which can be named in downstream
+//! APIs and recovered from a normalized response's `raw` JSON.
 
 pub mod client;
 pub mod completion;
