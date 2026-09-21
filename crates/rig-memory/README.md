@@ -8,10 +8,17 @@ agent framework.
 policies for shaping loaded history before it is sent to the model:
 
 - [`NoopMemoryPolicy`] — identity policy, useful as a default.
-- [`SlidingWindowMemory`] — keep the most recent `N` messages, dropping any
-  leading orphan tool result.
+- [`SlidingWindowMemory`] — keep at most the most recent `N` messages.
 - [`TokenWindowMemory`] — keep the most recent messages that fit within a token
   budget supplied by a [`TokenCounter`].
+
+Both window policies remove the leading prefix through any tool-result
+messages whose assistant calls were truncated. Results are detected anywhere
+in a user message, including after text and across intervening system messages.
+Cleanup stops at the first retained assistant; later paired exchanges remain
+intact. Whole removed messages are included in `apply_with_demoted`'s demoted
+prefix in original order, including accompanying text, so demotion hooks lose
+no content.
 
 ## Usage
 
