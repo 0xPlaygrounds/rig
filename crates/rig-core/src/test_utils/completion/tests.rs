@@ -239,6 +239,21 @@ async fn stream_error_event_is_returned() {
 }
 
 #[test]
+fn scripted_null_stays_distinct_from_an_unscripted_document_after_round_trip() {
+    let unscripted = MockTurn::text("hello");
+    let scripted = unscripted.clone().with_raw(serde_json::Value::Null);
+    for turn in [unscripted, scripted] {
+        let json = serde_json::to_string(&turn).expect("turn serializes");
+        let restored: MockTurn = serde_json::from_str(&json).expect("turn deserializes");
+        assert_eq!(
+            restored.raw().expect("a document"),
+            turn.raw().expect("a document")
+        );
+        assert_eq!(restored, turn);
+    }
+}
+
+#[test]
 fn a_script_is_serde_in_and_serde_out() {
     let turns = vec![
         MockTurn::text("hello"),

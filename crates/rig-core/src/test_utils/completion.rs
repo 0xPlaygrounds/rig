@@ -68,8 +68,19 @@ struct MockTurnResponse {
     /// the turn itself, serialized, is the mock's document. Absent from the
     /// serialized turn when unscripted, so that document never nests
     /// itself; a scripted one survives a serde round trip of the script.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_scripted_raw"
+    )]
     raw: Option<serde_json::Value>,
+}
+
+fn deserialize_scripted_raw<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<serde_json::Value>, D::Error> {
+    // Only a missing field means unscripted; explicit JSON null is a document.
+    serde::Deserialize::deserialize(deserializer).map(Some)
 }
 
 impl MockTurn {
