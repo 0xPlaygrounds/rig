@@ -75,7 +75,16 @@ impl OpenAiWire {
     /// The wire for `model` on `provider`'s
     /// [`completion_route`](OpenAI::completion_route).
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
-        match provider.completion_route() {
+        let model = model.into();
+        let copilot = provider.dialect.quirks.copilot_session;
+        let route = provider.route.unwrap_or_else(|| {
+            if copilot && crate::providers::copilot::wire::routes_through_responses(&model) {
+                Route::Responses
+            } else {
+                provider.completion_route()
+            }
+        });
+        match route {
             Route::Chat => Self::Chat(Chat::new(provider, model)),
             Route::Responses => Self::Responses(Responses::new(provider, model)),
         }

@@ -76,8 +76,8 @@ fn completion() -> rig_core::effect::EffectKind {
     }
 }
 
-/// The provider configurations the retired `ProviderKind` enum could
-/// express, each at the test's base URL. A binding carries one of these as
+/// Representative provider configurations at the test's base URL.
+/// A binding carries one of these as
 /// data; the credential is empty because the host's resolver supplies it.
 fn anthropic() -> ProviderConfig {
     ProviderConfig::Anthropic(Anthropic::new("").with_base_url(BASE))
@@ -183,7 +183,9 @@ const SHAPES: &[Shape] = &[
 
 /// A binding of [`KEY`] to `config`, labelled `default`.
 fn binding(config: ProviderConfig) -> ProviderBinding {
-    ProviderBinding::configured(KEY, config, MODEL, "cassette").labelled("default")
+    ProviderBinding::configured(KEY, config, MODEL, "cassette")
+        .unwrap()
+        .labelled("default")
 }
 
 /// A materializer over a sentinel credential and a recording transport:
@@ -219,6 +221,23 @@ fn panicking_materializer() -> Materializer {
 /// How many handler entities are served.
 fn served(world: &mut World) -> usize {
     world.query::<&Handler>().iter(world).count()
+}
+
+#[test]
+fn a_configured_binding_stores_no_credential() {
+    let config = openai_chat().with_credential(SENTINEL);
+    assert!(ProviderBinding::configured(KEY, config.clone(), "", "host-key").is_err());
+    let binding =
+        ProviderBinding::configured(KEY, config, "org/model:version", "host-key").unwrap();
+    let mut app = world_app();
+    let entity = app.world_mut().spawn(binding).id();
+    let stored = app.world().get::<ProviderBinding>(entity).unwrap();
+    let rig_core::providers::registry::Provider::Configured(recipe) = stored.provider.provider()
+    else {
+        panic!("an explicit recipe")
+    };
+    assert!(recipe.is_unauthenticated());
+    assert_eq!(stored.provider.model(), "org/model:version");
 }
 
 #[test]
@@ -337,6 +356,7 @@ fn the_host_transport_is_built_once_per_binding_and_sends_to_the_base_url() {
             "deepseek-x",
             "cassette",
         )
+        .unwrap()
         .labelled("chat"),
     );
     assert_eq!(
@@ -379,6 +399,61 @@ fn the_host_transport_is_built_once_per_binding_and_sends_to_the_base_url() {
 }
 
 #[test]
+fn an_unregistered_dialect_has_no_catalog_credential_guidance() {
+    let dialect = rig_core::providers::openai::wire::Dialect::gateway(
+        "private",
+        "https://private.invalid",
+        "PRIVATE_KEY",
+    );
+    let config = ProviderConfig::OpenAi(OpenAI::with_key(&dialect, ""));
+    assert!(ProviderBinding::configured(KEY, config.clone(), "", "private-key").is_err());
+    let mut app = world_app();
+    app.world_mut()
+        .spawn(ProviderBinding::configured(KEY, config, MODEL, "private-key").unwrap());
+    let diagnostics = provider_diagnostics(app.world());
+    let binding = diagnostics.bindings.first().unwrap();
+    assert_eq!(binding.selection, "private/openai");
+    assert_eq!(binding.guidance, None);
+    assert!(!format!("{diagnostics:?}").contains("https://private.invalid"));
+    assert!(
+        save_world(app.world_mut()).is_err(),
+        "refuse an unreloadable checkpoint before writing it"
+    );
+}
+
+#[test]
+fn materialization_wraps_after_construction_and_only_once() {
+    let steps = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let credentials = steps.clone();
+    let transport = steps.clone();
+    let serving = steps.clone();
+    let materializer = Materializer::new(
+        move |_| {
+            credentials.lock().unwrap().push("credential");
+            Ok(Secret::from(SENTINEL))
+        },
+        move || {
+            transport.lock().unwrap().push("transport");
+            BoxedHttpClient::new(RecordingHttpClient::new(ANTHROPIC_BODY))
+        },
+    )
+    .serving(move |handler| {
+        serving.lock().unwrap().push("serving");
+        assert!(!format!("{handler:?}").contains(SENTINEL));
+        handler
+    });
+    let mut app = bus_support::app();
+    app.world_mut().insert_resource(materializer);
+    app.world_mut().spawn(binding(anthropic()));
+    rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
+    rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
+    assert_eq!(
+        *steps.lock().unwrap(),
+        ["credential", "transport", "serving"]
+    );
+}
+
+#[test]
 fn materialization_is_all_or_nothing() {
     let mut app = bus_support::app();
     let (materializer, _, built) = materializer(ANTHROPIC_BODY);
@@ -386,12 +461,10 @@ fn materialization_is_all_or_nothing() {
     let good = app.world_mut().spawn(binding(anthropic())).id();
     let bad = app
         .world_mut()
-        .spawn(ProviderBinding::configured(
-            "t/model:other",
-            openai_chat(),
-            "m",
-            "vault:missing",
-        ))
+        .spawn(
+            ProviderBinding::configured("t/model:other", openai_chat(), "m", "vault:missing")
+                .unwrap(),
+        )
         .id();
     let error = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err();
     assert_eq!(
@@ -603,7 +676,9 @@ fn secrets_never_leave_the_resolver() {
     let (materializer, _, _) = materializer(ANTHROPIC_BODY);
     app.world_mut().insert_resource(materializer);
     app.world_mut().spawn(
-        ProviderBinding::configured(KEY, anthropic(), MODEL, "vault:missing").labelled("default"),
+        ProviderBinding::configured(KEY, anthropic(), MODEL, "vault:missing")
+            .unwrap()
+            .labelled("default"),
     );
     let error = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err();
     let text = format!("{error} / {error:?}");
@@ -655,6 +730,150 @@ fn materialized_binding_checkpoint() -> Checkpoint {
 }
 
 #[test]
+fn a_host_installs_a_catalog_gateway_without_vendor_dispatch() {
+    let reference =
+        rig_core::providers::registry::ProviderRef::parse("venice/openai:venice-uncensored")
+            .unwrap();
+    let transport = RecordingHttpClient::new(CHAT_BODY);
+    let handler = reference.config(SENTINEL).completion_handler(
+        "host",
+        reference.model(),
+        BoxedHttpClient::new(transport.clone()),
+    );
+    let mut app = bus_support::app();
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers.register_erased(KEY, handler)
+    })
+    .unwrap()
+    .unwrap();
+    assert!(!app.world().contains_resource::<Materializer>());
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new(KEY, completion()))
+        .id();
+    bus_support::tick_until(&mut app, "catalog gateway answers", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    assert_eq!(
+        bus_support::text_of(&app.world().get::<EffectOutcome>(effect).unwrap().0),
+        "hi"
+    );
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].headers["authorization"],
+        format!("Bearer {SENTINEL}")
+    );
+}
+
+#[test]
+fn host_constructed_models_restore_without_provider_bindings_or_materializers() {
+    let transport = RecordingHttpClient::new(ANTHROPIC_BODY);
+    let adapter = |label: &str| {
+        ErasedHandler::new(CompletionAdapter::new(
+            label,
+            Anthropic::new(SENTINEL)
+                .with_base_url(BASE)
+                .bind(BoxedHttpClient::new(transport.clone()))
+                .completion(MODEL),
+        ))
+    };
+    let mut head = world_app();
+    Handlers::with(head.world_mut(), |handlers| {
+        handlers.register_erased(KEY, adapter("host"))
+    })
+    .unwrap()
+    .unwrap();
+    let checkpoint = save_world(head.world_mut()).unwrap();
+    assert!(!checkpoint.to_json().unwrap().contains(SENTINEL));
+    assert!(transport.requests().is_empty());
+
+    let mut app = world_app();
+    load_world(&checkpoint, app.world_mut()).unwrap();
+    assert!(!app.world().contains_resource::<Materializer>());
+    assert_eq!(
+        app.world_mut()
+            .query::<&ProviderBinding>()
+            .iter(app.world())
+            .count(),
+        0
+    );
+    let (entity, saved) = app
+        .world_mut()
+        .query::<(Entity, &Bound)>()
+        .single(app.world())
+        .map(|(entity, bound)| (entity, bound.descriptor.clone()))
+        .unwrap();
+    assert!(app.world().get::<Handler>(entity).is_none());
+    for (key, label) in [(KEY, "wrong-label"), ("missing-key", "host")] {
+        assert!(
+            Handlers::with(app.world_mut(), |handlers| handlers
+                .restore_erased(key, adapter(label)))
+            .unwrap()
+            .is_err()
+        );
+        assert!(app.world().get::<Handler>(entity).is_none());
+        assert_eq!(app.world().get::<Bound>(entity).unwrap().descriptor, saved);
+    }
+    let restored = Handlers::with(app.world_mut(), |handlers| {
+        handlers.restore_erased(KEY, adapter("host"))
+    })
+    .unwrap()
+    .unwrap();
+    assert_eq!(restored, entity);
+    assert_eq!(app.world().get::<Bound>(entity).unwrap().descriptor, saved);
+    let unused = RecordingHttpClient::new("{}");
+    let replacement = ErasedHandler::new(CompletionAdapter::new(
+        "host",
+        Anthropic::new("")
+            .bind(BoxedHttpClient::new(unused.clone()))
+            .completion(MODEL),
+    ));
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers.restore_erased(KEY, replacement)
+    })
+    .unwrap()
+    .unwrap();
+    assert!(
+        Handlers::with(app.world_mut(), |handlers| {
+            handlers.restore_erased(KEY, adapter("drift-on-live-key"))
+        })
+        .unwrap()
+        .is_err(),
+        "strict restore validates even when a handler is already live"
+    );
+    assert_eq!(app.world().get::<Bound>(entity).unwrap().descriptor, saved);
+    assert!(
+        transport.requests().is_empty(),
+        "construction and restore send nothing"
+    );
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new(KEY, completion()))
+        .id();
+    bus_support::tick_until(&mut app, "host model answers", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    assert_eq!(
+        bus_support::text_of(&app.world().get::<EffectOutcome>(effect).unwrap().0),
+        "hi"
+    );
+    assert_eq!(transport.requests().len(), 1);
+    assert!(
+        unused.requests().is_empty(),
+        "restoration keeps a matching live handler"
+    );
+
+    // Normal registration intentionally still permits same-family replacement.
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers.register_erased(KEY, adapter("replacement"))
+    })
+    .unwrap()
+    .unwrap();
+    assert_ne!(app.world().get::<Bound>(entity).unwrap().descriptor, saved);
+}
+
+#[test]
 fn a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
     // The saving world: a materialized binding, and one nothing served yet.
     let mut head = world_app();
@@ -663,7 +882,9 @@ fn a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() 
     head.world_mut().spawn(binding(anthropic()));
     rig_ecs::bus::materialize_bindings(head.world_mut()).unwrap();
     head.world_mut().spawn(
-        ProviderBinding::configured("t/model:later", gemini(), "g", "cassette").labelled("later"),
+        ProviderBinding::configured("t/model:later", gemini(), "g", "cassette")
+            .unwrap()
+            .labelled("later"),
     );
     let checkpoint = save_world(head.world_mut()).unwrap();
     let saved = head
@@ -834,7 +1055,7 @@ fn a_loaded_binding_that_would_build_another_descriptor_is_refused() {
     let (materializer, _, _) = materializer(ANTHROPIC_BODY);
     app.world_mut().insert_resource(materializer);
     match rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err() {
-        MaterializeError::DescriptorDrift { key, saved, built } => {
+        MaterializeError::DescriptorDrift(rig_ecs::bus::DescriptorDrift { key, saved, built }) => {
             assert_eq!(key, HandlerKey::from(KEY));
             assert!(saved.contains("default"), "{saved}");
             assert!(built.contains("renamed"), "{built}");
@@ -1017,6 +1238,7 @@ fn a_key_bound_to_another_family_is_kept_beside_a_good_binding() {
         .world_mut()
         .spawn(
             ProviderBinding::configured(good_key.clone(), anthropic(), MODEL, "cassette")
+                .unwrap()
                 .labelled("a"),
         )
         .id();
@@ -1026,6 +1248,7 @@ fn a_key_bound_to_another_family_is_kept_beside_a_good_binding() {
         .world_mut()
         .spawn((
             ProviderBinding::configured(tool_key.clone(), anthropic(), MODEL, "cassette")
+                .unwrap()
                 .labelled("default"),
             Bound {
                 key: tool_key.clone(),
@@ -1189,7 +1412,7 @@ fn a_gateway_the_old_vocabulary_could_not_name_materializes() {
         r#"{{"key":"{KEY}","provider":{{"config":{{"openai":{{"api_key":"[redacted]","base_url":"{BASE}","dialect":"venice","auth":"Bearer"}}}},"model":"venice-uncensored"}},"label":"default","credential":"cassette"}}"#
     );
     let binding: ProviderBinding = serde_json::from_str(&stored).expect("Venice reads from data");
-    assert_eq!(binding.provider.id().to_string(), "venice/openai");
+    assert_eq!(binding.provider.id().unwrap().to_string(), "venice/openai");
     let mut app = bus_support::app();
     let (materializer, transport, _) = materializer(CHAT_BODY);
     app.world_mut().insert_resource(materializer);
@@ -1246,8 +1469,9 @@ fn diagnostics_agree_with_materialization() {
     assert_eq!(stale.label, "default");
     assert_eq!(stale.selection, "anthropic/anthropic");
     assert_eq!(stale.credential, CredentialRef::new("cassette"));
-    assert_eq!(stale.guidance.env, "ANTHROPIC_API_KEY");
-    assert!(stale.guidance.required);
+    let guidance = stale.guidance.as_ref().unwrap();
+    assert_eq!(guidance.env, "ANTHROPIC_API_KEY");
+    assert!(guidance.required);
     assert_eq!(
         app.world()
             .get::<ProviderBinding>(stale.entity)

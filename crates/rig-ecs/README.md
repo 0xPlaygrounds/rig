@@ -185,6 +185,28 @@ A recorded answer can survive cancellation while a verdict waits; recording an
 original item does not establish consumer delivery. Both task and stream results
 still publish tool output before reaching `EffectOutcome` and shared settlement.
 
+## Host-built completion models
+
+The host can construct any Rig `CompletionModel`, wrap it in
+`rig_core::serve::adapters::CompletionAdapter`, and register it with `Handlers`.
+This includes SDK-backed companion providers: no core provider reference or
+ECS materializer is required. Authentication, transport policy, asynchronous
+initialization, and SDK runtime polling context stay with the host. See the
+[Vertex construction example](../rig-vertexai/examples/ecs_host_model.rs).
+
+After loading a checkpoint into a destination without a binding for the model's
+key, use `Handlers::restore_erased` for the reconstructed handler. It rejects
+changes to the saved descriptor and preserves an already-serving matching
+handler. Loading over a pre-existing binding aliases it and keeps its descriptor;
+validate against the original saved `Bound` before loading in that case. Ordinary registration remains an intentional
+same-family replacement API. Descriptor equality does not prove endpoint or
+credential equality; retain host launch settings separately. Replay installs
+replay handlers without live credentials or provider construction.
+
+`ProviderBinding` is the built-in declarative convenience path, not an inventory
+of every Rig provider. Its configured constructor rejects empty model identifiers;
+its catalog diagnostics omit credential guidance for unregistered dialects.
+
 ## Vocabulary
 
 | Concept | API |
@@ -200,7 +222,7 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
 | a tool call's context (beside the effect) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's `Dispatch` context; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
 | a handler | an entity with `Bound { key, descriptor }` (immutable: every change is an insert) and a `Name`; the erased handler in the `NonSend` `HandlerTable`, marked by `Handler` on the same entity; `HandlerIndex` (key → entity), kept exact by `Bound`'s hooks |
-| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
+| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `restore_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a model bound as data | `ProviderBinding { key, provider, label, credential }`, where `provider` is rig-core's `providers::registry::ProviderRef` — a registered selection (`deepseek/openai:deepseek-chat`, the registry's preset) or an explicit `ProviderConfig` plus a model; `ProviderBinding::{new, parse, configured, labelled}`. Built on the host's word by `materialize_bindings(world)` / the `materialize` system through the installed `Materializer` (credential resolver + transport factory) |
 | what a build can serve, and what this world holds | `provider_diagnostics(&World)` → `ProviderDiagnostics { registered, bindings, refusal }`: read-only, resolves nothing, and agrees with materialization about which keys are served elsewhere. No `Secret` and no whole configuration in it |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |

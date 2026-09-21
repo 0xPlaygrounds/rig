@@ -37,7 +37,7 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::handlers::{Bound, Handler, Handlers};
+use super::handlers::{Bound, DescriptorDrift, Handler, Handlers};
 
 /// A resolved credential: what the host's resolver returns and the bound
 /// wire holds. rig-core's own, because a wire's credential and a binding's
@@ -114,7 +114,7 @@ impl ProviderBinding {
     ) -> Self {
         Self {
             key: key.into(),
-            label: provider.model.clone(),
+            label: provider.model().to_owned(),
             provider,
             credential: credential.into(),
         }
@@ -132,13 +132,18 @@ impl ProviderBinding {
 
     /// [`Self::new`] from an explicit configuration and a model: a host,
     /// a route or a typed option the registry's preset does not name.
+    /// Discards any embedded credential; `credential` names the host's resolver entry.
     pub fn configured(
         key: impl Into<HandlerKey>,
         config: ProviderConfig,
         model: impl Into<String>,
         credential: impl Into<CredentialRef>,
-    ) -> Self {
-        Self::new(key, ProviderRef::configured(config, model), credential)
+    ) -> Result<Self, RefError> {
+        Ok(Self::new(
+            key,
+            ProviderRef::configured(config, model)?,
+            credential,
+        ))
     }
 
     /// With the adapter's label.
@@ -149,7 +154,7 @@ impl ProviderBinding {
 
     /// The provider's model identifier.
     pub fn model(&self) -> &str {
-        &self.provider.model
+        self.provider.model()
     }
 }
 
@@ -192,17 +197,8 @@ pub enum MaterializeError {
     /// The client the binding builds describes itself differently from the
     /// descriptor the scene saved: the model's capabilities changed, or the
     /// label did.
-    #[error(
-        "`{key}`: the built adapter's descriptor is not the bound one (saved {saved}, built {built})"
-    )]
-    DescriptorDrift {
-        /// The key.
-        key: HandlerKey,
-        /// The saved descriptor, as JSON.
-        saved: String,
-        /// The built descriptor, as JSON.
-        built: String,
-    },
+    #[error(transparent)]
+    DescriptorDrift(#[from] DescriptorDrift),
     /// The bus refused the registration.
     #[error("`{key}`: the bus refused the handler: {detail}")]
     Register {
@@ -300,17 +296,6 @@ impl Materializer {
             self.transport(),
         );
         Ok((self.serving)(handler))
-    }
-}
-
-/// The descriptor `handler` is bound with under `key`: what
-/// `Handlers::register_erased` records.
-fn bound_descriptor(key: &HandlerKey, handler: &ErasedHandler) -> HandlerDescriptor {
-    let described = handler.descriptor();
-    HandlerDescriptor {
-        key: key.clone(),
-        family: described.family,
-        layers: described.layers,
     }
 }
 
@@ -443,15 +428,9 @@ pub fn materialize_bindings(world: &mut World) -> Result<MaterializeReport, Mate
         let materializer = world.resource::<Materializer>();
         for item in &todo {
             let handler = materializer.build(&item.binding)?;
-            let descriptor = bound_descriptor(&item.binding.key, &handler);
-            if let Some(bound) = &item.bound
-                && bound.descriptor != descriptor
-            {
-                return Err(MaterializeError::DescriptorDrift {
-                    key: item.binding.key.clone(),
-                    saved: serde_json::to_string(&bound.descriptor).unwrap_or_default(),
-                    built: serde_json::to_string(&descriptor).unwrap_or_default(),
-                });
+            let descriptor = Bound::for_handler(item.binding.key.clone(), &handler).descriptor;
+            if let Some(bound) = &item.bound {
+                bound.check_descriptor(&descriptor)?;
             }
             built.push((item.entity, item.binding.key.clone(), descriptor, handler));
         }

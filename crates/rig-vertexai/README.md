@@ -15,6 +15,12 @@ rig-core = "0.42.0"
 You can also run `cargo add rig-vertexai rig-core` to add the most recent versions of the dependencies to your project.
 
 See the [`/examples`](./examples) folder for usage examples.
+The [ECS host-model example](./examples/ecs_host_model.rs) constructs the SDK
+client outside ECS and registers its completion model through Rig's existing
+adapter. It demonstrates registration, not live execution. A dispatching host
+must supply Tokio polling context on ECS worker threads; this integration
+currently supports unary completion, not streaming. No core provider-registry
+entry or API-key-only credential abstraction is required.
 
 ## Raw responses
 

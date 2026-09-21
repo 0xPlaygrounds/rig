@@ -489,15 +489,45 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
-### 12.1 A model bound as data
+### 12.1 Host-built models and declarative bindings
+
+The execution boundary is a handler, not a provider selection. A host can
+construct any Rig `CompletionModel`, including a companion SDK model, wrap it
+in `CompletionAdapter`, and install it with `Handlers::register` or
+`register_erased`. Credentials, SDK initialization (including async work),
+transport policy, and any required runtime polling context belong to the host.
+No `ProviderRef`, `ProviderBinding`, or `Materializer` is required for this path.
+
+For live resume, load the checkpoint's `Bound` data and use
+`Handlers::restore_erased` to install the reconstructed handler. It checks the
+saved descriptor through `Bound::check_descriptor`, the same check used by
+declarative materialization. Load into a destination without a binding for the
+key to retain the checkpoint's original descriptor: loading over an existing
+binding intentionally aliases it, checking family rather than full descriptor
+identity. A host retaining a preinstalled model must instead compare that
+model's normalized descriptor with the original saved `Bound` before loading.
+A missing binding or descriptor drift refuses without changing the world; a
+matching already-serving handler is kept.
+Strict restoration validates every supplied handler, whereas declarative
+materialization skips construction and validation for already-served keys.
+A replay host must skip live construction/restoration, not pass a live adapter
+over the replayer. Ordinary registration still permits intentional same-family
+replacement.
+Descriptor equality checks advertised model capabilities, labels, and layers,
+not endpoint or credential equality. The host must retain its launch
+configuration separately; checkpoint loading does not construct clients.
+Replay uses replay handlers and performs no live authentication.
+`host_constructed_models_restore_without_provider_bindings_or_materializers`
+in `tests/run_binding.rs` pins this path. The Vertex companion's
+`examples/ecs_host_model.rs` demonstrates SDK construction and registration
+(compile coverage, not a live-service test).
 
 A `bus::ProviderBinding` component is the data half of a provider-served
 key: `key`, a `provider` ([`ProviderRef`], rig-core's), `label` (the
 `ModelRef` the descriptor advertises; the reference's model id unless set)
 and a `credential` *reference* (a name the host's resolver knows — never a
-secret). It holds nothing executable, and it holds no provider vocabulary of
-its own: `ProviderKind`, the `base_url` override and the `extra_params` bag
-are gone.
+secret). It holds nothing executable and reuses core's typed configuration
+vocabulary rather than defining its own provider enum or option bag.
 
 A `ProviderRef` is either a **registered selection** —
 `vendor/format:model`, whose configuration is the registry's preset — or an
@@ -507,9 +537,16 @@ both Chat Completions and the Responses endpoint, and which one a
 configuration serves is its own `route` field. Persisted registered
 references are always qualified (`deepseek:x` read, `deepseek/openai:x`
 written); an explicit configuration is written as an object and keeps every
-non-secret host, route and option it names. Anything a provider
-configuration can express, a binding can express — including a gateway
-(Venice, Together, OpenRouter, …) that never had a `ProviderKind` variant.
+non-secret host, route and option it names. Core's registry-backed
+configurations include compatible gateways such as Venice, Together and
+OpenRouter; the catalog is not an inventory of all Rig completion providers.
+Model identifiers must be non-empty through constructors as well as serde.
+Unregistered configuration dialects can build handlers, but their `id()`
+returns `None` rather than manufacturing a registered selection. Serializing
+unregistered or modified dialect definitions is refused before an unreloadable
+or lossy checkpoint can be written; persist overrides on the configuration.
+`save_world` refuses the whole checkpoint rather than silently omitting an
+unpersistable binding.
 
 The executable half is built on the host's word:
 `materialize_bindings(world)` (or the `materialize` system, which leaves a
@@ -523,11 +560,14 @@ key through `Handlers::register_erased`, on the binding's own entity, so the
 bound `HandlerDescriptor` is the one a hand-registered adapter produces and
 the policy hash (§10) is unchanged by how the key came to be served. A
 binding changes no `HandlerDescriptor`: every golden is unchanged. Secrets
-never enter the world: the resolver returns a `Secret` whose `Debug` is
-redacted, a configuration's credential is redacted in its serialized form
-and empty when read back, the secret lives only inside the built client, and
-the binding's `Debug`, JSON and every `MaterializeError` name the reference
-alone.
+never enter binding data: configured references discard embedded credentials
+at construction and expose read-only provider data. The resolver returns a
+`Secret` whose `Debug` is redacted; the credential lives inside the built
+client, not a component. Standalone configuration serialization redacts its
+credential and reads it back empty. Binding `Debug` and JSON exclude credential
+material. Host resolver
+errors must also be safe to print: their detail is included in materialization
+diagnostics.
 
 Precedence and refusals, all or nothing per call — every credential
 resolved, every client built and every registration checked before the
@@ -565,7 +605,8 @@ selections this build registers with their credential guidance (an
 environment variable, and whether it is required — an optional-auth
 selection such as `llamacpp/openai` is a hint), and every binding with its
 entity, key, model, canonical `vendor/format` label, credential reference
-and whether *another* entity serves its key. It never exposes a `Secret` or
+and whether *another* entity serves its key. Catalog credential guidance is
+absent for unregistered configuration dialects. It never exposes a `Secret` or
 a whole configuration, it spawns and resolves nothing, and it shares the
 "served elsewhere" predicate with materialization, so a binding's own stale
 `Bound` — what a checkpoint load leaves — is not counted as somebody else
@@ -657,17 +698,12 @@ refused before any spawn. Pinned by `run_binding.rs`
 `a_checkpoint_load_validates_its_bindings`) and by every world-resume cell
 whose restored world materializes `golden/model:default` from the checkpoint.
 
-The binding's saved shape changed with the provider vocabulary, and there is
-no legacy reader: a checkpoint written before the cutover does not load.
-Before, a binding saved as
-`{"key":"k","kind":"anthropic","model":"m","label":"l","base_url":"http://h","credential":"c","extra_params":{"anthropic_betas":["b"]}}`;
-now it saves as `{"key":"k","provider":"anthropic/anthropic:m","label":"l","credential":"c"}`
+A binding saves as
+`{"key":"k","provider":"anthropic/anthropic:m","label":"l","credential":"c"}`
 for a registered selection, or
 `{"key":"k","provider":{"config":{"anthropic":{"api_key":"[redacted]","base_url":"http://h","version":"2023-06-01","betas":["b"],"dialect":"anthropic"}},"model":"m"},"label":"l","credential":"c"}`
-when it names a host or an option of its own. This repository ships no
-binding fixture, scene or golden, and the cassette harness rebuilds its
-binding from the live wire on every run, so nothing in-tree carries the old
-shape; a host holding saved worlds rewrites those two fields.
+when it names a host or an option of its own. Explicit host, route and typed
+options are checkpoint data; the actual credential is not.
 
 `Ready` and an unread `Prompt` are checkpoint data: a run
 saved before it opened loads unopened — `Ready`, `Prompt`, no phase — and

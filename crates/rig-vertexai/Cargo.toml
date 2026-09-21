@@ -22,6 +22,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+bevy_app = { workspace = true }
+rig-ecs = { path = "../rig-ecs", version = "0.42.0", default-features = false }
 google-cloud-gax = { workspace = true }
 rig-agent.workspace = true
 schemars = { workspace = true }

@@ -26,7 +26,7 @@
 
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
-use rig_core::providers::registry::ProviderId;
+use rig_core::providers::registry::{Provider, ProviderId};
 
 use super::binding::{
     CredentialRef, MaterializeFailed, ProviderBinding, bound_keys, served_elsewhere, serves_itself,
@@ -84,8 +84,8 @@ pub struct BindingReport {
     pub label: String,
     /// The credential reference the host's resolver is asked for.
     pub credential: CredentialRef,
-    /// What the provider documents about that credential.
-    pub guidance: CredentialGuidance,
+    /// Catalog guidance, absent for an unregistered configuration dialect.
+    pub guidance: Option<CredentialGuidance>,
     /// Whether this binding's own entity already serves the key: a
     /// hand-registered handler that the binding later landed on, or an
     /// earlier materialization of this very binding.
@@ -144,10 +144,15 @@ pub fn provider_diagnostics(world: &World) -> ProviderDiagnostics {
                 entity,
                 key: binding.key.clone(),
                 model: binding.model().to_owned(),
-                selection: id.to_string(),
+                selection: match binding.provider.provider() {
+                    Provider::Registered(id) => id.to_string(),
+                    Provider::Configured(config) => {
+                        format!("{}/{}", config.vendor(), config.format())
+                    }
+                },
                 label: binding.label.clone(),
                 credential: binding.credential.clone(),
-                guidance: CredentialGuidance::of(&id),
+                guidance: id.as_ref().map(CredentialGuidance::of),
                 served: serves_itself(world, entity),
                 served_elsewhere: served_elsewhere(&bound, entity, &binding.key),
             }

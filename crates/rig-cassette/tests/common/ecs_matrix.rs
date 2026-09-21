@@ -165,6 +165,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                     model_id,
                     CASSETTE_CREDENTIAL,
                 )
+                .expect("fixture models have a non-empty identifier")
                 .labelled("default"),
                 api_key: api_key.expose().to_owned(),
                 transport: transport.clone(),

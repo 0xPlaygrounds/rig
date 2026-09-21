@@ -824,6 +824,15 @@ impl Wire for Chat {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
         let quirks = &self.provider.dialect.quirks;
+        // Azure's deployment URL remains pinned to the handle, not a request override.
+        let uri = self.provider.uri(
+            quirks.completion_path,
+            self.provider.deployment(&self.model),
+        );
+        let builder = self.provider.completion_headers(
+            &request,
+            http::Request::post(uri).header("Content-Type", "application/json"),
+        );
         if !quirks.accepts_file_ids {
             refuse_file_ids(&request)?;
         }
@@ -879,16 +888,7 @@ impl Wire for Chat {
             &body,
         );
 
-        // Deliberately the configured model, not the per-request override:
-        // Azure's deployment URL is pinned to the model handle.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
-        let builder = http::Request::post(uri).header("Content-Type", "application/json");
-        let request = self
-            .provider
-            .headers(builder)
+        let request = builder
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
 

@@ -114,7 +114,41 @@ pub struct ServedBy(pub Entity);
 #[reflect(Component)]
 pub struct Serves(Vec<Entity>);
 
+/// A reconstructed handler does not match the descriptor saved in a checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "`{key}`: the built adapter's descriptor is not the bound one (saved {saved}, built {built})"
+)]
+pub struct DescriptorDrift {
+    /// The saved handler's key.
+    pub key: HandlerKey,
+    /// The saved descriptor as JSON.
+    pub saved: String,
+    /// The reconstructed descriptor as JSON.
+    pub built: String,
+}
+
 impl Bound {
+    pub(crate) fn for_handler(key: HandlerKey, handler: &ErasedHandler) -> Self {
+        let mut descriptor = handler.descriptor();
+        descriptor.key = key.clone();
+        Self { key, descriptor }
+    }
+
+    /// Check a reconstructed descriptor before restoring this handler.
+    /// `built.key` must be the registration key, not the adapter's default key.
+    /// This compares advertised behavior, not credentials or endpoint configuration.
+    pub fn check_descriptor(&self, built: &HandlerDescriptor) -> Result<(), DescriptorDrift> {
+        if self.descriptor == *built {
+            return Ok(());
+        }
+        Err(DescriptorDrift {
+            key: self.key.clone(),
+            saved: serde_json::to_string(&self.descriptor).unwrap_or_default(),
+            built: serde_json::to_string(built).unwrap_or_default(),
+        })
+    }
+
     /// The family the handler serves.
     pub fn family(&self) -> rig_core::effect::EffectFamily {
         self.descriptor.family.family()
@@ -337,14 +371,47 @@ impl Handlers<'_, '_> {
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
     ) -> Result<Entity, ErrorReport> {
-        let key = key.into();
-        let described = handler.descriptor();
-        let descriptor = HandlerDescriptor {
-            key: key.clone(),
-            family: described.family,
-            layers: described.layers,
-        };
-        self.bind(key, descriptor, Served::Task(handler))
+        let bound = Bound::for_handler(key.into(), &handler);
+        self.bind(bound.key, bound.descriptor, Served::Task(handler))
+    }
+
+    /// Restore a host-built handler under a checkpoint's existing key.
+    /// Unlike registration, this refuses descriptor changes, even within
+    /// the same family. An already-serving handler with the same descriptor is kept.
+    /// No provider configuration or credential lookup is involved.
+    /// Construct the model (including asynchronous SDK initialization) before
+    /// calling this, and wrap it with a completion adapter as for registration.
+    /// The saved `Bound` must already be applied to the world, not pending in Commands.
+    /// To check the original checkpoint descriptor, load into a destination with no
+    /// binding for this key: checkpoint loading preserves pre-existing bindings.
+    /// Unlike declarative materialization's skip-before-build path, this validates
+    /// every supplied handler. A replay host should skip live construction and
+    /// restoration altogether, not pass a live adapter over its replayer.
+    pub fn restore_erased(
+        &mut self,
+        key: impl Into<HandlerKey>,
+        handler: ErasedHandler,
+    ) -> Result<Entity, ErrorReport> {
+        let built = Bound::for_handler(key.into(), &handler);
+        let entity = self.index.entity(&built.key).ok_or_else(|| {
+            ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("`{}` has no saved binding", built.key),
+            )
+        })?;
+        let saved = self.bound.get(entity).map_err(|_| {
+            ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("`{}` has no saved descriptor", built.key),
+            )
+        })?;
+        saved
+            .check_descriptor(&built.descriptor)
+            .map_err(|error| ErrorReport::new(ErrorKind::HandlerUnavailable, error.to_string()))?;
+        if !self.table.served.contains_key(&entity) {
+            self.serve(entity, Served::Task(handler));
+        }
+        Ok(entity)
     }
 
     /// [`register`](Self::register), returning a [`Key`] carrying the

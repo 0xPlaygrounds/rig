@@ -138,8 +138,8 @@ pub use effect::{
     Typed, WorldEffect, WorldOutcome,
 };
 pub use handlers::{
-    Bound, Handler, HandlerIndex, Handlers, Registry, Served, ServedBy, Serves, WorldHandler,
-    WorldServe, answered,
+    Bound, DescriptorDrift, Handler, HandlerIndex, Handlers, Registry, Served, ServedBy, Serves,
+    WorldHandler, WorldServe, answered,
 };
 pub use hold::{HoldOwners, HoldRefused, acquire_hold, release_hold};
 pub use plugin::{BusPlugin, BusSet, Policy, RigEnd, RigSchedule, Wake, woken_runner};
