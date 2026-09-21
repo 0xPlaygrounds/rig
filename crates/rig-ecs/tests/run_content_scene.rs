@@ -131,6 +131,17 @@ fn corrupt_hash_missing_handle_and_bad_parent_leave_destination_untouched() {
 }
 
 #[test]
+fn old_component_checkpoint_format_is_explicitly_refused() {
+    let (mut world, _, _) = fixture();
+    let mut checkpoint = save_world(&mut world).unwrap();
+    checkpoint.format = 1;
+    let error = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap_err();
+    assert!(error.message.contains("format 1"));
+    assert!(error.message.contains("reads format 2"));
+    refused_without_touching_destination(&checkpoint, "the old component format");
+}
+
+#[test]
 fn load_merges_with_live_assets_and_enforces_destination_limits() {
     let (mut source, _, _) = fixture();
     let saved = round_trip(&save_world(&mut source).unwrap());

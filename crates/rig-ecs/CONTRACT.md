@@ -64,12 +64,14 @@ content. Pinned by the `*_image_*` goldens
 the image in the second request and after a checkpoint load; `inline_followup`: the
 image loaded from memory, once, before a text-only prompt).
 
-Content entities live in `agent::content::parts`: `TextPart`, `ImagePart`,
-`AudioPart`, `VideoPart`, `DocumentPart`, `ToolCallPart`, `ReasoningPart`, and
-`ToolResultPart`. A tool result owns ordered `TextPart`, `ImagePart`, or `JsonPart`
-children. `Role` and the assistant's `MessageId` belong to the utterance. Sibling
-orders are local indices; duplicate orders, conflicting part types, missing
-required components, and invalid role/content combinations are rejected.
+Content entities carry one reflected `agent::content::parts::ContentPart` enum:
+`Text`, `Image`, `Audio`, `Video`, `Document`, `ToolCall`, `Reasoning`, `ToolResult`,
+or `Json`. Query the component and match its variant; media metadata structs
+are fields, not independent components. A `ToolResult` owns ordered `Text`,
+`Image`, or `Json` child entities. `Role` and the assistant's `MessageId` belong
+to the utterance. Sibling order is `Children` order. Conflicting payload types
+are unrepresentable; missing required components, children on leaf parts,
+nested tool results, and invalid role/content combinations are rejected.
 `read_message` and the `ContentGraph` system parameter reconstruct transport DTOs
 at conversion boundaries. `write_message` replaces persistent utterance content;
 it does not implement a request-only patch. Individual component edits affect
@@ -231,7 +233,7 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | the output tool's call in a turn beside a granted tool's call | unpinned: no golden; the batch runs and the output tool's call is read when it lands | (none) |
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
-| the status, as data | beside each `ToolResultPart` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
+| the status, as data | beside each `ContentPart::ToolResult` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
 | the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `gather_turn` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
@@ -322,7 +324,7 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 `content::parts::RequestPartEdit` adds entity targeting: spawn a link
 `(RequestPartEdit, EditTarget(part), ChildOf(fresh_turn))` before Assemble.
-`Text` replaces only a TextPart's text, preserving annotations; `Remove` omits the
+`Text` replaces only a `ContentPart::Text`'s text, preserving annotations; `Remove` omits the
 part and its nested result items from this request. Stored history and siblings
 are unchanged. Edits run in sibling (`Children`) order; the last edit to a
 target wins. A removed parent takes precedence over edits to its children.
@@ -585,7 +587,8 @@ of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
 spawns it and returns `Loaded` (the entities by checkpoint index;
 `Loaded::with::<C>` filters them). `Checkpoint::{to_json, from_json}` are the
 wire form. `checkpoint::register_types` registers every component and wrapper
-of the crate; `RigPlugin` calls it.
+of the crate; `RigPlugin` calls it. The envelope's `format` is 2; format 1's
+separate content payload components are refused without compatibility adapters.
 
 In-flight state (`Serving`, `Streaming`, `Handler`, the cache views) is not
 reflected and never saved; relationship targets (`Children`, `Serves`, …) are

@@ -9,10 +9,39 @@ use std::collections::BTreeMap;
 use super::binary::{BinaryAssets, BinaryError, PartSource};
 use crate::agent::{MessageParts, Role, Utterance};
 
-/// A content entity, owned by an utterance or a tool-result part.
-#[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
+/// The payload of a content entity, owned by an utterance or a tool result.
+/// Tool-result items remain ordered child entities, not fields of this component.
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
-pub struct ContentPart;
+pub enum ContentPart {
+    /// Text, including provider annotations.
+    Text(#[reflect(remote = super::reflect::TextPartReflect)] message::Text),
+    /// An image with per-use metadata and a shared binary source.
+    Image(ImagePart),
+    /// Audio with per-use metadata and a shared binary source.
+    Audio(AudioPart),
+    /// Video with per-use metadata and a shared binary source.
+    Video(VideoPart),
+    /// A document with per-use metadata and a shared binary source.
+    Document(DocumentPart),
+    /// A tool call with correlation IDs, arguments, signature and metadata.
+    ToolCall(#[reflect(remote = super::reflect::ToolCallPartReflect)] message::ToolCall),
+    /// Ordered reasoning with IDs, signatures and opaque provider data.
+    Reasoning(#[reflect(remote = super::reflect::ReasoningPartReflect)] message::Reasoning),
+    /// A tool result whose children must be Text, Image or Json parts.
+    ToolResult {
+        /// The call answered by this result.
+        #[reflect(remote = crate::agent::reflect::ToolCallIdReflect)]
+        call: message::ToolCallId,
+        /// Original provider call identifiers.
+        #[reflect(remote = crate::agent::reflect::ProviderCallIdReflect)]
+        provider: Option<message::ProviderCallId>,
+        /// Executed tool name, including hook repairs.
+        name: String,
+    },
+    /// Structured JSON under a tool result; never implicitly parsed from text.
+    Json(#[reflect(remote = super::reflect::JsonPartReflect)] serde_json::Value),
+}
 
 /// A request-only edit on an ordered link entity owned by a fresh turn.
 /// Text replacement preserves annotations; removal omits the complete target.
@@ -20,7 +49,7 @@ pub struct ContentPart;
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub enum RequestPartEdit {
-    /// Replace the text of a TextPart, preserving its other fields.
+    /// Replace the text of a [`ContentPart::Text`], preserving its other fields.
     Text(String),
     /// Omit this part (including children of a tool result) from this request.
     Remove,
@@ -43,33 +72,8 @@ pub struct EditedBy(Vec<Entity>);
 #[reflect(Component)]
 pub struct MessageId(pub Option<String>);
 
-/// A text part, including provider annotations.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
-pub struct TextPart(#[reflect(remote = super::reflect::TextPartReflect)] pub message::Text);
-
-/// A tool call with correlation IDs, arguments, signature and metadata.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
-pub struct ToolCallPart(
-    #[reflect(remote = super::reflect::ToolCallPartReflect)] pub message::ToolCall,
-);
-
-/// Ordered reasoning content with IDs, signatures and opaque provider data.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
-pub struct ReasoningPart(
-    #[reflect(remote = super::reflect::ReasoningPartReflect)] pub message::Reasoning,
-);
-
-/// A structured JSON item under a tool-result part; never implicitly parsed from text.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
-pub struct JsonPart(#[reflect(remote = super::reflect::JsonPartReflect)] pub serde_json::Value);
-
-/// A image content part, retaining per-use metadata beside its shared source.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
+/// Image metadata beside its shared source, held by [`ContentPart::Image`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ImagePart {
     /// Inline source metadata or a reference to shared binary bytes.
     pub source: PartSource,
@@ -84,9 +88,8 @@ pub struct ImagePart {
     pub detail: Option<message::ImageDetail>,
 }
 
-/// A audio content part, retaining per-use metadata beside its shared source.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
+/// Audio metadata beside its shared source, held by [`ContentPart::Audio`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct AudioPart {
     /// Inline source metadata or a reference to shared binary bytes.
     pub source: PartSource,
@@ -98,9 +101,8 @@ pub struct AudioPart {
     pub additional_params: Option<message::AdditionalParams>,
 }
 
-/// A video content part, retaining per-use metadata beside its shared source.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
+/// Video metadata beside its shared source, held by [`ContentPart::Video`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct VideoPart {
     /// Inline source metadata or a reference to shared binary bytes.
     pub source: PartSource,
@@ -112,9 +114,8 @@ pub struct VideoPart {
     pub additional_params: Option<message::AdditionalParams>,
 }
 
-/// A document content part, retaining per-use metadata beside its shared source.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
+/// Document metadata beside its shared source, held by [`ContentPart::Document`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct DocumentPart {
     /// Inline source metadata or a reference to shared binary bytes.
     pub source: PartSource,
@@ -126,21 +127,7 @@ pub struct DocumentPart {
     pub additional_params: Option<message::AdditionalParams>,
 }
 
-/// Tool-result identity; its ordered children are TextPart, ImagePart or JsonPart.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
-pub struct ToolResultPart {
-    /// The call answered by this result.
-    #[reflect(remote = crate::agent::reflect::ToolCallIdReflect)]
-    pub call: message::ToolCallId,
-    /// Original provider call identifiers.
-    #[reflect(remote = crate::agent::reflect::ProviderCallIdReflect)]
-    pub provider: Option<message::ProviderCallId>,
-    /// Executed tool name, including hook repairs.
-    pub name: String,
-}
-
-/// How a tool call ended, beside its `ToolResultPart` (CONTRACT §8.1):
+/// How a tool call ended, beside its [`ContentPart::ToolResult`] (CONTRACT §8.1):
 /// graph data the batch lands, never rendered into the transport DTO — the
 /// result's content items are the same whatever the status. Absent on a
 /// result written from a DTO (`write_message`, a memory load, prior history).
@@ -207,24 +194,14 @@ pub enum ContentError {
     /// An entity or required component is missing.
     #[error("content graph is missing an entity or required component")]
     Missing,
-    /// A part has conflicting types, an invalid parent, or the wrong role.
+    /// A part has invalid children, an invalid parent, or the wrong role.
     #[error("content part has an invalid type or role")]
     Shape,
 }
 
-// Transient conversion plan. This is never a component or persisted alongside
-// the graph; planning before spawning avoids partially written utterances.
-pub(crate) enum PartValue {
-    Text(TextPart),
-    Image(ImagePart),
-    Audio(AudioPart),
-    Video(VideoPart),
-    Document(DocumentPart),
-    Call(ToolCallPart),
-    Reasoning(ReasoningPart),
-    Result(ToolResultPart, Vec<PartValue>),
-    Json(JsonPart),
-}
+// Planning before spawning avoids partially written utterances. Only tool
+// results have children, and those children cannot themselves own content.
+type PreparedParts = Vec<(ContentPart, Vec<ContentPart>)>;
 
 fn image(assets: &mut BinaryAssets, value: message::Image) -> Result<ImagePart, ContentError> {
     Ok(ImagePart {
@@ -235,53 +212,57 @@ fn image(assets: &mut BinaryAssets, value: message::Image) -> Result<ImagePart, 
     })
 }
 
-fn user(assets: &mut BinaryAssets, value: UserContent) -> Result<PartValue, ContentError> {
-    Ok(match value {
-        UserContent::Text(value) => PartValue::Text(TextPart(value)),
-        UserContent::Image(value) => PartValue::Image(image(assets, value)?),
-        UserContent::Audio(value) => PartValue::Audio(AudioPart {
+fn user(
+    assets: &mut BinaryAssets,
+    value: UserContent,
+) -> Result<(ContentPart, Vec<ContentPart>), ContentError> {
+    let mut children = Vec::new();
+    let part = match value {
+        UserContent::Text(value) => ContentPart::Text(value),
+        UserContent::Image(value) => ContentPart::Image(image(assets, value)?),
+        UserContent::Audio(value) => ContentPart::Audio(AudioPart {
             source: assets.intern(value.data)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        UserContent::Video(value) => PartValue::Video(VideoPart {
+        UserContent::Video(value) => ContentPart::Video(VideoPart {
             source: assets.intern(value.data)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        UserContent::Document(value) => PartValue::Document(DocumentPart {
+        UserContent::Document(value) => ContentPart::Document(DocumentPart {
             source: assets.intern(value.data)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
         UserContent::ToolResult(value) => {
-            let children = value
+            children = value
                 .content
                 .into_iter()
                 .map(|item| {
                     Ok(match item {
-                        ToolResultContent::Text(text) => PartValue::Text(TextPart(text)),
-                        ToolResultContent::Image(value) => PartValue::Image(image(assets, value)?),
-                        ToolResultContent::Json { value } => PartValue::Json(JsonPart(value)),
+                        ToolResultContent::Text(text) => ContentPart::Text(text),
+                        ToolResultContent::Image(value) => {
+                            ContentPart::Image(image(assets, value)?)
+                        }
+                        ToolResultContent::Json { value } => ContentPart::Json(value),
                     })
                 })
-                .collect::<Result<Vec<_>, ContentError>>()?;
-            PartValue::Result(
-                ToolResultPart {
-                    call: value.call,
-                    provider: value.provider,
-                    name: value.name,
-                },
-                children,
-            )
+                .collect::<Result<_, ContentError>>()?;
+            ContentPart::ToolResult {
+                call: value.call,
+                provider: value.provider,
+                name: value.name,
+            }
         }
-    })
+    };
+    Ok((part, children))
 }
 
 fn prepare(
     assets: &mut BinaryAssets,
     parts: MessageParts,
-) -> Result<(Role, Option<MessageId>, Vec<PartValue>), ContentError> {
+) -> Result<(Role, Option<MessageId>, PreparedParts), ContentError> {
     Ok(match parts {
         MessageParts::User { content } => (
             Role::User,
@@ -297,52 +278,25 @@ fn prepare(
             content
                 .into_iter()
                 .map(|part| {
-                    Ok(match part {
-                        AssistantContent::Text(value) => PartValue::Text(TextPart(value)),
-                        AssistantContent::Image(value) => PartValue::Image(image(assets, value)?),
-                        AssistantContent::ToolCall(value) => PartValue::Call(ToolCallPart(value)),
-                        AssistantContent::Reasoning(value) => {
-                            PartValue::Reasoning(ReasoningPart(value))
-                        }
-                    })
+                    let part = match part {
+                        AssistantContent::Text(value) => ContentPart::Text(value),
+                        AssistantContent::Image(value) => ContentPart::Image(image(assets, value)?),
+                        AssistantContent::ToolCall(value) => ContentPart::ToolCall(value),
+                        AssistantContent::Reasoning(value) => ContentPart::Reasoning(value),
+                    };
+                    Ok((part, Vec::new()))
                 })
                 .collect::<Result<_, ContentError>>()?,
         ),
     })
 }
 
-fn spawn_parts(world: &mut World, parent: Entity, parts: Vec<PartValue>) {
-    for part in parts {
-        let mut entity = world.spawn((ContentPart, ChildOf(parent)));
-        match part {
-            PartValue::Text(value) => {
-                entity.insert(value);
-            }
-            PartValue::Image(value) => {
-                entity.insert(value);
-            }
-            PartValue::Audio(value) => {
-                entity.insert(value);
-            }
-            PartValue::Video(value) => {
-                entity.insert(value);
-            }
-            PartValue::Document(value) => {
-                entity.insert(value);
-            }
-            PartValue::Call(value) => {
-                entity.insert(value);
-            }
-            PartValue::Reasoning(value) => {
-                entity.insert(value);
-            }
-            PartValue::Json(value) => {
-                entity.insert(value);
-            }
-            PartValue::Result(value, children) => {
-                let id = entity.insert(value).id();
-                spawn_parts(world, id, children);
-            }
+fn spawn_parts(world: &mut World, parent: Entity, parts: PreparedParts) {
+    for (part, children) in parts {
+        // Relationship hooks must finish before payload observers inspect siblings.
+        let entity = world.spawn(ChildOf(parent)).insert(part).id();
+        for child in children {
+            world.spawn(ChildOf(entity)).insert(child);
         }
     }
 }
@@ -362,6 +316,17 @@ pub fn write_message(
     }
     world.init_resource::<BinaryAssets>();
     let (role, id, parts) = prepare(&mut world.resource_mut::<BinaryAssets>(), parts)?;
+    replace_parts(world, utterance, role, id, parts);
+    Ok(())
+}
+
+fn replace_parts(
+    world: &mut World,
+    utterance: Entity,
+    role: Role,
+    id: Option<MessageId>,
+    parts: PreparedParts,
+) {
     let old: Vec<_> = world
         .get::<Children>(utterance)
         .map(|children| children.iter().collect())
@@ -375,7 +340,6 @@ pub fn write_message(
         entity.insert(id);
     }
     spawn_parts(world, utterance, parts);
-    Ok(())
 }
 
 fn ordered<'a>(
@@ -404,111 +368,84 @@ fn read_image(assets: &BinaryAssets, value: &ImagePart) -> Result<message::Image
     })
 }
 
-fn read_part<'a>(
+fn read_edited_part<'a>(
     get: &impl Fn(Entity) -> Option<EntityRef<'a>>,
     entity: Entity,
     nested: bool,
-) -> Result<PartValue, ContentError> {
+    edits: &BTreeMap<Entity, RequestPartEdit>,
+) -> Result<Option<ContentPart>, ContentError> {
     let entity_ref = get(entity).ok_or(ContentError::Missing)?;
-    let mut values = Vec::new();
-    macro_rules! take {
-        ($ty:ty, $variant:ident) => {
-            if let Some(value) = entity_ref.get::<$ty>() {
-                values.push(PartValue::$variant(value.clone()));
-            }
-        };
-    }
-    take!(TextPart, Text);
-    take!(ImagePart, Image);
-    take!(AudioPart, Audio);
-    take!(VideoPart, Video);
-    take!(DocumentPart, Document);
-    take!(ToolCallPart, Call);
-    take!(ReasoningPart, Reasoning);
-    take!(JsonPart, Json);
-    if let Some(value) = entity_ref.get::<ToolResultPart>() {
+    let mut value = entity_ref
+        .get::<ContentPart>()
+        .ok_or(ContentError::Shape)?
+        .clone();
+    if matches!(value, ContentPart::ToolResult { .. }) {
         if nested {
             return Err(ContentError::Shape);
         }
-        let children = ordered(get, entity)?
-            .into_iter()
-            .map(|child| read_part(get, child, true))
-            .collect::<Result<_, _>>()?;
-        values.push(PartValue::Result(value.clone(), children));
     } else if entity_ref
         .get::<Children>()
         .is_some_and(|children| !children.is_empty())
     {
         return Err(ContentError::Shape);
     }
-    if values.len() != 1 {
-        return Err(ContentError::Shape);
-    }
-    values.pop().ok_or(ContentError::Missing)
-}
-
-fn read_edited_part<'a>(
-    get: &impl Fn(Entity) -> Option<EntityRef<'a>>,
-    entity: Entity,
-    nested: bool,
-    edits: &BTreeMap<Entity, RequestPartEdit>,
-) -> Result<Option<PartValue>, ContentError> {
-    let mut value = read_part(get, entity, nested)?;
-    if edits.is_empty() {
-        return Ok(Some(value));
-    }
     match edits.get(&entity) {
         Some(RequestPartEdit::Remove) => return Ok(None),
         Some(RequestPartEdit::Text(text)) => match &mut value {
-            PartValue::Text(part) => part.0.text.clone_from(text),
+            ContentPart::Text(part) => part.text.clone_from(text),
             _ => return Err(ContentError::Shape),
         },
         None => {}
     }
-    if let PartValue::Result(_, children) = &mut value {
-        *children = ordered(get, entity)?
-            .into_iter()
-            .map(|child| read_edited_part(get, child, true, edits))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-    }
     Ok(Some(value))
 }
 
-fn to_user(assets: &BinaryAssets, value: PartValue) -> Result<UserContent, ContentError> {
+fn to_user<'a>(
+    get: &impl Fn(Entity) -> Option<EntityRef<'a>>,
+    assets: &BinaryAssets,
+    entity: Entity,
+    value: ContentPart,
+    edits: &BTreeMap<Entity, RequestPartEdit>,
+) -> Result<UserContent, ContentError> {
     Ok(match value {
-        PartValue::Text(value) => UserContent::Text(value.0),
-        PartValue::Image(value) => UserContent::Image(read_image(assets, &value)?),
-        PartValue::Audio(value) => UserContent::Audio(message::Audio {
+        ContentPart::Text(value) => UserContent::Text(value),
+        ContentPart::Image(value) => UserContent::Image(read_image(assets, &value)?),
+        ContentPart::Audio(value) => UserContent::Audio(message::Audio {
             data: assets.resolve(&value.source)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        PartValue::Video(value) => UserContent::Video(message::Video {
+        ContentPart::Video(value) => UserContent::Video(message::Video {
             data: assets.resolve(&value.source)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        PartValue::Document(value) => UserContent::Document(message::Document {
+        ContentPart::Document(value) => UserContent::Document(message::Document {
             data: assets.resolve(&value.source)?,
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        PartValue::Result(value, children) => UserContent::ToolResult(message::ToolResult {
-            call: value.call,
-            provider: value.provider,
-            name: value.name,
-            content: children
+        ContentPart::ToolResult {
+            call,
+            provider,
+            name,
+        } => UserContent::ToolResult(message::ToolResult {
+            call,
+            provider,
+            name,
+            content: ordered(get, entity)?
                 .into_iter()
+                .map(|child| read_edited_part(get, child, true, edits))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
                 .map(|part| {
                     Ok(match part {
-                        PartValue::Text(value) => ToolResultContent::Text(value.0),
-                        PartValue::Image(value) => {
+                        ContentPart::Text(value) => ToolResultContent::Text(value),
+                        ContentPart::Image(value) => {
                             ToolResultContent::Image(read_image(assets, &value)?)
                         }
-                        PartValue::Json(value) => ToolResultContent::Json { value: value.0 },
+                        ContentPart::Json(value) => ToolResultContent::Json { value },
                         _ => return Err(ContentError::Shape),
                     })
                 })
@@ -577,7 +514,10 @@ impl ContentGraph<'_, '_> {
         if owner.contains::<Utterance>() {
             return Ok(parent);
         }
-        if !owner.contains::<ToolResultPart>() {
+        if !matches!(
+            owner.get::<ContentPart>(),
+            Some(ContentPart::ToolResult { .. })
+        ) {
             return Err(ContentError::Shape);
         }
         let utterance = owner
@@ -621,7 +561,9 @@ fn read_message_from<'a>(
     let role = entity.get::<Role>().ok_or(ContentError::Missing)?;
     let values = ordered(get, utterance)?
         .into_iter()
-        .map(|entity| read_edited_part(get, entity, false, edits))
+        .map(|entity| {
+            read_edited_part(get, entity, false, edits).map(|part| part.map(|part| (entity, part)))
+        })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
@@ -634,7 +576,7 @@ fn read_message_from<'a>(
             Ok(MessageParts::User {
                 content: values
                     .into_iter()
-                    .map(|value| to_user(assets, value))
+                    .map(|(entity, value)| to_user(get, assets, entity, value, edits))
                     .collect::<Result<_, _>>()?,
             })
         }
@@ -646,14 +588,14 @@ fn read_message_from<'a>(
                 .clone(),
             content: values
                 .into_iter()
-                .map(|value| {
+                .map(|(_, value)| {
                     Ok(match value {
-                        PartValue::Text(value) => AssistantContent::Text(value.0),
-                        PartValue::Image(value) => {
+                        ContentPart::Text(value) => AssistantContent::Text(value),
+                        ContentPart::Image(value) => {
                             AssistantContent::Image(read_image(assets, &value)?)
                         }
-                        PartValue::Call(value) => AssistantContent::ToolCall(value.0),
-                        PartValue::Reasoning(value) => AssistantContent::Reasoning(value.0),
+                        ContentPart::ToolCall(value) => AssistantContent::ToolCall(value),
+                        ContentPart::Reasoning(value) => AssistantContent::Reasoning(value),
                         _ => return Err(ContentError::Shape),
                     })
                 })
@@ -670,25 +612,16 @@ pub fn collect_binary_assets(
     pins: impl IntoIterator<Item = super::binary::BinaryId>,
 ) -> Result<(), BinaryError> {
     let mut roots: Vec<_> = pins.into_iter().collect();
-    let mut query = world.query::<(
-        Option<&ImagePart>,
-        Option<&AudioPart>,
-        Option<&VideoPart>,
-        Option<&DocumentPart>,
-    )>();
-    for (image, audio, video, document) in query.iter(world) {
-        for source in [
-            image.map(|p| &p.source),
-            audio.map(|p| &p.source),
-            video.map(|p| &p.source),
-            document.map(|p| &p.source),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if let PartSource::Binary { id, .. } = source {
-                roots.push(*id);
-            }
+    for part in world.query::<&ContentPart>().iter(world) {
+        let source = match part {
+            ContentPart::Image(part) => &part.source,
+            ContentPart::Audio(part) => &part.source,
+            ContentPart::Video(part) => &part.source,
+            ContentPart::Document(part) => &part.source,
+            _ => continue,
+        };
+        if let PartSource::Binary { id, .. } = source {
+            roots.push(*id);
         }
     }
     match world.get_resource_mut::<BinaryAssets>() {
@@ -739,7 +672,12 @@ fn stamp_statuses(world: &mut World, utterance: Entity, statuses: &[ToolResultSt
         .get::<Children>(utterance)
         .into_iter()
         .flat_map(|children| children.iter())
-        .filter(|child| world.get::<ToolResultPart>(*child).is_some())
+        .filter(|child| {
+            matches!(
+                world.get::<ContentPart>(*child),
+                Some(ContentPart::ToolResult { .. })
+            )
+        })
         .collect();
     for (entity, status) in results.into_iter().zip(statuses) {
         world.entity_mut(entity).insert(*status);
@@ -757,19 +695,7 @@ pub(crate) fn replace_deferred(
         if world.get::<Utterance>(utterance).is_none() {
             return;
         }
-        let old: Vec<_> = world
-            .get::<Children>(utterance)
-            .map(|children| children.iter().collect())
-            .unwrap_or_default();
-        for child in old {
-            world.despawn(child);
-        }
-        let mut entity = world.entity_mut(utterance);
-        entity.insert(role).remove::<MessageId>();
-        if let Some(id) = id {
-            entity.insert(id);
-        }
-        spawn_parts(world, utterance, parts);
+        replace_parts(world, utterance, role, id, parts);
     });
     Ok(())
 }

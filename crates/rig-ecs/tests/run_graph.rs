@@ -237,15 +237,18 @@ fn a_patch_system_rewrites_the_folded_request_and_the_record_holds_it() {
 
 fn shout_the_prompt(
     utterances: Query<&rig_ecs::agent::Role, With<Utterance>>,
-    mut parts: Query<(&ChildOf, &mut rig_ecs::agent::content::parts::TextPart)>,
+    mut parts: Query<(&ChildOf, &mut rig_ecs::agent::content::parts::ContentPart)>,
 ) {
-    for (parent, mut text) in &mut parts {
+    for (parent, mut part) in &mut parts {
+        let rig_ecs::agent::content::parts::ContentPart::Text(text) = &mut *part else {
+            continue;
+        };
         if utterances
             .get(parent.parent())
             .is_ok_and(|role| *role == rig_ecs::agent::Role::User)
-            && !text.0.text.ends_with('!')
+            && !text.text.ends_with('!')
         {
-            text.0.text.push('!');
+            text.text.push('!');
         }
     }
 }

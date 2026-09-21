@@ -430,7 +430,8 @@ pub struct AttachedTo(Vec<Entity>);
 // Utterances: the conversation, one entity per message, `ChildOf` the run.
 
 /// An utterance: one message of the conversation, `ChildOf` its run, in
-/// sibling (`Children`) order. Its parts are content components.
+/// sibling (`Children`) order. Each content child carries one discriminated
+/// [`content::parts::ContentPart`] component; tool results own further children.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -448,7 +449,8 @@ pub enum Role {
     Assistant,
 }
 
-/// The content of one message, by role.
+/// The transport content of one message, by role. Not a graph component:
+/// [`content::parts::write_message`] stores it as ordered content entities.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(tag = "role", rename_all = "snake_case")]
 #[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]

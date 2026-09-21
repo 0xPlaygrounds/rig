@@ -25,6 +25,24 @@ the runtime retains generic scheduling, delivery and observation mechanisms.
 
 ## The run as a graph
 
+Each utterance owns ordered `ChildOf`/`Children` content entities, each carrying
+one reflected `agent::content::parts::ContentPart` enum. Query `&ContentPart`
+(or `&mut ContentPart`) and match variants such as `ContentPart::Text(text)`;
+the former separate payload components are gone. Media metadata structs are
+variant fields, not components. `ContentPart::ToolResult` owns ordered text,
+image or JSON child entities; `ToolResultStatus` remains a separate component.
+`read_message` reconstructs role-checked DTOs; `write_message` validates sources
+before replacing the graph. Binary payloads remain shared through `BinaryAssets`.
+
+Variant changes are not component additions/removals. For lifecycle-observed
+changes, insert the replacement `ContentPart` and match variants in
+`On<Insert, ContentPart>` / `On<Discard, ContentPart>` observers; these do not
+observe in-place edits. Previously disjoint mutable payload queries now access
+the same component: use one matching query, or a `ParamSet`.
+
+Checkpoint format 2 stores these enum components; format 1 checkpoints are
+refused, with no legacy component adapter.
+
 `rig_ecs::checkpoint::save_world` takes the world as reflected data: every
 entity with a registered reflected component, components by type path, an
 `Entity` in a component as that entity's checkpoint index, parents before
@@ -71,7 +89,8 @@ The request the model sees is derived, never authored: a run entity, utterances 
 |---|---|
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
-| Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim); `ChildOf` the run, in sibling (`Children`) order |
+| Utterance | `Utterance`, `Role`, `MessageId` for assistants; `ChildOf` the run, with ordered content children |
+| Content part | `ContentPart`; `ChildOf` an utterance or a `ContentPart::ToolResult` entity; optionally `ToolResultStatus` on a tool result |
 | Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a `RunPhase` (`LoadingMemory`, `Assembling`, `AwaitingModel`, `ResolvingTools`) or an ending (`Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope`, a `Name` |
 | Turn | `Turn`, `ChildOf` the run; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
 | Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
