@@ -1,34 +1,26 @@
-//! Lightweight generation of short, unique, URL-safe identifiers.
+//! Non-cryptographic random identifiers, process-local run counters, and
+//! caller-supplied conversation keys. Do not use generated IDs as secrets.
 //!
-//! These IDs are used purely to disambiguate things like in-flight tool calls
-//! and request headers — they are *not* security-sensitive and do not need a
-//! cryptographic source of randomness. We therefore generate them with
-//! [`fastrand`] (already a hard dependency of this crate) rather than pulling in
-//! `nanoid` → `rand` → `getrandom`, which would add a cryptographic RNG (and a
-//! `getrandom/js` shim on wasm) for no benefit here.
+//! ```
+//! let id = rig_core::id::generate();
+//! assert_eq!(id.len(), 21);
+//! ```
 
-/// The URL-safe alphabet used by `nanoid` (`A-Za-z0-9_-`), preserved so the
-/// shape of generated IDs is unchanged from the previous implementation.
+/// URL-safe ASCII alphabet for random identifiers.
 const ALPHABET: &[u8; 64] = b"_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-/// Default ID length, matching `nanoid`'s default.
+/// Number of characters returned by [`generate`].
 const DEFAULT_LEN: usize = 21;
 
-/// Generate a 21-character, URL-safe, non-cryptographic identifier.
-///
-/// This is a drop-in replacement for the previous `nanoid!()` usage for
-/// internal, non-security-sensitive use.
+/// Generate a 21-character URL-safe random identifier. Not cryptographically
+/// secure; collisions are possible.
 pub fn generate() -> String {
     generate_with_len(DEFAULT_LEN)
 }
 
-/// Define a process-unique counter identifier: a `NonZeroU64` minted from a
-/// process-global `AtomicU64`, the shape of `std::thread::ThreadId`,
-/// `tokio::task::Id` and `tracing::span::Id`. Unique and increasing within the
-/// process, `Copy + Hash + Ord`, transparent serde as the integer, decimal
-/// `Display`/`FromStr`, `Option<Id>` the size of `u64`. No randomness, no claim
-/// beyond the process — a host that correlates across processes composes its
-/// own scope. Zero is never issued.
+/// Define a nonzero process-local counter with transparent integer serde and
+/// decimal parsing/display. Values increase until wraparound; raw construction
+/// and deserialization do not reserve counter values.
 macro_rules! counter_id {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
@@ -44,12 +36,11 @@ macro_rules! counter_id {
                 &NEXT
             }
 
-            /// Mint a fresh id: unique within this process, greater than every
-            /// id minted before it.
+            /// Mint the next nonzero process-local counter value. Values may repeat
+            /// after wraparound or collide with raw or deserialized IDs.
             #[allow(clippy::new_without_default)]
             pub fn new() -> Self {
-                // The counter starts at 1 and would take ~585 years at one id
-                // per nanosecond to wrap; if it ever does, zero is skipped.
+                // Zero is reserved even after counter wraparound.
                 loop {
                     if let Some(raw) = std::num::NonZeroU64::new(
                         Self::counter().fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -120,22 +111,13 @@ macro_rules! counter_id {
 pub struct ParseIdError(String);
 
 counter_id! {
-    /// Identifier of one agent run within this process.
-    ///
-    /// Every hook event of a run sees the same id, and a host driving many
-    /// runs at once routes by it. Minted when a run starts; unique and
-    /// increasing within the process, not secret, and meaningful only in this
-    /// process — compose it with your own scope (a host id, a session key) to
-    /// correlate across processes.
+    /// Process-local run identifier shared by that run's hook events.
+    /// Not secret; add a host or session scope for cross-process correlation.
     RunId
 }
 
-/// Identifier of a conversation, scoping [`ConversationMemory`] persistence
-/// and threading provider-side conversation state across runs.
-///
-/// String-backed because it is user- and provider-facing (callers bring their
-/// own session keys); a newtype so it cannot be confused with the other id
-/// strings in flight, and so map keys hash a dedicated type.
+/// Caller-supplied key scoping [`ConversationMemory`] and provider conversation
+/// state across runs. Wraps the string without validation.
 ///
 /// [`ConversationMemory`]: crate::memory::ConversationMemory
 #[derive(
@@ -189,7 +171,6 @@ impl AsRef<str> for ConversationId {
 pub(crate) fn generate_with_len(len: usize) -> String {
     std::iter::repeat_with(|| {
         let idx = fastrand::usize(..ALPHABET.len());
-        // `idx` is always in bounds, but use `get` to avoid the `indexing_slicing` lint.
         ALPHABET.get(idx).copied().unwrap_or(b'_') as char
     })
     .take(len)

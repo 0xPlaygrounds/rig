@@ -60,6 +60,31 @@ hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
 The recorder implements `rig_core::serve::Recorder`; the replayer implements
 the ordinary core handler interface.
 
+Effect records require `tool_output`: `null` means no publication and an object
+means published values, including an empty map. Omitting it cannot establish
+whether values were lost, so decoding rejects omission. Replayers publish these
+values before resolving outcomes, including errors. Handlers must publish before
+resolving and must exclude inbound context, secrets, and live capabilities.
+Custom outcomes keep their JSON value in an explicit `payload` field. Nested tool
+identities retain origin tags; bare-string identities are rejected. Logs validate
+their data rather than a global format number; unknown header fields, including
+`format`, are rejected. The checkpoint envelope has its own version and does not convert
+nested payloads.
+
+Replay preserves recorded semantic families, model identities, and capabilities.
+Required keys include all scoped program rows; conflicting declarations are
+rejected. Callers reapply executable middleware. Inferred descriptors for logs
+without declarations cannot establish verified program compatibility.
+
+Consumer-visible delivery batches allow ECS to enforce recorded schedule
+boundaries. The shared replayer supplies exchanges and event sequences, while
+the classic bus does not record ECS scheduling. Without delivery metadata and
+retained stream items, replay cannot prove exact partial state or first-visible
+answer policies. Batches are not clocks, world snapshots, or external-side-effect
+guarantees. Stream error positions preserve ordering even around a final event;
+a folded outcome cannot reconstruct that order. Empty metadata is omitted, and
+logs without error positions cannot prove the original error-item sequence.
+
 For a classic agent, enable `agent`, retain an `EffectLogRecorder`, and pass a
 clone to `AgentBuilder::record_to`. Use `keeping_stream_events()` instead of
 `new()` when original stream item boundaries are required. After driving the
@@ -123,7 +148,10 @@ While a live run is in progress, `checkpoint_recording` writes the completed,
 scrubbed exchanges to a partial path without finalizing the recording.
 
 `DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
-preserve binary bodies that a text proxy cannot record. SSE and ordinary binary
+preserve binary bodies that a text proxy cannot record. When the proxy omits a
+non-UTF-8 multipart request body, replay accepts multipart input without comparing
+its missing bytes; provider unit tests must cover the multipart shape. Other
+requests with an absent recorded body must be empty. SSE and ordinary binary
 responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
@@ -135,7 +163,12 @@ supplies `crates/rig-cassette/fixtures/cassettes`; a downstream can supply
 `fixtures/cassettes` of its own instead. `Retry-After` response headers retain
 canonical seconds or HTTP dates for replay diagnostics; malformed values are
 discarded instead of persisting arbitrary server text. Generated request IDs
-remain placeholdered.
+remain placeholdered. Home-directory paths are scrubbed separately because token
+and credential scans cannot identify operator names or cache layouts. Only paths
+at the beginning of a string value are eligible, preserving embedded public URLs
+and the model basename. Spaces remain part of the path to avoid leaking account
+names. Cursor placeholders retain equality and distinction across requests and
+responses so pagination progress checks behave the same during replay.
 
 ## The corpora
 

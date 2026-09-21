@@ -1,16 +1,17 @@
+//! Target-dependent thread bounds, boxed futures, and executor-independent timers.
+//!
+//! ```
+//! use rig_core::wasm_compat::WasmBoxedFuture;
+//! let future: WasmBoxedFuture<'_, u32> = Box::pin(async { 42 });
+//! ```
+
 use bytes::Bytes;
 use std::pin::Pin;
 
 use futures::Stream;
 
-// The markers below are no-ops on browser wasm because that target has no
-// threads: a value that is `!Send` there can never reach a thread that does
-// not exist. Threaded wasm (`+atomics`) breaks that premise and is not
-// supported: reaching it needs a provider-side `Send + Sync` rewrite
-// (`Rc`→`Arc`, `RefCell`→`Mutex`, and a thread-safe wasm HTTP client), not
-// a change here. Nothing in the crate asserts `Send` by hand on the
-// strength of this premise; the bus carries `!Send` handlers only through
-// values that are themselves `!Send` there (rig-agent's `bus::Registrar`).
+// Browser markers assume single-threaded execution; atomics would invalidate
+// that assumption. Relaxed bounds do not make non-Send handlers thread-safe.
 #[cfg(all(
     target_arch = "wasm32",
     target_os = "unknown",
@@ -110,12 +111,7 @@ impl<T> WasmCompatSync for T where T: Sync {}
 impl<T> WasmCompatSync for T {}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Boxed future type that includes `Send`, except on browser wasm.
-///
-/// Gated to match [`WasmCompatSend`]/[`WasmCompatSync`] (and the streaming `Box`
-/// selection) — a `WasmBoxedFuture` returned by a `WasmCompatSend` bound (e.g.
-/// crate-private erased tool dispatch must drop `Send` under the same
-/// condition the marker relaxes it, or the two disagree on wasm.
+/// Boxed future with `Send` on the same targets as [`WasmCompatSend`].
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -134,24 +130,13 @@ impl std::fmt::Display for Elapsed {
 
 impl std::error::Error for Elapsed {}
 
-/// Await `future`, returning `Err(`[`Elapsed`]`)` if it does not complete within
-/// `duration`.
+/// Await `future` until `duration` elapses, then drop it and return [`Elapsed`].
+/// The future is polled first, even for zero duration; cancellation runs only
+/// its drop cleanup. Uses a native timer thread or browser `setTimeout`, without
+/// requiring an executor timer or a feature flag.
 ///
-/// A cross-platform (native + wasm) replacement for `tokio::time::timeout`: rig's
-/// `tokio` dependency is built without the `time` feature, and `tokio::time` does
-/// not function on wasm. This is built on [`futures_timer::Delay`], which rig
-/// already uses for SSE retry backoff.
-///
-/// On elapse the pending `future` is **dropped** (cancelled by drop); it gets no
-/// chance to run cleanup beyond its own `Drop`. A zero or already-elapsed
-/// `duration` still polls `future` once before electing `Elapsed`, and an absurdly
-/// large `duration` may panic when added to `Instant::now()` inside the timer.
-///
-/// # Wasm
-/// On browser wasm (`wasm32-unknown-unknown`) the `futures-timer` `wasm-bindgen`
-/// (`setTimeout`) backend is selected automatically via a target-scoped
-/// dependency, so the timer fires without depending on any cargo feature. (The
-/// `futures_timer::Delay` SSE retry backoff relies on the same backend.)
+/// # Panics
+/// May panic if the timer cannot represent the deadline for `duration`.
 pub async fn timeout<F>(duration: std::time::Duration, future: F) -> Result<F::Output, Elapsed>
 where
     F: Future,
@@ -167,13 +152,10 @@ where
     }
 }
 
-/// Sleep for `duration`.
+/// Sleep for `duration` using the native or browser timer backend of [`timeout`].
 ///
-/// A cross-platform (native + wasm) replacement for `tokio::time::sleep`, for
-/// the same reason as [`timeout`]: rig's `tokio` dependency is built without
-/// the `time` feature, and `tokio::time` does not function on wasm. Built on
-/// [`futures_timer::Delay`], whose backend selection (background timer thread
-/// natively, `setTimeout` on browser wasm) is documented on [`timeout`].
+/// # Panics
+/// May panic if the timer cannot represent the deadline for `duration`.
 pub async fn sleep(duration: std::time::Duration) {
     futures_timer::Delay::new(duration).await;
 }

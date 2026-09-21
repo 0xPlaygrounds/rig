@@ -1,4 +1,11 @@
-//! The effect entity's components: intent, order, identity, state, answer.
+//! Components for effect intent, ordering, identity, execution, and outcomes.
+//!
+//! ```
+//! use rig_ecs::bus::Held;
+//! let mut world = bevy_ecs::world::World::new();
+//! let effect = world.spawn(Held).id();
+//! assert!(world.get::<Held>(effect).is_some());
+//! ```
 
 use bevy_reflect::Reflect;
 use std::sync::Arc;
@@ -13,14 +20,10 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize};
 
-/// The intent: what to dispatch, and to whom. Spawn one to dispatch; the
-/// plugin does the rest. Serde, so a scene stores it. A `Completion { stream:
-/// true }` kind is dispatched as a stream (the answer accumulates in
-/// [`Streamed`]); every other kind unary.
-///
-/// Requires [`Seq`], stamped on add from the world's [`SeqCounter`] in spawn
-/// order, so a plain `commands.spawn(PendingEffect { .. })` is deterministic
-/// with no user effort.
+/// A dispatch intent containing its handler key and request.
+/// Streaming completions accumulate in [`Streamed`]; other requests are unary.
+/// Adding this component requires the bus's [`SeqCounter`] resource and stamps
+/// [`Seq`] in spawn order, replacing any supplied sequence value.
 #[derive(Component, Debug, Clone, Serialize, Deserialize, Reflect)]
 #[require(Seq)]
 #[component(on_add = stamp_seq)]
@@ -43,7 +46,7 @@ impl PendingEffect {
         }
     }
 
-    /// A typed request for a typed key: the family wraps it.
+    /// Wrap a typed request for `key`, returning any family conversion error.
     pub fn typed<F: Family>(key: &Key<F>, request: F::Request) -> Result<Self, ErrorReport> {
         Ok(Self {
             key: key.raw().clone(),
@@ -51,7 +54,8 @@ impl PendingEffect {
         })
     }
 
-    /// A custom effect for `key`: `E::KIND` and its serde payload.
+    /// Build a custom request for `key` with `E::KIND`, returning a request error
+    /// if its payload cannot be serialized.
     pub fn custom<E: CustomEffect>(
         key: impl Into<HandlerKey>,
         effect: &E,
@@ -77,12 +81,9 @@ impl PendingEffect {
     }
 }
 
-/// The dispatch order: `Dispatch` takes pending effects in ascending `Seq`,
-/// the total order the log reproduces. **Global and reserved**: the
-/// component hook stamps it from [`SeqCounter`] on every `PendingEffect`
-/// add and overwrites any value set by hand — a per-spawner counter would
-/// collide across spawners and break the order the log asserts. A scene
-/// loads its effects in their saved order, so their new `Seq`s keep it.
+/// Global dispatch order, stamped from [`SeqCounter`] whenever [`PendingEffect`]
+/// is added, replacing manually supplied values. Scene loading preserves relative
+/// order by spawning effects in saved order.
 #[derive(
     Component,
     Debug,
@@ -175,7 +176,7 @@ pub struct Issued(#[reflect(remote = crate::bus::reflect::EffectIdReflect)] pub 
 pub struct Held;
 
 /// The effect was taken: a handler is serving it. Present from `Dispatch`
-/// until `settle` closes the record — for a stream, until the returned
+/// until `settle` closes the record; for a stream, until the returned
 /// stream reaches EOF. Carries the key it occupies so serial serving is a
 /// query over this component. Never serialized: a scene stores intent.
 #[derive(Component, Debug, Clone, Reflect)]
@@ -305,20 +306,15 @@ pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<
     executions.streams.remove(&entity);
 }
 
-/// The per-tick fold of a stream: every event so far (`Changed<Streamed>`
-/// is the delta signal), the text so far, and the folded outcome once the
-/// terminal record — or an error — arrived. The [`EffectOutcome`] lands
-/// when the stream reaches EOF, so a serial key stays busy until the
-/// handler is done, as it does on rig-agent's bus.
+/// Accumulated stream events, error positions, text, and the first folded outcome.
+/// [`EffectOutcome`] is published at EOF, retaining the serial key through stream
+/// completion. Observe `Changed<Streamed>` for newly collected data.
 ///
-/// Live collection checks at most 64 queue entries per effect per pass,
-/// sharing 4,096 checks across the pass. `Replay::policy_visible()`
-/// preserves recorded delivery batches when the recorder kept event bytes.
-/// Keeping bytes alone in a driver without batch tracking promises event
-/// order only; folded recordings supply a final answer, not these partial
-/// states. A checkpoint restores a completed stream's every field. Loading
-/// an unfinished stream with delivered progress is refused because the
-/// checkpoint has no cursor with which to resume after that prefix.
+/// Live collection allows 64 queue checks per effect and 4,096 per pass.
+/// Exact replay grouping requires delivery metadata and kept items; event bytes
+/// alone establish order, and folded recordings provide only the final answer.
+/// Checkpoints restore completed streams but reject unfinished streams with
+/// delivered progress because no continuation cursor is saved.
 #[derive(Component, Debug, Default, Clone, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Streamed {
@@ -391,12 +387,13 @@ fn stamp_world_outcome(mut world: DeferredWorld<'_>, context: HookContext) {
 }
 
 impl EffectOutcome {
-    /// The answer as the family's typed answer.
+    /// Return the family's typed answer, propagating a recorded or conversion error.
     pub fn typed<F: Family>(&self) -> Result<F::Answer, ErrorReport> {
         F::unwrap(self.0.clone()?)
     }
 
-    /// A custom answer, as `E::Answer`.
+    /// Deserialize a custom answer as `E::Answer`, returning recorded errors or a
+    /// response error for a different outcome family or invalid payload.
     pub fn custom<E: CustomEffect>(&self) -> Result<E::Answer, ErrorReport> {
         match self.0.clone()? {
             Outcome::Custom { payload: value } => serde_json::from_value(value).map_err(|error| {
@@ -417,10 +414,8 @@ impl EffectOutcome {
     }
 }
 
-/// The context a tool call runs with: the inbound values the driver hands
-/// the tool beside the effect (format 5: never in it), as data on the
-/// effect entity. `Dispatch` attaches it to the handler's dispatch context; absent,
-/// the tool runs under an empty context. A scene saves it.
+/// Serializable inbound tool context attached beside the effect payload.
+/// Dispatch supplies it to the handler; absent inputs use an empty context.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct ToolInputs(#[reflect(remote = crate::bus::reflect::ToolContextReflect)] pub ToolContext);
@@ -440,11 +435,8 @@ pub struct ToolOutputs(
 #[derive(Component, Clone)]
 pub struct Publishing(pub Arc<PublishedContext>);
 
-/// The scope of a program, as data: a stable serde id of the run or agent
-/// an effect entity descends from — never a runtime handle. `Dispatch` reads
-/// the nearest `Scope` up the `ChildOf` chain (the entity's own first) into
-/// the record's `scope`, so one log written by several programs in one
-/// world reads per program.
+/// A stable serializable program scope, not a runtime handle.
+/// Dispatch records the nearest scope along `ChildOf`, checking the effect first.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Scope(pub String);
@@ -482,7 +474,7 @@ pub struct Answer<E: WorldEffect>(pub E::Reply);
 pub struct Typed<F: Family>(pub Key<F>);
 
 impl<F: Family> Typed<F> {
-    /// A pending effect for this key.
+    /// Build a pending effect for this key, returning any family conversion error.
     pub fn pending(&self, request: F::Request) -> Result<PendingEffect, ErrorReport> {
         PendingEffect::typed(&self.0, request)
     }

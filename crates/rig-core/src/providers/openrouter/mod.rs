@@ -1,22 +1,9 @@
-//! OpenRouter's model identifiers, its routing preferences, and its own view
-//! of a reply.
+//! OpenRouter model identifiers, routing preferences, and typed chat responses.
 //!
-//! OpenRouter is an OpenAI chat-completions dialect, so it has no client and
-//! no models of its own:
-//! [`openai::wire::OPENROUTER`](crate::providers::openai::wire::OPENROUTER)
-//! carries the base URL, the `OPENROUTER_API_KEY` variable, the `/key`
-//! credential check, and the gateway's own rewrites.
+//! Configure requests with [`crate::providers::openai::wire::OPENROUTER`].
+//! [`ProviderPreferences`] supplies the request's `provider` extension;
+//! [`CompletionResponse`] reads provider-specific fields from `raw`.
 //!
-//! What lives here is data: the model identifiers ([`completion`],
-//! [`transcription`], and `audio_generation` under feature `audio`), the
-//! [`ProviderPreferences`] request block, and [`CompletionResponse`] — the
-//! typed read of OpenRouter's own chat reply document. Transcripts have no
-//! typed read of their own: the gateway's extra usage fields stay on the
-//! normalized response's `raw` value.
-//!
-//! # Example
-//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
-//! `rig-reqwest`) turns it into the model.
 //! ```no_run
 //! use rig_core::completion::CompletionRequestBuilder;
 //! use rig_core::providers::openai::wire::{OPENROUTER, OpenAI};
@@ -25,7 +12,6 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let sonar = OpenAI::from_env_with(&OPENROUTER)?.chat(openrouter::PERPLEXITY_SONAR_PRO);
 //!
-//! // Routing preferences ride on the request, as `{"provider": …}`.
 //! let request = CompletionRequestBuilder::unbound("What is Rig?")
 //!     .additional_params(ProviderPreferences::new().cheapest().to_json())
 //!     .build();

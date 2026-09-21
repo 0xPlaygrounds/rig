@@ -1,44 +1,14 @@
 //! Z.AI's endpoints and model identifiers.
 //!
-//! Z.AI serves the same models over two wires, so this module is data for
-//! both and nothing else:
+//! Configure chat requests with [`crate::providers::openai::wire::ZAI`] or
+//! [`crate::providers::openai::wire::ZAI_CODING`], using `ZAI_API_KEY`.
 //!
-//! - the OpenAI chat-completions wire, as
-//!   [`openai::wire::ZAI`](crate::providers::openai::wire::ZAI) (general
-//!   platform) and
-//!   [`openai::wire::ZAI_CODING`](crate::providers::openai::wire::ZAI_CODING)
-//!   (coding platform) — one dialect at two base URLs;
-//! - the Anthropic Messages wire, as
-//!   [`anthropic::wire::ZAI`](crate::providers::anthropic::wire::ZAI), for
-//!   tools that speak Claude Code's format.
-//!
-//! Both read `ZAI_API_KEY`.
-//!
-//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
-//! `rig-reqwest`) turns it into the model.
-//!
-//! # OpenAI-compatible example
 //! ```no_run
-//! use rig_core::providers::openai::wire::{OpenAI, ZAI, ZAI_CODING};
+//! use rig_core::providers::openai::wire::{OpenAI, ZAI};
 //! use rig_core::providers::zai;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let glm_4_6 = OpenAI::from_env_with(&ZAI)?.chat(zai::GLM_4_6);
-//!
-//! // The coding platform is the same dialect at `CODING_API_BASE_URL`.
-//! let coding = OpenAI::from_env_with(&ZAI_CODING)?.chat(zai::GLM_4_6);
-//! # let _ = (glm_4_6, coding);
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! # Anthropic-compatible example
-//! ```no_run
-//! use rig_core::providers::anthropic::wire::{Anthropic, ZAI};
-//! use rig_core::providers::zai;
-//!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let glm_4_6 = Anthropic::from_env_with(&ZAI)?.messages(zai::GLM_4_6);
 //! # let _ = glm_4_6;
 //! # Ok(())
 //! # }

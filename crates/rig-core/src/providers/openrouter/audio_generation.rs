@@ -1,12 +1,9 @@
 //! OpenRouter's text-to-speech model identifiers.
 //!
-//! The request itself runs on the shared OpenAI speech wire, whose
-//! [`OPENROUTER`](crate::providers::openai::wire::OPENROUTER) dialect carries
-//! the `/audio/speech` path.
-
-// ================================================================
-// Model constants
-// ================================================================
+//! ```
+//! use rig_core::providers::openrouter::audio_generation::KOKORO_82M;
+//! assert_eq!(KOKORO_82M, "hexgrad/kokoro-82m");
+//! ```
 
 /// The `openai/gpt-4o-mini-tts-2025-12-15` model.
 pub const GPT_4O_MINI_TTS: &str = "openai/gpt-4o-mini-tts-2025-12-15";

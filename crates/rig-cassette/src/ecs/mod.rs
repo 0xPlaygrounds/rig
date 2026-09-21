@@ -3,6 +3,14 @@
 //! Add [`ReplayPlugin`] after [`rig_ecs::RigPlugin`] or
 //! [`rig_ecs::bus::BusPlugin`] before registering replay handlers. Live recording
 //! needs only [`EffectLogResource::install`]; it does not need replay systems.
+//!
+//! ```
+//! use bevy_app::App;
+//! use rig_cassette::ecs::ReplayPlugin;
+//! use rig_ecs::bus::BusPlugin;
+//! let mut app = App::new();
+//! app.add_plugins((BusPlugin::default(), ReplayPlugin));
+//! ```
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;

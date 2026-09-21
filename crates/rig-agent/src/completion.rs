@@ -1,4 +1,10 @@
 //! Runtime errors for the classic agent runtime, plus the portable completion contracts.
+//!
+//! ```
+//! use rig_agent::completion::StructuredOutputError;
+//! let error = StructuredOutputError::EmptyResponse;
+//! assert!(error.provider_response_body().is_none());
+//! ```
 
 use thiserror::Error;
 
@@ -6,8 +12,7 @@ pub use rig_core::completion::*;
 
 pub use crate::run::response::PromptError;
 
-/// Forwards the `provider_response_*` accessor trio through the variant that
-/// wraps an error which itself exposes them.
+/// Forward provider response accessors through the designated wrapped error variant.
 macro_rules! forward_provider_response_helpers {
     ($err:ident, $variant:ident, $inner:literal) => {
         impl $err {
@@ -29,7 +34,7 @@ macro_rules! forward_provider_response_helpers {
                 }
             }
 
-            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314).")]
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, ".")]
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_request_id(),
@@ -45,7 +50,7 @@ macro_rules! forward_provider_response_helpers {
                 }
             }
 
-            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " — e.g. `Retry-After` on a 429 (rig#2210).")]
+            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
                     Self::$variant(error) => error.provider_response_headers(),

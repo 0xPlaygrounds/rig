@@ -1,12 +1,5 @@
-//! [`AgentRunner`]: the hook-aware driver that turns a sans-IO
-//! [`AgentRun`] into a complete agent loop.
-//!
-//! [`AgentRun`] decides *what* to do next; it
-//! performs no IO and carries no hooks. `AgentRunner` pairs that machine with
-//! the side-effecting concerns — building and sending completion requests,
-//! executing tools, loading/saving conversation memory — and fires an
-//! [`AgentHook`] at every observable point. [`Agent::prompt`] returns an
-//! `AgentRunner`; configure it and drive it with custom, composable hooks:
+//! Hook-aware execution of [`AgentRun`] with per-run overrides, completion
+//! requests, tools, and conversation memory.
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
@@ -54,10 +47,7 @@ use super::UNKNOWN_AGENT_NAME;
 /// events the medium adds.
 #[derive(Clone)]
 pub struct AgentRunner {
-    /// The run's own copy of the agent's configuration, cloned as one unit by
-    /// [`from_agent`](Self::from_agent). Per-run overrides mutate this copy and
-    /// never the source [`Agent`]. `description` rides along unused during
-    /// execution — an accepted tradeoff for a single shared config type.
+    /// Run-local configuration; overrides never mutate the source agent.
     pub(crate) config: AgentConfig,
     /// Where the run starts: a prompt ([`Agent::prompt`]) or a persisted
     /// run to continue ([`Agent::resume`]).
@@ -294,10 +284,7 @@ impl AgentRunner {
         self
     }
 
-    /// Ignore invalid tool calls when every registered hook declines to act.
-    ///
-    /// Set what this run does with an invalid tool call no hook resolves.
-    /// See [`UnhandledInvalidToolCall`].
+    /// Set the policy for invalid tool calls that no hook resolves.
     pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
         self.unhandled_invalid_tool_call = policy;
         self
@@ -317,27 +304,14 @@ impl AgentRunner {
         self
     }
 
-    /// Execute up to `concurrency` tools at once (1 by default). Applies to
-    /// **both** the blocking [`run`](Self::run) and the streaming
-    /// [`stream`](Self::stream) paths.
+    /// Limit concurrent tool calls in awaited and streamed runs. Defaults to one;
+    /// zero is clamped to one. Sequential execution follows call order and stops
+    /// at the first terminating error; concurrent hooks and side effects may interleave.
+    /// Committed history always retains call order.
     ///
-    /// The resulting message history is the same in both paths regardless of
-    /// `concurrency`: final tool results are persisted in tool-call order. At
-    /// the default `concurrency` of 1 the two paths are fully in lock-step; with
-    /// `concurrency > 1` the tools run in parallel, so a `ToolCall`/`ToolResult`
-    /// **hook may fire in completion order** rather than call order — the
-    /// per-tool side effects interleave even though the final history does not.
-    ///
-    /// For the streaming path: the driver emits *all* of a turn's `ToolCall`
-    /// stream items eagerly (in call order) when the model turn commits, then —
-    /// only after the whole tool batch settles successfully — surfaces the
-    /// per-tool `ToolExecutionCommitted` and `ToolResult` stream items in **call
-    /// order** (never completion order), for the tools whose body actually ran.
-    /// The persisted message history is unchanged.
-    ///
-    /// A `concurrency` of 0 is clamped to 1; at `1` the tools of a turn run
-    /// strictly sequentially in call order, failing fast on the first
-    /// terminating error.
+    /// Streams emit model tool calls when the turn commits. Execution confirmations
+    /// and results appear in call order only after the whole batch succeeds;
+    /// execution confirmations exclude calls whose bodies did not run.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
         self
@@ -350,8 +324,8 @@ impl AgentRunner {
     /// [`PromptError::MemoryError`] before any completion) and appends its
     /// `messages` once it finishes. The append is acknowledged on the
     /// response's [`memory_append`](PromptResponse::memory_append): a
-    /// refused append does not fail the run, the answer stands and the
-    /// response says the transcript was not persisted. Explicit
+    /// failed append does not invalidate the answer and does not prove that no
+    /// write occurred. Explicit
     /// [`history`](Self::history) bypasses both.
     pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
@@ -380,15 +354,10 @@ impl AgentRunner {
     /// or a fresh one from its prompt and configuration. `history_override`
     /// replaces the configured chat history (e.g. with memory-loaded
     /// history) and applies only to a fresh run. Delegates to
-    /// [`build_agent_run`] — the single construction site shared with the
+    /// [`build_agent_run`], the construction site shared with the
     /// streaming driver.
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
         let prompt = match &self.origin {
-            // Cloned, not moved: `build_run` is shared by both drivers over
-            // `&self`, and the runner is handed whole to the driver next. The
-            // copy is one transcript per resumed run — the order of the runner
-            // clone a typed run already makes per attempt — and it spares a
-            // "taken" placeholder state in `RunOrigin`.
             RunOrigin::Resume(run) => return run.clone(),
             RunOrigin::Prompt(prompt) => prompt.clone(),
         };
@@ -547,11 +516,7 @@ impl AgentRunner {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
-        // A resumed run brought its history with it: nothing is loaded and
-        // nothing is saved — no `Memory` dispatch, no memory hook event, no
-        // record in the log — so its continuation is exactly the reference
-        // log's tail and a memory backend that is down cannot fail it. The
-        // driver that persisted the run owns its append (see `Agent::resume`).
+        // Resumed history is authoritative; the host that saved it owns memory append.
         let (history_override, memory_handle) = match &self.origin {
             RunOrigin::Resume(_) => (None, None),
             RunOrigin::Prompt(_) => {
@@ -585,13 +550,7 @@ impl AgentRunner {
         };
         let run = self.build_run(history_override);
 
-        // Fold the shared engine to its final response. The blocking surface
-        // uses a unary model transport and ignores the intermediate items the
-        // engine yields. The fold runs under the agent span: an adopted span
-        // (the caller's, already entered by `run`) parents the chat/tool
-        // spans as before, and a created `invoke_agent` does too instead of
-        // leaving them to whatever span polls the future. The blocking
-        // `follows_from` chain between chat/tool spans is unaffected.
+        // Instrument the fold under the captured agent span, not the poller's span.
         let record_telemetry_content = self.config.record_telemetry_content;
         let driver = drive_agent(
             self,
@@ -611,21 +570,14 @@ impl AgentRunner {
                     Ok(DriveItem::Done(done)) => response = Some(done),
                     Ok(DriveItem::Item(_)) => {}
                     Err(err) => {
-                        // The engine settles an error ending *after* yielding
-                        // it (`on_run_settled` with `SettledOutcome::Error`),
-                        // so the fold drains the engine before returning: a
-                        // fold that returned here dropped the engine at the
-                        // yield and the settled hook never fired for a
-                        // blocking run that a hook stopped or a provider
-                        // refused, while the streaming surface's consumer,
-                        // polling to the end, saw it fire.
+                        // Drain through termination so engine teardown completes
+                        // rather than being dropped at the error yield.
                         let error = streaming_error_into_prompt(err);
                         while driver.next().await.is_some() {}
                         return Err(error);
                     }
                 }
             }
-            // The engine yields `Done` unless it errored (handled above).
             response.ok_or_else(|| {
                 PromptError::CompletionError(CompletionError::ResponseError(
                     "agent run ended without producing a final response".to_string(),
@@ -669,8 +621,7 @@ pub(crate) fn memory_error_from_report(
         rig_core::error::ErrorKind::MemoryBackend => {
             rig_core::memory::MemoryError::Backend(Box::new(report))
         }
-        // A layer on the memory key denied the load: policy, and the run
-        // fails at the record.
+        // Layer denials are memory-policy failures, not backend faults.
         rig_core::error::ErrorKind::Denied => rig_core::memory::MemoryError::Policy(report.message),
         rig_core::error::ErrorKind::Http
         | rig_core::error::ErrorKind::Json

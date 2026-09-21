@@ -1,3 +1,12 @@
+//! Conversion of agents into dynamically named tools.
+//!
+//! ```
+//! use rig_agent::{Agent, tool::DynamicTool};
+//! fn delegate(agent: Agent) -> DynamicTool {
+//!     agent.into_tool()
+//! }
+//! ```
+
 use std::sync::Arc;
 
 use crate::{
@@ -19,9 +28,9 @@ const DEFAULT_AGENT_TOOL_NAME: &str = "agent_tool";
 impl Agent {
     /// Convert this agent into a runtime-defined tool.
     ///
-    /// The configured agent name becomes the tool name. Unnamed agents use
-    /// `agent_tool`. This explicit conversion keeps runtime identity out of the
-    /// statically named [`Tool`](crate::tool::Tool) trait.
+    /// Uses the configured name or `agent_tool`. The tool accepts a JSON `prompt`
+    /// string and inherits dispatch context. Invalid arguments and failed runs
+    /// become tool execution errors; successful output is returned as text.
     pub fn into_tool(self) -> DynamicTool {
         let name = self
             .config

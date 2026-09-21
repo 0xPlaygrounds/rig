@@ -1,12 +1,10 @@
 //! Venice's transcription model identifiers.
 //!
-//! The request runs on the shared OpenAI transcription wire, whose
-//! [`VENICE`](crate::providers::openai::wire::VENICE) dialect carries the
-//! `/audio/transcriptions` path.
+//! ```
+//! use rig_core::providers::venice::transcription::WHISPER_LARGE_V3;
+//! assert_eq!(WHISPER_LARGE_V3, "openai/whisper-large-v3");
+//! ```
 
-// ================================================================
-// Venice Transcription API
-// ================================================================
 /// `openai/whisper-large-v3`
 pub const WHISPER_LARGE_V3: &str = "openai/whisper-large-v3";
 /// `nvidia/parakeet-tdt-0.6b-v3`

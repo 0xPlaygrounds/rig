@@ -1,8 +1,10 @@
-//! Ollama as data: one config struct, three wires.
+//! Ollama daemon configuration and chat, embedding, and model-listing wires.
 //!
-//! Wires: [`Chat`] (`Completion`, NDJSON), [`Embeddings`] (`Embedding`) and
-//! [`Models`] (`ModelListing`). A local daemon has one dialect, so its
-//! defaults are the config's defaults rather than a table of constants.
+//! ```
+//! use rig_core::providers::ollama::Ollama;
+//! let chat = Ollama::new().chat("qwen3");
+//! assert_eq!(chat.model, "qwen3");
+//! ```
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest};
@@ -36,8 +38,8 @@ const MAX_DOCUMENTS: usize = 1024;
 pub struct Ollama {
     /// The daemon's address.
     pub base_url: String,
-    /// A bearer token, for a proxied or secured daemon. Empty — the default
-    /// — sends no credential, which is what a local daemon expects.
+    /// Bearer token for a secured daemon. Empty by default; no credential is
+    /// sent when empty.
     pub api_key: Secret,
 }
 
@@ -90,8 +92,8 @@ impl Ollama {
         }
     }
 
-    /// The embedding wire for `model`, at `ndims` dimensions when the caller
-    /// named one rather than taking the model's published width.
+    /// Build an embedding wire reporting the supplied width, known model width,
+    /// or zero if unknown. The width is metadata and is not sent to the daemon.
     pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
@@ -151,8 +153,6 @@ impl Wire for Chat {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
-        // `stream` is the only difference between the two requests, and the
-        // recorded bodies pin both spellings.
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -164,10 +164,7 @@ impl Wire for Chat {
             .request(http::Method::POST, "/api/chat")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::HttpError(error.into()))?;
-        // A streamed reply is newline-delimited JSON, not SSE; a whole reply
-        // is one record of the same shape, so the framer is the only
-        // difference the decoder ever sees. A local daemon reports no
-        // request-id header.
+        // Both modes decode the same record shape; streaming needs NDJSON framing.
         Ok(Encoded::new(
             request,
             match mode {

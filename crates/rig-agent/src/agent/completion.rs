@@ -1,3 +1,13 @@
+//! Agent configuration, request preparation, and prompting entry points.
+//!
+//! ```no_run
+//! # async fn example(agent: rig_agent::Agent) -> Result<(), rig_agent::completion::PromptError> {
+//! let response = agent.prompt("Explain ownership.").await?;
+//! println!("{}", response.output);
+//! # Ok(())
+//! # }
+//! ```
+
 use super::hook::{HookStack, RequestPatch};
 use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
@@ -27,9 +37,7 @@ use super::UNKNOWN_AGENT_NAME;
 /// A prepared completion request plus the executable Rig tool names advertised
 /// to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest {
-    /// Builder carrying the selected model handle: request preparation ran
-    /// against this handle's captured capabilities, and the same handle
-    /// executes the prepared request.
+    /// Request prepared against the selected model's capabilities.
     pub(crate) request: CompletionRequest,
     /// The messages telemetry records for this attempt.
     pub(crate) telemetry_messages: Vec<Message>,
@@ -43,33 +51,16 @@ pub(crate) struct PreparedCompletionRequest {
     pub(crate) executable_tool_names: BTreeSet<String>,
     pub(crate) allowed_tool_names: BTreeSet<String>,
     /// When Tool output mode is active, the name of the synthetic output tool
-    /// advertised to the model (allowed but not executable). See #1928.
+    /// advertised to the model, allowed but not executable.
     pub(crate) output_tool_name: Option<String>,
-    /// The output-token cap this exact attempt was prepared with — the agent's
-    /// configured value after the runner/request overrides and after the merged
-    /// completion-call [`RequestPatch`](crate::agent::hook::RequestPatch), i.e.
-    /// the structured cap that reaches the provider. A cap smuggled through
-    /// `additional_params` passthrough is not reflected here, by design: this
-    /// reports the field the request actually set.
-    ///
-    /// Carried here rather than read back off the builder because the builder is
-    /// consumed by `send`/`stream` before a turn's hooks fire, and because
-    /// provenance matters: this is the same binding applied to the request, so
-    /// it cannot drift from what was sent. Both surfaces receive this struct, so
-    /// neither can report a different number for the same attempt.
+    /// Effective structured output-token cap after runner overrides and request
+    /// patches. Does not interpret caps passed through additional parameters.
     pub(crate) max_tokens: Option<u64>,
 }
 
-/// Helper function to build a completion request from the runner's configured
-/// baseline while preserving the executable Rig tool names sent to the
-/// provider. Only the per-turn inputs — the selected model, prompt, history,
-/// committed output tool, and hook patch — arrive as parameters; everything
-/// else is read off the runner.
-///
-/// The driver's share is the IO around the protocol: retrieve this turn's
-/// tools (the one `.await`), hand them with the spec and patch to
-/// [`crate::run::prepare::prepare_request`], then bind the prepared data to the selected
-/// model's request builder and pin the snapshot to the executable set.
+/// Retrieve tools and prepare a request from runner defaults and per-turn inputs.
+/// Pins executable registrations and the selected model for this attempt.
+/// Returns retrieval, preparation, and message-validation failures.
 pub(crate) async fn build_prepared_completion_request(
     runner: &crate::agent::AgentRunner,
     ctx: &crate::agent::HookContext,
@@ -82,8 +73,6 @@ pub(crate) async fn build_prepared_completion_request(
     let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
-    // Retrieved tools keep their existing query-selection behavior: prefer the
-    // current prompt's RAG text, then the latest matching history message.
     let retrieval_query = prompt.rag_text().or_else(|| {
         chat_history
             .iter()
@@ -166,15 +155,12 @@ pub(crate) async fn build_prepared_completion_request(
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
-        // The post-patch binding from above — the one `.max_tokens(..)`
-        // put on the request.
         max_tokens,
     })
 }
 
-/// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
-/// (i.e.: system prompt) and a static set of context documents and tools.
-/// All context documents and tools are always provided to the agent when prompted.
+/// Configured model, request settings, hooks, memory, and tool registry for runs.
+/// Per-run overrides and dynamic retrieval determine each turn's effective request.
 ///
 /// Default hooks attached with [`AgentBuilder::add_hook`](crate::agent::AgentBuilder::add_hook)
 /// are used for every prompt request, plus any added on the request or runner.
@@ -204,12 +190,7 @@ pub struct Agent {
     pub(crate) tool_server_handle: ToolServerHandle,
 }
 
-/// Everything an [`AgentBuilder`](crate::agent::AgentBuilder) configures and the
-/// built [`Agent`] carries unchanged.
-///
-/// Building only moves this across and resolves the tool state into a
-/// [`ToolServerHandle`], so a new setting is declared once here instead of in
-/// two parallel field lists.
+/// Configuration shared by the builder and built agent, separate from tool state.
 #[derive(Clone)]
 pub(crate) struct AgentConfig {
     /// Name of the agent used for logging and debugging
@@ -248,8 +229,7 @@ pub(crate) struct AgentConfig {
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub(crate) output_schema: Option<schemars::Schema>,
-    /// How `output_schema` is enforced — tool call, native structured output, or
-    /// prompt injection (see [`OutputMode`] and issue #1928).
+    /// How the schema is conveyed: output tool, native constraint, or prompt.
     pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
     pub(crate) memory_key: Option<Key<family::Memory>>,
@@ -372,10 +352,8 @@ impl AgentConfig {
 }
 
 impl Agent {
-    /// The protocol-facing configuration of this agent as plain data
-    /// ([`RunSpec`](crate::run::spec::RunSpec)): preamble, static context, sampling
-    /// parameters, turn budget, tool choice and structured-output policy —
-    /// everything a run needs that is not a model, a tool, a hook or a memory.
+    /// Return serializable request settings and run policy, excluding live models,
+    /// tools, hooks, and memory.
     pub fn run_spec(&self) -> crate::run::spec::RunSpec {
         self.config.run_spec()
     }
@@ -487,7 +465,7 @@ impl Agent {
 
     /// The effect row this program can dispatch to: its model, every tool
     /// the registry serves, its memory backend and its retrieval indexes,
-    /// each with the family it needs — from the registry, not from what a
+    /// each with the family it needs, from the registry rather than what a
     /// run happened to dispatch.
     pub fn required_row(&self) -> rig_core::effect::EffectRow {
         use rig_core::effect::EffectFamily;
@@ -623,8 +601,8 @@ impl Agent {
     /// Continue a persisted run instead of starting one from a prompt.
     ///
     /// The state a driver serialized between steps (see [`AgentRun`]) is
-    /// picked up where it stopped — its pending tool calls execute, its next
-    /// model turn is asked for — under this agent's hooks, tools and bus.
+    /// resumed under this agent's hooks, tools, and bus, executing pending tool
+    /// calls or requesting the next model turn.
     /// The run is authoritative for what it persisted: its prompt, its
     /// history, its turn budget and its invalid-tool-call retry budget, so
     /// [`history`](AgentRunner::history) and [`max_turns`](AgentRunner::max_turns)
@@ -643,7 +621,7 @@ impl Agent {
     /// unhandled-invalid-tool-call policy is the run's on the blocking path
     /// and the runner's on the streamed path. Conversation memory is neither
     /// loaded nor appended: the history is already in the run, and the driver
-    /// that persisted it owns its memory — it appends the finished run's
+    /// that persisted it owns memory persistence and appends the finished run's
     /// `messages` itself, since a suspended run never reached the `Done`
     /// append, so the response's `memory_append` is `None`. Pending tool
     /// calls re-execute on resume: a tool that ran before the suspension and
@@ -695,15 +673,17 @@ impl Agent {
     /// run's structured-output schema. Providers that support native structured
     /// outputs constrain the model's response to match it.
     ///
-    /// ```rust,ignore
-    /// #[derive(Debug, Deserialize, JsonSchema)]
+    /// ```no_run
+    /// # async fn example(agent: rig_agent::Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
     /// struct WeatherForecast { city: String, temperature_f: f64 }
-    ///
     /// let forecast = agent
     ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
     ///     .max_turns(3)
     ///     .await?
     ///     .output;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn prompt_typed<T>(&self, prompt: impl Into<Message>) -> TypedRun<T>
     where

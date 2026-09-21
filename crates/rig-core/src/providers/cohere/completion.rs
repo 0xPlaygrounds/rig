@@ -1,3 +1,12 @@
+//! Cohere chat request conversion and typed responses, usage, citations, and tools.
+//!
+//! ```
+//! use rig_core::providers::cohere::completion::FinishReason;
+//! let reason: FinishReason = serde_json::from_str("\"COMPLETE\"")?;
+//! assert_eq!(reason, FinishReason::Complete);
+//! # Ok::<(), serde_json::Error>(())
+//! ```
+
 use crate::{
     completion::{self, CompletionError},
     json_utils,
@@ -22,7 +31,8 @@ pub struct CompletionResponse {
 }
 
 impl CompletionResponse {
-    /// Return that parts of the response for assistant messages w/o dealing with the other variants
+    /// Clone assistant content, citations, and tool calls. Returns a response
+    /// error when the message is not an assistant message.
     pub fn message(
         &self,
     ) -> Result<(Vec<AssistantContent>, Vec<Citation>, Vec<ToolCall>), CompletionError> {
@@ -56,11 +66,8 @@ pub enum FinishReason {
     Other(String),
 }
 
-/// Map Cohere's `finish_reason` onto rig's normalized vocabulary.
-///
-/// `ERROR` — and anything Cohere adds later — is carried through as
-/// [`completion::FinishReason::Other`] in Cohere's own wire spelling instead of
-/// being flattened into a natural stop.
+/// Normalize the terminal reason, preserving `ERROR` and unknown values as
+/// [`completion::FinishReason::Other`] rather than treating them as natural stops.
 pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReason {
     match reason {
         FinishReason::Complete | FinishReason::StopSequence => completion::FinishReason::Stop,
@@ -82,8 +89,8 @@ pub struct Usage {
     pub cached_tokens: Option<f64>,
 }
 
-/// `tokens` is the total-usage counter; `billed_units` excludes cached input
-/// and system overhead, silently undercounting.
+/// Normalize total token counters, not billed units, which exclude cached input
+/// and system overhead. A total requires both input and output counts.
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> crate::completion::Usage {
         let tokens = usage.tokens.as_ref();
@@ -132,16 +139,8 @@ pub struct Tokens {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Document {
     pub id: String,
-    /// Document metadata plus its `text`.
-    ///
-    /// Serialized in sorted key order: `HashMap` iteration order is randomized
-    /// per instance, and documents sit inside the `messages` block that Cohere's
-    /// prompt cache keys on. An unsorted map therefore gave every request
-    /// carrying a document a different prefix, so the cache could never hit —
-    /// see [`crate::json_utils::serialize_map_sorted`]. Rig already sorts the
-    /// same metadata deliberately when rendering a document into prompt text
-    /// (`crate::completion::Document`'s `Display`); this makes the native
-    /// document block agree with it.
+    /// Document text and metadata, serialized in sorted key order to keep
+    /// prompt-cache prefixes stable across map instances.
     #[serde(serialize_with = "crate::json_utils::serialize_map_sorted")]
     pub data: HashMap<String, serde_json::Value>,
 }
@@ -150,8 +149,6 @@ impl From<completion::Document> for Document {
     fn from(document: completion::Document) -> Self {
         let mut data: HashMap<String, serde_json::Value> = HashMap::new();
 
-        // We use `.into()` here explicitly since the `document.additional_props` type will likely
-        //  evolve into `serde_json::Value` in the future.
         document
             .additional_props
             .into_iter()

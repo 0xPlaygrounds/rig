@@ -1,13 +1,11 @@
 //! Venice's text-to-speech model identifiers.
 //!
-//! The request runs on the shared OpenAI speech wire, whose
-//! [`VENICE`](crate::providers::openai::wire::VENICE) dialect carries the
-//! `/audio/speech` path.
+//! ```
+//! use rig_core::providers::venice::audio_generation::TTS_KOKORO;
+//! assert_eq!(TTS_KOKORO, "tts-kokoro");
+//! ```
 
-// ================================================================
-// Venice TTS API
-// ================================================================
-/// `tts-kokoro` — Venice's default TTS model.
+/// Identifier for `tts-kokoro`.
 pub const TTS_KOKORO: &str = "tts-kokoro";
 /// `tts-xai-v1`
 pub const TTS_XAI_V1: &str = "tts-xai-v1";

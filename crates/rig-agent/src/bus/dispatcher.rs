@@ -1,5 +1,10 @@
-//! The client half of the bus: `Dispatcher`, and the `Pending`/`EffectStream`
-//! values a dispatch returns.
+//! Bus dispatch, descriptor snapshots, and lazy unary or streaming replies.
+//!
+//! ```
+//! use rig_agent::bus::Bus;
+//! let (dispatcher, _registrar, _driver) = Bus::channel();
+//! assert!(dispatcher.keys().is_empty());
+//! ```
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -28,23 +33,14 @@ use rig_core::{
     tool::{PublishedContext, ToolContext},
 };
 
-/// State shared between every `Dispatcher` clone, every `Registrar` and the
-/// driver. Holds only `Send + Sync` data — serde descriptors, the command
-/// queue, atomics — which is what makes `Dispatcher: Send + Sync` on every
-/// target by construction; handlers never pass through here.
+/// Shared descriptors, queue, and cancellation state. Contains no handlers so
+/// dispatchers remain `Send + Sync` on every target.
 pub(super) struct Shared {
     next_id: AtomicU64,
-    /// The descriptor table: what serves each key, as data. Registration
-    /// writes it synchronously from either side — so a descriptor read or
-    /// a typed bind made while nobody is driving (an MCP reconcile, a sync
-    /// `add_tool`) never waits on the driver — while the handler itself
-    /// travels to the driver, which owns the only handler table.
+    /// Synchronously published descriptors; reads and typed binds do not require
+    /// driver polling. Handlers reside only in the driver.
     descriptors: RwLock<BTreeMap<HandlerKey, HandlerDescriptor>>,
-    /// The command queue: one bounded buffer for the whole bus. The bound is
-    /// bus-wide on purpose — a per-sender channel would hand every
-    /// `Dispatcher` clone (and every dispatch, if each cloned a sender) a
-    /// guaranteed slot of its own, and `command_capacity` would bound
-    /// nothing.
+    /// Bus-wide bounded buffer. Cloning a dispatcher must not increase capacity.
     queue: Mutex<CommandQueue>,
     /// Live `Dispatcher` clones. The driver ends when this reaches zero with
     /// nothing queued or in flight.
@@ -59,10 +55,8 @@ pub(super) struct Shared {
     /// Set by the driver's drop guard: every reply that comes back
     /// `Canceled` after this is `BusClosed`, not a handler defect.
     closed: AtomicBool,
-    /// Set by the driver once every `Dispatcher` has dropped and the buffer
-    /// is empty: the driver will not drain again, so a `Pending` created
-    /// before its dispatcher went and polled after answers `BusClosed` at
-    /// once instead of waiting for the driver's last in-flight work to end.
+    /// Prevents sends after the last consumer dispatcher drops and the queue
+    /// empties, even while handlers remain in flight.
     commands_closed: AtomicBool,
 }
 
@@ -89,9 +83,7 @@ pub(super) enum Enqueue {
     Parked(Command),
     Refused(Command),
     Cancelled(Command),
-    /// The driver is gone. Decided under the queue lock, so a command can
-    /// never slip into the buffer after the close emptied it; the command is
-    /// dropped (its reply half with it — the caller answers `BusClosed`).
+    /// Driver is gone; the command was dropped under the queue's closure protocol.
     Closed,
 }
 
@@ -102,14 +94,8 @@ struct CommandQueue {
     /// The driver's waker, refreshed on every driver poll; woken when a
     /// command is enqueued or the last dispatcher drops.
     driver: Option<Waker>,
-    /// The `Pending`/`EffectStream` values parked at the send stage because
-    /// the buffer was full — **one slot per value**, however many times it
-    /// is polled while parked (a frame-ticked host polls it once per frame
-    /// with a fresh waker each time; the value's `AtomicWaker` keeps only
-    /// the latest). All woken whenever the driver drains — the buffer is
-    /// empty after every drain, however it emptied — and when the bus
-    /// closes or a chain is cancelled; a slot whose value was dropped is
-    /// skipped.
+    /// One weak waker slot per parked reply, updated on repoll. Live senders wake
+    /// on every drain, closure, or chain cancellation.
     senders: Vec<Weak<AtomicWaker>>,
 }
 
@@ -132,14 +118,9 @@ impl Shared {
         }
     }
 
-    /// Close the bus for commands if nothing can send one any more: no
-    /// dispatcher is open and nothing is buffered. Decided and stored
-    /// **under the queue lock**, as `mark_closed` stores `closed`: `enqueue`
-    /// reads the flag under the same lock, so a `Pending` that outlived its
-    /// dispatcher cannot land a command in the buffer between this check and
-    /// this store — which would have been a command the driver, already
-    /// `Ready`, never takes. Returns whether the bus is now closed for
-    /// commands.
+    /// Close command submission when no consumer dispatcher or queued command
+    /// remains. The queue lock prevents late sends from replies that outlived
+    /// their dispatcher. Returns whether submission is now closed.
     pub(super) fn try_close_commands(&self) -> bool {
         let queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         if queue.commands.is_empty() && self.dispatchers() == 0 {
@@ -183,13 +164,8 @@ impl Shared {
     }
 
     pub(super) fn mark_closed(&self) {
-        // Commands the driver never took fail now — their reply halves live
-        // in this buffer, not in the driver, so nothing else would close
-        // them — and parked senders wake to observe the close. The flag is
-        // set *under the queue lock*: `enqueue` reads it under the same
-        // lock, so a dispatch whose first poll saw the bus open cannot land
-        // its command in the buffer after this emptied it — which would
-        // have been a dispatch nobody ever answers.
+        // Close atomically with draining so no late send can escape failure.
+        // Fail replies and wake senders outside the lock to allow reentrant callbacks.
         let (commands, senders) = {
             let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
             self.closed.store(true, Ordering::SeqCst);
@@ -204,11 +180,9 @@ impl Shared {
         wake_parked(senders);
     }
 
-    /// Offer `command` to the buffer. A full buffer hands the command back
-    /// (`Parked`) and parks the caller — `parked` is the caller's one slot,
-    /// which `cx`'s waker is stored in — until the driver drains; the
-    /// caller keeps the command and retries when woken. A dispatch that
-    /// would queue behind the handler that is making it is `Refused`.
+    /// Offer a command, returning ownership when parked, cancelled, or refused.
+    /// Parked callers retry after waking; serial dispatches behind an active
+    /// ancestor serving the same key are refused.
     pub(super) fn enqueue(
         &self,
         command: Command,
@@ -252,13 +226,8 @@ impl Shared {
         Enqueue::Sent
     }
 
-    /// Take every buffered command (the driver's side), registering `cx` as
-    /// the waker to wake on the next enqueue, and release every parked
-    /// sender: the buffer is empty after a drain, whether this drain took
-    /// the commands that filled it or something else already dropped them
-    /// (an orphaned descendant failed by [`Self::fail_cancelled_buffered`]).
-    /// A sender woken to a buffer that has since refilled parks again; a
-    /// sender left parked on a buffer with room would never be woken.
+    /// Take all commands, register the driver waker, and wake parked senders.
+    /// Senders wake even when cancellation already emptied the queue.
     pub(super) fn drain(&self, cx: &Context<'_>) -> VecDeque<Command> {
         // Raw waker clone/drop callbacks may reenter the dispatcher too.
         let next_driver = cx.waker().clone();
@@ -310,11 +279,9 @@ impl Shared {
         self.closed.load(Ordering::SeqCst)
     }
 
-    /// Publish the descriptor of the handler that will serve `key`, stamped
-    /// with the key it is registered under (the registration is
-    /// authoritative; a handler's self-declared key is only a default). A
-    /// replacement must keep the key's family: a bound handle checked its
-    /// family at bind time, and that check stays true for its lifetime.
+    /// Publish a descriptor under the registration key, overriding its declared
+    /// key. Returns `HandlerUnavailable` if an existing registration has a
+    /// different family. Removal permits a subsequent change of family.
     pub(super) fn publish_descriptor(
         &self,
         key: HandlerKey,
@@ -686,19 +653,11 @@ impl Reply {
     }
 }
 
-/// The client half of the bus: sends effects, reads descriptors, binds typed
-/// views. `Clone + Send + Sync + 'static` on every target **by
-/// construction** — it holds serde data, channels and atomics, never a
-/// handler; handlers are the [`Registrar`](super::Registrar)'s business.
+/// Cloneable bus client for dispatching effects and reading descriptors.
+/// It is `Send + Sync` on every target and owns no handlers.
 ///
-/// A dispatcher never blocks and never awaits: [`Dispatcher::dispatch`] and
-/// [`Dispatcher::dispatch_stream`] return immediately, and the *first poll*
-/// of the returned [`Pending`]/[`EffectStream`] performs the (possibly
-/// back-pressured) send. The command buffer is bounded **bus-wide** by
-/// [`ServingPolicy::command_capacity`](rig_core::serve::ServingPolicy::command_capacity):
-/// a full buffer lands its pressure on the value being polled, never on the
-/// caller — a system that dispatches from inside a frame cannot deadlock the
-/// app, and a burst of dispatches cannot grow the buffer past the bound.
+/// Dispatch methods create lazy replies; polling those replies attempts the
+/// send. A full bus-wide command queue parks the reply until capacity is available.
 pub struct Dispatcher {
     lineage: Option<Arc<Lineage>>,
     pub(super) shared: Arc<Shared>,
@@ -726,14 +685,8 @@ impl Dispatcher {
         }
     }
 
-    /// A dispatcher whose dispatches descend from `parent`: what a handler
-    /// serving `parent` dispatches through.
-    ///
-    /// A consumer's dispatcher holds the bus open for commands; a handler's
-    /// scoped one does not — the dispatch it serves does, while it is in
-    /// flight. So the count of open dispatchers is the count of consumers',
-    /// and a bus whose consumers are all gone closes for commands even with
-    /// handlers in flight, exactly as before.
+    /// Create a handler dispatcher retaining ancestry without increasing the
+    /// consumer count. Handler dispatchers cannot keep command submission open.
     pub(super) fn parented(
         shared: Arc<Shared>,
         stream_capacity: usize,
@@ -755,12 +708,8 @@ impl Dispatcher {
         self.parent
     }
 
-    /// A dispatcher whose every dispatch — and every handle bound from it,
-    /// and every nested dispatch a handler makes while serving one —
-    /// carries `scope`: the record's `scope`, a stable id of the program
-    /// dispatching, so a log several programs write in one world reads per
-    /// program. The id is the caller's (a run id, an agent name), never a
-    /// runtime handle.
+    /// Clone with a caller-supplied recording scope inherited by bound handles
+    /// and nested dispatches. Use a stable program identifier, not a runtime handle.
     pub fn scoped(&self, scope: impl Into<Arc<str>>) -> Self {
         let mut dispatcher = self.clone();
         dispatcher.scope = Some(scope.into());
@@ -896,10 +845,8 @@ impl Dispatcher {
         }
     }
 
-    /// A dispatch refused before any send — a typed request with no wire
-    /// form — as a [`Pending`] that resolves `report` on its first poll. It
-    /// never reaches the buffer, a handler or a recorder; the id is minted so
-    /// a host's bookkeeping keys it like any dispatch.
+    /// Create an identified reply that resolves to `report` on first poll without
+    /// reaching the command queue, handler, or recorder.
     pub(crate) fn refused(&self, report: ErrorReport) -> Pending {
         let (_reply, receiver) = oneshot::channel();
         let (cancel_guard, _cancel) = oneshot::channel();
@@ -915,10 +862,8 @@ impl Dispatcher {
         }
     }
 
-    /// Dispatch a streaming effect. Legal only for kinds whose family
-    /// streams — today `Completion { stream: true }` alone; a stream
-    /// dispatch of a unary kind resolves as one failed item with an
-    /// invalid-dispatch report and never reaches a handler.
+    /// Dispatch a streaming effect. A non-streaming kind yields one request
+    /// error without reaching a handler.
     pub fn dispatch_stream(&self, key: &HandlerKey, kind: EffectKind) -> EffectStream {
         self.dispatch_stream_with(key, kind, DispatchOptions::default())
     }
@@ -998,7 +943,7 @@ impl Dispatcher {
         }
     }
 
-    /// The descriptor of the handler serving `key` — a snapshot of the
+    /// The descriptor of the handler serving `key`: a snapshot of the
     /// descriptor table, no round trip. `None` when nothing serves the key.
     pub fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
         self.shared.descriptor(key)
@@ -1009,19 +954,14 @@ impl Dispatcher {
         self.shared.keys()
     }
 
-    /// Every registered descriptor, in key order, as one snapshot under one
-    /// lock — a registration made while a host iterates cannot tear it.
-    /// The scene half of a bus: what a save stores.
+    /// Every registered descriptor in key order, captured under one read lock.
     pub fn descriptors(&self) -> Vec<HandlerDescriptor> {
         self.shared.descriptors()
     }
 
-    /// This bus's identity for as long as it lives: distinct from every
-    /// other live bus in the process, the same for every clone and handle
-    /// over this bus. Derived from the bus's allocation, so it is **not** a persistent
-    /// identifier: a scene stores keys and descriptors, never a `BusId`. Its
-    /// use is in-memory bookkeeping — `EffectId`s are minted per bus, so a
-    /// host with two buses keys its map by `(BusId, EffectId)`.
+    /// Process-local identity shared by clones and distinct from other live
+    /// buses. Do not persist it; allocations may reuse IDs after a bus is dropped.
+    /// Pair it with bus-local `EffectId`s for cross-bus bookkeeping.
     pub fn id(&self) -> BusId {
         self.shared.id()
     }
@@ -1032,11 +972,8 @@ impl Dispatcher {
         self.shared.is_closed()
     }
 
-    /// Commands buffered on the bus and not yet taken by the driver — at
-    /// most [`ServingPolicy::command_capacity`](rig_core::serve::ServingPolicy::command_capacity).
-    /// A dispatch that finds the buffer full parks at its send stage (its
-    /// poll stays `Pending`) until the driver drains; the pressure is on the
-    /// `Pending`/`EffectStream`, never on the caller.
+    /// Number of commands queued for the driver, bounded by the configured
+    /// command capacity (clamped to at least one).
     pub fn buffered(&self) -> usize {
         self.shared.buffered()
     }
@@ -1093,10 +1030,7 @@ enum PendingState {
     Failed(Option<ErrorReport>),
 }
 
-/// What a dispatch may carry beside the effect. Every field is optional and
-/// they compose: [`Dispatcher::dispatch_with`] and
-/// [`Dispatcher::dispatch_stream_with`] take one value in place of a method
-/// per combination.
+/// Optional dispatch identity, tool inputs, and adapter observation context.
 #[derive(Debug, Default)]
 pub struct DispatchOptions {
     /// An id minted earlier with [`Dispatcher::mint_id`], so the caller can
@@ -1132,11 +1066,8 @@ impl DispatchOptions {
     }
 }
 
-/// A unary dispatch in flight: a plain `Unpin` future with no executor
-/// affinity, resolving to the outcome or a report. Dropping it cancels the
-/// dispatch (the owned reply is dropped). A host that ticks rather
-/// than awaits does not hold one: it holds effects as entities
-/// (`rig_ecs::bus`).
+/// Executor-independent unary reply resolving to an outcome or error report.
+/// Dropping it signals cancellation; handler cleanup requires polling the driver.
 #[must_use = "a dispatch does nothing until polled"]
 pub struct Pending {
     id: EffectId,
@@ -1247,11 +1178,9 @@ enum StreamState {
     Done,
 }
 
-/// A streaming dispatch in flight: a plain `Unpin` stream of
-/// `Result<StreamEvent, ErrorReport>`, `Final`-terminated. Dropping it
-/// cancels the dispatch: the handler's next send fails and the provider
-/// stream is dropped. Pause is client-side back-pressure — stop polling and
-/// the bounded channel stalls the handler.
+/// Executor-independent stream of events ending with `Final` or an error.
+/// Dropping signals cancellation; polling the driver releases handler work.
+/// Pausing consumption applies backpressure through the bounded event channel.
 #[must_use = "a dispatch does nothing until polled"]
 pub struct EffectStream {
     id: EffectId,
@@ -1355,12 +1284,7 @@ impl Stream for EffectStream {
                             Poll::Ready(Some(item))
                         }
                         Poll::Ready(None) => {
-                            // The returned stream ended. After the terminal
-                            // that is the normal end; before it, the stream
-                            // was cut short — by the bus closing, or by a
-                            // handler that ended without its `Final` — and
-                            // the consumer is told so as one last item rather
-                            // than left to infer it from silence.
+                            // Missing terminal events must surface as errors, not silent EOF.
                             let terminated = *saw_terminal;
                             this.state = StreamState::Done;
                             if terminated {
@@ -1382,9 +1306,7 @@ impl Stream for EffectStream {
 const _: () = {
     const fn assert_dispatcher<T: Clone + Send + Sync + 'static>() {}
     const fn assert_unpin<T: Unpin + 'static>() {}
-    // The values a dispatch returns are `Send` on every target — a Bevy
-    // `Component` in the browser too — not only natively: they hold serde
-    // data, channels and atomics, never a handler.
+    // Browser ECS components also require Send; replies must never contain handlers.
     const fn assert_send<T: Send + 'static>() {}
     assert_dispatcher::<Dispatcher>();
     assert_unpin::<Pending>();

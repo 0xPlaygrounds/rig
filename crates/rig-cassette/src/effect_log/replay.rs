@@ -1,4 +1,11 @@
-//! Replaying a recorded [`EffectLog`] as a handler.
+//! Handlers that replay recorded effect requests, outcomes, and stream items.
+//!
+//! ```
+//! use rig_cassette::effect_log::{EffectLog, EffectLogReplayer};
+//! let handlers = EffectLogReplayer::for_log(&EffectLog::default())?;
+//! assert!(handlers.is_empty());
+//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! ```
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -18,11 +25,9 @@ use rig_core::serve::{Dispatch, Reply, Serve};
 
 use super::{EffectLog, stable_hash};
 
-/// How a replayer compares an incoming request with the record's: by the
-/// whole payload as data (the divergence names the first differing JSON
-/// pointer), or by [`stable_hash`] of each (the divergence names the two
-/// hashes). A replayer's mode, never a log's: the records hold the request
-/// either way, and the mode decides what a replay refuses.
+/// Selects request comparison by payload or [`stable_hash`].
+/// Payload diagnostics name the first differing field path; hash diagnostics
+/// include both hashes. Records retain the full request in either mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestCheck {
@@ -53,21 +58,12 @@ impl ReplayRefusals {
     }
 }
 
-/// A handler that answers dispatches from a recorded log instead of a
-/// provider: the replay half of record/replay.
+/// Replays one handler key's recorded dispatches, checking incoming requests
+/// and returning divergence errors for missing or mismatched records.
 ///
-/// One replayer serves one key, in one of two modes. **By position**
-/// ([`for_key`](Self::for_key)): it answers that key's records in recorded
-/// order, checking each incoming effect's family against the record's; a
-/// divergence (a different family, or more dispatches than records) fails
-/// the dispatch with a report naming the position, never with a guess —
-/// the mode for a runtime that mints its own ids. **By id**
-/// ([`for_key_by_id`](Self::for_key_by_id)): it answers each dispatch
-/// with the record of the dispatch's own id, whatever order the dispatches
-/// arrive in — the mode for a world that re-issues effects under their
-/// recorded ids, where the replayer is then a pure function of the log and
-/// the id. The optional runtime adapters register one per key
-/// (`rig_cassette::agent::replay::register_all`; `rig_cassette::ecs::Replay`).
+/// [`for_key`](Self::for_key) consumes records in order for runtimes that mint
+/// new IDs. [`for_key_by_id`](Self::for_key_by_id) consumes records by their
+/// recorded IDs regardless of arrival order.
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,
@@ -96,14 +92,9 @@ impl Records {
 }
 
 impl EffectLogReplayer {
-    /// A replayer for `key`, holding that key's records from `log` in
-    /// order. A key the header's required row names but the log never
-    /// dispatched — a tool the program advertised and the model never
-    /// called — is served too, from its advertised definition, and answers
-    /// any dispatch with a divergence. Refused by name when neither the
-    /// records nor the required row know the key, or when the row names a
-    /// key of a family only the handler table can describe and the table
-    /// has no entry for it — there is nothing to describe the handler by.
+    /// Build an ordered replayer for `key`, validating the log header.
+    /// Required keys without records return divergence on dispatch. Returns an
+    /// error if the key is unknown or lacks enough metadata to describe it.
     pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
         let records = Self::records_of(log, key);
         let by_position: VecDeque<EffectRecord> = records.into();
@@ -214,9 +205,9 @@ impl EffectLogReplayer {
         self.check
     }
 
-    /// Every key the log mentions, in first-appearance order, then every
-    /// key the required row names that no record does, each with its
-    /// replayer.
+    /// Build replayers in record first-appearance order, followed by missing keys
+    /// from the required and scoped program rows. Returns an error for invalid
+    /// headers or keys that cannot be described.
     pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
         Self::check_header(log)?;
         Self::keys_of(log)
@@ -257,9 +248,9 @@ impl EffectLogReplayer {
         keys
     }
 
-    /// Check that each recorded key named by the signature has records of
-    /// that family. Logs have no global version gate: decoding validates
-    /// required data fields, while replay checks identity and requests.
+    /// Validate stream error positions, consistent key families and descriptors,
+    /// and descriptor coverage for scoped programs. Returns an error for invalid
+    /// or conflicting metadata.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
         for (id, errors) in &log.header.stream_errors {
             let events = log
@@ -383,9 +374,8 @@ fn divergence_under(
     }
 }
 
-/// Why `got` is not the effect that was recorded — never a guess: a family
-/// change, a different tool name or arguments, or any other difference in
-/// the payload.
+/// Return a diagnostic for a request mismatch or serialization failure, or
+/// `None` when the serialized requests match.
 fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
     if recorded.family() != got.family() {
         return Some(format!(
@@ -413,9 +403,8 @@ fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
                 "arguments differ for `{name}`: recorded `{recorded_args}`, arrived `{args}`"
             ));
         }
-        // Name and args are the readable fast path; the rest of the payload
-        // is compared as data like every other family's (the tool context is
-        // not on the wire: it travels beside the sink).
+        // Compare remaining serialized fields too; live tool context travels
+        // beside the sink and is intentionally excluded.
     }
     let (Ok(recorded), Ok(got)) = (serde_json::to_value(recorded), serde_json::to_value(got))
     else {
@@ -466,13 +455,9 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
     }
 }
 
-/// The descriptor a replayer advertises for a required key the log never
-/// dispatched to: the one the header's handler table recorded for it when
-/// it was installed — a retrievable tool the index never named, a route
-/// the hook never selected — else, for a log with no handler table, a tool
-/// from the definition the recorded requests hold, or a model, memory or
-/// retrieval index by its family alone. The replayer answers any dispatch
-/// to it with a divergence.
+/// Return a recorded or inferred descriptor for an undispatched required key.
+/// Returns an error when the family needs unavailable metadata or a tool has no
+/// advertised definition.
 fn describe_required(
     key: &HandlerKey,
     family: EffectFamily,
@@ -516,9 +501,8 @@ fn describe_required(
         }),
         EffectFamily::Memory => Ok(FamilyDescriptor::Memory {}),
         EffectFamily::Retrieve => Ok(FamilyDescriptor::Retrieve {}),
-        // An embedding or rerank descriptor names a modality or a document
-        // cap the row does not carry; a custom kind its label. Only the
-        // handler table has them, and a log without it is refused by name.
+        // These families require modality, document limits, or custom labels
+        // absent from the effect row.
         EffectFamily::Embed | EffectFamily::Rerank | EffectFamily::Custom => Err(gap(
             "a descriptor of this family is not derivable from the row",
         )),
@@ -638,17 +622,8 @@ impl Serve for EffectLogReplayer {
                                 .unwrap_or_default();
                             published.publish(context.with_result_context(output));
                         }
-                        // Merge kept successful events and errors by original item
-                        // position, including late frames after the first terminal.
-                        // The record's outcome is appended as one last error item
-                        // only when nothing kept produces it: not an error item
-                        // (kept at its position), not the fold of the kept events
-                        // (a terminal, or a malformed block the consumer's own
-                        // fold reports again — appending it would hand the
-                        // consumer an item the live stream never carried), and
-                        // not a truncation (reconstructed by EOF, never an
-                        // invented in-band error). What remains is an outcome
-                        // the stream never reached — a cancellation mid-stream.
+                        // Preserve original item positions, including items after a terminal.
+                        // Append only failures not reproduced by kept items or EOF.
                         if let (Some(events), true) = (record.events, dispatch.is_stream()) {
                             let errors = self
                                 .stream_errors

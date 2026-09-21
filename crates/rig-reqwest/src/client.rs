@@ -1,31 +1,16 @@
-//! Construction of a provider client with the bundled [`crate::ReqwestClient`]
-//! behind the erased default transport.
+//! Fallible construction of the bundled, type-erased HTTP transport.
 //!
-//! rig-core's provider types default to
-//! [`BoxedHttpClient`], the erased
-//! transport, so `openai::Client` names a concrete type in every
-//! configuration; but rig-core deliberately depends on no transport, so it
-//! cannot build one. These two traits are that value: implemented exactly once,
-//! for the erased client, they construct it over a fresh `ReqwestClient`. That
-//! single applicable impl is what lets `openai::Client::new(key)` infer the
-//! transport in expression position, where a type alias default does not
-//! apply. An inherent method could do the same, but only from inside rig-core,
-//! which would have to know reqwest; a trait in this crate is the
-//! orphan-rule-legal seam.
-//!
-//! Bring it into scope with `use rig::prelude::*` or
-//! `use rig_reqwest::prelude::*`. To keep the concrete transport in the type
-//! instead, use rig-core's `Bind::bind(ReqwestClient::default())`.
+//! ```no_run
+//! let transport = rig_reqwest::client::bundled()?;
+//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! ```
 
 use rig_core::client::ProviderClientError;
 use rig_core::driver::Bound;
 use rig_core::http_client::{self, BoxedHttpClient};
 
-/// The bundled transport, built fallibly. `reqwest::Client::new()` (and so
-/// `ReqwestClient::default()`) panics when the client cannot be built — on a
-/// host with no CA store, for one — while every constructor below promises
-/// a `Result`. Build through the builder and hand the failure back as the
-/// `Http` variant the rest of the client-construction path already uses.
+/// Build a fresh bundled transport, returning a client-construction error if
+/// reqwest initialization fails.
 pub fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
     let client = reqwest::Client::builder()
         .build()
@@ -33,10 +18,8 @@ pub fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
     Ok(BoxedHttpClient::from(crate::ReqwestClient::new(client)))
 }
 
-/// The bundled reqwest transport could not be built. `reqwest::Error`
-/// displays as just "builder error" and keeps the reason (no CA store, a
-/// bad proxy, ..) in its source chain, so this flattens the chain into the
-/// message a caller prints, while `source()` still exposes the original.
+/// A transport build failure that displays the source chain and retains the
+/// original reqwest error as its source.
 #[derive(Debug)]
 struct TransportBuildError(reqwest::Error);
 
@@ -62,15 +45,10 @@ impl std::error::Error for TransportBuildError {
     }
 }
 
-/// One-argument binding of a wire or provider config to the bundled
-/// transport: `anthropic::Anthropic::from_env()?.bound()?`.
-///
-/// rig-core depends on no transport, so it cannot build one; this crate is
-/// the orphan-rule-legal seam that supplies the default. To keep the
-/// concrete transport in the type instead, use rig-core's
-/// `Bind::bind(ReqwestClient::default())`.
+/// Bind a wire or provider configuration to the bundled, type-erased transport.
 pub trait DefaultTransport: Sized {
-    /// Bind `self` to a fresh bundled transport.
+    /// Bind `self` to a fresh bundled transport, returning an error if transport
+    /// initialization fails.
     fn bound(self) -> Result<Bound<Self, BoxedHttpClient>, ProviderClientError> {
         Ok(Bound::new(self, bundled()?))
     }

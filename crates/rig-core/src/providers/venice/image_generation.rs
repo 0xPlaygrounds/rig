@@ -1,25 +1,21 @@
-//! Venice's image-generation model identifiers and its own view of a
-//! generated image.
+//! Venice image-generation model identifiers and typed response metadata.
 //!
-//! Venice's image endpoint is its own wire, not OpenAI's: it is
-//! `POST /image/generate` (the path
-//! [`openai::wire::VENICE`](crate::providers::openai::wire::VENICE) carries),
-//! it takes `width`/`height` plus Venice-only controls through
-//! `additional_params`, and it answers with
-//! `{ id, images: [base64], request, timing }` rather than OpenAI's
-//! `data[].b64_json` — which is what [`ImageGenerationResponse`] models, for
-//! a caller reading the raw document the normalized image does not name.
+//! ```
+//! use rig_core::providers::venice::image_generation::ImageGenerationResponse;
+//! let response: ImageGenerationResponse = serde_json::from_value(
+//!     serde_json::json!({"id": "generation-1", "images": []})
+//! )?;
+//! assert!(response.images.is_empty());
+//! # Ok::<(), serde_json::Error>(())
+//! ```
 
 use serde::{Deserialize, Serialize};
 
-// ================================================================
-// Venice Image Generation API
-// ================================================================
 /// `venice-sd35`
 pub const VENICE_SD35: &str = "venice-sd35";
-/// `z-image-turbo` — Venice's `default` and `fastest` image model.
+/// Identifier for `z-image-turbo`.
 pub const Z_IMAGE_TURBO: &str = "z-image-turbo";
-/// `qwen-image` — Venice's `highest_quality` image model.
+/// Identifier for `qwen-image`.
 pub const QWEN_IMAGE: &str = "qwen-image";
 /// `flux-2-pro`
 pub const FLUX_2_PRO: &str = "flux-2-pro";

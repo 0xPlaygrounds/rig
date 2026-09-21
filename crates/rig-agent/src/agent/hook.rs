@@ -1,46 +1,8 @@
 //! Event-specific hooks for observing and steering an agent run.
 //!
-//! [`AgentHook`] replaces the old universal event/action pair with one lifecycle
-//! method and one action type per event. Unsupported combinations are therefore
-//! rejected by the compiler instead of being interpreted at runtime.
-//! Hooks are independent of the agent's [`CompletionModel`](crate::completion::CompletionModel):
-//! managed response events carry canonical Rig messages, content, usage, and
-//! message IDs. Use the direct completion or streaming APIs when a hook-like
-//! integration needs the provider's typed raw response.
-//!
-//! Hooks run in registration order through [`HookStack`]. Model selections
-//! chain into later hooks; completion-call [`RequestPatch`] values accumulate
-//! and merge; at the dispatch boundary each hook's [`DispatchAction::Patch`]
-//! is what the next hook sees, the first [`DispatchAction::Deny`] wins, and
-//! each [`OutcomeAction::Replace`] is what the next hook sees. A
-//! [`ModelTurnAction::Retry`] or stop action short-circuits the remaining
-//! hooks for that event. Nested stacks obey the same rules as flat stacks.
-//!
-//! **Every effect the run performs crosses one boundary.** The engine
-//! dispatches its completions, tool calls, memory loads and appends, and
-//! retrievals on the agent's bus, and [`AgentHook::on_dispatch`] /
-//! [`AgentHook::on_outcome`] see each of them: a tool call is patched
-//! (rewritten arguments), skipped, or stopped *before* it runs and its result
-//! replaced or the run stopped *after*; a completion is patched or denied
-//! before and observed or replaced after, on either medium. The internal
-//! families (`Memory`, `Retrieve`, `Embed`, `Rerank`, `Custom`) are observe-only until
-//! a hook opts in through [`AgentHook::observes`]. Register observe-only
-//! hooks before steering hooks when every observation is required: a
-//! steering stop intentionally prevents later observers from running. A
-//! replaced tool result is what the model sees and what result-content
-//! telemetry records; execution-outcome metadata describes the result the
-//! run keeps.
-//!
-//! Blocking and streaming agents share model-turn, request, and dispatch
-//! resolution. Streaming adds text, reasoning, and tool-call delta
-//! observations, but shared lifecycle actions have identical semantics on both
-//! surfaces (a streamed completion's outcome is its folded terminal). Streamed
-//! deltas are provisional until the model turn is accepted; a retry is
-//! surfaced as
-//! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
-//! so consumers can discard the rejected turn's deltas.
-//!
-//! # Example
+//! [`AgentHook`] supplies typed lifecycle actions; [`HookStack`] composes them in
+//! registration order. Blocking and streaming runs share lifecycle decisions;
+//! streamed deltas remain provisional until the model turn is accepted.
 //!
 //! ```
 //! use rig_agent::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
@@ -59,143 +21,6 @@
 //!     }
 //! }
 //! ```
-//!
-//! # Retrying a completed model turn
-//!
-//! A hook can reject a tool-free turn and either reuse the same prompt and
-//! preceding history with fresh request preparation, or preserve the rejected
-//! response and append corrective feedback. Retries use the run's existing
-//! total model-call budget. A narrower policy limit belongs to the hook and can
-//! be stored in the run-scoped [`Scratchpad`]:
-//!
-//! ```
-//! use std::{collections::HashMap, sync::atomic::{AtomicUsize, Ordering}};
-//! use rig_agent::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-//! use rig_core::message::AssistantContent;
-//!
-//! static NEXT_HOOK_ID: AtomicUsize = AtomicUsize::new(1);
-//!
-//! #[derive(Clone, Default)]
-//! struct RetryCounts(HashMap<usize, usize>);
-//!
-//! struct RetryOnMarker {
-//!     id: usize,
-//!     max_retries: usize,
-//! }
-//!
-//! impl RetryOnMarker {
-//!     fn new(max_retries: usize) -> Self {
-//!         Self {
-//!             id: NEXT_HOOK_ID.fetch_add(1, Ordering::Relaxed),
-//!             max_retries,
-//!         }
-//!     }
-//! }
-//!
-//! impl AgentHook for RetryOnMarker {
-//!     async fn on_model_turn_finished(
-//!         &self,
-//!         ctx: &HookContext,
-//!         event: ModelTurnFinished<'_>,
-//!     ) -> ModelTurnAction {
-//!         let rejected = event.content.iter().any(|content| {
-//!             matches!(content, AssistantContent::Text(text) if text.text.contains("RETRY"))
-//!         });
-//!         if !rejected {
-//!             return ModelTurnAction::continue_run();
-//!         }
-//!
-//!         let attempt = ctx.scratchpad().update::<RetryCounts, _>(|counts| {
-//!             let attempt = counts.0.entry(self.id).or_default();
-//!             *attempt += 1;
-//!             *attempt
-//!         });
-//!         if attempt <= self.max_retries {
-//!             ModelTurnAction::retry_with_feedback("Return a complete answer.")
-//!         } else {
-//!             ModelTurnAction::stop("response retry limit exceeded")
-//!         }
-//!     }
-//! }
-//! # let _hook = RetryOnMarker::new(2);
-//! ```
-//!
-//! # Retrying a turn the provider cut short
-//!
-//! [`ModelTurnFinished::finish_reason`] and [`ModelTurnFinished::max_tokens`]
-//! carry a turn's termination metadata in portable form, so the common
-//! "truncated at the cap, so raise it and go again" policy needs no provider
-//! types. `finish_reason` is a normalized [`FinishReason`] — anything outside
-//! the shared vocabulary arrives as `Other` in the provider's own spelling
-//! rather than as a natural stop, and `None` means the provider reported no
-//! reason at all. `max_tokens` is the cap *this* attempt ran under, after the
-//! agent's configuration, the runner override, and any merged [`RequestPatch`],
-//! so the pair below reads its own escalation back on the retried turn:
-//!
-//! ```
-//! use std::sync::atomic::{AtomicU64, Ordering};
-//! use rig_agent::agent::{
-//!     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext,
-//!     ModelTurnAction, ModelTurnFinished, RequestPatch,
-//! };
-//! use rig_core::completion::FinishReason;
-//! use rig_core::message::AssistantContent;
-//!
-//! /// Doubles the output cap each time a turn is truncated, up to a ceiling.
-//! struct GrowCapOnTruncation {
-//!     cap: AtomicU64,
-//!     ceiling: u64,
-//! }
-//!
-//! impl AgentHook for GrowCapOnTruncation {
-//!     /// Every attempt is prepared afresh, so the current cap is applied here
-//!     /// and reported back on that attempt's `ModelTurnFinished`.
-//!     async fn on_completion_call(
-//!         &self,
-//!         _ctx: &HookContext,
-//!         _event: CompletionCallEvent<'_>,
-//!     ) -> CompletionCallAction {
-//!         CompletionCallAction::patch(
-//!             RequestPatch::new().max_tokens(self.cap.load(Ordering::Relaxed)),
-//!         )
-//!     }
-//!
-//!     async fn on_model_turn_finished(
-//!         &self,
-//!         _ctx: &HookContext,
-//!         event: ModelTurnFinished<'_>,
-//!     ) -> ModelTurnAction {
-//!         // `truncated_output` covers every reason that means "cut short",
-//!         // so a provider reporting a filter stop retries here too.
-//!         let truncated = event
-//!             .finish_reason
-//!             .is_some_and(FinishReason::truncated_output);
-//!         // Retrying a turn that carries tool calls is rejected, so a policy
-//!         // that might see one has to check before asking.
-//!         let has_tool_call = event
-//!             .content
-//!             .iter()
-//!             .any(|content| matches!(content, AssistantContent::ToolCall(_)));
-//!         // `max_tokens` is this attempt's own cap: growing past the ceiling
-//!         // would be retrying a limit we already know we cannot raise.
-//!         let room = event.max_tokens.is_none_or(|cap| cap < self.ceiling);
-//!
-//!         if truncated && !has_tool_call && room {
-//!             let grown = event.max_tokens.map_or(self.ceiling, |cap| {
-//!                 cap.saturating_mul(2).min(self.ceiling)
-//!             });
-//!             self.cap.store(grown, Ordering::Relaxed);
-//!             return ModelTurnAction::repeat();
-//!         }
-//!         ModelTurnAction::continue_run()
-//!     }
-//! }
-//! # let _hook = GrowCapOnTruncation { cap: AtomicU64::new(256), ceiling: 4096 };
-//! ```
-//!
-//! `cargo run -p rig-agent --example retry_on_truncation` runs this policy
-//! against a credential-free scripted model whose output genuinely depends on
-//! the cap, on both surfaces.
 
 use rig_core::streaming::BlockId;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -224,25 +49,9 @@ pub use rig_core::id::RunId;
 
 pub use crate::run::RunEntry;
 
-/// Run-scoped typed storage shared by hooks — the in-process cross-hook
-/// channel.
-///
-/// # Where hook state belongs
-///
-/// - **A hook's own private state** belongs in the hook's own fields
-///   (`Arc<AtomicUsize>`, `Arc<Mutex<…>>` — the pattern this crate's test
-///   probes use). Key by [`HookContext::run_id`] when one instance serves
-///   many runs.
-/// - **Transient cross-hook state** — one hook writing, another reading,
-///   within one run — goes here. Typed entries live only as long as the
-///   run's process; a `TypeMap` has no serialization story on purpose.
-/// - **Anything that must survive serialization** — an out-of-process
-///   approval, a run resumed later, possibly elsewhere — or that must rewind
-///   correctly when a host clones/forks a run, goes through
-///   [`HookContext::append_entry`]: state that rides the run's record
-///   travels, rewinds, and forks with the record; out-of-band state does not.
-///
-/// [`AgentRun`]: crate::agent::AgentRun
+/// Run-scoped typed storage shared by hooks. Clones share in-process state;
+/// entries are neither serialized nor rewound when a run is forked.
+/// Use [`HookContext::append_entry`] for state that must travel with the run.
 #[derive(Clone, Default)]
 pub struct Scratchpad {
     inner: Arc<std::sync::Mutex<TypeMap>>,
@@ -287,13 +96,9 @@ impl Scratchpad {
         self.lock().remove::<T>()
     }
 
-    /// Update a value, starting at `Default`: the value is taken out under
-    /// the lock, `update` runs with the lock released, and the result is
-    /// written back. So `update` may read or write the scratchpad itself
-    /// (a hook that inserts a sibling value from inside the closure does
-    /// not deadlock the run), and two concurrent updates of one type are
-    /// last-writer-wins, not serialized — a per-run hook stack is polled
-    /// from one task, where that never arises.
+    /// Remove a value or create its default, update it outside the lock, then
+    /// insert it and return the closure's result. Reentrant access is allowed;
+    /// concurrent updates of the same type are last-writer-wins, not serialized.
     pub fn update<T, R>(&self, update: impl FnOnce(&mut T) -> R) -> R
     where
         T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
@@ -329,9 +134,7 @@ pub struct HookContext {
     /// skipped tool result reports) from here; a nested stack records into
     /// the same slot, so the salvage survives any nesting depth.
     salvaged_patches: std::sync::Mutex<HashMap<EffectId, EffectKind>>,
-    /// Every [`RunEntry`] visible to this run — the entries the run carried
-    /// in (seeded by the driver at run start) followed by this run's appends,
-    /// in append order.
+    /// Seeded and newly appended entries, in append order.
     entries: std::sync::Mutex<Vec<RunEntry>>,
     /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
     /// by the driver.
@@ -413,15 +216,10 @@ impl HookContext {
         })
     }
 
-    /// Bind a typed view to a key that carries its family (what the agent
-    /// and its registries mint), on the run's bus. The view is scoped to
-    /// this context by its lifetime: it routes through the run's driver and
-    /// cannot outlive its borrow of the context — storing it in a `'static`
-    /// field or moving it into a spawned task does not compile. Request
-    /// futures returned by the view are owned; see [`RunHandle`] for their
-    /// driving and cancellation responsibilities. A dispatch a hook makes this way is
-    /// served and recorded but does not re-enter the hook stack. Fails when
-    /// the context was built outside a run.
+    /// Bind a typed key on the run's bus, borrowing this context. Fails without
+    /// a bus or when the current registration has another family. Dispatches are
+    /// served and recorded without re-entering hooks; see [`RunHandle`] for
+    /// request ownership and driver requirements.
     #[track_caller]
     pub fn bind<'ctx, F: rig_core::effect::Family>(
         &'ctx self,
@@ -490,24 +288,11 @@ impl HookContext {
         &self.scratchpad
     }
 
-    /// Append a durable entry to the run's record.
-    ///
-    /// The entry is stamped with the current [`turn`](Self::turn) and lands
-    /// in the serializable [`AgentRun`](crate::agent::AgentRun) at the next
-    /// step boundary — durability holds by construction, with no snapshot or
-    /// export moment. Serialization failures surface immediately; nothing is
-    /// silently dropped. Fire-and-forget beyond that: no id or handle comes
-    /// back.
-    ///
-    /// The intended default pattern is **snapshot + last-wins**: append a
-    /// full state snapshot whenever your state changes, and reconstruct by
-    /// reading the most recent one with [`last_entry`](Self::last_entry).
-    /// Delta entries folded over [`entries`](Self::entries) fit genuinely
-    /// event-shaped state (an approval ledger); the snapshot pattern needs no
-    /// fold logic and tolerates replay trivially.
-    ///
-    /// An entry appended inside `on_run_settled` is not persisted — the run
-    /// is already finished; it remains visible to same-process reads only.
+    /// Serialize and append an entry stamped with the current turn. Serialization
+    /// errors leave entries unchanged. The driver transfers pending entries into
+    /// the serializable run at its next step boundary; this is not a disk write.
+    /// Entries appended during `on_run_settled` remain visible locally but are not
+    /// transferred into the finished run.
     pub fn append_entry<T: serde::Serialize>(
         &self,
         kind: impl Into<String>,
@@ -529,12 +314,8 @@ impl HookContext {
         Ok(())
     }
 
-    /// All entries of `kind` visible to this run: the entries a resumed run
-    /// carried in, followed by this run's appends, in append order.
-    ///
-    /// This *is* the replay: a hook reconstructs state by folding over this
-    /// list — and because every read traverses the full list, re-reading is
-    /// idempotent by construction.
+    /// Clone all entries of `kind`, including resumed entries and new appends,
+    /// in append order. Reading does not consume entries.
     pub fn entries(&self, kind: &str) -> Vec<RunEntry> {
         self.entries
             .lock()
@@ -545,8 +326,7 @@ impl HookContext {
             .collect()
     }
 
-    /// The most recent entry of `kind`, if any — the read for the
-    /// snapshot-and-read-the-last pattern.
+    /// Clone the most recent entry of `kind`, if present.
     pub fn last_entry(&self, kind: &str) -> Option<RunEntry> {
         self.entries
             .lock()
@@ -583,34 +363,14 @@ pub struct CompletionCallEvent<'a> {
     pub turn: usize,
 }
 
-/// Model-selection event resolved after completion-call hooks and before
-/// request preparation.
+/// Model-selection event after completion-call hooks proceed and before request
+/// preparation inspects the selected model's capabilities. The runner default is
+/// the initial candidate on every attempt, including retries; earlier selections
+/// in a stack update the candidate seen by later hooks.
 ///
-/// The runner default is the first candidate. A [`HookStack`] threads every
-/// [`ModelSelectionAction::Select`] into later hooks in registration order, so
-/// `selected_model` always reflects all earlier decisions for this event.
-///
-/// Ordering per `CallModel` step: completion-call hooks resolve first; only if
-/// they proceed does this event fire, carrying the merged [`RequestPatch`] in
-/// [`request_patch`](Self::request_patch); only after selection resolves does
-/// request preparation run against the selected model's captured
-/// [`ProviderCapabilities`](crate::completion::ProviderCapabilities), and only
-/// then is the attempt issued. Selection therefore runs once per `CallModel`
-/// step whose completion-call hooks proceed — including model-turn retries and
-/// post-tool calls — and never after a completion-call stop.
-///
-/// Selection is synchronous, local, and non-blocking: a hook may read and
-/// write the run [`Scratchpad`], but must not perform blocking I/O. In-flight
-/// attempts never rebind — the selected handle is cloned into the prepared
-/// attempt and executes it to completion.
-///
-/// `previous_model` reflects **issued attempts** only: it advances immediately
-/// before the selected model's unary or streaming operation is invoked, so a
-/// provider attempt that returns an error still counts, while a
-/// completion-call stop, a selection stop, or a request-preparation failure
-/// does not. An extraction or run default set via `using_model(...)` is the
-/// default candidate for every retry, not a hard pin: selection hooks may
-/// override it on each retry.
+/// Selection must be synchronous and non-blocking. Prepared attempts retain their
+/// chosen handle. `previous_model` advances only when an operation is invoked,
+/// including operations that fail, not on hook stops or preparation errors.
 #[derive(Clone, Copy)]
 pub struct ModelSelection<'a> {
     /// Prompt for the pending model call.
@@ -629,10 +389,7 @@ pub struct ModelSelection<'a> {
 }
 
 impl<'a> ModelSelection<'a> {
-    /// Construct a `ModelSelection` event from its parts.
-    ///
-    /// Provided so that custom model-selection routers can be unit-tested
-    /// outside this crate without restating every field.
+    /// Construct a model-selection event from borrowed request and candidate state.
     pub fn new(
         prompt: &'a Message,
         history: &'a [Message],
@@ -669,51 +426,15 @@ pub struct ModelTurnFinished<'a> {
     /// preceding completion outcome ([`OutcomeEvent`]) carried. On a retry, this is
     /// the retried attempt's own identity, never a previous attempt's.
     pub identity: &'a ResponseIdentity,
-    /// Why the provider stopped generating this attempt, normalized.
-    ///
-    /// [`FinishReason`] is the portable vocabulary — `Stop`, `Length`,
-    /// `ToolCalls`, `ContentFilter`, and `Other(String)` carrying a provider's
-    /// own spelling verbatim for anything outside it — so a hook can decide
-    /// whether to accept a turn without naming a provider or touching a raw
-    /// response type. [`FinishReason::truncated_output`] is the predicate for
-    /// "the provider cut this turn short", which is the usual retry trigger.
-    ///
-    /// `None` means the provider reported no reason at all, which is a real
-    /// outcome for several OpenAI-compatible gateways; it is deliberately not
-    /// smoothed into `Stop`, because "finished normally" and "did not say" are
-    /// different facts to steer on.
-    ///
-    /// The value is the one recorded for this attempt's completion call, after
-    /// the `Stop`→`ToolCalls` reconciliation that both surfaces apply, so a
-    /// provider that reports a bare `stop` on a turn carrying tool calls still
-    /// reads as `ToolCalls` here. On a retry this is the retried attempt's own
-    /// reason, never a previous attempt's.
+    /// This attempt's normalized terminal reason, or `None` when unreported.
+    /// Unknown reasons retain their spelling in [`FinishReason::Other`].
+    /// A reported `Stop` is reconciled to `ToolCalls` when calls are present.
     pub finish_reason: Option<&'a FinishReason>,
-    /// The output-token cap this exact attempt was prepared with.
-    ///
-    /// Resolved after the agent's configured value, the runner/request
-    /// override, and the merged completion-call
-    /// [`RequestPatch`] — so a stateful
-    /// completion-call hook that raises the cap for a retry sees its own new
-    /// value here on the following turn, not the agent's baseline. `None` means
-    /// no cap was sent, so the provider's own default applied.
-    ///
-    /// Paired with [`finish_reason`](Self::finish_reason) this is what makes a
-    /// portable retry-on-truncation decision possible: a hook can tell a turn
-    /// cut short at a cap it chose from one cut short at a cap it did not.
+    /// This attempt's output-token cap after agent configuration, request
+    /// overrides, and completion-call patches. `None` leaves the cap to the provider.
     pub max_tokens: Option<u64>,
-    /// The provider's own response for this attempt — see
-    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
-    /// payload: the provider's reply document as its decoder parsed it,
-    /// serialized. Every provider seam populates it; `Value::Null` only when
-    /// the response was built without a provider behind it (a
-    /// hand-constructed model). On a retry this is the retried attempt's own,
-    /// never a previous attempt's.
-    ///
-    /// Carried here, and not only on the surface-specific events, for the
-    /// same reason identity is: this is the medium-neutral event, so a hook
-    /// observing it alone sees the payload for every accepted call on both
-    /// surfaces.
+    /// This attempt's decoded provider response, serialized as JSON on both
+    /// streaming and unary surfaces. Hand-constructed responses may use `Null`.
     pub raw: &'a serde_json::Value,
 }
 
@@ -784,10 +505,8 @@ pub struct ReasoningDelta<'a> {
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// The stream block this fragment extends — stable across this call's
-    /// fragments and equal to the `block_id` of its completed tool call
-    /// (the [`DispatchEvent`] for the call).
-    /// Provider-issued ids arrive on the completed call.
+    /// Stable block ID shared by fragments and the completed call's
+    /// [`DispatchEvent`]. Provider-issued IDs arrive with the completed call.
     pub block_id: &'a BlockId,
     /// Tool name on the first delta.
     pub tool_name: Option<&'a str>,
@@ -795,14 +514,9 @@ pub struct ToolCallDelta<'a> {
     pub delta: &'a str,
 }
 
-/// Pre-run event: the run's initial prompt, before any model call.
-///
-/// Fired exactly once per run, before the first completion-call hook. The
-/// composition rules mirror an input-transform chain: in a [`HookStack`],
-/// rewrites chain in registration order — each hook sees the prompt as
-/// rewritten by earlier hooks — and the first [`RunStartAction::Stop`] wins,
-/// short-circuiting the remaining hooks and terminating the run before any
-/// provider call.
+/// Initial prompt event before the first completion-call hook. In a [`HookStack`],
+/// rewrites reach later hooks in registration order; the first stop prevents
+/// remaining hooks and provider calls.
 #[derive(Clone, Copy)]
 pub struct RunStart<'a> {
     /// The prompt the run will send on its first model call, including
@@ -840,15 +554,8 @@ impl RunStartAction {
     }
 }
 
-/// Terminal run event: the run has settled and nothing follows automatically.
-///
-/// Fired exactly once per run, after the outcome is decided — no retry,
-/// further turn, or tool execution will run. This is deliberately distinct
-/// from per-turn finishes ([`OutcomeEvent`], [`ModelTurnFinished`]):
-/// those can be followed by hook-driven retries or tool turns, while
-/// `RunSettled` cannot. On the streaming surface the success case coincides
-/// with the run's `FinalResponse` stream item; `RunSettled` additionally
-/// covers error termination, which the stream reports as its `Err` item.
+/// Terminal run event carrying a final response or error. No retry, model call,
+/// or tool execution follows automatically.
 #[derive(Clone, Copy)]
 pub struct RunSettled<'a> {
     /// How the run ended.
@@ -936,12 +643,11 @@ pub struct DispatchEvent<'a> {
     pub turn: usize,
     /// The block the effect answers, for a tool call the model emitted.
     pub block_id: Option<&'a BlockId>,
-    /// The context a tool call runs with: beside the effect, never in it
-    /// (effect-log format 5), so the event carries it.
+    /// Tool invocation context, carried separately from the effect.
     pub context: Option<&'a ToolContext>,
 }
 
-/// What a hook decides at the dispatch boundary. Closed on purpose.
+/// Dispatch-boundary action.
 #[derive(Debug, Clone)]
 pub enum DispatchAction {
     /// Dispatch as is.
@@ -1076,12 +782,11 @@ pub struct OutcomeEvent<'a> {
     pub turn: usize,
     /// The block the effect answered, for a tool call the model emitted.
     pub block_id: Option<&'a BlockId>,
-    /// The context the tool answered with — the values it published —
-    /// for a tool call: beside the outcome, never in it (format 5).
+    /// Published tool context, carried separately from the outcome.
     pub context: Option<&'a ToolContext>,
 }
 
-/// What a hook decides after an effect resolved. Closed on purpose.
+/// Outcome-boundary action.
 #[derive(Debug, Clone)]
 pub enum OutcomeAction {
     /// Keep the answer.
@@ -1252,12 +957,8 @@ impl ObservationAction {
 
 /// Per-run lifecycle observer and steerer.
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
-    /// The name the hook stack records for this hook — what an effect
-    /// log's header names as the program's hook stack, compared on replay.
-    /// `None` (the default) is the hook's type name, which is the whole
-    /// identity of a stateless hook. A hook whose decisions depend on a
-    /// value it carries names that value here, so two of the same type
-    /// with different state are two programs and not one.
+    /// Replay identity recorded by the hook stack. `None` uses the unqualified
+    /// type name; include decision-affecting configuration in an explicit name.
     fn name(&self) -> Option<String> {
         None
     }
@@ -1266,7 +967,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     ///
     /// The hook may rewrite the prompt or stop the run before any provider
     /// call. In a [`HookStack`], rewrites chain in registration order and the
-    /// first stop wins — see [`RunStart`]. The default action starts the run
+    /// first stop wins; see [`RunStart`]. The default action starts the run
     /// with the current prompt.
     fn on_run_start(
         &self,
@@ -1276,13 +977,9 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { RunStartAction::Continue }
     }
 
-    /// Runs once after the run settles: its outcome — final response or
-    /// terminal error — is decided, and no retry, further turn, or tool
-    /// execution will follow. Observe-only; the run is already over.
-    ///
-    /// [`HookContext::entries`] sees every entry appended during the run
-    /// (the driver flushes before settling), but an entry appended *inside*
-    /// this hook is not persisted — the run is finished.
+    /// Observe the final response or terminal error without scheduling more work.
+    /// Existing entries are visible, but entries appended here are not transferred
+    /// into the finished run.
     fn on_run_settled(
         &self,
         _ctx: &HookContext,
@@ -1296,8 +993,8 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// Selection is synchronous, local, and non-blocking: it operates only on
     /// already-constructed [`ModelRef`] values and may read or write the
     /// run [`Scratchpad`], but must not perform blocking I/O. It runs once per
-    /// `CallModel` step whose completion-call hooks proceed — including
-    /// retries and post-tool calls — never after a completion-call stop, and
+    /// `CallModel` step whose completion-call hooks proceed, including
+    /// retries and post-tool calls, never after a completion-call stop, and
     /// in-flight attempts never rebind. In a [`HookStack`], selections are
     /// passed to later hooks in registration order; the last selection wins
     /// and a stop is terminal. The default action keeps the current candidate.
@@ -1412,17 +1109,10 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { OutcomeAction::Proceed }
     }
 
-    /// Observation interest hint, primarily for high-frequency deltas. The
-    /// internal `Memory`/`Retrieve`/`Embed`/`Rerank`/`Custom` dispatch events are
-    /// off by default: no hook saw those calls before the bus, so a hook
-    /// that wants to gate them opts in here.
-    ///
-    /// This is a gate, not a hint, for the dispatch-boundary events: a
-    /// `false` for `CompletionDispatch` or `ToolDispatch` silences
-    /// [`AgentHook::on_dispatch`] and [`AgentHook::on_outcome`] for that
-    /// family — the hook can no longer deny a tool call. An override that
-    /// only wants to drop deltas answers `false` for the delta kinds alone
-    /// and leaves every `*Dispatch` kind at the default.
+    /// Declare event interest. Memory, retrieval, embedding, reranking, and custom
+    /// dispatches default to false; all other kinds default to true.
+    /// For dispatch events, false prevents both boundary callbacks and therefore
+    /// prevents this hook from steering that family.
     fn observes(&self, kind: StepEventKind) -> bool {
         !matches!(
             kind,
@@ -1625,13 +1315,8 @@ impl HookStack {
         stack
     }
 
-    /// Appends a hook to the end of the stack's registration order.
-    ///
-    /// The stack names the hook by its type's last path segment (`Tagger`,
-    /// not `my_crate::hooks::Tagger`): the name is the program identity an
-    /// effect log records, and the same program compiled into another
-    /// crate — a test suite replaying a golden its producer recorded — must
-    /// name the same hooks.
+    /// Append a hook. Its recorded name is [`AgentHook::name`] or its type name
+    /// without the module path; nested stacks contribute flattened names.
     pub fn push<H: AgentHook + 'static>(&mut self, hook: H) {
         // A nested stack contributes its members' names, flattened in
         // order, so two stacks that run the same hooks name the same program.
@@ -1645,9 +1330,7 @@ impl HookStack {
         self.hooks.push(Arc::new(hook));
     }
 
-    /// Every hook's name ([`AgentHook::name`], else its type name), in
-    /// registration order (nested stacks flattened) — the program
-    /// identity an effect log records.
+    /// Recorded hook names in registration order, with nested stacks flattened.
     pub fn names(&self) -> Vec<String> {
         self.names.clone()
     }
@@ -1734,8 +1417,6 @@ impl AgentHook for HookStack {
     }
 
     async fn on_run_settled(&self, ctx: &HookContext, event: RunSettled<'_>) {
-        // Every hook observes the terminal event; there is nothing to
-        // short-circuit on since the run is already over.
         for hook in &self.hooks {
             hook.run_settled(ctx, event).await;
         }
@@ -1873,15 +1554,9 @@ impl AgentHook for HookStack {
     }
 }
 
-/// A typed view a hook bound through its [`HookContext`], borrowing that
-/// context: a hook cannot store it in a `'static` field or move it into a
-/// task requiring `'static` — the compiler refuses. It offers
-/// the family-generic API of [`Handle`](crate::bus::Handle) by
-/// delegation rather than `Deref` (a `Deref` to the `Clone` handle would
-/// hand back an owned `'static` view through `.clone()`, which is the one
-/// thing this type exists to prevent). A host that wants an owned handle
-/// takes it from a [`Dispatcher`](crate::bus::Dispatcher) it holds
-/// itself.
+/// Typed bus view borrowing a hook context. It cannot be stored as `'static`
+/// or cloned into an owned handle. Hosts needing an owned handle must bind
+/// through their own [`Dispatcher`](crate::bus::Dispatcher).
 ///
 /// The lifetime constrains the view, not the request futures returned by
 /// [`dispatch`](Self::dispatch), [`complete`](Self::complete), or

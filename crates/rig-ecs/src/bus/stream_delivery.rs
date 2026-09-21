@@ -1,4 +1,12 @@
-//! Live delivery notifications over the bus's existing accumulated stream state.
+//! Live notifications for collected stream batches.
+//!
+//! ```
+//! use bevy_ecs::prelude::*;
+//! use rig_ecs::bus::StreamItemsDelivered;
+//! fn observe(batch: On<StreamItemsDelivered>) {
+//!     let item_count = batch.items.len();
+//! }
+//! ```
 
 use bevy_ecs::prelude::*;
 use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
@@ -48,8 +56,7 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 ///         }
 ///     },
 /// );
-/// // Install the bus and execute streams in this world. On restore, hydrate
-/// // TextByEffect from durable state before advancing; discard it on cleanup.
+/// // Late observers need prior text restored separately; notifications are not retained.
 /// ```
 #[derive(Event, Debug)]
 pub struct StreamItemsDelivered {

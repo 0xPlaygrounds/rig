@@ -1,8 +1,9 @@
-//! Reflection: every component of the graph and the bus derives `Reflect`,
-//! the rig-core values they hold reflect through opaque remote wrappers
-//! ([`crate::bus::reflect`], [`crate::agent::reflect`]), and
-//! [`install_reflect`] registers them all — what [`crate::checkpoint`]
-//! saves and an inspector walks.
+//! Registration of checkpointed components and opaque rig-core reflection wrappers.
+//!
+//! ```
+//! let mut world = bevy_ecs::world::World::new();
+//! rig_ecs::reflect::install_reflect(&mut world);
+//! ```
 
 use bevy_ecs::{prelude::*, reflect::AppTypeRegistry};
 
@@ -34,8 +35,8 @@ macro_rules! register_all {
     };
 }
 
-/// Register every component of the bus and the graph, and every remote
-/// wrapper, with the world's [`AppTypeRegistry`] (created if absent).
+/// Register reflected bus and agent components and their remote wrappers in the
+/// world's [`AppTypeRegistry`], creating it if absent.
 pub fn install_reflect(world: &mut World) {
     use crate::{agent, bus, systems};
     world.init_resource::<AppTypeRegistry>();
@@ -46,7 +47,6 @@ pub fn install_reflect(world: &mut World) {
         [
             bevy_ecs::hierarchy::ChildOf,
             bevy_ecs::hierarchy::Children,
-            // The bus.
             bus::PendingEffect,
             bus::Seq,
             bus::SeqCounter,
@@ -69,7 +69,6 @@ pub fn install_reflect(world: &mut World) {
             StreamedOutcomeReflect,
             StreamEventsReflect,
             StreamErrorsReflect,
-            // The graph.
             agent::checkpoint::TurnAssistant,
             agent::checkpoint::AssistantForTurns,
             agent::checkpoint::TurnResults,

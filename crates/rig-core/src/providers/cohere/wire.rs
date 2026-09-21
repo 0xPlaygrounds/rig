@@ -1,9 +1,10 @@
-//! Cohere as data: one config struct, three wires.
+//! Cohere configuration and chat, text-embedding, and image-embedding wires.
 //!
-//! Wires: [`Chat`] (`Completion`), [`Embeddings`] (`Embedding`) and
-//! [`ImageEmbeddings`] (`ImageEmbedding`) — the three rows Cohere serves in
-//! this crate. Cohere has one dialect, so its defaults are the config's
-//! defaults rather than a table of constants.
+//! ```no_run
+//! use rig_core::providers::cohere::{Cohere, EMBED_V4};
+//! let wire = Cohere::from_env()?.embeddings(EMBED_V4, None);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest};
@@ -67,8 +68,8 @@ impl Cohere {
         }
     }
 
-    /// The text-embedding wire for `model`, at `ndims` dimensions when the
-    /// caller named one rather than taking the model's published width.
+    /// Build a text-embedding wire reporting the supplied or known model width,
+    /// or zero if unknown. This width is metadata, not a request parameter.
     pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
@@ -127,9 +128,6 @@ impl Wire for Chat {
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
-            // Cohere streams the same endpoint; `stream` is the only
-            // difference between the two requests, and the recorded bodies
-            // pin it.
             body.additional_params = Some(json_utils::merge(
                 body.additional_params
                     .take()
@@ -164,10 +162,7 @@ impl Wire for Chat {
     }
 }
 
-/// What `input_type` an embedding wire declares unless the caller names
-/// another: Cohere's asymmetric embed models prompt differently for stored
-/// chunks and for queries, and the stored-chunk side is the default the
-/// deleted client used.
+/// Default retrieval role for embeddings of stored document chunks.
 const DEFAULT_INPUT_TYPE: &str = "search_document";
 
 /// The most texts Cohere embeds in one `/v1/embed` call.
@@ -176,11 +171,7 @@ const MAX_DOCUMENTS: usize = 96;
 /// The width Cohere's image embeddings come back at.
 const IMAGE_NDIMS: usize = 1_024;
 
-/// The top-level keys that recognize a `/v1/embed` reply: `embeddings`, the
-/// field every answer carries, and `message` — a 200 whose body is nothing
-/// but Cohere's error envelope is a reply too, and recognizing it here is
-/// what makes the answer's typed decode fail and hands the frame to the
-/// envelope classifier.
+/// Recognized embedding and error-envelope markers, including errors on HTTP 200.
 const EMBED_REPLY_MARKERS: &[&str] = &["embeddings", "message"];
 
 /// The key that recognizes the error envelope on its own.
@@ -195,15 +186,8 @@ pub enum EmbedReply<T> {
     Failure(String),
 }
 
-/// Classify one `/v1/embed` reply, on either embed route.
-///
-/// Two shapes on one decoder, composed through the classify layer's own
-/// combinator ([`classify_or`]) so no triage verdict is read here: the
-/// answer is the shape the wire mostly sends and stays the diagnostic when
-/// neither decodes, and the envelope is tried exactly when the answer's
-/// decode fails.
-///
-/// [`classify_or`]: crate::providers::internal::wire::classify_or
+/// Decode embeddings, then an error envelope on failure. Retain the embedding
+/// diagnostic if neither shape decodes.
 fn classify_embed_reply<T>(data: &str) -> WireEvent<EmbedReply<T>>
 where
     T: serde::de::DeserializeOwned,
@@ -298,11 +282,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
         let reply = match reply {
             EmbedReply::Reply(reply) => reply,
-            // A 200 that carried the error envelope instead of vectors: the
-            // provider's body verbatim, and the driver stamps the status it
-            // arrived under. Without this the frame read as an unmodeled
-            // event, the driver warn-skipped it, and the fold failed with
-            // "Expected 1 embeddings, got 0" — no status, no body.
+            // Preserve the error body so the driver can attach its HTTP status.
             EmbedReply::Failure(body) => {
                 out.push(Err(EmbeddingError::from_provider_body(body)));
                 return;
@@ -369,9 +349,7 @@ impl Wire for ImageEmbeddings {
         let requests = images
             .into_iter()
             .map(|image| {
-                // Cohere's acceptance policy runs before the request is
-                // built: an unsniffable or oversized image is a caller
-                // error, not a 400 to interpret.
+                // Reject invalid images before any batch request can be sent.
                 let media_type = validate_image(&image)?;
                 let body = serde_json::json!({
                     "model": super::EMBED_ENGLISH_V3,
@@ -417,8 +395,7 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
                 return;
             }
         };
-        // One image per request, so one vector per reply: a second one is a
-        // provider defect, and none means the request bought nothing.
+        // Each request carries one image, so any other vector count is invalid.
         let [vector] = reply.embeddings.values.as_slice() else {
             out.push(Err(EmbeddingError::ResponseError(format!(
                 "Expected 1 image embedding, got {}",
@@ -437,12 +414,8 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
             document: String::new(),
             vec: vector.iter().filter_map(|n| n.as_f64()).collect(),
         };
-        // No `with_raw` here: this wire answers one operation with several
-        // requests, so a per-reply capture would be the first page's document
-        // and the fold keeps the first metadata it is given — every later page
-        // would be unreachable. The driver owns `raw` for a batch: it collects
-        // each page's verbatim document and stamps the sequence (the bare
-        // document when there was only one page).
+        // The driver captures all batch reply bodies; setting raw here would
+        // let the fold retain only the first page's metadata.
         let mut response =
             crate::embeddings::ImageEmbeddingResponse::new(vec![vector], PROVIDER_NAME)
                 .with_usage(usage);

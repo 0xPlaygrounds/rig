@@ -136,6 +136,40 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 
 Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
+## Provider selection persistence
+
+Registry references distinguish registered presets from explicit configurations.
+Qualified `vendor/format:model` strings remain unambiguous when a vendor gains
+another protocol family, but do not freeze preset defaults, endpoint availability,
+or model names. Explicit configurations retain host, route, and typed options and
+serialize as objects rather than lossy labels. References remove credentials;
+standalone configurations may hold them at runtime. Deserialization requires a
+self-describing format such as JSON.
+
+Copilot presets accept already-exchanged session tokens and derive their endpoint
+from those tokens. Explicit configurations keep their host and instruction
+placement. Token exchange and asynchronous SDK setup belong to the host. The
+catalog is not exhaustive: other models can use `CompletionAdapter` directly.
+Registry-qualified names do not replace the provider names used in telemetry.
+
+## Provider implementation
+
+Provider configuration and endpoint wires are separate from transports. A `Has*`
+implementation exposes each supported capability, while `Bound` supplies shared
+execution. Chat-compatible dialects use the shared `Chat` wire and decoder with
+`Dialect` data and `BodyRewrite` hooks rather than duplicating request conversion.
+This keeps normalization, retry classification, and telemetry consistent.
+
+Construct normalized completion responses through their builders so finish
+reasons reconcile with tool output. Preserve unknown terminal reasons in `Other`,
+use the selected descriptor's provider name, and retain the decoded provider
+payload in `raw` for typed inspection without a second request. Preserve error
+bodies through `WireError::http_response` for failed HTTP responses and
+`WireError::provider_body` for error envelopes on successful HTTP responses.
+Credentials require redacted debug output. Provider changes need coverage for
+supported streaming, usage, tool and multimodal content, with examples and facade
+exposure matching the configured capabilities.
+
 ## Provider observations
 
 `observe::AdapterContext` carries a caller-owned operation identity and a

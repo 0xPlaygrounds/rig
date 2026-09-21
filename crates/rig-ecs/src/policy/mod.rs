@@ -1,7 +1,10 @@
-//! The pure policy: the verbatim strings the goldens pin, the one fold
-//! from the run graph to the wire request, and the small derivations the
-//! systems share. Every function here is over plain data and has its own
-//! tests; nothing here touches the world.
+//! Pure request assembly, output selection, and tool-result shaping over plain data.
+//!
+//! ```
+//! use rig_ecs::{agent::OutputKind, policy::resolve_output};
+//! let mode = resolve_output(OutputKind::Auto, true, 0, true, false);
+//! assert_eq!(mode, OutputKind::Native);
+//! ```
 
 use rig_core::{
     completion::{
@@ -20,9 +23,12 @@ use crate::agent::{
     content::parts::{ToolResultLimit, ToolResultStatus},
 };
 
-/// The strings the goldens pin, written once. Each has a test in
-/// `policy::tests` that compares it to the golden that pins it, cited by
-/// fixture and JSON pointer in `CONTRACT.md`.
+/// Model-facing output instructions and invalid-call feedback.
+///
+/// ```
+/// let instructions = rig_ecs::policy::text::output_tool_augmentation("answer");
+/// assert!(instructions.contains("`answer`"));
+/// ```
 pub mod text {
     /// The output tool's default name.
     pub const OUTPUT_TOOL_NAME: &str = "final_result";
@@ -79,8 +85,7 @@ pub fn output_tool_callable(choice: Option<&ToolChoice>, name: &str) -> bool {
 /// no schema is `Native`; an explicit `Tool` the choice forbids degrades to
 /// `Native` (the constraint is still enforced, natively); `Auto` is `Tool`
 /// only with a real tool of the program's own, a permitting choice, and a
-/// provider that does not compose native output with tools — else
-/// `Native`.
+/// provider that does not compose native output with tools; otherwise `Native`.
 pub fn resolve_output(
     mode: OutputKind,
     has_schema: bool,
@@ -150,12 +155,9 @@ pub fn missing_required_fields(
     }
 }
 
-/// Whether a text answer already is the structured output: it parses as
-/// JSON and lacks none of the schema's required fields (any JSON, without
-/// a schema). The run accepts such a text where the output tool was due
-/// rather than spend a turn reprompting for it (the answer came through
-/// the wrong channel, not wrong), as rig-agent's
-/// `text_satisfies_output_schema` does.
+/// Return whether text parses as JSON and contains every required schema field.
+/// Without a schema, accepts any JSON. Does not validate field types or other
+/// schema constraints.
 pub fn text_satisfies_schema(schema: Option<&serde_json::Value>, text: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(text.trim())
         .ok()
@@ -183,8 +185,8 @@ pub fn turn_is_empty(content: &[AssistantContent]) -> bool {
     }
 }
 
-/// What the fold reads: the graph, gathered by `Assemble` in order. Borrows
-/// the world's data; owns nothing.
+/// Ordered request inputs gathered by assembly, borrowing message parts and
+/// handler descriptors while owning the attached document list.
 pub struct RequestGraph<'a> {
     /// The preamble, if the program has one.
     pub preamble: Option<&'a str>,
@@ -212,8 +214,8 @@ pub struct RequestGraph<'a> {
     pub output_tool_config: Option<&'a OutputToolConfig>,
 }
 
-/// The one fold: the wire request from the graph. The only constructor of
-/// a `CompletionRequest` in the crate (a root guard refuses another).
+/// Construct a completion request from ordered graph inputs and resolved output
+/// policy. Non-tool descriptors are omitted; an invalid native schema is omitted.
 pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
     let mut chat_history: Vec<Message> = Vec::with_capacity(graph.utterances.len() + 2);
     let system = system_message(graph);
@@ -289,7 +291,8 @@ fn system_message(graph: &RequestGraph<'_>) -> Option<String> {
     }
 }
 
-/// A tool handler's descriptor as the definition the model sees.
+/// Convert a tool descriptor to its model-facing definition; return `None` for
+/// other effect families.
 pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition> {
     match &descriptor.family {
         rig_core::effect::FamilyDescriptor::Tool {
@@ -311,12 +314,10 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
     }
 }
 
-/// A tool call's result as the model sees it (CONTRACT §8.1): the
-/// outcome's model-visible output for a result, a skipped result for a
-/// denial, a failed result carrying the report's message for any other
-/// report — or the failure the run ends in (a cancel; a report the bus
-/// could not serve). Beside the part, its status as graph data: the part
-/// is the same whatever the status.
+/// Convert a tool outcome to model-visible content and a separate graph status.
+/// Denials become skipped results; other nonterminal reports become error results.
+/// Returns a run failure for cancellation, unavailable handlers, a closed bus,
+/// or replay divergence.
 pub fn tool_result_part(
     id: ToolCallId,
     provider: Option<ProviderCallId>,
@@ -364,10 +365,8 @@ pub fn tool_result_part(
     ))
 }
 
-/// The request-time cut of one tool-result text under `limit` (CONTRACT
-/// §8.1): `None` when the text fits; else its head and tail — together at
-/// most `limit.max_bytes` bytes, each cut back to a UTF-8 character
-/// boundary — around the marker naming the omitted byte count.
+/// Return `None` if text fits the limit; otherwise retain head and tail totaling
+/// at most `limit.max_bytes`, cut at UTF-8 boundaries around the omission marker.
 pub fn limit_tool_result_text(text: &str, limit: &ToolResultLimit) -> Option<String> {
     if text.len() <= limit.max_bytes {
         return None;
@@ -382,8 +381,6 @@ pub fn limit_tool_result_text(text: &str, limit: &ToolResultLimit) -> Option<Str
     }
     let omitted = tail - head;
     let marker = limit.marker.replace("{omitted}", &omitted.to_string());
-    // Both boundaries were just proven; an empty side is what a missed one
-    // would give, never a panic.
     let head = text.get(..head).unwrap_or_default();
     let tail = text.get(tail..).unwrap_or_default();
     let mut cut = String::with_capacity(head.len() + marker.len() + tail.len());
@@ -588,9 +585,8 @@ pub fn partial_turn_at(
     (kept, invalid_id.clone())
 }
 
-/// The query a retrieval asks with (CONTRACT §12): the last utterance with
-/// text, from the end — the prompt on the first turn, still the prompt
-/// after a tool turn whose last utterance is a result.
+/// Return retrieval text from the last utterance with usable text, or an empty
+/// string when none exists. Tool-result-only utterances do not replace the query.
 pub fn retrieval_query(utterances: &[MessageParts]) -> String {
     utterances
         .iter()

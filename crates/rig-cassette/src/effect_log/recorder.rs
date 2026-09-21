@@ -1,5 +1,10 @@
 //! The effect-log recorder: a [`Recorder`] that folds every served dispatch
 //! into an [`EffectLog`].
+//!
+//! ```
+//! let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
+//! assert_eq!(recorder.in_flight(), 0);
+//! ```
 
 use std::{
     fmt,
@@ -15,13 +20,9 @@ use rig_core::{
 
 use super::{EffectLog, LogHeader};
 
-/// A bus observer: every dispatch the driver serves is recorded, as an
-/// [`EffectRecord`], **in dispatch order** — the slot is opened when the
-/// driver takes the command and filled when the dispatch resolves, so two
-/// concurrent dispatches to one key are logged in the order they were
-/// served, not the order they happened to finish. Cloning shares the log; a
-/// streaming dispatch is recorded as the aggregated completion its events
-/// fold to.
+/// Records served dispatches in dispatch order, regardless of resolution order.
+/// Clones share the log. Streams retain their folded completion and optionally
+/// their original events.
 #[derive(Clone, Default)]
 pub struct EffectLogRecorder {
     slots: Arc<Mutex<Vec<RecordSlot>>>,
@@ -78,10 +79,8 @@ impl EffectLogRecorder {
         }
     }
 
-    /// The header the log will carry: set by the driver at
-    /// a driver's `record_to` (rig-agent's `BusDriver`) (the registered handlers) and by an agent
-    /// (the run spec hash); the signature accumulates as dispatches are
-    /// served.
+    /// Return a snapshot of registered handlers, program identity, and the
+    /// effect signature accumulated from served dispatches.
     pub fn header(&self) -> LogHeader {
         self.header
             .lock()
@@ -224,11 +223,8 @@ impl EffectLogRecorder {
             });
     }
 
-    // The open slot is almost always the last one begun: a stream's events
-    // and a dispatch's outcome land on the newest slots, and every resolved
-    // slot before them is dead weight to a scan from the front. Searching
-    // from the back makes a long streamed run linear in its events rather
-    // than in its records times its events.
+    // Active slots are usually newest; reverse scanning avoids traversing
+    // completed records for each streamed event.
     fn event_slot(&self, id: EffectId, event: &StreamEvent) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id)
@@ -260,8 +256,7 @@ impl EffectLogRecorder {
             deliveries.retain(|delivery| delivery.id != id);
         }
         drop(slots);
-        // The signature is the trace's row: a key with no record left —
-        // none taken, none in flight — is not in it.
+        // A key belongs in the signature only while it has retained or taken records.
         let mut touched = self.touched.lock().unwrap_or_else(PoisonError::into_inner);
         let remaining = touched.get(&key).copied().unwrap_or(0).saturating_sub(1);
         if remaining == 0 {
@@ -343,9 +338,8 @@ impl Recorder for EffectLogRecorder {
     }
 
     fn delivery(&self, delivery: rig_core::effect::Delivery) {
-        // A layer can discard before the world's outcome observer fires.
-        // Keep only deliveries belonging to a retained record; hold the
-        // slot lock through insertion so discard cannot race this check.
+        // Hold the slot lock through insertion so a layer cannot discard the
+        // record between the membership check and delivery recording.
         let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         if !slots.iter().any(|slot| slot.id == delivery.id) {
             return;

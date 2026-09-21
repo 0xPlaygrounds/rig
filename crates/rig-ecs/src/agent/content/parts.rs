@@ -1,4 +1,13 @@
 //! Lossless conversion between message DTOs and ordered, typed child entities.
+//!
+//! ```
+//! use rig_ecs::agent::{MessageParts, Utterance, content::parts::{read_message, write_message}};
+//! let mut world = bevy_ecs::world::World::new();
+//! let utterance = world.spawn(Utterance).id();
+//! write_message(&mut world, utterance, MessageParts::User { content: vec![] })?;
+//! let message = read_message(&world, utterance)?;
+//! # Ok::<(), rig_ecs::agent::content::parts::ContentError>(())
+//! ```
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
@@ -127,10 +136,8 @@ pub struct DocumentPart {
     pub additional_params: Option<message::AdditionalParams>,
 }
 
-/// How a tool call ended, beside its [`ContentPart::ToolResult`] (CONTRACT §8.1):
-/// graph data the batch lands, never rendered into the transport DTO — the
-/// result's content items are the same whatever the status. Absent on a
-/// result written from a DTO (`write_message`, a memory load, prior history).
+/// Tool execution status attached to a [`ContentPart::ToolResult`].
+/// Not rendered into transport messages or populated by DTO imports.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 #[serde(rename_all = "snake_case")]
@@ -143,9 +150,7 @@ pub enum ToolResultStatus {
     Error,
     /// The tool declined the call (`status: refused`).
     Refused,
-    /// Nothing ran: the runtime skipped the call (a `skipped` result), or
-    /// the result is synthetic — invalid-call feedback, the invalid-peer
-    /// notice, an output-tool reprompt.
+    /// Nothing ran: the call was skipped or its result is synthetic feedback.
     Skipped,
     /// A `Denied` outcome (a layer's `deny`, a `Gate` system's denial).
     Denied,
@@ -157,14 +162,11 @@ pub enum ToolResultStatus {
 /// byte count.
 pub const TOOL_RESULT_LIMIT_MARKER: &str = "\n[… {omitted} bytes omitted …]\n";
 
-/// A request-time size policy on a run (else its agent) for the text items
-/// of tool-result parts (CONTRACT §8.1): a text longer than `max_bytes` is
-/// sent as its head and tail — at most `max_bytes` bytes together, cut on
-/// UTF-8 character boundaries — around `marker`, with `{omitted}` replaced
-/// by the omitted byte count. JSON and image items are never cut. Applied
-/// by `assemble` after the turn's `RequestPartEdit`s, to the outgoing
-/// request only: history, the graph and a scene keep the full text. Absent
-/// is verbatim. Request shaping like `RequestPatch`: not replay identity.
+/// Request-only size limit for tool-result text, resolved from the run then agent.
+/// Text exceeding `max_bytes` retains at most that many head and tail bytes,
+/// split at UTF-8 boundaries around `marker`; `{omitted}` becomes the omitted
+/// byte count. JSON and images remain intact. Applied after request part edits;
+/// persisted history and replay identity are unchanged. Absence means no limit.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct ToolResultLimit {
@@ -302,8 +304,9 @@ fn spawn_parts(world: &mut World, parent: Entity, parts: PreparedParts) {
 }
 
 /// Replace an utterance's content graph. This is a persistent edit; request-only
-/// steering must patch the reconstructed request instead. A rejected source
-/// leaves the existing graph unchanged; unreferenced interned assets can be collected.
+/// steering must use request part edits instead. Missing utterances or rejected
+/// binary sources return errors without changing the graph; unreferenced interned
+/// assets can be collected.
 /// Sibling order is the utterance's `Children` order, the parts as given.
 /// Repeated identical parts remain distinct entities.
 pub fn write_message(
@@ -477,7 +480,8 @@ pub struct ContentGraph<'w, 's> {
 }
 
 impl ContentGraph<'_, '_> {
-    /// Read one message with transient part edits. The caller validates ownership.
+    /// Read one message with transient part edits. The caller must validate edit
+    /// ownership. Returns an error for invalid graph data, binary sources, or edits.
     pub fn message_with(
         &self,
         utterance: Entity,
@@ -498,6 +502,7 @@ impl ContentGraph<'_, '_> {
     }
 
     /// Find the utterance owning a direct or nested tool-result content part.
+    /// Returns an error for missing entities or invalid parent and part types.
     pub fn target_utterance(&self, target: Entity) -> Result<Entity, ContentError> {
         let part = self
             .entities
@@ -535,7 +540,8 @@ impl ContentGraph<'_, '_> {
         Ok(utterance)
     }
 
-    /// Reconstruct one utterance, validating ordering, role and binary references.
+    /// Reconstruct one utterance in sibling order. Returns an error for missing
+    /// entities or components, invalid roles or part types, or unresolved binaries.
     pub fn message(&self, utterance: Entity) -> Result<MessageParts, ContentError> {
         let empty = BinaryAssets::default();
         let assets = self.assets.as_deref().unwrap_or(&empty);

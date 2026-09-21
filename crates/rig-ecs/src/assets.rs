@@ -1,13 +1,13 @@
-//! Prompts and tool definitions as assets (the `assets` feature): a
-//! [`PromptAsset`] is a Markdown or text file, a [`ToolDefinitions`] a JSON
-//! array of `ToolDefinition`s, each with a `bevy_asset` loader; a handle
-//! on an agent ([`PromptHandle`], [`ToolsHandle`]) becomes the agent's
-//! [`Preamble`] and its [`Grant`]s — to the bound handlers the definitions
-//! name, in file order — the tick the asset is loaded, once (the marker
-//! [`Applied`] says so — a later change to the asset is not re-applied).
-//! The systems run in `Update` in [`AssetsSet`], before `RigSchedule`, so
-//! a run spawned the tick an asset loads folds with it. The host adds
-//! `bevy_asset::AssetPlugin` first, then [`AssetsPlugin`].
+//! Prompt and tool-definition asset loaders, enabled by the `assets` feature.
+//!
+//! Loaded handles apply preambles and grants once in [`AssetsSet`] during
+//! `Update`, before the rig schedule. Install the asset and agent plugins before
+//! [`AssetsPlugin`]; later asset changes are not reapplied.
+//!
+//! ```
+//! use rig_ecs::assets::PromptAsset;
+//! let prompt = PromptAsset { text: "Answer briefly.".into() };
+//! ```
 
 use std::marker::PhantomData;
 
@@ -22,16 +22,16 @@ use crate::{
     bus::Bound,
 };
 
-/// A prompt file's text — the asset, not the run's `agent::Prompt` (the
-/// preamble it becomes is trimmed at the end, so a file's final newline is
-/// not the model's).
+/// Prompt file text. Applying it to an agent trims trailing whitespace before
+/// setting the preamble.
 #[derive(Asset, TypePath, Debug, Clone, PartialEq, Eq)]
 pub struct PromptAsset {
     /// The text, as the file has it.
     pub text: String,
 }
 
-/// Loads a `.md` or `.txt` file as a [`PromptAsset`].
+/// Loads `.md`, `.txt`, and `.prompt` files as [`PromptAsset`], returning an I/O
+/// error for unreadable files or invalid UTF-8.
 #[derive(Debug, Default, Clone, Copy, TypePath)]
 pub struct PromptLoader;
 
@@ -64,7 +64,8 @@ pub struct ToolDefinitions {
     pub tools: Vec<ToolDefinition>,
 }
 
-/// Loads a `.tools.json` (or any `.json`) file as [`ToolDefinitions`].
+/// Loads a `.json` array as [`ToolDefinitions`], returning an I/O error for
+/// unreadable files or invalid JSON.
 #[derive(Debug, Default, Clone, Copy, TypePath)]
 pub struct ToolDefinitionsLoader;
 
@@ -125,11 +126,8 @@ pub fn apply_prompts(
     }
 }
 
-/// Loaded [`ToolDefinitions`] on an agent become its [`Grant`]s: one per
-/// definition, spawned in file order (the agent's sibling order), to the
-/// bound handler whose descriptor is the tool of that name. A definition
-/// no handler serves is no grant (logged): a definition names a tool, the
-/// handler is what runs it.
+/// Apply loaded tool definitions once by spawning [`Grant`] links in file order
+/// to bound handlers with matching tool names. Warn and skip unmatched definitions.
 pub fn grant_tools(
     mut commands: Commands,
     definitions: Res<Assets<ToolDefinitions>>,
@@ -174,7 +172,8 @@ pub fn grant_tools(
 pub struct AssetsSet;
 
 /// Registers the two assets and their loaders, and the systems that apply
-/// them, in [`AssetsSet`]. After `bevy_asset::AssetPlugin`.
+/// them, in [`AssetsSet`]. Install after `bevy_asset::AssetPlugin` and the agent
+/// plugin. Panics if the agent's [`RunCounter`] resource is absent.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AssetsPlugin;
 

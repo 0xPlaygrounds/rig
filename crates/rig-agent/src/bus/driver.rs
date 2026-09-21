@@ -1,4 +1,9 @@
-//! The serving half of the bus: `BusDriver`.
+//! Bus serving future, handler ownership, and dispatch recording.
+//!
+//! ```
+//! let (dispatcher, registrar, driver) = rig_agent::bus::Bus::channel();
+//! assert_eq!(driver.in_flight(), 0);
+//! ```
 
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -96,23 +101,11 @@ impl Recording {
     }
 }
 
-/// The serving half of the bus: a plain future that owns the **only**
-/// handler table and runs handlers as commands arrive. Handlers reach it
-/// by value before it is spawned ([`BusDriver::register`]) or through a
-/// [`Registrar`] afterwards; the shared half of the bus carries their
-/// descriptors, never the handlers themselves.
-///
-/// `Send` on native (asserted), so `IoTaskPool::get().spawn(driver)` — or
-/// any `Send + 'static` spawn — takes it; `!Send` is allowed on browser
-/// wasm, where the pool accepts it too. It completes when every
-/// [`Dispatcher`](super::Dispatcher) clone has dropped and no dispatch is in
-/// flight. Dropping it before then — a cancelled task, a despawned entity —
-/// fails every in-flight and later dispatch with `BusClosed`.
-///
-/// **Whoever holds the driver drives.** Nothing else advances it; a
-/// dispatcher whose driver sits un-polled waits forever, so the owner must
-/// spawn it, drive it inline (`select(pending, &mut driver)`), or hand it
-/// over together with the dispatcher.
+/// Serving future owning the bus's handler table. Shared dispatchers retain
+/// descriptors, not handlers. The owner must poll or spawn this future for
+/// dispatches to progress; it is `Send` on native targets and may be `!Send` on WASM.
+/// Completes after command-owning dispatchers are dropped and in-flight work drains.
+/// Dropping it fails unfinished and subsequent dispatches with `BusClosed`.
 pub struct BusDriver {
     shared: Arc<Shared>,
     mailbox: Arc<Mailbox>,
@@ -154,10 +147,8 @@ impl BusDriver {
         }
     }
 
-    /// Register (or replace) the handler serving `key` while the driver is
-    /// in hand — before it is spawned, or between polls when the owner
-    /// drives it inline. Installed at once; the same descriptor
-    /// [`Registrar::register`] publishes.
+    /// Register or replace `key` immediately, publishing its descriptor.
+    /// Returns an error if registration is refused by [`Registrar::register`].
     pub fn register(
         &mut self,
         key: impl Into<HandlerKey>,
@@ -214,8 +205,8 @@ impl BusDriver {
         }
     }
 
-    /// Put `handler` in the table. The displaced handler, if any, is dropped
-    /// here, with no lock held — its `Drop` may touch this bus.
+    /// Install a handler and drop its predecessor without holding a lock.
+    /// Handler destructors may reenter the bus.
     fn install(&mut self, key: HandlerKey, handler: ErasedHandler) {
         if let Some(recording) = &self.recorder {
             let described = handler.descriptor();
@@ -286,10 +277,8 @@ impl BusDriver {
         self.queued.values().map(VecDeque::len).sum()
     }
 
-    /// Start serving `command`. Returns whether it went in flight; a command
-    /// with no handler is answered `HandlerUnavailable` on the spot and
-    /// never occupies its key, and a command whose consumer is already gone
-    /// is dropped unserved — no handler poll, no record.
+    /// Start a command, returning whether it entered flight. Missing handlers fail
+    /// immediately; cancelled consumers are dropped without handler polls or records.
     fn serve(&mut self, command: Command) -> bool {
         let Command {
             lineage,
@@ -322,8 +311,7 @@ impl BusDriver {
         if self.config.serial_per_handler {
             self.busy.insert(key.clone());
         }
-        // The handler's way back onto this bus: a dispatcher whose dispatches
-        // descend from this one.
+        // Nested dispatches need this lineage for cancellation and reentrancy checks.
         let scoped = Dispatcher::parented(
             Arc::clone(&self.shared),
             self.config.stream_capacity,
@@ -335,8 +323,7 @@ impl BusDriver {
         if let Some(context) = adapter_context {
             dispatch = dispatch.with_adapter_context(context);
         }
-        // A tool call's context, beside the effect: the inbound values the
-        // tool runs with, and where what it publishes comes back.
+        // Context stays outside the serializable effect payload.
         if let Some(context) = context {
             dispatch = dispatch.with_scope(Arc::new(context));
         }
@@ -452,14 +439,11 @@ impl BusDriver {
         }
     }
 
-    /// The in-flight command for `key` finished: serve the next queued one
-    /// that can go in flight. A queued command whose handler is gone is
-    /// answered on the spot and the loop moves on — a key never strands
-    /// its queue behind a command that will not be served.
+    /// Release a completed dispatch and start the next eligible command for its key.
+    /// Refuse cancelled descendants and skip commands with missing handlers.
     fn release(&mut self, key: HandlerKey, id: EffectId) {
         if self.shared.end_in_flight(id) {
-            // Cancelled: the children it still has here are dropped unserved
-            // — no handler poll, no record — and answered as cancelled.
+            // Queued descendants must not execute or produce records after cancellation.
             for queue in self.queued.values_mut() {
                 let (orphans, kept): (Vec<_>, Vec<_>) = std::mem::take(queue)
                     .into_iter()
@@ -542,19 +526,9 @@ impl Future for BusDriver {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = self.get_mut();
         loop {
-            // Take every buffered command; each becomes an in-flight task or
-            // a queued one. Draining registers this poll's waker for the
-            // next enqueue and releases any dispatch parked on the bound.
             if !this.commands_closed {
-                // Take the commands first, then the registrations, then
-                // serve: a registration made before a dispatch (program
-                // order on the registering thread) is in the mailbox by the
-                // time the dispatch is in the queue, so taking the queue
-                // first and the mailbox second sees every registration the
-                // taken commands rely on. The other order let a
-                // registration posted between the two drains be missed for
-                // the dispatch that followed it, which was then served as
-                // `HandlerUnavailable`.
+                // Drain commands before registrations so each command sees registrations
+                // posted before it, including those arriving between the drains.
                 let commands = this.shared.drain(cx);
                 this.apply_registrations(cx);
                 for command in commands {
@@ -562,12 +536,8 @@ impl Future for BusDriver {
                 }
                 this.drain_cancelled_queues();
                 this.drain_orphaned_queues();
-                // The bus is closed for commands once every dispatcher has
-                // dropped and nothing it enqueued remains — decided under
-                // the queue lock, so no late send lands after the decision.
-                // Observable to a `Pending` that outlived its dispatcher: its
-                // send answers `BusClosed` now, not after the last in-flight
-                // stream ends.
+                // Closing under the queue lock excludes late sends, including pending
+                // values that outlive their dispatcher while streams are still draining.
                 if this.shared.try_close_commands() {
                     this.commands_closed = true;
                 }
@@ -602,10 +572,8 @@ impl Future for BusDriver {
 
 impl Drop for BusDriver {
     fn drop(&mut self) {
-        // The guard: after this every reply the channel loses is `BusClosed`,
-        // and handlers posted but never installed go with the driver. The
-        // descriptor table goes too — it described handlers this driver
-        // held.
+        // Mark closure before dropping handlers so lost replies report BusClosed
+        // and reentrant destructors cannot submit new work.
         self.shared.mark_closed();
         self.mailbox.clear();
         self.shared.driver_died();

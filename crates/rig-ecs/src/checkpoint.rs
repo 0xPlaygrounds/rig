@@ -1,21 +1,18 @@
-//! A checkpoint is the world as reflected data: every entity with a
-//! registered reflected component, each component under its type path, an
-//! `Entity` in a component as the index of that entity in the checkpoint.
-//! [`save_world`] takes it; [`load_world`] restores it with an explicit
-//! [`RestoreMode`] and a complete set of host-built or preinstalled handlers.
-//! Original saved descriptors are checked before aliasing. In-flight effects
-//! are re-issued under their saved ids and the binary store is merged only
-//! after preflight, so refusal leaves destination state and handlers untouched.
-//! Provider launch settings and live resources are not checkpoint components.
+//! Save and restore reflected execution graphs with host-supplied handlers.
 //!
-//! What is saved is what is registered with the world's [`AppTypeRegistry`]
-//! as a component or a resource: the crate registers its own
-//! ([`register_types`]); a host registers its own types the same way and
-//! they travel with the entities they sit on. In-flight state (`Serving`,
-//! `Streaming`, `Handler`, the cache views) is not reflected and so never
-//! saved; relationship targets (`Children`, `Serves`, …) are rebuilt by the
-//! hooks of their sources at load, in checkpoint order — which is the
-//! world's `Children` order, parents before children.
+//! Registered components, binary assets, and execution counters are persisted;
+//! live handlers and provider launch settings are not. Restoration validates
+//! original saved contracts before aliasing and reissues unfinished effects with
+//! saved dispatch IDs. Relationship targets are rebuilt in checkpoint order.
+//!
+//! ```
+//! use rig_ecs::{RigPlugin, checkpoint::{save_world, load_world, RestoreMode}};
+//! let mut app = bevy_app::App::new();
+//! app.add_plugins(RigPlugin::default());
+//! let checkpoint = save_world(app.world_mut())?;
+//! load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, [])?;
+//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! ```
 
 mod restore;
 pub use restore::{RestoreMode, load_world};
@@ -58,12 +55,9 @@ type Reflected<'a> = Vec<(&'a str, Box<dyn PartialReflect>)>;
 /// The [`Checkpoint`] envelope format this crate writes and reads.
 pub const CHECKPOINT_FORMAT: u32 = 2;
 
-/// The world as reflected data.
-///
-/// The envelope is versioned: [`CHECKPOINT_FORMAT`] is written on every
-/// save and checked on every load, and an unknown key is refused. A
-/// checkpoint written by another format is refused by name rather than
-/// loaded with defaults filled in.
+/// Reflected execution state with binary assets and counters.
+/// Deserialization rejects unknown envelope fields and formats other than
+/// [`CHECKPOINT_FORMAT`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Checkpoint {
@@ -161,8 +155,7 @@ fn is_relationship_target(id: TypeId) -> bool {
 /// `Entity`'s own `Ord` is over its opaque bits, which invert the index),
 /// then each root's subtree depth-first in `Children` order.
 fn ordered_entities(world: &mut World) -> Vec<Entity> {
-    // A host may disable an ended run to keep it out of its hot queries; it
-    // is still the world's, and a checkpoint keeps it.
+    // Disabled runs must survive checkpoints even though ordinary queries omit them.
     let mut roots: Vec<Entity> = world
         .query_filtered::<Entity, (Without<ChildOf>, Without<IsResource>, Allow<Disabled>)>()
         .iter(world)
@@ -179,7 +172,8 @@ fn ordered_entities(world: &mut World) -> Vec<Entity> {
     order
 }
 
-/// Take the checkpoint of `world`.
+/// Save registered reflected components, binary assets, and execution counters.
+/// Returns an error if the type registry is absent or reflection serialization fails.
 #[must_use = "saving a checkpoint does not remove anything from the world"]
 pub fn save_world(world: &mut World) -> Result<Checkpoint, ErrorReport> {
     let registry = world
@@ -362,10 +356,8 @@ fn spawn_into(
     let mut remap = Remapped {
         entities: &entities,
     };
-    // Effects: their saved `Seq`, re-stamped afterwards as the saved value
-    // offset by the counter as it stood before the load — the saved order
-    // and gaps kept, after everything already in the world, and in a
-    // fresh world the saved values themselves.
+    // Offset saved sequences so loaded effects follow existing ones without
+    // changing their relative order or gaps.
     let base = world.resource::<SeqCounter>().0;
     let mut effects: Vec<(u64, Entity)> = Vec::new();
     for (row, components) in checkpoint.entities.iter().enumerate() {
@@ -405,7 +397,7 @@ fn spawn_into(
             component.insert(&mut world.entity_mut(entity), reflected.as_ref(), &registry);
         }
     }
-    // Every `PendingEffect` was stamped a fresh `Seq` on add; overwrite it.
+    // Insertion hooks assign fresh sequences, which must not replace saved ordering.
     let mut next = base;
     for (saved, entity) in effects {
         let seq = base.saturating_add(saved);
@@ -414,7 +406,7 @@ fn spawn_into(
     }
     let mut counter = world.resource_mut::<SeqCounter>();
     counter.0 = counter.0.max(next);
-    // An effect taken but not answered is re-issued under its saved id.
+    // Saved IDs let handlers recognize operations retried after restoration.
     let taken: Vec<(Entity, Issued)> = world
         .query_filtered::<(Entity, &Issued), (With<InFlight>, Without<EffectOutcome>)>()
         .iter(world)
@@ -427,8 +419,7 @@ fn spawn_into(
             .remove::<(InFlight, Issued)>()
             .insert(Reserved(id));
     }
-    // The world's counters only ever move forward: a saved counter behind
-    // the world's is the world's.
+    // Never reuse an ID or run number already allocated by the destination.
     let mut ids = world.resource_mut::<IdCounter>();
     ids.0 = ids.0.max(checkpoint.counters.next_id);
     let mut runs = world.get_resource_or_init::<agent::RunCounter>();
@@ -439,9 +430,8 @@ fn spawn_into(
 /// Every invariant a loaded graph must hold, checked in the scratch world.
 fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
     for &entity in entities {
-        // A resumable unfinished operation needs a saved dispatch contract.
-        // Do not infer accepted input families from advertised metadata:
-        // open world handlers may deliberately inspect arbitrary effects.
+        // Resuming requires a saved handler contract, but advertised families
+        // cannot restrict world handlers that accept arbitrary effects.
         if let Some(pending) = world.get::<PendingEffect>(entity)
             && world.get::<EffectOutcome>(entity).is_none()
         {
@@ -562,8 +552,7 @@ fn validated_state(
             checkpoint.format
         )));
     }
-    // Removed components retain frozen historical wire identifiers; live
-    // components use reflected TypePath identity, independent of Rust modules.
+    // These rejected wire identifiers must stay fixed across Rust module renames.
     for entity in &checkpoint.entities {
         if let Some(path) = entity.keys().find(|path| {
             matches!(
@@ -623,18 +612,20 @@ fn load_state(
 impl Checkpoint {
     /// Validate saved execution data without installing state or constructing
     /// implementations. Hosts can call this before side-effectful assembly.
-    /// Handler compatibility and completeness are checked by [`load_world`].
+    /// Returns an error for invalid saved contracts, graphs, or binaries, or missing
+    /// destination registry/counters. [`load_world`] checks handler compatibility
+    /// and completeness.
     pub fn validate(&self, world: &World) -> Result<(), ErrorReport> {
         self.requirements()?;
         validated_state(self, world).map(|_| ())
     }
 
-    /// The checkpoint as JSON text.
+    /// Serialize the checkpoint to JSON, returning serialization failures as reports.
     pub fn to_json(&self) -> Result<String, ErrorReport> {
         serde_json::to_string(self).map_err(|error| refused(error.to_string()))
     }
 
-    /// A checkpoint from JSON text.
+    /// Parse checkpoint JSON, rejecting invalid data, unknown fields, or unsupported formats.
     pub fn from_json(json: &str) -> Result<Self, ErrorReport> {
         serde_json::from_str(json).map_err(|error| refused(error.to_string()))
     }

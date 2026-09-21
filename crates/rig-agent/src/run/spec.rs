@@ -1,11 +1,11 @@
-//! The protocol-facing configuration of a run, as plain data.
+//! Serializable request settings, turn budgets, and output policies for runs.
+//! Live models, tools, hooks, and memory remain owned by the driver.
 //!
-//! [`RunSpec`] is the half of an agent definition that the protocol consumes:
-//! prompt-shaping (preamble, static context, sampling parameters, additional
-//! params), the turn budget, tool choice, structured-output policy. It carries
-//! no model, no tools, no hooks, no memory — those are a driver's. Being plain
-//! `Serialize + Deserialize` data it can be stored, diffed, loaded from a file,
-//! or kept as an ECS component; `AgentRun::from_spec` (rig-agent) turns it into a run.
+//! ```
+//! use rig_agent::run::spec::RunSpec;
+//! let spec = RunSpec::new();
+//! assert_eq!(spec.effective_max_turns(), 1);
+//! ```
 
 use rig_core::completion::Document;
 use rig_core::message::ToolChoice;
@@ -52,14 +52,8 @@ pub struct RunSpec {
     pub unhandled_invalid_tool_call: UnhandledInvalidToolCall,
 }
 
-/// Default for an invalid model tool call that no hook resolves.
-///
-/// Hooks always see the invalid call first ([`on_invalid_tool_call`]) and may
-/// fail, retry, repair, or skip it; this only applies when every hook
-/// declines. [`Fail`](Self::Fail) is the protocol default. [`Ignore`](Self::Ignore)
-/// treats the call as irrelevant response content and lets the turn
-/// proceed — what a typed extraction run wants, where any call that is not
-/// the output tool is noise rather than an error.
+/// Policy applied when every [`on_invalid_tool_call`] hook declines to resolve
+/// an invalid call. Defaults to failure; ignoring drops the call and continues.
 ///
 /// [`on_invalid_tool_call`]: crate::agent::AgentHook::on_invalid_tool_call
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,8 +67,8 @@ pub enum UnhandledInvalidToolCall {
 }
 
 impl RunSpec {
-    /// A spec with no preamble, a one-call budget, no tools choice and no
-    /// structured output — the same defaults an `AgentRun::new` carries.
+    /// Create a spec with a one-call budget, no preamble, tool choice, or schema,
+    /// and output-preamble augmentation enabled. Unlike `Default`, enables augmentation.
     pub fn new() -> Self {
         Self {
             augment_output_preamble: true,

@@ -1,13 +1,8 @@
-//! The two ways this backend hands a socket to a session.
+//! Direct and channel-backed websocket connections.
 //!
-//! [`DirectConnection`] is the ordinary one: the caller is already inside a
-//! tokio runtime, so the session's futures can poll the socket themselves.
-//!
-//! [`ForwardedConnection`] is for a caller with no tokio runtime. The socket
-//! moves onto the fallback runtime as a small actor and the connection becomes
-//! a pair of `futures` channels, so nothing the caller polls ever touches
-//! tokio. It reads and serves commands concurrently rather than one at a time;
-//! [`run_actor`] documents why that is required and not merely faster.
+//! Direct connections require the caller's Tokio runtime. Forwarded connections
+//! keep socket I/O on the fallback runtime and preserve unread frames across
+//! cancelled receives.
 
 use futures::{SinkExt, StreamExt};
 use rig_core::http_client::{Error, Result};
@@ -82,50 +77,21 @@ enum Command {
 
 /// A socket living on the fallback runtime, reached over channels.
 ///
-/// The connection — not any one `recv()` — owns the actor: a cancelled read is
-/// an ordinary event the actor must survive (it keeps the frame it already
-/// took off the socket), while dropping the connection means the socket has no
-/// remaining user and must be released now.
+/// The connection owns the actor and aborts it on drop. Cancelling a receive
+/// leaves the actor alive and preserves undelivered frames.
 pub(crate) struct ForwardedConnection {
     commands: futures::channel::mpsc::Sender<Command>,
-    /// Held for its drop, which ends the actor even when the actor is parked
-    /// somewhere it cannot notice the command channel close — a write to a
-    /// peer that stopped reading.
+    /// Aborts the actor on drop, including during a blocked write that cannot
+    /// observe the command channel closing.
     _actor: crate::runtime::OwnedTask<()>,
 }
 
-/// The actor's end of the connection went away: it has already completed a
-/// close handshake, or the fallback runtime was torn down under it.
+/// The connection actor stopped before accepting or answering a command.
 #[derive(Debug, thiserror::Error)]
 #[error("the websocket connection task has stopped")]
 struct ConnectionTaskGone;
 
-/// The actor that owns the socket on the fallback runtime.
-///
-/// It reads and serves commands *concurrently*, over a split socket, rather
-/// than executing one command to completion at a time. That is not an
-/// optimization — a serial actor deadlocks:
-///
-/// - A read command would park the actor in `stream.next()`. When the session's
-///   event timeout fires it drops its `recv()` future, but the actor stays
-///   parked, so the `close()` that follows a timeout would wait forever for an
-///   actor that is waiting for a frame that is never coming.
-/// - A caller who cancels a read (their own `select!`, their own timeout) would
-///   lose the frame the actor had already taken off the socket, and the *next*
-///   read would hang waiting for a frame that had already arrived.
-///
-/// So inbound frames are buffered as they arrive and a read is answered from
-/// that buffer; a frame whose caller has gone away goes back on the front of it.
-/// Reading continuously also keeps tungstenite's automatic pong replies flowing,
-/// which only happen when the stream is polled.
-/// How many frames the actor will read ahead of the session.
-///
-/// Reading continuously is what makes a cancelled read safe and keeps
-/// tungstenite's pong replies flowing, but an unbounded buffer would let a host
-/// that reads slowly (rendering, disk, its own rate limit) accumulate a whole
-/// streamed response in memory while TCP happily kept delivering. Past this
-/// depth the actor stops draining the socket, which is where the backpressure
-/// the pre-split code got for free comes back.
+/// Maximum queued inbound frames before socket reads pause for backpressure.
 const READ_AHEAD: usize = 256;
 
 async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receiver<Command>) {
@@ -137,8 +103,6 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
     let mut stream_ended = false;
 
     loop {
-        // Answer an outstanding read as soon as the buffer (or the end of the
-        // stream) can answer it.
         match pending_read.take() {
             Some(reply) if !inbound.is_empty() || stream_ended => {
                 let answer = match inbound.pop_front() {
@@ -146,29 +110,22 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
                     Some(Err(error)) => Err(error),
                     None => Ok(None),
                 };
-                // A caller that cancelled its read must not cost us what we
-                // took off the socket — an error as much as a frame: a lost
-                // protocol failure resurfaces later as a bare "connection
-                // closed before the turn finished", hiding the real cause.
+                // Preserve both frames and errors when the receiver cancels,
+                // so the next read observes the original result.
                 if let Err(answer) = reply.send(answer) {
                     match answer {
                         Ok(Some(frame)) => inbound.push_front(Ok(frame)),
                         Err(error) => inbound.push_front(Err(error)),
-                        // End of stream: `stream_ended` already records it.
                         Ok(None) => {}
                     }
                 }
                 continue;
             }
-            // Nothing to answer it with yet (or nothing outstanding): keep it.
             still_pending => pending_read = still_pending,
         }
 
         let command = if stream_ended || inbound.len() >= READ_AHEAD {
-            // Either no further frames can arrive, or the reader is far enough
-            // behind that we stop taking them off the socket; in both cases
-            // only a command can make progress, and selecting on the stream
-            // would spin (or read ahead without bound).
+            // Avoid polling an exhausted stream or reading beyond the buffer bound.
             requests.next().await
         } else {
             select! {
@@ -176,9 +133,6 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
                 message = stream.next().fuse() => {
                     match message {
                         Some(Ok(message)) => {
-                            // A raw frame carries no protocol payload; skip it
-                            // rather than hand a session bytes it will try to
-                            // parse as JSON.
                             if let Some(frame) = from_message(message) {
                                 inbound.push_back(Ok(frame));
                             }
@@ -191,9 +145,7 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
             }
         };
 
-        // The connection handle was dropped: nothing can reach us again, so
-        // drop the socket rather than leaving the task (and the connection)
-        // alive for the life of the process.
+        // Releasing the last handle must also release the socket and actor.
         let Some(command) = command else {
             return;
         };
@@ -226,12 +178,11 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
 
 impl ForwardedConnection {
     /// Move `socket` onto the fallback runtime and return the channel-backed
-    /// connection.
+    /// connection, or an error if the runtime cannot start.
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn spawn(socket: Socket) -> Result<rig_core::ws_client::BoxedWebSocketConnection> {
-        // A depth of one is enough: the contract is one outstanding command at
-        // a time, and a bound keeps a runaway caller from queueing frames the
-        // socket has not accepted.
+        // The sequential contract needs one pending command; bounding the queue
+        // prevents callers from buffering unaccepted frames.
         let (commands, requests) = futures::channel::mpsc::channel::<Command>(1);
         let actor = crate::runtime::spawn_off_runtime(run_actor(socket, requests))?;
         Ok(Box::new(Self {
@@ -240,7 +191,7 @@ impl ForwardedConnection {
         }))
     }
 
-    /// Send one command and await its answer.
+    /// Send one command and await its answer, returning an error if the actor stops.
     async fn request<T, F>(&mut self, command: F) -> Result<T>
     where
         F: FnOnce(futures::channel::oneshot::Sender<Result<T>>) -> Command,
@@ -280,15 +231,8 @@ fn into_message(frame: Frame) -> Message {
     }
 }
 
-/// Lower one tungstenite message onto the transport-agnostic frame.
-///
-/// `None` is a message with no protocol payload, which the caller skips.
-/// Today that is only `Message::Frame`, which tungstenite produces on the write
-/// side and never from a read — but the contract has no variant for a raw frame
-/// (no session could act on one), and skipping it is what the pre-split code
-/// did. Mapping it onto `Binary` instead would hand a session bytes it would
-/// try to parse as JSON, turning an unexpected control frame into a fatal
-/// decode error.
+/// Convert a tungstenite message to a transport frame, returning `None` for raw
+/// frames without a session-level protocol payload.
 fn from_message(message: Message) -> Option<Frame> {
     Some(match message {
         Message::Text(text) => Frame::Text(text.to_string()),

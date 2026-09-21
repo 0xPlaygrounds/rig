@@ -1,13 +1,16 @@
-//! Default-backend conveniences: open a provider websocket session over the
-//! bundled [`TungsteniteClient`] without naming a backend.
+//! Provider websocket session constructors using the bundled backend.
 //!
-//! rig-core deliberately names no websocket backend — every connect there takes
-//! a `W: WebSocketClientExt` — for the same reason it names no HTTP transport.
-//! These traits are implemented once, over the bundled backend, which is what
-//! lets `bound.responses_websocket()` resolve with nothing named at the call
-//! site. They are the websocket twin of `rig-reqwest`'s
-//! `DefaultTransportClient` / `DefaultTransportBuilder`; bring them into scope
-//! with `use rig::prelude::*` or `use rig_tungstenite::prelude::*`.
+//! ```no_run
+//! use rig_tungstenite::DefaultWebSocketBuilder;
+//! use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSessionBuilder;
+//!
+//! async fn connect(builder: ResponsesWebSocketSessionBuilder)
+//!     -> Result<(), rig_core::completion::CompletionError>
+//! {
+//!     let session = builder.connect().await?;
+//!     Ok(())
+//! }
+//! ```
 
 use crate::TungsteniteClient;
 use rig_core::completion::CompletionError;
@@ -21,7 +24,8 @@ use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 /// Open a provider websocket session over the bundled backend.
 pub trait DefaultWebSocketClient {
     /// Open an OpenAI Responses websocket session for this wire's model, with
-    /// default options, over the bundled backend.
+    /// default options, over the bundled backend. Returns an error if connection
+    /// setup fails.
     fn responses_websocket(
         &self,
     ) -> impl Future<Output = Result<ResponsesWebSocketSession, CompletionError>> + Send
@@ -43,14 +47,10 @@ where
     }
 }
 
-/// `connect()` for a session builder with no backend named: substitutes the
-/// bundled [`TungsteniteClient`].
-///
-/// rig-core's own `connect_with(..)` always takes a backend, so this trait is
-/// what makes `bound.responses_websocket_builder().event_timeout(..).connect()`
-/// resolve.
+/// Connect a configured session using the bundled [`TungsteniteClient`].
 pub trait DefaultWebSocketBuilder {
-    /// Open the session over the bundled backend.
+    /// Open the session over the bundled backend, returning an error if
+    /// connection setup fails.
     fn connect(
         self,
     ) -> impl Future<Output = Result<ResponsesWebSocketSession, CompletionError>> + Send;

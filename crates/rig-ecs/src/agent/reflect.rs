@@ -1,6 +1,11 @@
 //! The reflection wrappers for the rig-core types the agent's components
 //! hold (the bus's wrappers, [`crate::bus::reflect`], cover the rest):
 //! opaque remote wrappers, serialized through their serde form.
+//!
+//! ```
+//! let mut registry = bevy_reflect::TypeRegistry::default();
+//! registry.register::<rig_ecs::agent::reflect::UsageReflect>();
+//! ```
 
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault};
 use rig_core::completion::{

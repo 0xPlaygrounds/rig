@@ -1,5 +1,11 @@
-//! Record a world's effects into an [`EffectLog`]; replay a log through a
-//! world, by id.
+//! World resources for effect recording and ID-based replay.
+//!
+//! ```
+//! use bevy_ecs::world::World;
+//! use rig_cassette::{ecs::EffectLogResource, effect_log::EffectLogRecorder};
+//! let mut world = World::new();
+//! EffectLogResource::install(&mut world, EffectLogRecorder::new());
+//! ```
 
 use crate::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use bevy_ecs::prelude::*;
@@ -11,8 +17,9 @@ use rig_ecs::bus::{
     record::Recording,
 };
 
-/// The log recorder as a resource: what [`Recording`] writes into under
-/// this feature. Take the log with [`EffectLogRecorder::log`].
+/// A shared effect recorder stored as a world resource.
+/// Use [`EffectLogRecorder::log`] for a snapshot or [`EffectLogRecorder::take`]
+/// to drain resolved records.
 #[derive(Resource, Clone, Default)]
 pub struct EffectLogResource(pub EffectLogRecorder);
 
@@ -118,12 +125,9 @@ impl Replay {
         Ok(())
     }
 
-    /// Spawn one [`PendingEffect`] per record of `log`, in id order, each
-    /// with its recorded id [`Reserved`] and `ChildOf` the entity of its
-    /// recorded parent. A parent outside `log` (a log's tail loaded over a
-    /// checkpoint) is not in the world, so that child carries no `ChildOf`
-    /// and its new record names no parent. Returns the entities, in record
-    /// order.
+    /// Spawn one [`PendingEffect`] per record in ID order with its [`Reserved`]
+    /// ID and recorded scope. Link parents already spawned from this log using
+    /// `ChildOf`; omit the link otherwise. Return entities in ID order.
     #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(world: &mut World, log: &EffectLog) -> Vec<Entity> {
         let mut records: Vec<&rig_core::effect::EffectRecord> = log.iter().collect();

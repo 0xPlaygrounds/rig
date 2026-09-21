@@ -1,32 +1,16 @@
-//! Typed views over the bus: one generic [`Handle<F>`], five aliases.
+//! Typed bus handles and dispatch results for completion, tools, memory,
+//! retrieval, embeddings, reranking, and custom effects.
 //!
-//! A handle is a [`Dispatcher`] plus the key it is bound to, checked at bind
-//! time against the handler's family. It is `Clone + Send + Sync + 'static`
-//! on every target by construction and — deliberately — never serde: the
-//! descriptor is the serde half. A scene stores the [`HandlerKey`] and its
-//! [`HandlerDescriptor`] and re-binds with [`Dispatcher::handle`] at load.
+//! Handles are thread-safe on every target but are not serializable. Persist keys
+//! and descriptors instead, then rebind them. Descriptor queries observe current
+//! registrations and fall back to the bind-time snapshot when a key is absent.
 //!
-//! The stored descriptor is the bind-time snapshot. Because a runtime
-//! registration can replace what serves a key (model swapping),
-//! [`Handle::descriptor`] and [`ModelHandle::capabilities`] re-read the
-//! dispatcher's table rather than the field; the field exists for the family
-//! check and for hosts that serialize a handle's identity.
-//!
-//! Handles implement none of the impl-side traits: a consumer calls the
-//! inherent methods below, which are dispatches.
-//!
-//! ```compile_fail
-//! use rig_agent::bus::ModelHandle;
-//!
-//! fn requires_serialize<T: serde::Serialize>() {}
-//! requires_serialize::<ModelHandle>();
 //! ```
-//!
-//! ```compile_fail
-//! use rig_agent::bus::ToolHandle;
-//!
-//! fn requires_deserialize<T: for<'de> serde::Deserialize<'de>>() {}
-//! requires_deserialize::<ToolHandle>();
+//! use rig_agent::bus::{Bus, ModelHandle};
+//! use rig_core::effect::HandlerKey;
+//! let (dispatcher, registrar, driver) = Bus::channel();
+//! let model: Result<ModelHandle, _> = dispatcher.handle(&HandlerKey::from("model"));
+//! assert!(model.is_err());
 //! ```
 
 use std::{
@@ -140,9 +124,8 @@ impl Dispatcher {
     /// `F` now rather than at first dispatch: asking for a [`ModelHandle`]
     /// at a tool key is `HandlerUnavailable` here.
     pub fn handle<F: Family>(&self, key: &HandlerKey) -> Result<Handle<F>, ErrorReport> {
-        // Lifecycle before wiring: on a closed bus the table is empty
-        // because the driver is gone, and that is the answer — not
-        // "nothing serves the key".
+        // Driver closure empties the table but must report a lifecycle error,
+        // not a missing registration.
         if self.is_closed() {
             return Err(super::dispatcher::bus_closed());
         }
@@ -159,9 +142,9 @@ impl Dispatcher {
         })
     }
 
-    /// Bind a typed view to a key that carries its family: an existence
-    /// check only, the family was proven when the key was minted (a
-    /// [`Key::new_unchecked`] that lied fails here as `HandlerUnavailable`).
+    /// Bind a typed key, checking existence and current family.
+    /// Returns `BusClosed` for closure or `HandlerUnavailable` for missing or
+    /// incompatible registrations, including incorrectly asserted unchecked keys.
     pub fn bind<F: Family>(&self, key: &Key<F>) -> Result<Handle<F>, ErrorReport> {
         self.handle(key.raw())
     }
@@ -189,12 +172,9 @@ impl Dispatcher {
 
 const F_CUSTOM: rig_core::effect::EffectFamily = rig_core::effect::EffectFamily::Custom;
 
-/// A unary dispatch of the family `F`, mapped to its typed answer:
-/// `Unpin`, executor-neutral, cancelled by drop — the same value as
-/// [`Pending`] with the outcome narrowed by [`Family::unwrap`]. The second
-/// parameter is the narrowed answer a convenience method returns
-/// (`MemoryHandle::load` narrows `MemoryOutcome` to the messages); by
-/// default it is the family's own answer.
+/// Lazy unary dispatch mapped to a family-specific answer, optionally narrowed
+/// to `T`. Propagates dispatch and conversion errors; dropping it cancels work.
+/// Executor-neutral and `Unpin`.
 #[must_use = "a dispatch does nothing until polled"]
 pub struct Typed<F: Family, T = <F as Family>::Answer> {
     pending: Pending,
@@ -244,8 +224,7 @@ impl<F: Family, T> Future for Typed<F, T> {
 /// A completion dispatch in flight.
 pub type Completion = Typed<family::Completion>;
 
-/// A tool call's answer: the result, and the context the tool published
-/// — handed back in dispatch context, never on the wire.
+/// A tool result and published dispatch context. Context is not part of the wire payload.
 #[derive(Debug, Clone)]
 pub struct ToolAnswer {
     /// The result.
@@ -297,8 +276,7 @@ impl Future for ToolCall {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(report)) => Poll::Ready(Err(report)),
             Poll::Ready(Ok(outcome)) => Poll::Ready(family::Tool::unwrap(outcome).map(|result| {
-                // Ready is polled once: the snapshot moves out, and like a
-                // published context it is data again — no live scopes.
+                // Returned context must not retain live dispatch scopes.
                 let context = this
                     .published
                     .as_ref()
@@ -389,12 +367,9 @@ impl ModelHandle {
         )
     }
 
-    /// A streaming completion, wrapped back into a
-    /// [`StreamingCompletionResponse`] over the B2 accumulator. Errors that
-    /// cross the bus surface as the stream's error half, [`ErrorReport`].
-    /// The stream is opened under the model's label and takes the provider's
-    /// name from the terminal record, so `finish().provider` is what the
-    /// unary path reports.
+    /// Stream a completion through the canonical accumulator, surfacing bus errors
+    /// as stream errors. Uses the model label initially and the terminal record's
+    /// provider name when available.
     pub fn stream(&self, request: CompletionRequest) -> StreamingCompletionResponse {
         self.stream_with_context(request, None)
     }
@@ -703,9 +678,7 @@ impl RerankHandle {
     }
 }
 
-/// Wrap an [`EffectStream`] back into a [`StreamingCompletionResponse`]:
-/// the B2 accumulator folds the events on this side of the bus, and errors
-/// that crossed it are the stream's own error half, [`ErrorReport`].
+/// Wrap bus events in a canonical completion accumulator, preserving stream errors.
 pub(crate) fn wrap_stream(
     provider: impl Into<String>,
     stream: EffectStream,
@@ -713,9 +686,7 @@ pub(crate) fn wrap_stream(
     StreamingCompletionResponse::from_events(provider, Box::pin(stream))
 }
 
-// Every alias is `Clone + Send + Sync + 'static` on every target, by
-// construction; a compiled assertion keeps it so under wasm32-unknown-unknown
-// as well as natively.
+// Bus views must stay thread-safe even where handlers permit local WASM state.
 const _: () = {
     const fn assert_view<T: Clone + Send + Sync + 'static>() {}
     assert_view::<ModelHandle>();
@@ -731,12 +702,9 @@ const _: () = {
 #[cfg(test)]
 mod tests;
 
-/// A handler's way back onto the bus that is serving it: the dispatcher the
-/// driver attached to the dispatch, whose every dispatch — and every
-/// [`Handle`] bound from it — carries the served dispatch's id as its
-/// parent. Causality as data: the record names the chain, a host parents
-/// the effect's entity at dispatch, and a nested dispatch that would wait
-/// on its own serial key is refused rather than hung.
+/// Access the handler-scoped dispatcher. Nested calls and bound handles retain
+/// the served dispatch as their parent for recording and cancellation;
+/// reentrant calls onto an active ancestor's serial key are refused.
 pub trait DispatchScope {
     /// The scoped dispatcher, or `None` for an inline dispatch.
     fn dispatcher(&self) -> Option<Dispatcher>;

@@ -1,32 +1,10 @@
-//! OpenRouter's model identifiers, its routing preferences, and its own view
-//! of a reply.
+//! OpenRouter routing preferences, model identifiers, and typed completion metadata.
 //!
-//! OpenRouter is an OpenAI chat-completions dialect, so it has no client and
-//! no completion model of its own:
-//! [`openai::wire::OPENROUTER`](crate::providers::openai::wire::OPENROUTER)
-//! carries the base URL, the `OPENROUTER_API_KEY` variable, the `/key`
-//! credential check, and the gateway's rewrites — ephemeral `cache_control`
-//! on the system prompt under prompt caching, `reasoning_content` re-spelled
-//! as OpenRouter's own `reasoning`, the upstream's `native_finish_reason`
-//! consulted when the gateway could not translate one, and its structured
-//! `reasoning_details`.
-//!
-//! What remains here is data:
-//!
-//! * the model identifiers;
-//! * [`ProviderPreferences`] and the types it is built from — a *request*
-//!   block, reaching the body through
-//!   [`additional_params`](crate::completion::CompletionRequest::additional_params)
-//!   as `{"provider": …}`, which is why the wire needs no knowledge of it;
-//! * [`CompletionResponse`] — the typed read of OpenRouter's own reply
-//!   document, which a completion carries verbatim on
-//!   [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
-//!   It is not a second mapping: the normalized response is produced by the
-//!   wire's decoder, and this type is how a caller reads the fields that
-//!   mapping does not name — which upstream [`provider`](CompletionResponse::provider)
-//!   served the request, its [`service_tier`](CompletionResponse::service_tier),
-//!   the per-choice `native_finish_reason` and `logprobs`, and the cost and
-//!   cache accounting in [`Usage`].
+//! ```
+//! use rig_core::providers::openrouter::ProviderPreferences;
+//! let params = ProviderPreferences::new().cheapest().to_json();
+//! assert!(params.get("provider").is_some());
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -36,10 +14,6 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 };
 use crate::providers::openai::completion::Message;
 
-// ================================================================
-// OpenRouter Completion API
-// ================================================================
-
 /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
 pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
 /// The `anthropic/claude-3.7-sonnet` model. Find more models at <https://openrouter.ai/models>.
@@ -48,11 +22,6 @@ pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
 pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
 /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
 pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
-
-// ================================================================
-// Provider Selection and Prioritization
-// ================================================================
-// See: https://openrouter.ai/docs/guides/routing/provider-selection
 
 /// Data collection policy for providers.
 ///
@@ -299,10 +268,9 @@ impl MaxPrice {
     }
 }
 
-/// Provider preferences for OpenRouter routing.
-///
-/// This struct allows you to control which providers are used and how they are prioritized
-/// when making requests through OpenRouter.
+/// Request-side provider eligibility and ordering preferences. Unset fields are
+/// omitted, leaving gateway defaults in effect. Rig serializes these preferences
+/// without validating provider slugs or numeric limits.
 ///
 /// See: <https://openrouter.ai/docs/guides/routing/provider-selection>
 ///
@@ -320,7 +288,6 @@ impl MaxPrice {
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ProviderPreferences {
-    // === Provider Selection Controls ===
     /// Try these provider slugs in the given order first.
     /// If `allow_fallbacks: true`, OpenRouter may try other providers after this list is exhausted.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -339,7 +306,6 @@ pub struct ProviderPreferences {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_fallbacks: Option<bool>,
 
-    // === Compatibility and Policy Filters ===
     /// If `true`, only route to providers that support all parameters in your request.
     ///
     /// This is recommended for structured outputs so OpenRouter only selects
@@ -357,7 +323,6 @@ pub struct ProviderPreferences {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zdr: Option<bool>,
 
-    // === Performance and Cost Preferences ===
     /// Sorting strategy. Affects ordering, not strict exclusion.
     /// If set, default load balancing is disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -375,7 +340,6 @@ pub struct ProviderPreferences {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_price: Option<MaxPrice>,
 
-    // === Quantization Filter ===
     /// Restrict routing to providers serving specific quantization levels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quantizations: Option<Vec<Quantization>>,
@@ -386,8 +350,6 @@ impl ProviderPreferences {
     pub fn new() -> Self {
         Self::default()
     }
-
-    // === Provider Selection Controls ===
 
     /// Try these provider slugs in the given order first.
     ///
@@ -462,8 +424,6 @@ impl ProviderPreferences {
         self
     }
 
-    // === Compatibility and Policy Filters ===
-
     /// If `true`, only route to providers that support all parameters in your request.
     ///
     /// Default is `false`, meaning providers may ignore unsupported parameters.
@@ -494,8 +454,6 @@ impl ProviderPreferences {
         self.zdr = Some(enable);
         self
     }
-
-    // === Performance and Cost Preferences ===
 
     /// Set the sorting strategy for providers.
     ///
@@ -555,8 +513,6 @@ impl ProviderPreferences {
         self
     }
 
-    // === Quantization Filter ===
-
     /// Restrict routing to providers serving specific quantization levels.
     ///
     /// # Example
@@ -613,7 +569,7 @@ where
     )
 }
 
-/// A openrouter completion object.
+/// Typed OpenRouter completion response.
 ///
 /// For more information, see the
 /// [OpenRouter Chat Completions reference](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion).
@@ -634,10 +590,6 @@ pub struct CompletionResponse {
     pub service_tier: Option<String>,
     pub usage: Option<Usage>,
 }
-
-// ================================================================
-// Response Types
-// ================================================================
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Choice {
@@ -661,21 +613,15 @@ pub struct Usage {
     pub total_tokens: usize,
     #[serde(default)]
     pub cost: f64,
-    /// OpenAI-compatible prompt-token details, returned by OpenRouter when a
-    /// provider reports cache activity (Anthropic with cache_control, OpenAI
-    /// with server-side automatic caching).
+    /// Prompt-token cache breakdown, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
-    /// OpenAI-compatible completion-token breakdown. OpenRouter includes full
-    /// usage accounting on every response, so a reasoning-capable route
-    /// reports here how much of `completion_tokens` went to hidden reasoning.
+    /// Completion-token breakdown, including the reasoning share when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_tokens_details: Option<CompletionTokensDetails>,
 }
 
 /// Prompt-token breakdown reported by OpenRouter for cached requests.
-// `usize` matches the parent `Usage` struct in this module; the streaming counterpart
-// in `streaming.rs` uses `u32` to match its own parent.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct PromptTokensDetails {
     /// Tokens served from cache (cache hit).
@@ -686,11 +632,7 @@ pub struct PromptTokensDetails {
     pub cache_write_tokens: usize,
 }
 
-/// Completion-token breakdown reported by OpenRouter.
-///
-/// Only the reasoning share is modeled: it is the one entry rig's normalized
-/// [`crate::completion::Usage`] has a slot for, and OpenRouter documents usage
-/// accounting as always present (on the final SSE message when streaming).
+/// Completion-token breakdown containing the reported reasoning share.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct CompletionTokensDetails {
     /// Tokens the upstream spent on hidden reasoning, counted inside
