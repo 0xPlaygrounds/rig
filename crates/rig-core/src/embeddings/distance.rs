@@ -59,7 +59,8 @@ macro_rules! impl_vector_distance {
 
         fn angular_distance(&self, other: &Self, normalized: bool) -> f64 {
             let cosine_sim = self.cosine_similarity(other, normalized);
-            cosine_sim.acos() / std::f64::consts::PI
+            // Roundoff can push a valid cosine beyond the domain of acos.
+            cosine_sim.clamp(-1.0, 1.0).acos() / std::f64::consts::PI
         }
 
         fn euclidean_distance(&self, other: &Self) -> f64 {
