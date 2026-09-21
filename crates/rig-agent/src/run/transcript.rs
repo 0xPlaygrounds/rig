@@ -1,8 +1,11 @@
-//! Loop-side transcript helpers: how rig-agent's run threads history for a
-//! request, phrases the recovery feedback for an invalid tool call, and
-//! classifies an assistant turn. The message-model invariants they build on
-//! (`validate_canonical`, the tool-result constructors) are rig-core's and are
-//! re-exported here so `crate::run::transcript` is the one path.
+//! Request history assembly, invalid-call feedback, and assistant-turn classification.
+//!
+//! ```
+//! use rig_agent::run::transcript::build_history_for_request;
+//! use rig_core::message::Message;
+//! let history = build_history_for_request(None, &[Message::user("Hello")]);
+//! assert_eq!(history.len(), 1);
+//! ```
 
 use rig_core::message::{AssistantContent, Message, ToolCallId, non_empty};
 pub use rig_core::transcript::{
@@ -32,17 +35,14 @@ pub fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
-/// The user message that asks the model to retry after an invalid tool
-/// call, naming what was wrong.
+/// Build tool-result feedback for an invalid call and skipped-peer notices for
+/// other calls, in content order. Returns `None` when there are no tool calls.
 pub fn invalid_tool_retry_user_message(
     assistant_content: &[AssistantContent],
     invalid_tool_call_id: &ToolCallId,
     feedback: &str,
 ) -> Option<Message> {
-    // Selecting the invalid call by id is correct by construction:
-    // `ToolCallId` is unique and non-empty (minted at the provider boundary
-    // when the wire issued none), so id-less wires can no longer collapse
-    // every peer onto the first match arm.
+    // Call IDs distinguish peers even when the provider supplies no wire IDs.
     let retry_results = assistant_content
         .iter()
         .filter_map(|content| match content {
@@ -69,26 +69,9 @@ pub fn invalid_tool_retry_user_message(
     })
 }
 
-/// Whether an assistant turn carried nothing the caller should see.
-///
-/// Two shapes mean the same thing, and both must be recognised:
-///
-/// - **Zero parts.** A turn that produced no text and no tool call is an
-///   empty list — the shape the streaming path produces (its assembler
-///   filters empty text deltas out of the canonical order).
-/// - **One empty, unannotated text block.** A blocking wire can deliver an
-///   assistant message whose only part is an empty text block; it carries
-///   nothing, and the agent curates it out of history exactly as it curates
-///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
-///   empty text block carries data and must not read as empty. Annotation is
-///   a plain `is_some()`: [`rig_core::message::AdditionalParams`] is
-///   non-empty by construction, so `Some` always carries data, live and
-///   restored alike (pinned by
-///   `empty_turn_classification_survives_a_serde_round_trip`).
-///
-/// This runs on turns flowing through the agent loop only. Caller-supplied
-/// `chat_history` is never filtered: an empty text block you replay goes to
-/// the wire as-is.
+/// Return true for zero parts or exactly one empty, unannotated text part.
+/// Annotations carry data even without text. The run uses this classification
+/// for generated turns, not to filter caller-supplied history.
 pub fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
     if choice.is_empty() {
         return true;

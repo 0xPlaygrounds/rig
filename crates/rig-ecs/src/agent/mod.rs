@@ -1,23 +1,14 @@
-//! The run as a graph: the entity vocabulary of the agent runtime.
+//! Components and relationships describing agents, conversations, runs, and turns.
 //!
-//! Every setting is one component; every link is a Bevy relationship (a
-//! many-to-many link is a link entity, `ChildOf` its owner, with a
-//! relationship to what it links); every payload is serde and holds no
-//! `Entity`. The request the model sees is derived from this graph by one
-//! fold ([`crate::policy::fold_request`]) at [`crate::systems::RigSet::Assemble`];
-//! nothing here holds a `CompletionRequest` or a `Vec<Message>`.
+//! [`crate::policy::fold_request`] derives requests from this graph during
+//! [`crate::systems::RigSet::Assemble`]. Hosts steer runs by writing policy
+//! components at the corresponding schedule boundaries.
 //!
-//! | design (§3.1) | here |
-//! |---|---|
-//! | Agent | an entity with [`Owner`], [`Preamble`], [`Temperature`], [`MaxTokens`], [`AdditionalParams`], [`ToolChoiceSpec`], [`Output`], [`MaxTurns`], [`InvalidCalls`]; [`UsesModel`] → the model's handler entity; [`Grant`] link entities → tool handler entities; [`Context`] link entities → document entities; [`Route`] link entities → other models a run may be steered to |
-//! | Steering (§9) | [`Cancelled`] on a run; [`Retry`] and [`RequestPatch`] on a turn; [`Resolution`] on an invalid call; `UsesModel` on a run |
-//! | Model, Tool | the bus module's handler entities (`Bound`) |
-//! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
-//! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities; `ChildOf` the run, in sibling (`Children`) order |
-//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a [`RunPhase`] or an ending ([`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
-//! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`]; [`Batch`] while its tool calls are out |
-//! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
-//! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
+//! ```
+//! use rig_ecs::agent::{Owner, Preamble};
+//! let mut world = bevy_ecs::world::World::new();
+//! world.spawn((Owner("assistant".into()), Preamble(Some("Be concise.".into()))));
+//! ```
 
 pub mod checkpoint;
 pub mod content;
@@ -34,9 +25,6 @@ use rig_core::{
     tool::ToolContext,
 };
 use serde::{Deserialize, Serialize};
-
-// ---------------------------------------------------------------------------
-// Agent: one component per setting.
 
 /// The agent's name: the owner of every key it mints (`<owner>/model:..`),
 /// the scope of every run's records.
@@ -136,14 +124,10 @@ impl Default for OutputToolConfig {
 #[reflect(Component)]
 pub struct MaxTurns(pub usize);
 
-/// Retries a run allows a completion whose provider failure is retryable
-/// (a 5xx, a rate limit, a transient block; the report's `retryable`
-/// decides, CONTRACT §5): the same request is issued again over the same
-/// history. No tool is re-run, no history is rewritten, the lost turn
-/// leaves no assistant utterance and is not counted against `MaxTurns`.
-/// On the agent or the run; without one, [`DEFAULT_PROVIDER_RETRIES`].
-/// Time is the host's: a backoff is a hold on the re-issued effect from a
-/// `Gate` system, released when due.
+/// Retry budget for completion failures marked retryable by their error report.
+/// The run's value overrides the agent's; absent values use [`DEFAULT_PROVIDER_RETRIES`].
+/// Retries preserve history, do not rerun tools, create no failed assistant
+/// utterance, and do not consume [`MaxTurns`]. Host gate systems control backoff.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct ProviderRetries(pub usize);
@@ -213,9 +197,9 @@ impl Default for ToolPolicy {
     }
 }
 
-/// The context every tool call of the run runs with (format 5: beside the
-/// effect, never in it): its `for_dispatch` snapshot becomes the call's
-/// `bus::ToolInputs`. The run's, else the agent's, else empty.
+/// Inbound context whose `for_dispatch` snapshot becomes each call's tool inputs,
+/// separate from the effect payload. The run's value overrides the agent's;
+/// absent values use an empty context.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct ToolContextSpec(
@@ -395,9 +379,6 @@ pub struct Context(pub Entity);
 #[reflect(Component)]
 pub struct ContextOf(Vec<Entity>);
 
-// ---------------------------------------------------------------------------
-// Documents: entities of their own, shared by attachment.
-
 /// The document's stable id.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
@@ -425,9 +406,6 @@ pub struct Attachment(pub Entity);
 #[relationship_target(relationship = Attachment)]
 #[reflect(Component)]
 pub struct AttachedTo(Vec<Entity>);
-
-// ---------------------------------------------------------------------------
-// Utterances: the conversation, one entity per message, `ChildOf` the run.
 
 /// An utterance: one message of the conversation, `ChildOf` its run, in
 /// sibling (`Children`) order. Each content child carries one discriminated
@@ -507,24 +485,16 @@ impl MessageParts {
     }
 }
 
-/// A run's prompt: the parts of the user message it opens with — text,
-/// or text and images in the order given. A component on a fresh run
-/// (`RunCommands::spawn_run` puts it there; a host assembling a run by
-/// hand does the same), consumed when the run opens: the pass after
-/// [`Ready`] is on the run, `systems::open_runs` spawns it as the run's
-/// last utterance and takes the component off. A checkpoint saved before
-/// then carries it (§13).
+/// Ordered user content opening a run. Hosts must attach it before [`Ready`].
+/// Opening the run consumes this component and appends its utterance after history;
+/// a checkpoint saved before opening retains the prompt.
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component, opaque, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Prompt(pub Vec<UserContent>);
 
-/// The host's word that a run's graph is complete — its history
-/// utterances in place, its [`Prompt`] on it — and the run may start.
-/// `RunCommands::spawn_run` inserts it once the utterances exist; a host
-/// that populates a run by hand inserts it last. `systems::open_runs`
-/// gives a `Ready` run its first phase, and `Advance` takes only `Ready`
-/// runs: a run without it is never assembled, however complete. Kept for
-/// the life of the run; a checkpoint saves and restores it (§13).
+/// Marks a run's graph as ready to start. Hosts constructing a run manually must
+/// insert this after history and [`Prompt`]. Runs without it are not assembled.
+/// The marker remains throughout the run and is saved in checkpoints.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -555,15 +525,10 @@ impl From<Vec<UserContent>> for Prompt {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Runs and turns.
-
-/// A run: one prompt through the agent to an answer or a failure. Requires
-/// what every run carries — its cursor, tallies, output-tool name and usage
-/// at their defaults — and stamps its [`RunSeq`] from the world's
-/// [`RunCounter`], its [`crate::bus::Scope`] (`{owner}/run#{seq}`, from
-/// its [`RunOf`] agent's [`Owner`]) and a `Name` of the same text, as it
-/// is added.
+/// One prompt processed to an answer or failure, with default cursor, retry
+/// counters, output-tool name, usage, and streaming mode.
+/// On addition, a missing [`RunSeq`] is assigned from [`RunCounter`] when present,
+/// along with an owner-qualified [`crate::bus::Scope`].
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -756,9 +721,8 @@ pub enum Failure {
         /// The name.
         name: String,
     },
-    /// A tool call could not be served — the bus closed, the handler gone,
-    /// a replay divergence — and the run fails with the report rather
-    /// than telling the model its tool failed.
+    /// A tool dispatch failed at the bus or replay boundary. The run fails with
+    /// this report instead of sending a tool-execution error to the model.
     Tool(ErrorReport),
     /// The conversation could not be loaded: the run fails at the memory
     /// record, before any completion.
@@ -976,7 +940,7 @@ pub enum Resolution {
     /// Ask the model again: the turn and a tool result carrying `feedback`
     /// for the call (and the invalid-peer notice for every other call of
     /// the turn) become history, nothing is dispatched, and another turn
-    /// begins — while `InvalidCalls.retries` are left, else the run fails
+    /// begins while `InvalidCalls.retries` remain; otherwise the run fails
     /// `UnknownToolCall`.
     Retry {
         /// What the model is told.
@@ -1018,15 +982,10 @@ const _: () = {
     assert_serde::<Retrieval>();
 };
 
-/// Fork `run`: a clone of the run entity and its graph (the utterances,
-/// the turns — `ChildOf` is linked, so the clone is deep) under the next
-/// run number and its own scope, on the same agent. The effects are not
-/// carried: an effect's identity (`Seq`, `Issued`, its answer) belongs to
-/// the one dispatch it was, so the clone's turn children hold no effect
-/// — a turn already read needs none, and a fresh one folds its own.
-/// Best-of-n is `fork` n − 1 times and a system that judges the settled
-/// runs (design §3.4). Fork a run at rest — between turns — so no turn
-/// is waiting on an effect the clone does not have.
+/// Clone a run and its linked graph on the same agent with a new run sequence
+/// and scope, omitting effect identity and answer components.
+/// Call only between turns, with no turn awaiting an effect; the clone cannot
+/// resume excluded dispatch state. Panics if [`RunCounter`] or `run` is absent.
 pub fn fork(world: &mut World, run: Entity) -> Entity {
     let seq = {
         let mut counter = world.resource_mut::<RunCounter>();

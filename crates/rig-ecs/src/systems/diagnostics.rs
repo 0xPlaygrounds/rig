@@ -1,7 +1,10 @@
-//! The runtime's measurements as `bevy_diagnostic` diagnostics: what
-//! `LogDiagnosticsPlugin` prints and an inspector plots. One system at the
-//! end of every pass; the exact counters stay where they are (the world's
-//! queries) — these are their time series.
+//! Runtime effect and run counts exposed as Bevy diagnostic time series.
+//!
+//! ```
+//! let mut app = bevy_app::App::new();
+//! app.add_plugins(bevy_diagnostic::DiagnosticsPlugin);
+//! rig_ecs::systems::diagnostics::register(&mut app);
+//! ```
 
 use bevy_app::App;
 use bevy_diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic};

@@ -1,4 +1,9 @@
-//! The log: its header and its records.
+//! Effect log headers, checkpoint envelopes, and stable JSON hashing.
+//!
+//! ```
+//! let hash = rig_cassette::effect_log::stable_hash(&"run")?;
+//! # Ok::<(), serde_json::Error>(())
+//! ```
 
 use std::collections::BTreeMap;
 
@@ -11,12 +16,9 @@ use serde::{Deserialize, Serialize};
 /// [`Checkpoint`], not [`LogHeader`]; logs have no global format number.
 pub const CHECKPOINT_FORMAT: u32 = 6;
 
-/// What a log says about the run it records, so a replay can refuse a log
-/// the program has outgrown before the first dispatch diverges.
-///
-/// Logs have no global format number: a log is checked by its data. A key
-/// this rig does not know is refused rather than ignored, so a header
-/// written under another vocabulary never loads with its meaning dropped.
+/// Recorded run identity, handler declarations, and optional delivery metadata
+/// used to validate replay compatibility. Deserialization rejects unknown fields;
+/// headers have no global format number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogHeader {
@@ -42,12 +44,10 @@ pub struct LogHeader {
     /// with their keys.
     pub handlers: Vec<HandlerDescriptor>,
     /// The effect signature: which keys the run performed effects on, and
-    /// of which family — the effect row read off the trace.
+    /// of which family, derived from the trace.
     pub signature: EffectRow,
-    /// The program's hook stack at record time: the ordered type names of
-    /// every hook (nested stacks flattened). Hooks are program, not record —
-    /// a hook's decision is re-made on replay — so a log replayed under
-    /// another stack is another program, and the agent refuses it.
+    /// Ordered hook type names, with nested stacks flattened.
+    /// Replay requires the same stack because hooks execute again.
     pub hooks: Vec<String>,
     /// The program's required effect row at record time: every key it could
     /// dispatch to (its model, its tools, its memory, its retrieval
@@ -55,16 +55,12 @@ pub struct LogHeader {
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     pub required: EffectRow,
-    /// The serving policy the run was recorded under. Per-key order is
-    /// dispatch order under either policy; the header says which so a
-    /// replay under a different one is a stated choice, not a surprise.
+    /// The recorded serving policy, when known. Per-key order remains dispatch
+    /// order under either policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bus: Option<ServingPolicy>,
-    /// Program identity as data, per scope (`EffectRecord::scope`): what
-    /// each program that wrote to this log could dispatch to and the hash
-    /// of its policy. Written by a world that runs several programs in one
-    /// log; absent from a log one agent wrote (`run_spec` and `required`
-    /// are that agent's), so nothing re-stamps.
+    /// Required effects and policy hashes per `EffectRecord::scope` for shared
+    /// world logs. Single-agent logs use `run_spec` and `required` instead.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub programs: BTreeMap<String, ProgramIdentity>,
 }
@@ -106,9 +102,8 @@ impl Default for LogHeader {
     }
 }
 
-/// A recorded run: its header, then every exchange in dispatch order.
-/// Derefs to the records, so `log[i]`, `log.len()` and iteration read as
-/// they did when the log was a plain vector.
+/// A recorded run with metadata and exchanges in dispatch order.
+/// Dereferences to the record slice and supports owned or borrowed iteration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectLog {
@@ -131,8 +126,8 @@ impl EffectLog {
         Self { header, records }
     }
 
-    /// The records from `at` on, under a copy of this header — the
-    /// continuation a resumed run replays.
+    /// Return records from `at` onward with cloned metadata restricted to those
+    /// records. An out-of-range position yields an empty tail.
     pub fn tail(&self, at: usize) -> Self {
         let mut tail = Self {
             header: self.header.clone(),
@@ -153,11 +148,9 @@ impl EffectLog {
         }
     }
 
-    /// Cut the log at `at`: a [`Checkpoint`] naming the position, the id of
-    /// the record that follows it, and `state` — what the driver persists,
-    /// in its own type (a world's scene; the frozen engine's serialized
-    /// run as JSON) — beside the tail the continuation replays. `at` past
-    /// the end is a checkpoint with an empty tail.
+    /// Return a checkpoint containing `state`, position `at`, and the next
+    /// record ID, together with the remaining log. Positions at or beyond the
+    /// end produce an empty tail.
     pub fn checkpoint<S>(&self, at: usize, state: S) -> (Checkpoint<S>, Self) {
         let checkpoint = Checkpoint {
             format: CHECKPOINT_FORMAT,
@@ -168,10 +161,8 @@ impl EffectLog {
         (checkpoint, self.tail(at))
     }
 
-    /// The continuation `checkpoint` names, over `tail`: refused by name
-    /// when the checkpoint is of another format, when the tail's first
-    /// record is not the one the checkpoint expects next (ids are total, so
-    /// a tail begins exactly at the checkpoint's next id).
+    /// Validate and return `tail`, or an error if the checkpoint format or next
+    /// record ID does not match. An ending checkpoint requires an empty tail.
     pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
         if checkpoint.format != CHECKPOINT_FORMAT {
             return Err(ErrorReport::new(
@@ -207,18 +198,13 @@ impl EffectLog {
     }
 }
 
-/// `(None, None)` is the equal case, taken by the comparison above; this
-/// arm types the match.
+/// Return the fallback diagnostic for a mismatched checkpoint tail.
 fn unreachable_refusal() -> String {
     "resume refused: the tail does not follow the checkpoint".to_owned()
 }
 
-/// A cut in a log: where a run was suspended, what follows, and what the
-/// driver persisted — beside the tail, so a resumed run replays only what
-/// it has not performed, and a full log offered in a tail's place is
-/// refused by its first id. `S` is the driver's state in its own type: a
-/// world's scene is a scene here, not a blob; only the frozen engine's
-/// serialized run is a `serde_json::Value`, until it retires.
+/// A suspended log position, expected next record ID, and driver-owned state.
+/// Resume validation requires a tail whose first ID matches `next`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Checkpoint<S> {
     /// The checkpoint envelope format ([`CHECKPOINT_FORMAT`]).
@@ -271,18 +257,9 @@ impl<'a> IntoIterator for &'a EffectLog {
     }
 }
 
-/// A stable 64-bit hash of `value`'s JSON form (FNV-1a over the bytes of
-/// its canonical rendering): the same on every platform, toolchain and
-/// build, unlike `std`'s hasher. What [`LogHeader::run_spec`] holds.
-///
-/// Canonical means every object's keys are sorted before the bytes are
-/// hashed. `serde_json` keeps insertion order in a build that enables its
-/// `preserve_order` feature (the root `rig` package with every feature on
-/// does, through a dependency) and sorts otherwise, so a hash over the
-/// raw serialization of a spec holding a `serde_json::Value` — an
-/// `additional_params`, an `output_schema` — differed between the crate
-/// that recorded a golden and the crate that replays it. The program's
-/// identity cannot depend on which crate computes it.
+/// Return the 64-bit FNV-1a hash of `value` serialized as JSON with recursively
+/// sorted object keys, or a serialization error.
+/// Sorting makes identity independent of JSON map insertion order.
 pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
     let json = serde_json::to_vec(&Canonical::from(serde_json::to_value(value)?))?;
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;

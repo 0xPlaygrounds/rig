@@ -1,62 +1,16 @@
-//! Native provider HTTP recording and replay, enabled by the `http` feature.
+//! Native provider HTTP recording and replay with explicit fixture roots.
 //!
-//! Provider cassette tests run in replay mode by default. Set
-//! `RIG_PROVIDER_TEST_MODE=record` to hit the real provider and write cassette
-//! fixtures. Record mode overwrites existing cassette files.
+//! Replay is the default; `RIG_PROVIDER_TEST_MODE=record` contacts the provider
+//! and overwrites scrubbed fixtures. The `http` feature enables this engine;
+//! `bedrock` adds binary Smithy event-stream scrubbing. Invalid fixtures and
+//! failed replay assertions panic.
 //!
-//! Every constructor and recorded-request reader receives its fixture root
-//! explicitly. The root contains provider directories; this crate does not
-//! depend on a repository layout or consumer registry. The ambient
-//! [`CassetteMode`] decides recording versus replay; [`Transport`] decides how
-//! a recording reaches the provider.
-//! Enable `bedrock` to scrub binary Smithy event-stream payloads. Ordinary
-//! binary bodies and SSE work without that feature. This is native test support;
-//! invalid fixtures and failed replay assertions deliberately panic.
-//!
-//! # The repository's corpora and suite
-//!
-//! Beside the engine, this package carries two committed corpora and the
-//! effect bus's behavioural verification suite. All three are excluded from
-//! the published tarball; the engine's own unit tests are not.
-//!
-//! - `fixtures/cassettes/<provider>/...yaml` — recorded HTTP interactions,
-//!   replayed by the provider suites in this package.
-//! - `fixtures/effects/<name>.effects.json` — golden effect logs, replayed by
-//!   `tests/` here with no provider behind any key.
-//! - `tests/` — the suite: one `verify` target whose modules are the corpus
-//!   matrices, and a separate `world_replay` target for the ECS world
-//!   interpreter.
-//! - `tests/minimal/Cargo.toml` — an unpublished runner selecting those same
-//!   two entrypoints and the shared log/replay regressions with only the
-//!   `agent,ecs` integrations, without the native engine's
-//!   `serde_json/preserve_order` and `serde_json/float_roundtrip` features.
-//!   CI executes it separately from the unified dependency graph.
-//!
-//! `http` does not enable either runtime integration. `agent` and `ecs` are
-//! independently selectable optional normal dependencies of the parent crate.
-//! The suite's facade and provider helpers remain dev-dependencies; they do
-//! not enter a downstream engine consumer's normal graph.
-//!
-//! # The recording loop
-//!
-//! Background, not something a verification run performs: recording contacts a
-//! real provider and is a separately authorized act. A golden is produced in
-//! two stages and replayed in a third. The producer test in this package
-//! records the HTTP under `RIG_PROVIDER_TEST_MODE=record` (the golden call is
-//! a no-op in that mode), replays that cassette under `RIG_REGENERATE_GOLDEN=1`
-//! so the golden holds the cassette's placeholders rather than live ids, and
-//! the suite here replays the committed golden with nothing behind any key. A
-//! change in what the program asks (a kind), what it was answered (an outcome)
-//! or how a stream was delivered (its events) fails the replay naming the
-//! record and the JSON pointer of the difference — fix forward, and re-record
-//! live when the change is intended, never by hand-editing a golden. Hooks are
-//! program (the header names them; a different stack is refused before the
-//! first dispatch); tools are record (a replayer answers them); nothing the
-//! engine mints is random, so the same program produces the same log twice.
-//!
-//! `README.md` carries the matrix table, the producer pairing and the
-//! "what lives where" map.
-// Preserve the existing assertion-based test-support contract during extraction.
+//! ```
+//! use rig_cassette::http::CassetteSpec;
+//! let spec = CassetteSpec::new("completion");
+//! assert_eq!(spec.scenario(), "completion");
+//! ```
+// This test-support engine reports invalid fixtures and replay mismatches as assertions.
 #![allow(
     clippy::expect_used,
     clippy::unwrap_used,
@@ -271,7 +225,8 @@ pub enum CassetteMode {
 }
 
 impl CassetteMode {
-    /// Read RIG_PROVIDER_TEST_MODE, defaulting to replay; reject unknown values.
+    /// Read `RIG_PROVIDER_TEST_MODE`, defaulting to replay when unset or non-Unicode.
+    /// Panics for values other than `record` or `replay`, ignoring case.
     pub fn current() -> Self {
         match std::env::var(MODE_ENV) {
             Ok(value) if value.eq_ignore_ascii_case("record") => Self::Record,
@@ -286,13 +241,9 @@ impl CassetteMode {
     }
 }
 
-/// Whether the caller must abandon a test instead of recording it.
-///
-/// A few committed cassettes hold bytes no provider will ever return: they
-/// were hand-built from a live capture, or deliberately corrupted to pin a
-/// parser regression. A bulk `RIG_PROVIDER_TEST_MODE=record` sweep would
-/// overwrite exactly the property such a fixture exists to hold, so the test
-/// that owns it returns early instead, naming `reason` on stderr.
+/// Return whether recording is enabled, printing `reason` to stderr when true.
+/// Panics if the recording-mode environment variable has an unsupported value.
+/// Use this guard to avoid overwriting fixtures that live providers cannot produce.
 ///
 /// ```no_run
 /// # use rig_cassette::http::skip_when_recording;
@@ -458,8 +409,8 @@ impl fmt::Debug for ProviderCassette {
 }
 
 impl ProviderCassette {
-    /// Start with an explicit cassette root containing provider directories,
-    /// recording through a proxy ([`Transport::Proxy`]).
+    /// Start a session beneath `cassette_root`, using the ambient mode and proxy
+    /// recording. Panics for an invalid upstream URL or unusable replay fixture.
     pub async fn start(
         cassette_root: &Path,
         provider: &'static str,
@@ -476,10 +427,8 @@ impl ProviderCassette {
         .await
     }
 
-    /// Start a session that records through `transport` when the ambient
-    /// [`CassetteMode`] records, and replays the fixture otherwise. The
-    /// mode comes from the environment either way; the transport only says
-    /// how a recording reaches the provider.
+    /// Start a session in the ambient [`CassetteMode`], using `transport` for
+    /// recording only. Panics for an invalid mode, URL, or unusable replay fixture.
     pub async fn start_via(
         transport: Transport,
         cassette_root: &Path,
@@ -500,13 +449,10 @@ impl ProviderCassette {
         .await
     }
 
-    /// Start with an explicit mode and destination instead of the ambient
-    /// environment and fixture layout. Consumers that stage candidates use
-    /// this: a live capture records into a candidate path that is validated
-    /// before promotion, and a verification pass replays an exact path even
-    /// when the environment asks for recording, so a candidate is never
-    /// implicitly promoted to a fixture. `transport` only matters when
-    /// `mode` records.
+    /// Start with an explicit mode and fixture path, ignoring the ambient mode.
+    /// `transport` selects how recording reaches the provider. Panics for an
+    /// invalid upstream URL, missing or malformed replay fixture, or server bind
+    /// failure.
     pub async fn start_at(
         transport: Transport,
         provider: &'static str,
@@ -569,12 +515,9 @@ impl ProviderCassette {
         }
     }
 
-    /// Retain the completed, scrubbed exchanges of a recording that is still
-    /// in progress. This is a best-effort partial snapshot for a consumer
-    /// whose live run may exceed its budget, not finalization: it never
-    /// panics, never replaces an earlier snapshot with an empty document,
-    /// and returns whether `path` was written. Replay sessions return
-    /// `false`.
+    /// Write completed, scrubbed exchanges to `path` without finalizing recording.
+    /// Return `false` for replay, empty recordings, export or parsing failures,
+    /// failed safety checks, or write errors. Empty snapshots never replace a file.
     pub async fn checkpoint_recording(&self, path: &Path) -> bool {
         if !self.mode.records() {
             return false;
@@ -637,10 +580,8 @@ impl ProviderCassette {
         format!("{}{}", self.server.base_url(), self.base_path)
     }
 
-    /// A deliberately invalid API key for recording real auth failures: the
-    /// bogus literal in record mode, the dummy key in replay — so providers
-    /// that carry the key in a *matched* location (Gemini's query string)
-    /// still replay (the recorded value is scrubbed either way).
+    /// Return an invalid key for recording auth failures, or the scrubbed dummy
+    /// key for replay so matched query credentials agree with the fixture.
     pub fn bogus_api_key(&self) -> String {
         if self.mode.records() {
             "invalid-edge-matrix-key".to_string()
@@ -649,7 +590,8 @@ impl ProviderCassette {
         }
     }
 
-    /// Use the named environment key when recording, or a dummy key for replay.
+    /// Return the named environment key when recording, or a dummy key for replay.
+    /// Panics when recording and the variable is missing or non-Unicode.
     pub fn api_key(&self, env_name: &str) -> String {
         if self.mode.records() {
             std::env::var(env_name).unwrap_or_else(|_| {
@@ -660,7 +602,9 @@ impl ProviderCassette {
         }
     }
 
-    /// Finalize a recording or assert complete replay consumption and shut down.
+    /// Write a scrubbed recording or assert complete replay consumption and shut
+    /// down. Panics on empty recordings, export or write failures, unsafe data,
+    /// unused interactions, or refused replay requests.
     pub async fn finish(self) {
         let Self {
             server,
@@ -844,10 +788,8 @@ impl Drop for ReplayServer {
         if self.checked || std::thread::panicking() {
             return;
         }
-        // A session dropped without `finish` — a test that returned early,
-        // a helper that forgot — would otherwise pass on a recording it
-        // never played to the end, or on a request the replay refused. Only
-        // that evidence panics; a fully consumed session may end silently.
+        // Early test returns must not hide unused interactions or refused requests.
+        // Fully consumed sessions can be dropped without an explicit finish.
         let Ok(state) = self.state.try_lock() else {
             return;
         };
@@ -1330,13 +1272,8 @@ fn body_matches(
     expected_encoding: BodyEncoding,
 ) -> bool {
     let Some(expected) = expected else {
-        // A cassette recorded through the httpmock proxy stores bodies as
-        // strings, so a non-UTF-8 multipart upload (an audio file posted to a
-        // transcription endpoint) is exported with no body at all. Requiring
-        // an empty request body there would make every such scenario
-        // unreplayable; the multipart *shape* those endpoints receive is
-        // pinned by unit tests next to each provider instead. Non-multipart
-        // requests still have to be body-less to match.
+        // The proxy omits non-UTF-8 multipart bodies, so absent multipart bytes
+        // cannot be matched; other requests must still be empty.
         return actual.is_empty() || is_multipart_request(actual_headers, expected_headers);
     };
     let expected_bytes = decode_body(expected, expected_encoding)
@@ -1555,30 +1492,9 @@ fn scrub_body_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
     CassetteScrubber::new(policy).scrub_body(body)
 }
 
-/// Replace the directory part of an absolute home-directory path, keeping the
-/// final component.
-///
-/// Locally-hosted providers echo the path they were launched with. `llama-server`
-/// puts it in `model` on **every** chat response — the whole
-/// `/Users/<name>/.cache/huggingface/hub/models--<org>--<repo>/snapshots/<sha>/<file>.gguf`
-/// — so recording one turn against it writes the operator's username, their
-/// cache layout and a snapshot hash into a fixture that is then committed to a
-/// public repository. Nothing else in the scrubber reaches this: it is not a
-/// token, not a header, not a query parameter, and it trips no
-/// `FORBIDDEN_CASSETTE_PATTERNS` entry, so the safety scan passes it.
-///
-/// The final component survives because it is the useful, non-identifying part
-/// — which model the fixture was recorded against — and because a cell may
-/// legitimately assert on it. Everything to its left is replaced.
-///
-/// The match is anchored to the **start of a JSON string value**, which is what
-/// separates a local path from a URL that merely contains one of these
-/// segments. Anthropic's recorded web-search results cite
-/// `https://math.ucr.edu/home/baez/physics/...`; an unanchored rule rewrites
-/// that public URL and corrupts the fixture, which the safety scan catches as
-/// "not in scrubbed cassette form". A real local path occupies the entire value
-/// (`"model":"/Users/…"`), so requiring a `"` immediately before it keeps the
-/// rule precise.
+/// Redact directories of home paths beginning at the input start or after a
+/// double quote, preserving the final component. Embedded path segments are
+/// unchanged to avoid corrupting URLs.
 fn scrub_local_filesystem_paths(text: &str) -> String {
     const HOME_PREFIXES: &[&str] = &["/Users/", "/home/", "/root/"];
 
@@ -1605,17 +1521,11 @@ fn scrub_local_filesystem_paths(text: &str) -> String {
 
         output.push_str(&rest[..at]);
         let path = &rest[at..];
-        // A path ends at the closing quote of its JSON string, and at nothing
-        // else. Whitespace is emphatically *not* a terminator: macOS home
-        // directories created from a full account name routinely contain a
-        // space, and ending the path at it would keep the first word as the
-        // "basename" and copy `Smith/models/m.gguf` through verbatim — writing
-        // the operator's name into the fixture while leaving output the rule
-        // considers already-scrubbed, so nothing downstream would notice.
+        // Spaces may belong to account names; treating them as terminators would
+        // leak the remainder of the home path.
         let end = path.find(['"', '\\', '\n', '\r']).unwrap_or(path.len());
         let (path, tail) = path.split_at(end);
 
-        // Keep the basename; replace everything before it.
         match path.rsplit_once('/') {
             Some((_, base)) if !base.is_empty() => {
                 output.push_str("/REDACTED_PATH/");
@@ -1804,11 +1714,8 @@ pub fn cassette_path(cassette_root: &Path, provider: &str, scenario: &str) -> Pa
     path
 }
 
-/// The parsed interactions of one provider scenario, in wire order.
-///
-/// Every reader below goes through this, so a missing or malformed fixture
-/// produces one diagnostic naming the resolved path rather than a different
-/// one per reader.
+/// Parse one scenario's interactions in wire order, panicking with the fixture
+/// path if reading or deserialization fails.
 fn cassette_interactions(
     cassette_root: &Path,
     provider: &str,
@@ -1833,12 +1740,9 @@ fn lowercased_header_pairs(headers: Vec<NameValue>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Recorded request/response bodies for one provider scenario, in wire order.
-///
-/// Provider edge matrices use these bytes to prove that a replay fixture still
-/// carries the premise it claims to exercise. Keeping the reader beside the
-/// cassette parser avoids every provider growing a subtly different YAML
-/// decoder.
+/// Return recorded request and response body strings in wire order, using empty
+/// strings for absent bodies. Base64 bodies remain encoded.
+/// Panics if the fixture cannot be read or parsed.
 pub fn recorded_interaction_bodies(
     cassette_root: &Path,
     provider: &str,
@@ -1855,7 +1759,8 @@ pub fn recorded_interaction_bodies(
         .collect()
 }
 
-/// Recorded request/response bodies for one provider scenario, parsed as JSON.
+/// Return recorded request and response bodies parsed as JSON in wire order.
+/// Panics if the fixture or a body cannot be parsed.
 pub fn recorded_json_turns(
     cassette_root: &Path,
     provider: &str,
@@ -1876,11 +1781,8 @@ pub fn recorded_json_turns(
         .collect()
 }
 
-/// The one recorded turn of a single-turn provider scenario, parsed as JSON.
-///
-/// The turn count is part of what a single-completion matrix cell claims, so
-/// a fixture that grew a second interaction fails here instead of quietly
-/// having its later turns ignored.
+/// Return a single recorded request and response as JSON.
+/// Panics if the fixture is unreadable, has invalid JSON, or has other than one turn.
 pub fn recorded_json_turn(cassette_root: &Path, provider: &str, scenario: &str) -> (Value, Value) {
     let mut turns = recorded_json_turns(cassette_root, provider, scenario);
     assert_eq!(
@@ -1891,7 +1793,8 @@ pub fn recorded_json_turn(cassette_root: &Path, provider: &str, scenario: &str) 
     turns.remove(0)
 }
 
-/// First recorded request body for one provider scenario, parsed as JSON.
+/// Return the first recorded request body as JSON.
+/// Panics for an unreadable, malformed, or empty fixture or invalid JSON body.
 pub fn recorded_json_request(cassette_root: &Path, provider: &str, scenario: &str) -> Value {
     let (request, _) = recorded_interaction_bodies(cassette_root, provider, scenario)
         .into_iter()
@@ -1902,7 +1805,8 @@ pub fn recorded_json_request(cassette_root: &Path, provider: &str, scenario: &st
     })
 }
 
-/// First recorded non-streaming response body, parsed as JSON.
+/// Return the first recorded response body as JSON.
+/// Panics for an unreadable, malformed, or empty fixture or invalid JSON body.
 pub fn recorded_json_response(cassette_root: &Path, provider: &str, scenario: &str) -> Value {
     let (_, response) = recorded_interaction_bodies(cassette_root, provider, scenario)
         .into_iter()
@@ -1913,12 +1817,8 @@ pub fn recorded_json_response(cassette_root: &Path, provider: &str, scenario: &s
     })
 }
 
-/// Request headers recorded for one provider scenario, lowercased, in wire
-/// order.
-///
-/// Only the names on `RECORDED_REQUEST_HEADERS` are ever written, so this is
-/// the way to assert that a *sensitive* header never reaches a fixture —
-/// which is a claim about the recorder, not about the provider.
+/// Return recorded request headers in wire order with lowercased names,
+/// preserving duplicates. Panics if the fixture cannot be read or parsed.
 pub fn recorded_request_header_pairs(
     cassette_root: &Path,
     provider: &str,
@@ -1930,14 +1830,8 @@ pub fn recorded_request_header_pairs(
         .collect()
 }
 
-/// Response headers recorded for one provider scenario, lowercased, in wire
-/// order.
-///
-/// The body readers stop at bodies, and a transport identifier such as
-/// `x-request-id` is a header: a matrix whose premise is "the provider sent
-/// its request-id" has to read this side of the fixture. Recording keeps only
-/// `RESPONSE_HEADER_ALLOWLIST` names, so what is here is exactly what replay
-/// serves back.
+/// Return recorded response headers in wire order with lowercased names,
+/// preserving duplicates. Panics if the fixture cannot be read or parsed.
 pub fn recorded_response_header_pairs(
     cassette_root: &Path,
     provider: &str,
@@ -1949,12 +1843,8 @@ pub fn recorded_response_header_pairs(
         .collect()
 }
 
-/// Request paths recorded for one provider scenario, in wire order.
-///
-/// The path is the half of a request that no assertion on the *body* can
-/// reach, and it is exactly what a base-URL composition bug corrupts: a
-/// doubled `/v1`, a missing one, or a capability routed at the wrong endpoint
-/// all leave the body untouched.
+/// Return recorded request paths in wire order.
+/// Panics if the fixture cannot be read or parsed.
 pub fn recorded_request_paths(cassette_root: &Path, provider: &str, scenario: &str) -> Vec<String> {
     cassette_interactions(cassette_root, provider, scenario)
         .into_iter()
@@ -1962,10 +1852,8 @@ pub fn recorded_request_paths(cassette_root: &Path, provider: &str, scenario: &s
         .collect()
 }
 
-/// Recorded `(status, body)` pairs for one provider scenario, in wire order.
-///
-/// Error matrices assert on the status *class* and on the preserved envelope;
-/// both live here rather than in whatever the client turned them into.
+/// Return recorded `(status, body)` pairs in wire order, using an empty string
+/// for absent bodies. Panics if the fixture cannot be read or parsed.
 pub fn recorded_statuses_and_bodies(
     cassette_root: &Path,
     provider: &str,
@@ -1982,8 +1870,8 @@ pub fn recorded_statuses_and_bodies(
         .collect()
 }
 
-/// JSON `data:` frames from the first recorded SSE response, excluding
-/// `[DONE]`.
+/// Return JSON `data:` frames from the first recorded response, excluding `[DONE]`.
+/// Panics for an unreadable, malformed, or empty fixture or invalid JSON frame.
 pub fn recorded_sse_json_frames(
     cassette_root: &Path,
     provider: &str,
@@ -2020,7 +1908,8 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-/// Scrub credentials and generated identifiers in a YAML cassette.
+/// Return YAML with recognized credentials and generated identifiers scrubbed.
+/// Panics if the cassette cannot be parsed.
 pub fn scrub_cassette_contents(yaml: &str) -> String {
     scrub_cassette_contents_with_policy(CassettePolicy::default(), yaml)
 }
@@ -2037,7 +1926,8 @@ fn scrub_cassette_contents_with_policy(policy: CassettePolicy, yaml: &str) -> St
     serialize_cassette_interactions(&interactions)
 }
 
-/// Report unsanitized or unsafe material in a YAML cassette.
+/// Return diagnostics for unsanitized or unsafe material in a YAML cassette.
+/// Panics if the cassette cannot be parsed.
 pub fn cassette_safety_failures(cassette_path: &Path, contents: &str) -> Vec<String> {
     cassette_safety_failures_with_policy(CassettePolicy::default(), cassette_path, contents)
 }
@@ -2248,9 +2138,7 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "anthropic_api_key",
     "gemini_api_key",
     "venice_api_key",
-    // Venice inference keys carry this literal prefix, so a recording that
-    // ever echoes one back (Venice quotes request material in some error
-    // bodies) fails the scan instead of being committed.
+    // Error bodies can echo inference keys, so scan outside credential fields too.
     "venice_inference_key_",
     "__cf_bm=",
     "proj_",
@@ -2306,24 +2194,16 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
     "x-amz-security-token",
 ];
 
-// `x-amzn-errortype` is how the AWS SDKs classify an error response into a
-// modeled exception; dropping it made every recorded AWS error replay as an
-// unclassified `Unhandled` error, so a cassette could not reproduce the error
-// path it recorded. The value is an exception class name, not account state.
-// `x-amzn-requestid` is the only place the AWS request id appears — the SDK
-// reads it off the header, not the body — so a cassette that drops it cannot
-// replay any behavior that reads the id. It is a per-call opaque identifier,
-// not account state, and the scrubber placeholders its value.
+// AWS SDKs require the error-type header for exception classification and read
+// request IDs from headers; generated ID values are scrubbed separately.
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
     "content-type",
     // Replay must retain the provider's retry hint for adapter diagnostics.
     "retry-after",
     "x-amzn-errortype",
     "x-amzn-requestid",
-    // Provider transport request ids (rig#2265): Anthropic / OpenAI-and-xAI.
     "request-id",
     "x-request-id",
-    // Mistral's own spelling for the same thing.
     "mistral-correlation-id",
 ];
 
@@ -2336,23 +2216,14 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 ];
 
 const SENSITIVE_STRING_KEYS: &[&str] = &[
-    // OAuth material a token exchange or a refresh reply carries in its
-    // body. No committed cassette records such an exchange (the ChatGPT and
-    // Copilot recordings hold completion paths only); the keys are here so
-    // one never can. Matching lowercases the key without stripping
-    // underscores, so these need no squashed twin.
+    // Token exchanges can expose credentials in response bodies, not just headers.
     "access_token",
     "id_token",
     "refresh_token",
     "encrypted_content",
     "encryptedcontent",
-    // Anthropic's server-tool locators. Named like opaque handles but both
-    // base64-decode to a protobuf carrying the *same* plaintext UUID, stable
-    // across separate calls, so each is preserved verbatim in a committed
-    // fixture unless scrubbed — exactly what their sibling `encrypted_content`
-    // is on this list to prevent. Matching lowercases the key without
-    // stripping underscores, so each needs its squashed twin like the pairs
-    // above.
+    // These server-tool locators encode stable UUIDs despite looking opaque.
+    // Match both underscore spellings because key normalization only lowercases.
     "encrypted_index",
     "encryptedindex",
     "encrypted_stdout",
@@ -2432,25 +2303,10 @@ impl CassetteScrubber {
         scrub_query_params(self.policy, &mut request.query_param);
 
         for query_param in &mut request.query_param {
-            // A pagination cursor is an opaque blob to rig, but not to the
-            // provider: Gemini's `cachedContents` cursors are base64 protobuf
-            // carrying the *real* resource ids of the entries either side of the
-            // page boundary, so a recorded cursor re-exposes ids that were
-            // placeholdered everywhere else in the same fixture.
-            //
-            // Placeholdered rather than blanket-redacted because distinct
-            // cursors must stay distinct: a loop that follows them compares each
-            // against the last to detect a server that stops advancing, and
-            // collapsing every cursor to one value would end that loop early on
-            // replay. `placeholder` maps equal originals to equal placeholders
-            // and distinct ones to distinct, which is exactly the property the
-            // cursor needs — and the same scrubber instance handles the response
-            // body, so the request's cursor and the response that issued it
-            // agree.
+            // Cursors encode resource IDs; distinct placeholders prevent leaks
+            // without changing pagination progress or request/response correlation.
             if query_param.name.eq_ignore_ascii_case("pageToken") {
-                // Scrubbing must be idempotent: the safety check re-scrubs its
-                // own output and requires a fixed point, and minting a fresh
-                // placeholder for an already-placeholdered cursor is not one.
+                // Safety checks re-scrub output, so existing placeholders must be stable.
                 if !is_redacted_placeholder(&query_param.value) {
                     query_param.value = self.placeholder(&query_param.value, "cursor-");
                 }
@@ -2491,9 +2347,7 @@ impl CassetteScrubber {
             }
         });
 
-        // An allowlisted header is kept for its *shape*, not its value: the
-        // request id is a per-call generated token and gets the same
-        // placeholder treatment as one carried in a body.
+        // Retain header presence without persisting live request identifiers.
         for header in response.header.iter_mut() {
             if contains_case_insensitive(GENERATED_ID_HEADERS, &header.name) {
                 header.value = self.placeholder(&header.value, "req_");
@@ -2616,13 +2470,8 @@ impl CassetteScrubber {
                     .get("object")
                     .and_then(Value::as_str)
                     .map(str::to_ascii_lowercase);
-                // Venice's image payload carries neither `object` nor `type`:
-                // it is `{ id, images: [base64], … }`, and its `id` is a bare
-                // account-scoped token with no prefix for the generated-token
-                // rules to recognize. Both halves of the shape are required —
-                // cohere's image-embedding *request* also has an `images`
-                // array of (data-URI) strings but no `id`, and its response's
-                // `images` holds metadata objects rather than payloads.
+                // Require both the account-scoped ID and string image payloads
+                // to avoid scrubbing image-embedding inputs or metadata objects.
                 let venice_image_payload = map.get("id").is_some_and(Value::is_string)
                     && map.get("images").is_some_and(|images| {
                         images
@@ -2638,9 +2487,7 @@ impl CassetteScrubber {
                         continue;
                     }
 
-                    // Anthropic redacted thinking carries an opaque encrypted
-                    // blob; placeholder it like OpenAI encrypted reasoning so
-                    // fixtures never commit provider ciphertext.
+                    // Opaque redacted-thinking ciphertext must not enter fixtures.
                     if key == "data" && object_type.as_deref() == Some("redacted_thinking") {
                         if let Value::String(data) = value {
                             *data = self.placeholder(data, "redacted_thinking_");
@@ -2656,14 +2503,8 @@ impl CassetteScrubber {
                         continue;
                     }
 
-                    // Venice returns generated images as bare base64 strings
-                    // in an `images` array rather than OpenAI's `b64_json`
-                    // objects; same payload, same treatment — keeping the
-                    // bytes would commit generated media and inflate the
-                    // fixture (Gemini's unscrubbed image cassette is 328 KB).
-                    // Scoped to the response shape, not the key name: cohere's
-                    // image-embedding requests carry their own `images` array
-                    // of data URIs that must survive verbatim.
+                    // Replace generated media only in the identified response shape;
+                    // input image data URIs must remain available for request matching.
                     if key == "images"
                         && venice_image_payload
                         && let Value::Array(images) = value
@@ -2762,15 +2603,9 @@ impl CassetteScrubber {
         self.scrub_generated_tokens(&scrubbed)
     }
 
-    /// Scrub server-assigned resource handles of the form `collection/<id>`.
-    ///
-    /// The generated-token machinery cannot reach these: it keys on a prefix and
-    /// then consumes `is_token_char`, which excludes `/`, so a `TokenPrefix` of
-    /// `"cachedContents/"` would match the prefix and then stop the token at the
-    /// slash. Gemini's explicit context cache hands back exactly that shape
-    /// (`cachedContents/n3v1qk0nqz9k`), the id is account-scoped, and it appears
-    /// in request bodies, request *paths* and response bodies alike — so it
-    /// needs a rule of its own or it goes into a fixture verbatim.
+    /// Replace account-scoped `cachedContents/<id>` handles in text, including
+    /// request paths, while retaining collection names and existing placeholders.
+    /// The general token scanner cannot span the separating slash.
     fn scrub_resource_names(&mut self, text: &str) -> String {
         const RESOURCE_COLLECTIONS: &[&str] = &["cachedContents/"];
 
@@ -2791,14 +2626,8 @@ impl CassetteScrubber {
                 let id_start = index + collection.len();
                 let id_end = token_end(text, id_start);
                 let id = &text[id_start..id_end];
-                // A bare `cachedContents` path segment with no id (the
-                // collection endpoint itself) must survive untouched, or the
-                // recorded request path stops matching on replay.
-                // `token_end` accepts the character at offset 0 unconditionally,
-                // so a non-token char right after the collection prefix comes
-                // back as the "id" — `cachedContents/"` would swallow the
-                // closing quote and emit invalid JSON into a fixture. Require
-                // the id to be entirely token characters.
+                // Keep bare collection endpoints and reject non-token characters;
+                // token_end otherwise accepts an initial quote and corrupts JSON.
                 if !id.is_empty() && id.chars().all(is_token_char) && !is_redacted_placeholder(id) {
                     output.push_str(collection);
                     output.push_str(&self.placeholder(id, "cached-"));
@@ -2818,13 +2647,8 @@ impl CassetteScrubber {
         output
     }
 
-    /// Replace the account-id segment of every ARN.
-    ///
-    /// A Bedrock guardrail assessment echoes the guardrail's ARN, which
-    /// carries the caller's 12-digit AWS account id — a provider account
-    /// identifier, which cassettes must not commit. The rest of the ARN
-    /// (partition, service, region, resource) stays readable so the fixture
-    /// still shows which resource answered.
+    /// Replace 12-digit account-ID segments in ARNs, preserving partition,
+    /// service, region, and resource fields.
     fn scrub_aws_account_ids(&mut self, text: &str) -> String {
         const PREFIX: &str = "arn:";
         const ACCOUNT_FIELD: usize = 4;
@@ -2917,11 +2741,7 @@ impl CassetteScrubber {
     }
 
     fn placeholder(&mut self, original: &str, kind: &'static str) -> String {
-        // An empty value carries nothing to redact, and minting a placeholder
-        // for it *invents data*: a recording would show a non-empty token
-        // where the wire sent `""`, changing replay semantics for any code
-        // that reads the field (observed on Anthropic's
-        // `content_block_start.signature`, which is empty on the wire).
+        // Empty wire values must stay empty rather than acquire invented identifiers.
         if original.is_empty() {
             return String::new();
         }
@@ -3085,13 +2905,8 @@ fn is_generated_token(token: &str, prefix: TokenPrefix, in_id_field: bool) -> bo
         return false;
     }
 
-    // The digit requirement keeps prose identifiers (`call_id`,
-    // `tool_call_id`) out of the generated-token class. Ollama daemons mint
-    // digit-less lowercase call ids (`call_kqpofucm`), so for `call_` a
-    // long all-lowercase suffix also counts as generated — but only in an
-    // id-bearing field position: a real tool named `call_forwarding` in a
-    // name field or prose must survive recording untouched. Redaction keys
-    // off field identity, not value shape.
+    // Requiring digits avoids scrubbing prose identifiers; digitless lowercase
+    // call IDs are accepted only in ID fields so tool names remain unchanged.
     suffix.chars().any(|ch| ch.is_ascii_digit())
         || (prefix.raw == "call_"
             && in_id_field
@@ -3104,7 +2919,6 @@ fn is_generated_token(token: &str, prefix: TokenPrefix, in_id_field: bool) -> bo
 /// tolerating the escaped-quote spelling of bodies that are themselves
 /// JSON-encoded (`\"id\":\"…\"`).
 fn in_id_field_position(text: &str, token_start: usize) -> bool {
-    // The value's opening string delimiter: `"` or `\"`.
     let Some(rest) = text[..token_start].strip_suffix('"') else {
         return false;
     };
@@ -3113,7 +2927,6 @@ fn in_id_field_position(text: &str, token_start: usize) -> bool {
     let Some(rest) = rest.strip_suffix(':') else {
         return false;
     };
-    // The field name's closing delimiter.
     let Some(rest) = rest.trim_end().strip_suffix('"') else {
         return false;
     };
@@ -3381,20 +3194,9 @@ fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests;
 
-/// Client used by the scenarios whose *response* body is binary.
-///
-/// The shared proxy recorder exports cassettes through httpmock, which stores
-/// bodies as strings and therefore drops a non-UTF-8 payload entirely — a
-/// recorded speech response came back as `body: null` and replayed as zero
-/// bytes. A text-to-speech endpoint answers with raw audio, so those
-/// scenarios take the direct-recording path (the same one Bedrock's
-/// event-stream cassettes use), which stores non-UTF-8 bodies as base64.
-///
-/// Shared by every suite with that shape — OpenAI and Venice today — so the
-/// recording behavior they depend on has one definition beside [`DirectRecorder`].
-///
-/// In replay mode this is a plain reqwest client pointed at the replay
-/// server; only record mode carries a recorder.
+/// A reqwest client that buffers unary responses and optionally records complete
+/// exchanges, preserving non-UTF-8 bodies as base64. Multipart and streaming
+/// requests pass through without recording.
 #[derive(Clone, Debug, Default)]
 pub struct DirectRecordingHttpClient {
     inner: rig_reqwest::ReqwestClient,
@@ -3467,9 +3269,6 @@ impl HttpClientExt for DirectRecordingHttpClient {
         }
     }
 
-    // Only the unary path is recorded: the scenarios on this client are
-    // JSON-in/audio-out. Multipart and streaming pass through so the type
-    // still satisfies the trait.
     fn send_multipart<U>(
         &self,
         req: HttpRequest<MultipartForm>,

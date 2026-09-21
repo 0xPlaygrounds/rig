@@ -1,47 +1,14 @@
 //! MiniMax's endpoints and model identifiers.
 //!
-//! MiniMax serves the same models over two wires from two regions, so this
-//! module is data for all four combinations and nothing else:
+//! Global and China configurations support chat-completions and Messages wires,
+//! using `MINIMAX_API_KEY`.
 //!
-//! - the OpenAI chat-completions wire, as
-//!   [`openai::wire::MINIMAX`](crate::providers::openai::wire::MINIMAX)
-//!   (global) and
-//!   [`openai::wire::MINIMAX_CHINA`](crate::providers::openai::wire::MINIMAX_CHINA)
-//!   — one dialect at two base URLs, also serving the model listing
-//!   (`GET /models`);
-//! - the Anthropic Messages wire, as
-//!   [`anthropic::wire::MINIMAX`](crate::providers::anthropic::wire::MINIMAX),
-//!   whose China endpoint is [`CHINA_ANTHROPIC_API_BASE_URL`].
-//!
-//! Every combination reads `MINIMAX_API_KEY`.
-//!
-//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
-//! `rig-reqwest`) turns it into the model.
-//!
-//! # OpenAI-compatible example
 //! ```no_run
 //! use rig_core::providers::minimax;
-//! use rig_core::providers::openai::wire::{MINIMAX, MINIMAX_CHINA, OpenAI};
+//! use rig_core::providers::openai::wire::{MINIMAX, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let model = OpenAI::from_env_with(&MINIMAX)?.chat(minimax::MINIMAX_M2_7);
-//!
-//! // The China entrypoint is the same dialect at `CHINA_API_BASE_URL`.
-//! let china = OpenAI::from_env_with(&MINIMAX_CHINA)?.chat(minimax::MINIMAX_M2_7);
-//! # let _ = (model, china);
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! # Anthropic-compatible example
-//! ```no_run
-//! use rig_core::providers::anthropic::wire::{Anthropic, MINIMAX};
-//! use rig_core::providers::minimax;
-//!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Anthropic::from_env_with(&MINIMAX)?
-//!     .with_base_url(minimax::CHINA_ANTHROPIC_API_BASE_URL)
-//!     .messages(minimax::MINIMAX_M2);
 //! # let _ = model;
 //! # Ok(())
 //! # }

@@ -9,62 +9,30 @@
         clippy::unreachable
     )
 )]
-//! The bundled `reqwest` transport for Rig.
+//! The bundled reqwest HTTP transport and default transport constructors for Rig.
 //!
-//! `rig-core` is transport-agnostic: a provider's wire says what to send and
-//! how to read the reply, and [`Bound`](rig_core::driver::Bound) pairs it with
-//! an `H: HttpClientExt` — defaulting to the erased
-//! [`BoxedHttpClient`] — to make a model. rig-core itself depends on neither
-//! reqwest nor tokio. This crate supplies:
+//! Native requests and bodies enter the captured Tokio context on each poll,
+//! using a lazy fallback when no runtime is current. Callers retain ownership;
+//! dropping an operation cancels local work, not accepted remote work. Hosts
+//! must keep their runtime driven with I/O and timers enabled until operations
+//! finish. Missing drivers can panic; a stopped runtime causes I/O failure.
 //!
-//! - [`ReqwestClient`], a newtype over [`reqwest::Client`] implementing
-//!   [`HttpClientExt`] (and, behind the `reqwest-middleware` feature,
-//!   [`ReqwestMiddlewareClient`] over `reqwest_middleware::ClientWithMiddleware`).
-//! - The construction convenience the `rig` facade re-exports:
-//!   [`client::DefaultTransport`], whose `bound()` builds the erased default
-//!   over a `ReqwestClient`, so
-//!   `openai::wire::OpenAI::from_env()?.bound()?` yields a usable provider
-//!   without naming a transport. Name one explicitly with
-//!   [`Bind::bind`](rig_core::driver::Bind::bind) instead and the concrete
-//!   type stays in the signature.
-//!
-//! # Running without a tokio runtime
-//!
-//! Async reqwest needs a tokio reactor on native targets. Inside a tokio
-//! runtime this transport captures its handle. Outside one — Bevy task pools,
-//! smol, `futures::executor::block_on` — it uses a lazily started single-worker
-//! fallback reactor. Requests and bodies enter that context on each poll;
-//! they remain owned by the caller, without detached forwarding tasks. Dropping
-//! them cancels their local operation, not remote work already accepted.
-//!
-//! A host-supplied runtime must enable I/O and timers and remain driven until
-//! requests and bodies finish. A runtime handle alone does not keep it alive.
-//! Stop admitting work, cancel/drop operations, then release clients and shut
-//! down the host runtime. Context detection cannot verify an enabled reactor:
-//! polling under a runtime without I/O/timers can panic in Tokio. A stopped
-//! runtime cannot be restarted by retaining its handle; in-flight I/O fails.
+//! ```no_run
+//! let transport = rig_reqwest::client::bundled()?;
+//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! ```
 
 pub use reqwest;
 
-/// The bundled transport: a thin newtype over [`reqwest::Client`] that
-/// implements [`HttpClientExt`].
+/// A reqwest client implementing [`HttpClientExt`].
 ///
-/// A newtype rather than `reqwest::Client` itself because the orphan rule
-/// forbids implementing rig-core's trait for reqwest's type from this crate.
-/// That is the whole of its job, so its surface is deliberately small: convert
-/// in with [`From`] or [`Default`], borrow the inner client with [`AsRef`],
-/// take it back with [`into_inner`](Self::into_inner).
-///
-/// It used to expose the inner client three ways at once — a public field,
-/// `Deref`, and `From`. `Deref` on a type that is not a smart pointer makes
-/// reqwest's whole inherent API look like this type's own, which it is not;
-/// the two explicit accessors say the same thing without the illusion.
+/// Use [`AsRef`] to borrow the client or [`into_inner`](Self::into_inner) to
+/// recover ownership.
 #[derive(Clone, Debug, Default)]
 pub struct ReqwestClient(reqwest::Client);
 
 impl ReqwestClient {
-    /// Wrap an already-configured `reqwest::Client` — timeouts, proxies, a
-    /// connection pool shared with the rest of the host.
+    /// Wrap a configured reqwest client, retaining its connection pool.
     #[must_use]
     pub fn new(client: reqwest::Client) -> Self {
         Self(client)
@@ -102,12 +70,9 @@ impl AsRef<reqwest::Client> for ReqwestClient {
     }
 }
 
-/// [`HttpClientExt`] for a `reqwest_middleware::ClientWithMiddleware`.
+/// A configured middleware client implementing [`HttpClientExt`].
 ///
-/// The same shape as [`ReqwestClient`], minus `Default`: a middleware client
-/// with no middleware is just a `reqwest::Client` with extra indirection, so
-/// there is no default worth having — build one with
-/// `reqwest_middleware::ClientBuilder` and convert it in.
+/// Construct the inner client with `reqwest_middleware::ClientBuilder`.
 #[cfg(any(
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
@@ -139,9 +104,7 @@ impl ReqwestMiddlewareClient {
         self.0
     }
 
-    /// Erase this transport behind [`BoxedHttpClient`], as
-    /// [`ReqwestClient::boxed`] does — a host that erases its transport should
-    /// not lose the option by having chosen middleware.
+    /// Erase this transport behind [`BoxedHttpClient`].
     #[must_use]
     pub fn boxed(self) -> BoxedHttpClient {
         BoxedHttpClient::new(self)
@@ -195,20 +158,16 @@ use rig_core::http_client::{
 use rig_core::wasm_compat::*;
 use std::pin::Pin;
 
-/// Map a transport-level `reqwest::Error` onto the transport-agnostic
-/// [`Error`].
+/// Wrap a reqwest transport error as [`Error::Instance`], retaining its source.
 ///
-/// This is the response-less side (connect, decode, timeout): a reply the
-/// server made is read off the `reqwest::Response` with its body and headers
-/// by the send path instead, never reduced to a bare status.
-/// Rig never calls `error_for_status`, so a `reqwest::Error` here carries no
-/// reply to preserve.
+/// HTTP status failures are handled separately to preserve response headers
+/// and bodies.
 pub fn from_reqwest(err: reqwest::Error) -> Error {
     Error::instance(err)
 }
 
 /// Read the status, headers and body off a failed `reqwest::Response` and
-/// build the headers-preserving non-success error (rig#2314).
+/// build a non-success error that preserves the headers.
 async fn non_success_status_error(response: reqwest::Response) -> Error {
     let status = response.status();
     let headers = response.headers().clone();
@@ -289,12 +248,7 @@ struct InvalidPartContentType {
 
 /// Render a [`MultipartForm`] as a `reqwest::multipart::Form`.
 ///
-/// Fails when a part names a content type reqwest rejects. That used to be
-/// swallowed — the part was rebuilt without its content type and the request
-/// went out anyway — so a typo'd MIME reached the provider as a *missing* one
-/// and came back as an opaque provider error about the payload. A content type
-/// the caller asked for and did not get is a caller bug worth reporting at the
-/// call site.
+/// Returns an error when a binary part has a content type reqwest rejects.
 pub fn multipart_form(value: MultipartForm) -> Result<reqwest::multipart::Form> {
     let mut form = reqwest::multipart::Form::new();
 
@@ -328,10 +282,7 @@ pub fn multipart_form(value: MultipartForm) -> Result<reqwest::multipart::Form> 
     Ok(form)
 }
 
-/// The one request-driving routine both reqwest-flavoured clients share:
-/// `reqwest::Client` and `ClientWithMiddleware` expose the same
-/// `request(..) -> RequestBuilder` / `send()` surface but are unrelated types,
-/// so the shared code is written once against a tiny private trait.
+/// Creates request builders for plain and middleware reqwest clients.
 trait ReqwestLike: Clone + WasmCompatSend + WasmCompatSync + 'static {
     type Builder: RequestBuilderLike;
     fn request_builder(&self, method: http::Method, url: String) -> Self::Builder;
@@ -436,9 +387,7 @@ where
     U: From<Bytes> + WasmCompatSend + 'static,
 {
     let (parts, body) = req.into_parts();
-    // The form is rendered before the request is driven, so an unusable
-    // content type fails here rather than reaching the provider as a silently
-    // missing one.
+    // Reject invalid MIME types locally rather than sending incomplete metadata.
     let form = multipart_form(body);
     let req = form.map(|form| {
         client

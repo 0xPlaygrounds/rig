@@ -1,4 +1,16 @@
 //! Independent owners of a shared pre-dispatch barrier.
+//!
+//! ```
+//! use bevy_ecs::world::World;
+//! use rig_core::observe::Emitter;
+//! use rig_ecs::bus::{acquire_hold, release_hold};
+//! let mut world = World::new();
+//! let effect = world.spawn_empty().id();
+//! let owner = Emitter::unknown();
+//! acquire_hold(&mut world, effect, owner.clone())?;
+//! release_hold(&mut world, effect, &owner.name)?;
+//! # Ok::<(), rig_ecs::bus::HoldRefused>(())
+//! ```
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -43,12 +55,9 @@ struct Transitions {
     pending: VecDeque<HoldTransition>,
 }
 
-/// Drop `owner`'s hold on `entity` after `Held` already went (a host removed
-/// the marker directly, bypassing every owner): the owner's release is still
-/// published as a transition, so the witness sees why the call left the
-/// barrier. A no-op when the owner holds nothing. The runtime uses it for
-/// its own batch owner; a policy whose marker a host removed may use it to
-/// close its books the same way.
+/// Remove `owner`'s ownership entry and publish its release after a host has
+/// removed [`Held`] directly. Does nothing if the owner has no entry and does
+/// not change the `Held` marker.
 pub fn forget_owner(world: &mut World, entity: Entity, owner: &str) {
     let Some(mut owners) = world.get::<HoldOwners>(entity).cloned() else {
         return;
@@ -127,11 +136,9 @@ impl std::fmt::Display for HoldRefused {
 
 impl std::error::Error for HoldRefused {}
 
-/// Acquire one owner's hold before dispatch. A pre-existing bare Held is
-/// retained as an independent unknown owner. The refusal says why: an
-/// [`Issued`](HoldRefused::Issued) effect is past holding, which a policy
-/// that believes it has a barrier must not mistake for
-/// [`AlreadyHeld`](HoldRefused::AlreadyHeld).
+/// Acquire one owner's hold before dispatch, retaining a bare [`Held`] as an
+/// independent unknown owner. Return [`HoldRefused`] for a missing, settled,
+/// already-issued effect or an owner that already holds it.
 pub fn acquire_hold(world: &mut World, entity: Entity, owner: Emitter) -> Result<(), HoldRefused> {
     let Ok(effect) = world.get_entity(entity) else {
         return Err(HoldRefused::Missing);

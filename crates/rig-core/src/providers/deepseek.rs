@@ -1,27 +1,6 @@
-//! DeepSeek's model identifiers and its own view of a reply.
+//! DeepSeek model identifiers and typed response fields, including cache usage
+//! and reasoning content. Configure requests with [`crate::providers::openai::wire::DEEPSEEK`].
 //!
-//! DeepSeek is an OpenAI chat-completions dialect, so it has no client and
-//! no completion model of its own:
-//! [`openai::wire::DEEPSEEK`](crate::providers::openai::wire::DEEPSEEK)
-//! carries the base URL, the `DEEPSEEK_API_KEY` variable, the
-//! `/user/balance` credential check, and the rewrite DeepSeek needs —
-//! string-flattened message content, `content: ""` on tool-call-only
-//! assistant turns, `index` on echoed tool calls, and forced tool choices
-//! suppressed unless thinking is explicitly disabled.
-//!
-//! What remains here is data: the model identifiers, and
-//! [`CompletionResponse`] — the typed read of DeepSeek's own reply document,
-//! which a completion carries verbatim on
-//! [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
-//! It is not a second mapping: the normalized response is produced by the
-//! wire's decoder, and this type is how a caller reads the provider-native
-//! fields that mapping does not name — `prompt_cache_hit_tokens` /
-//! `prompt_cache_miss_tokens`, and `reasoning_content` under DeepSeek's own
-//! spelling.
-//!
-//! # Example
-//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
-//! `rig-reqwest`) turns it into the model.
 //! ```no_run
 //! use rig_core::providers::deepseek;
 //! use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
@@ -37,9 +16,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::json_utils;
 
-// ================================================================
-// DeepSeek Completion API
-// ================================================================
 pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
 pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 
@@ -54,10 +30,8 @@ pub struct CompletionResponse {
     pub object: Option<String>,
     #[serde(default)]
     pub system_fingerprint: Option<String>,
-    /// A `max_tokens`-truncated tool call comes back with its `arguments`
-    /// cut off partway through the JSON object. Dropping just that call at
-    /// decode keeps the rest of the turn — the text, usage, id, model and
-    /// finish reason — instead of failing the whole document (rig#2354).
+    /// Response choices. Decoding drops incomplete tool calls from truncated
+    /// choices while retaining the remaining content and metadata.
     #[serde(
         deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
     )]
@@ -113,7 +87,7 @@ pub enum Message {
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
-        /// only exists on `deepseek-reasoner` model at time of addition
+        /// Provider-reported reasoning text, when present.
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning_content: Option<String>,
     },

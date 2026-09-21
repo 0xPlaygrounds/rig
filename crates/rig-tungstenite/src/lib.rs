@@ -8,29 +8,17 @@
         clippy::unwrap_used
     )
 )]
-//! The bundled `tokio-tungstenite` websocket backend for Rig.
+//! The bundled native websocket backend and session constructors for Rig.
 //!
-//! rig-core is transport-agnostic: a provider's websocket session drives a
-//! [`WebSocketConnection`](rig_core::ws_client::WebSocketConnection) and rig-core
-//! names no backend, exactly as it names no HTTP transport. This crate supplies
-//! one, and the conveniences that let a caller who is happy with it never say so:
+//! Sockets use the current Tokio runtime or a lazy fallback runtime. Off-runtime
+//! callers communicate through channels without polling socket I/O themselves.
 //!
-//! - [`TungsteniteClient`], a [`WebSocketClientExt`] over `tokio-tungstenite`.
-//! - [`DefaultWebSocketClient`] / [`DefaultWebSocketBuilder`], the
-//!   default-backend traits — `client.responses_websocket("gpt-5.4")` with no
-//!   backend named — mirroring `rig-reqwest`'s `DefaultTransportClient`.
-//!
-//! # Running without a tokio runtime
-//!
-//! `tokio-tungstenite` needs a tokio reactor. Inside a tokio runtime this
-//! backend drives the socket directly; outside one it moves the socket onto a
-//! lazily started fallback runtime and talks to it over `futures` channels, so
-//! the caller polls only runtime-agnostic futures.
+//! ```
+//! let backend = rig_tungstenite::TungsteniteClient::new();
+//! ```
 
-// A caller who reaches for this crate on wasm gets one sentence instead of a
-// page of unresolved imports: the dependency is target-gated, so nothing below
-// would resolve. `rig_core::ws_client` is the seam a browser backend plugs
-// into, and rig-core's own websocket support builds for wasm today.
+// The native dependency is target-gated; diagnose unsupported WASM use before
+// unresolved imports obscure the required browser backend.
 #[cfg(target_family = "wasm")]
 compile_error!(
     "rig-tungstenite is a native websocket backend (tokio-tungstenite). On wasm, implement \
@@ -70,12 +58,8 @@ pub mod prelude {
 }
 
 #[cfg(not(target_family = "wasm"))]
-/// The bundled websocket backend.
-///
-/// Cheap to clone and to construct: a handshake takes its configuration from
-/// the request, so the client itself holds nothing yet. It is a unit struct
-/// rather than a wrapper because `tokio-tungstenite` has no client object to
-/// wrap — `connect_async` is a free function.
+/// A stateless websocket backend that takes handshake configuration from each
+/// request.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TungsteniteClient;
 
@@ -113,11 +97,8 @@ impl WebSocketClientExt for TungsteniteClient {
 }
 
 #[cfg(not(target_family = "wasm"))]
-/// Lower rig's transport-agnostic handshake request onto tungstenite's.
-///
-/// `into_client_request` supplies the websocket handshake headers
-/// (`Sec-WebSocket-Key` and friends) from the URI; the caller's headers — the
-/// provider's authentication — are copied on top.
+/// Build a tungstenite handshake request, returning an error for an invalid URI.
+/// Caller headers, including authentication, override generated handshake headers.
 fn client_request(request: Request<NoBody>) -> Result<tungstenite::handshake::client::Request> {
     let (parts, _) = request.into_parts();
     let mut request = parts
@@ -160,23 +141,9 @@ async fn handshake(
 }
 
 #[cfg(not(target_family = "wasm"))]
-/// Map a tungstenite failure onto rig's transport error, **preserving a
-/// rejected upgrade's response**.
-///
-/// This is the one piece of the websocket path that must not lose information.
-/// A provider that refuses the upgrade never opens a websocket at all: it
-/// answers with an ordinary HTTP response carrying a status, its own error
-/// envelope, and the headers a caller needs to back off (`Retry-After`, and the
-/// provider's request id). `tungstenite` hands all of it back on
-/// [`tungstenite::Error::Http`], with the body filled in from the read tail, so
-/// flattening the error to its display string — `"HTTP error: 401
-/// Unauthorized"` — is the difference between a caller that can diagnose a bad
-/// key and one that cannot (rig#2314, rig#2315, rig#2210).
-///
-/// [`Error::non_success_with_details`] is the shape that keeps all three, and
-/// the provider layer reads its own request-id header back off it. Failures
-/// that never reached the provider — TLS, DNS, a protocol violation — have no
-/// response to preserve and become [`Error::Instance`].
+/// Convert a tungstenite failure to a transport error, preserving the status,
+/// headers, and body of a rejected upgrade.
+/// Other failures become [`Error::Instance`].
 fn from_tungstenite(error: tungstenite::Error) -> Error {
     let tungstenite::Error::Http(response) = error else {
         return Error::instance(error);

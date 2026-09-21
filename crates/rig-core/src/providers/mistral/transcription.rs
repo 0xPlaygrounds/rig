@@ -1,11 +1,13 @@
 //! Mistral's transcription model identifiers.
 //!
-//! The request runs on the shared OpenAI transcription wire, whose
-//! [`MISTRAL`](crate::providers::openai::wire::MISTRAL) dialect carries the
-//! `/v1/audio/transcriptions` path and reads the reply. Mistral's own
-//! fields — the diarization segments and the audio-second accounting — stay
-//! readable on
-//! [`TranscriptionResponse::raw`](crate::transcription::TranscriptionResponse::raw).
+//! Diarization and audio-second metadata remain in
+//! [`crate::transcription::TranscriptionResponse::raw`].
+//!
+//! ```no_run
+//! use rig_core::providers::{mistral, openai::wire::{MISTRAL, OpenAI}};
+//! let wire = OpenAI::from_env_with(&MISTRAL)?.transcriptions(mistral::VOXTRAL_MINI);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 /// Voxtral Mini model (latest version)
 pub const VOXTRAL_MINI: &str = "voxtral-mini-latest";

@@ -1,3 +1,11 @@
+//! Streamed agent events, bounded event feeds, and terminal response shaping.
+//!
+//! ```no_run
+//! # fn example(agent: &rig_agent::Agent) {
+//! let stream = agent.prompt("Explain ownership.").stream();
+//! # }
+//! ```
+
 use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
@@ -17,10 +25,8 @@ use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::assistant_text_from_choice;
 use rig_core::message::Message;
 
-// The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
-// go no-op — browser wasm. `rig-core` keys those markers on this same
-// predicate, so keep the two in step: a bare `target_arch = "wasm32"` would
-// also drop `Send` on WASI, where `rig-core` still requires it.
+// Match core's browser-only relaxed bounds; a bare wasm32 check would also
+// relax Send on WASI, where core still requires it.
 /// The stream a streamed run yields: its items, then its ending.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult =
@@ -35,7 +41,7 @@ pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem,
 /// One item of a streamed run: a provider stream event, a committed tool
 /// call, a lifecycle marker, or the run's final response.
 pub enum MultiTurnStreamItem {
-    /// A provider stream event — the content the **model emitted**: block
+    /// A provider stream event containing model-emitted content: block
     /// starts and ends, text/reasoning deltas, tool-call deltas, the
     /// terminal record, unmodeled passthrough items. Tool-call block ends
     /// are not forwarded; the model's completed calls are reported as
@@ -51,7 +57,7 @@ pub enum MultiTurnStreamItem {
     /// arguments still stream as tool-call deltas): a call rejected and
     /// handled by invalid-tool-call recovery (surfaced via that recovery
     /// path), and a structured-output Tool-mode output-tool call, which
-    /// finalizes the run directly — its structured result is surfaced in
+    /// finalizes the run directly; its structured result is surfaced in
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
     /// call.
     ToolCall {
@@ -86,7 +92,7 @@ pub enum MultiTurnStreamItem {
     /// A streamed user content item: the **result** of an executed (or
     /// hook-skipped) tool call. The tool batch commits and surfaces atomically at
     /// every `tool_concurrency` (including the sequential default): results are
-    /// surfaced (in call order) only after the whole batch settles successfully —
+    /// surfaced in call order only after the whole batch settles successfully;
     /// a run that terminates mid-batch surfaces no successful tool results.
     StreamUserItem(StreamedUserContent),
     /// Details for one successfully completed completion request made by this agent stream.
@@ -95,15 +101,13 @@ pub enum MultiTurnStreamItem {
     /// final usage for that completion request when available; it is not
     /// incremental per streamed token.
     ///
-    /// ```rust,ignore
-    /// match item {
-    ///     MultiTurnStreamItem::CompletionCall(completion_call) => {
-    ///         // Every counter is `None` when the provider reported no metrics.
-    ///         if completion_call.usage.is_reported() {
-    ///             let context_tokens = completion_call.usage.input_tokens;
-    ///         }
+    /// ```
+    /// use rig_agent::agent::MultiTurnStreamItem;
+    /// fn input_tokens(item: &MultiTurnStreamItem) -> Option<u64> {
+    ///     match item {
+    ///         MultiTurnStreamItem::CompletionCall(call) => call.usage.input_tokens,
+    ///         _ => None,
     ///     }
-    ///     _ => {}
     /// }
     /// ```
     CompletionCall(CompletionCall),
@@ -120,8 +124,8 @@ pub enum MultiTurnStreamItem {
     /// The final result from the stream: the unified [`PromptResponse`] shared
     /// with the blocking surface.
     ///
-    /// Terminal for the run: nothing follows it automatically — no retry,
-    /// further turn, or tool execution — so this item is the stream-side
+    /// Terminal for the run: no retry, further turn, or tool execution follows.
+    /// This item is the stream-side
     /// counterpart of the `on_run_settled` hook's success outcome. Error
     /// termination surfaces as the stream's `Err` item instead, which is
     /// equally terminal.
@@ -162,10 +166,8 @@ impl MultiTurnStreamItem {
         }
     }
 
-    /// Build a `FinalResponse` item from final-turn content, applying the
-    /// run-finalization shaping of `final_response_from_content` (#1928).
-    /// The one public entry point to that shaping, for mocks and adapters
-    /// that synthesize final items outside the drive loop.
+    /// Build a final response from structured content and aggregate usage.
+    /// Concatenates text for output; completion details and history remain unset.
     pub fn final_response(
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
@@ -211,19 +213,10 @@ pub(crate) async fn drain_stream_usage(
     Ok(crate::completion::Usage::default())
 }
 
-/// Build the final streamed content for a finished run (#1928).
-///
-/// When the finishing turn carries a tool call it is a Tool-mode output-tool
-/// call (a real tool call would have routed to `CallTools`, not `Done`). In that
-/// case the tool call AND the model's prose are dropped, any reasoning/image
-/// content is kept, and `output` is appended as the final text — so the streamed
-/// [`PromptResponse::output`] string is the structured output rather than the
-/// prose, with no unanswered tool_use, matching the non-streaming `output`. Note
-/// this shapes only the surfaced [`PromptResponse::content`]; the persisted
-/// message history is built by the state machine (which keeps the prose, like the
-/// blocking driver), so `content` and `messages` intentionally differ on prose in
-/// this case.
-/// Otherwise returns `None` and the caller surfaces the turn's content unchanged.
+/// Replace calls and prose in a finished output-tool turn with final output text,
+/// retaining reasoning and images. Call only after finalization, when remaining
+/// calls are output-tool calls. Persisted history retains prose independently;
+/// returns `None` if no call is present.
 pub(crate) fn finalize_streamed_choice(
     last_final_choice: &[AssistantContent],
     output: &str,
@@ -244,7 +237,6 @@ pub(crate) fn finalize_streamed_choice(
         })
         .cloned()
         .collect();
-    // `items` is non-empty: the output text was just pushed unconditionally.
     items.push(AssistantContent::text(output.to_string()));
     Some(items)
 }
@@ -255,8 +247,7 @@ pub enum StreamingError {
     /// The provider stream failed.
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
-    /// An effect failed on the agent's bus — a bus or handler failure, a
-    /// hook's denial, a stream item's error — as the wire reports it.
+    /// Structured failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]
     Report(#[from] rig_core::error::ErrorReport),
     /// The run failed for a reason the blocking surface reports the same way.
@@ -276,8 +267,8 @@ impl AgentRunner {
     /// Hooks fire at every observable point, including streamed text and
     /// tool-call deltas.
     ///
-    /// Like [`run`](AgentRunner::run), this is lazy: nothing — not the memory
-    /// load, not the agent span — happens until the stream is first polled,
+    /// Like [`run`](AgentRunner::run), this is lazy: memory loading and agent
+    /// span creation begin only when the stream is first polled,
     /// and a stream that is dropped unpolled has done nothing. A memory-load
     /// failure is the stream's first (and only) item. The stream is `Send` on
     /// native targets, so it can be built in synchronous code and handed to
@@ -305,9 +296,7 @@ impl AgentRunner {
         self.stream_under(tracing::Span::current())
     }
 
-    /// [`stream`](Self::stream) under an explicitly captured ambient span —
-    /// the one terminal that builds the stream lazily inside another future
-    /// ([`run_channel`](Self::run_channel)) captures it at its own call.
+    /// Build a lazy stream under an explicitly captured ambient span.
     fn stream_under(self, ambient: tracing::Span) -> StreamingResult {
         let run_under = ambient.clone();
         let stream = async_stream::stream! {
@@ -321,7 +310,7 @@ impl AgentRunner {
 
     /// The eager half of [`stream`](Self::stream): resolve memory, build the
     /// run and return the driver as a stream. Called on the first poll,
-    /// under `ambient` — the span the stream was built in.
+    /// under `ambient`, the span the stream was built in.
     async fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
 
@@ -340,10 +329,8 @@ impl AgentRunner {
         let (history_override, memory_handle) = match resolved {
             Ok(resolved) => resolved,
             Err(err) => {
-                // A run that never reached the engine still settles: the
-                // load failure is its ending, reported before the one item
-                // the stream yields so a consumer that stops at the first
-                // `Err` has already seen it.
+                // Notify settlement before yielding the error so consumers stopping
+                // at the first failure cannot suppress the lifecycle notification.
                 let hooks = self.config.hooks.clone();
                 let stream = async_stream::stream! {
                     let err = StreamingError::from(err);
@@ -375,9 +362,6 @@ impl AgentRunner {
             self.config.record_telemetry_content,
         );
 
-        // The blocking surface folds this same engine; the streaming surface
-        // forwards intermediate items (the final response item is the last one)
-        // and ends on `Done`.
         let driver = drive_agent(
             self,
             source,
@@ -414,7 +398,7 @@ pub const RUN_EVENTS_CAPACITY: usize = 32;
 /// bounded queue ([`RUN_EVENTS_CAPACITY`]): a slow consumer applies
 /// back-pressure to the run instead of losing events. Poll it as a
 /// [`Stream`] from async code, or drain it with the non-blocking
-/// [`try_next`](RunEvents::try_next) from a synchronous tick — a game loop, a
+/// [`try_next`](RunEvents::try_next) from a synchronous tick, such as a game loop,
 /// UI frame, an ECS system.
 ///
 /// Dropping the feed does not cancel the run; it simply stops receiving events
@@ -465,8 +449,8 @@ impl FusedStream for RunEvents {
 impl AgentRunner {
     /// Split the run into a driving future and a [`RunEvents`] feed.
     ///
-    /// The future performs the whole agent loop — the same engine as
-    /// [`run`](AgentRunner::run) and [`stream`](AgentRunner::stream) — and
+    /// The future performs the same agent loop as
+    /// [`run`](AgentRunner::run) and [`stream`](AgentRunner::stream), and
     /// resolves with the final [`PromptResponse`]; the
     /// feed receives each intermediate [`MultiTurnStreamItem`] as it happens.
     /// Spawn the future on any executor and poll the feed from wherever the
@@ -497,11 +481,8 @@ impl AgentRunner {
                 let item = match item {
                     Ok(item) => item,
                     Err(err) => {
-                        // The engine settles an error ending before it
-                        // yields it; the forwarder still drains the stream
-                        // before returning, as `run` does, so the engine's
-                        // own teardown (its spans, its bus lineage) runs to
-                        // completion rather than being dropped at the yield.
+                        // Drain after the terminal error so span and lineage teardown
+                        // completes instead of being dropped at the yield.
                         let error = streaming_error_into_prompt(err);
                         while stream.next().await.is_some() {}
                         return Err(error);
@@ -510,7 +491,6 @@ impl AgentRunner {
                 match item {
                     MultiTurnStreamItem::FinalResponse(done) => {
                         if forward {
-                            // The consumer is gone; nothing left to forward.
                             let _ = sender
                                 .send(MultiTurnStreamItem::FinalResponse(done.clone()))
                                 .await;

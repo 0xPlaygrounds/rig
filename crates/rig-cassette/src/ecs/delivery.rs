@@ -1,4 +1,11 @@
 //! Replay collection at recorded policy observation boundaries.
+//!
+//! ```
+//! use rig_cassette::{ecs::ReplayDelivery, effect_log::EffectLog};
+//! let plan = ReplayDelivery::new(&EffectLog::default(), false)?;
+//! assert!(plan.is_none());
+//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! ```
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -52,7 +59,10 @@ impl ReplayDelivery {
         self.refusals.clone()
     }
 
-    /// Validate a recording and construct its delivery plan.
+    /// Validate delivery ordering, record IDs, stream counts, and folded outcomes.
+    /// Return a plan when delivery metadata exists, or `None` when it is absent.
+    /// Returns an error for inconsistent metadata or, when `required`, missing
+    /// delivery guarantees for a nonempty log.
     pub fn new(log: &EffectLog, required: bool) -> Result<Option<Self>, ErrorReport> {
         if required && !log.header.delivery_limitations.is_empty() {
             return Err(invalid(format!(
@@ -348,8 +358,7 @@ impl Buffered {
     }
 }
 
-// The observer sits inside this stream. Stop source polling, not just receiver
-// reads, before a replayer's synthetic cancellation fallback can be observed.
+// Stop polling the observed source before synthetic cancellation becomes visible.
 // Retain ownership at the prefix boundary until the recorded policy cancels it.
 fn cancelled_prefix(
     mut stream: rig_core::streaming::StreamEvents,
@@ -574,10 +583,9 @@ pub fn collect_replayed(world: &mut World) {
     deliveries.apply(world);
 }
 
-/// Diagnose absent requests and unreproduced cancellations, after the pass
-/// ([`RigEnd`](rig_ecs::bus::RigEnd)), and only when the pass was idle: a pass in which something raised [`Wake`](rig_ecs::bus::Wake) — a task
-/// landed, a delivery arrived, a policy said it is still deliberating — is
-/// given its follow-up pass first.
+/// Insert [`ReplayFailure`] for absent requests or unreproduced cancellations
+/// after an idle [`RigEnd`](rig_ecs::bus::RigEnd) pass. A changed
+/// [`Wake`](rig_ecs::bus::Wake) generation defers diagnosis until a later pass.
 pub fn diagnose_idle_replay(world: &mut World) {
     if world.contains_resource::<ReplayFailure>() {
         return;

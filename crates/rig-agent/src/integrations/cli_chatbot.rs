@@ -1,3 +1,12 @@
+//! Terminal chat loops for agents and custom chat implementations.
+//!
+//! ```no_run
+//! use rig_agent::{Agent, completion::PromptError, integrations::cli_chatbot::ChatBotBuilder};
+//! async fn chat(agent: Agent) -> Result<(), PromptError> {
+//!     ChatBotBuilder::new().agent(agent).max_turns(3).build().run().await
+//! }
+//! ```
+
 use rig_core::{
     markers::{Missing, Provided},
     message::Message,
@@ -57,7 +66,7 @@ pub struct ChatBotBuilder<T = Missing>(T);
 /// A terminal chat loop over an agent or a [`Chat`]; see [`ChatBot::run`].
 pub struct ChatBot<T>(T);
 
-/// Trait to abstract message behavior away from cli_chat/`run` loop
+/// Execute and display turns with optional usage reporting.
 #[allow(private_interfaces)]
 trait CliChat {
     async fn request(
@@ -128,8 +137,7 @@ impl CliChat for AgentImpl {
                         .map(<[rig_core::completion::Message]>::to_vec);
                 }
                 Err(e) => {
-                    // The stream's error is the run's error: the provider's
-                    // report, a cancel, a memory failure — not its `Display`.
+                    // Preserve structured run errors rather than reducing them to display text.
                     break Err(crate::agent::streaming_error_into_prompt(e));
                 }
                 _ => continue,
@@ -224,7 +232,8 @@ impl<T> ChatBot<T>
 where
     T: CliChat,
 {
-    /// Read prompts from stdin and print answers until EOF or `exit`.
+    /// Read prompts from stdin and print answers until `exit`.
+    /// Returns prompt failures and stdout flush errors; input read errors are printed.
     pub async fn run(mut self) -> Result<(), PromptError> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();

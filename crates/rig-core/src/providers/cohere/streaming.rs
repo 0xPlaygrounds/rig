@@ -1,3 +1,12 @@
+//! Cohere chat event decoding and terminal metadata for unary and streamed replies.
+//!
+//! ```
+//! use rig_core::providers::cohere::streaming::StreamingEvent;
+//! let event: StreamingEvent = serde_json::from_str(r#"{"type":"message-end"}"#)?;
+//! assert!(matches!(event, StreamingEvent::MessageEnd { delta: None }));
+//! # Ok::<(), serde_json::Error>(())
+//! ```
+
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::providers::cohere::completion::{
@@ -131,12 +140,8 @@ pub struct StreamingCompletionResponse {
     pub message_id: Option<String>,
 }
 
-/// The Cohere v2 chat wire's decoder, serving both replies.
-///
-/// Holds the per-reply state (open tool call, message id); frame-triage
-/// policy (warn-skip `Unknown` for forward compatibility, in-band `Err` on
-/// `Corrupt` so a later genuine `message-end` can still complete the
-/// stream) lives in the driver, not here.
+/// Stateful decoder for unary and streaming v2 chat replies. Tracks open calls,
+/// message identity, and reasoning boundaries; the driver handles corrupt frames.
 pub struct ChatDecoder {
     /// Wire id of the open tool call, when one is streaming. Only the wire
     /// identity is tracked here; fragment assembly, internal-id minting, and
@@ -145,8 +150,7 @@ pub struct ChatDecoder {
     /// Keys for calls whose wire id is empty: an absent id is not an id.
     tool_ids: crate::streaming::SyntheticIds,
     message_id: Option<String>,
-    /// Owns the constant-key reasoning lifecycle — the boundary end this
-    /// wire never announces is derived, not hand-rolled here.
+    /// Derives reasoning closure when subsequent content changes block type.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
 }
 
@@ -163,12 +167,7 @@ impl Default for ChatDecoder {
     }
 }
 
-/// One frame of the `/v2/chat` wire.
-///
-/// The streamed frames name themselves in `type`; the unary body carries no
-/// discriminator at all, so it is the untagged fallback — the one place the
-/// whole-reply shape appears. Both go through the same [`ChatDecoder`], so
-/// the two paths cannot drift.
+/// Tagged streaming event or untagged unary reply from `/v2/chat`.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ChatEvent {
@@ -194,9 +193,6 @@ impl ChatDecoder {
                     return;
                 };
 
-                // Declare what the delta carried (thinking merges under the
-                // per-stream constant minted key); the shared lifecycle
-                // derives the canonical sequence, boundary end included.
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: content.thinking.clone(),
@@ -209,10 +205,7 @@ impl ChatDecoder {
             }
 
             StreamingEvent::MessageEnd { delta } => {
-                // `message-end` is the genuine terminal even when its optional
-                // payload is absent; usage and finish reason then default. The
-                // driver stops consuming after the terminal record, and the
-                // span is the driver's to record.
+                // A bare message-end still completes the turn with unknown usage and reason.
                 let (usage, finish_reason) = match delta {
                     Some(delta) => (delta.usage, delta.finish_reason),
                     None => (None, None),
@@ -288,7 +281,6 @@ impl ChatDecoder {
                     return;
                 };
 
-                // Emit the delta so UI can show progress
                 out.tool_arguments(&key, arguments);
             }
 
@@ -296,8 +288,7 @@ impl ChatDecoder {
                 let Some(key) = self.current_tool_call.take() else {
                     return;
                 };
-                // Unparseable assembled input drops in the accumulator,
-                // matching the old skip.
+                // This endpoint drops calls whose assembled arguments are unparseable.
                 out.tool_end(key, ToolCallEnd::new(UnparseableToolInput::Drop));
             }
 
@@ -330,9 +321,8 @@ impl ChatDecoder {
             let Some(function) = call.function else {
                 continue;
             };
-            // The wire's id when present, or a minted key — never the tool
-            // name, which is fake provenance and collides two same-tool
-            // calls in one turn. The streamed path keys the same way.
+            // Mint absent IDs rather than using tool names, which cannot distinguish
+            // repeated calls and are not provider-issued identity.
             let key = call
                 .id
                 .and_then(crate::streaming::non_empty_id)
@@ -383,8 +373,6 @@ impl ChatDecoder {
     }
 }
 
-/// The `/v2/chat` wire decodes its unary and streamed replies with the same
-/// state machine, so the two paths cannot drift.
 impl crate::wire::Decoder<Completion> for ChatDecoder {
     type Event = ChatEvent;
 
@@ -405,10 +393,7 @@ impl crate::wire::Decoder<Completion> for ChatDecoder {
     }
 
     fn finish(&mut self, _out: &mut AdapterOutput) {
-        // Only Cohere's `message-end` event counts as the provider completing
-        // the turn. A stream that reached EOF without it (truncation) has no
-        // terminal record to report; synthesizing one would present a partial
-        // turn as a successful, zero-usage completion.
+        // EOF without message-end is truncation, not successful completion.
     }
 }
 

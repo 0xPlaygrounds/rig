@@ -1,26 +1,16 @@
-//! Span shapes shared by both drivers: the run-level `invoke_agent` span, the
-//! per-turn `chat` span, and the per-tool `execute_tool` span. Defined once so
-//! the blocking and streaming surfaces cannot drift in what they record.
+//! Shared run, completion-turn, and tool-execution tracing spans.
 
 use tracing::info_span;
 
-/// Build the per-turn `chat` span shared by both turn sources.
-///
-/// The span *name* must be a string literal — `tracing` bakes it into static
-/// metadata — so this is a macro parameterized by the name rather than a
-/// function (the two surfaces keep distinct names, `chat` vs `chat_streaming`,
-/// which dashboards split on). The matching operation value is passed with the
-/// name; every other field is identical across the two surfaces, so it lives
-/// here once instead of being copy-pasted into each `TurnSource::open_chat_span`.
+/// Build a completion-parent span with the supplied literal name and operation.
+/// Literal names are required because tracing stores them in static metadata.
 macro_rules! build_chat_span {
     ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {{
         let system_instructions = $crate::core::telemetry::system_instructions_json(
             $effective_preamble,
             $runner.config.record_telemetry_content,
         );
-        // The core macro is the single source of the completion-parent
-        // contract (marker + required fields); only the agent-specific field
-        // is declared here.
+        // Reuse the core parent marker so completion instrumentation recognizes this span.
         $crate::core::telemetry::completion_parent_span!(
             target: "rig::agent_chat",
             name: $name,
@@ -32,16 +22,10 @@ macro_rules! build_chat_span {
 }
 pub(crate) use build_chat_span;
 
-/// Build (or adopt) the top-level `invoke_agent` span for a run, shared by the
-/// blocking and streaming drivers so the run-level span shape is defined once.
-///
-/// `ambient` is the span the terminal (`run()`, `stream()`, `run_channel()`,
-/// a typed run's `into_future()`) was called in, whatever task later polls
-/// the future. Returns the span plus whether it was newly created. An
-/// enabled ambient span is adopted and reported as `false`, so the driver
-/// can avoid recording run-level usage onto a span it does not own (see the
-/// `created_agent_span` guard in both drivers' `Done` handling); a disabled
-/// one yields a root `invoke_agent`, whatever span the poller happens to be in.
+/// Adopt an enabled ambient span or create a root `invoke_agent` span.
+/// Returns the span and whether it was created. Pass the span captured when the
+/// run terminal was called, not its poller's span; record run-level usage only
+/// on newly created spans to avoid modifying caller-owned accounting.
 pub(crate) fn acquire_agent_span(
     ambient: tracing::Span,
     agent_name: &str,
@@ -72,11 +56,8 @@ pub(crate) fn acquire_agent_span(
     }
 }
 
-/// Build the per-tool `execute_tool` span carrying the `gen_ai.tool.*` fields
-/// that [`run_single_tool`] records on the current span. Parented to the
-/// contextual current span; the blocking driver additionally chains it via
-/// `follows_from`, while the streaming driver uses it as-is. Shared by both
-/// drivers so the span shape stays defined in one place.
+/// Create an `execute_tool` span parented to the current span, with empty
+/// tool identity, arguments, result, outcome, and error fields.
 pub(crate) fn new_execute_tool_span() -> tracing::Span {
     info_span!(
         "execute_tool",

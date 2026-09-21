@@ -1,5 +1,10 @@
-//! The bus as a `bevy_app` plugin: the schedule and its sets, the policy,
-//! and the wake that lets a host run the app only when a task finished.
+//! Bus scheduling, serving policy, and wake-driven app execution.
+//!
+//! ```
+//! let wake = rig_ecs::bus::Wake::default();
+//! wake.signal();
+//! assert!(wake.take());
+//! ```
 
 use std::{
     sync::{
@@ -30,20 +35,13 @@ use super::{
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RigSchedule;
 
-/// The schedule after [`RigSchedule`] in every app update: the pass is over
-/// and every command of it applied. The bus diagnoses an idle replay here;
-/// nothing else runs in it.
+/// Runs after [`RigSchedule`] and its deferred commands in every app update.
+/// Replay adapters can install idle-pass diagnosis here.
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RigEnd;
 
-/// The four sets of one pass of [`RigSchedule`], in this order.
-///
-/// | set | true before | written during |
-/// |---|---|---|
-/// | `Gate` | pending effects are as spawned | a user system patches a `PendingEffect`, denies one (`EffectOutcome(Err(..))`), or holds one (`Held`) |
-/// | `Dispatch` | every un-held, un-answered `PendingEffect` is a candidate | the plugin takes them in `Seq` order: `Issued`, `InFlight`, `Serving`/`Streaming`/`Asked`; a record opens |
-/// | `Collect` | handlers may have finished or streamed | the plugin writes `Streamed`, `EffectOutcome`; the record closes; `InFlight` goes |
-/// | `Judge` | outcomes of this pass have landed and are recorded | a user system may rewrite an `EffectOutcome` before anything after `Judge` reads it |
+/// Ordered sets of [`RigSchedule`]: gate pending effects, dispatch, collect and
+/// record answers, then apply policy replacements.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BusSet {
     /// Before dispatch: patch, deny, hold.
@@ -60,15 +58,10 @@ pub enum BusSet {
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy(pub ServingPolicy);
 
-/// The signal that another app update is worth running: every task the bus
-/// spawns raises it when it finishes or delivers a stream item, and a host
-/// system raises it when it did something a later pass must see (a policy
-/// still deliberating, a world change made outside a tick). A runner waits
-/// on it ([`Wake::wait`] blocking, [`Wake::woken`] async) instead of
-/// spinning; [`woken_runner`] is that runner. Every raise also advances
-/// [`Wake::generation`], the activity counter a system reads to tell an
-/// idle pass from a busy one. Raising it is a read of the resource:
-/// systems that raise it never conflict.
+/// A shared signal requesting another app update, raised by completed tasks,
+/// stream delivery, or host systems needing a later pass.
+/// Each signal advances [`Wake::generation`] and wakes blocking and async waiters;
+/// signalling requires only shared access to the resource.
 #[derive(Resource, Clone, Default)]
 pub struct Wake(Arc<WakeInner>);
 
@@ -96,8 +89,7 @@ impl Wake {
         drop(guard);
     }
 
-    /// How many times the signal was raised: unchanged between two reads
-    /// means nothing happened in between.
+    /// Return the wrapping count of signals raised.
     pub fn generation(&self) -> u64 {
         self.0.generation.load(Ordering::Acquire)
     }
@@ -179,8 +171,7 @@ pub struct BusPlugin {
     /// `stream_capacity` supplies shared queue slots, clamped to at least one;
     /// the single sender has one additional reserved slot.
     pub policy: ServingPolicy,
-    /// Ambiguity detection on the schedule: `Warn` by default; the crate's
-    /// tests build with `Error`.
+    /// Schedule ambiguity detection level, defaulting to `Warn`.
     pub ambiguity: LogLevel,
     /// How long the default runner waits for a wake before updating anyway.
     pub idle: Duration,
@@ -212,19 +203,16 @@ impl BusPlugin {
         self
     }
 
-    /// The world half of the plugin: the resources, observers and
-    /// [`RigSchedule`] in `world`'s `Schedules`. [`Plugin::build`] adds
-    /// this, then places the schedule after `Update` and sets the runner;
-    /// a test that drives `RigSchedule` itself needs only this.
+    /// Install resources, observers, [`RigSchedule`], and [`RigEnd`] in `world`.
+    /// Panics if the bus is already installed. Does not configure an app runner;
+    /// callers driving a bare world must run the schedules themselves.
     pub fn install(&self, world: &mut World) {
         assert!(
             !world.contains_resource::<Policy>(),
             "the bus is already installed in this world"
         );
         IoTaskPool::get_or_init(TaskPool::default);
-        // A tick takes at least one effect: a zero intake bound would leave
-        // every pending effect pending forever with no error, no record and
-        // no witness event. rig-agent's driver clamps the same field.
+        // A zero intake bound would leave pending effects permanently undispatched.
         world.insert_resource(Policy(ServingPolicy {
             command_capacity: self.policy.command_capacity.max(1),
             ..self.policy

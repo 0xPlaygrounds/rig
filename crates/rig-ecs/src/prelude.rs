@@ -1,6 +1,9 @@
-//! The names a user's systems need, and nothing else: the sets, the
-//! components a user writes, the components a user reads. Everything else
-//! is reached by its module.
+//! Common schedule sets and components for application systems.
+//!
+//! ```
+//! use rig_ecs::prelude::*;
+//! let boundary = RigSet::Checkpoint;
+//! ```
 
 pub use crate::{
     agent::{

@@ -1,36 +1,14 @@
-//! Streamed-turn assembly for [`AgentRun`](super::AgentRun).
+//! Streamed-turn assembly and early invalid-call diagnostics for [`super::AgentRun`].
 //!
-//! A streamed model turn arrives as incremental [`StreamEvent`]s. [`StreamedTurnAssembler`] is the sans-IO accumulator that turns that
-//! item stream into the same canonical complete turn the non-streaming path
-//! feeds the machine — while telling the driver what to forward to its
-//! consumer and surfacing invalid tool calls the moment they appear, so a
-//! driver can stop paying for a doomed provider stream early.
+//! Drivers ingest events, resolve invalid calls before continuing, and finish at
+//! stream EOF. Abandoned turns still require draining provider usage. The assembler
+//! performs no I/O and returns forwarding instructions as [`StreamedTurnEvent`].
 //!
-//! The protocol, paired with the streamed entry points on
-//! `AgentRun`:
-//!
-//! 1. On `AgentRunStep::CallModel`, open a
-//!    provider stream and create one assembler per turn with the tool names
-//!    advertised for that turn.
-//! 2. Feed every stream item to [`StreamedTurnAssembler::ingest`] and act on
-//!    the returned [`StreamedTurnEvent`]s: forward items to the consumer, and
-//!    on [`StreamedTurnEvent::InvalidToolCall`] consult
-//!    `AgentRun::resolve_streamed_invalid_tool_call` —
-//!    [`StreamedResolution::Repaired`] continues the same stream via
-//!    [`StreamedTurnAssembler::resolve_pending_invalid`];
-//!    [`StreamedResolution::TurnAbandoned`] means drain the provider stream
-//!    for usage and re-enter
-//!    `AgentRun::next_step`.
-//! 3. When the provider stream ends, call [`StreamedTurnAssembler::finish`]
-//!    and feed the result to
-//!    `AgentRun::streamed_turn`; the run
-//!    then proceeds exactly like a non-streamed one
-//!    (`CallTools` /
-//!    `Done`).
-//!
-//! `AgentRunner::stream` drives this protocol
-//! internally; hand-driven runs can use it to stream any
-//! `AgentRun`.
+//! ```
+//! use rig_agent::run::streamed::StreamedTurnAssembler;
+//! let assembler = StreamedTurnAssembler::new(Default::default(), Default::default());
+//! assert!(assembler.aggregated_text().is_empty());
+//! ```
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -48,9 +26,7 @@ use rig_core::completion::{CompletionError, Message, Usage};
 use rig_core::json_utils;
 use rig_core::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 
-/// The canonical replay order of a streamed turn, `rig_core`'s: reasoning
-/// blocks, then text, then trailing items. rig-ecs's fold applies the same
-/// rule through `rig_core::message::canonical_streamed_choice`.
+/// Canonical streamed content ordering: reasoning, text, then trailing items.
 pub use rig_core::message::{canonical_streamed_choice, ordered_assistant_content};
 
 /// [`ordered_assistant_content`], as an `Option` for slots where an empty
@@ -67,39 +43,14 @@ pub fn ordered_streaming_assistant_content(
     ))
 }
 
-/// Whether a [`StreamEvent::Unknown`] payload is rig assistant
-/// content, so excluding it from assembly loses transcript content.
-///
-/// The predicate is the decoder itself — a payload that parses as a tagged
-/// [`AssistantContent`] block (`toolcall`/`reasoning`/`image` today, every
-/// future variant automatically) is a replayed assistant block, not a
-/// stream-item shape: the untagged stream variants carry different keys, so
-/// it lands in `Unknown` and its content would silently vanish. A dropped
-/// tool call additionally desyncs the turn — no pending call, no result.
-///
-/// Well-formed text does not reach this path: the tolerant block decode
-/// ignores unknown keys, so a tagged text block or a text item with stray
-/// sibling keys (0.41's flatten shape) decodes as
-/// a text delta and its text is *assembled*, with only
-/// the stray keys dropped. The one way a text-carrying item can still land
-/// in `Unknown` is a *malformed known field* — a non-object
-/// `additional_params` fails the strict decode — and that item carries real
-/// text, so it counts too. Anything else in `Unknown` is a provider-native
-/// unmodeled item and stays quiet.
-///
-/// The whole outcome space is pinned by the decode-outcome matrix test
-/// (`decode_outcome_matrix_is_total_and_no_shape_is_silent`): assembled,
-/// excluded-and-counted, or excluded-quiet — no shape is silent.
+/// Detect unknown payloads containing assistant content that assembly would lose:
+/// tagged assistant blocks or text with malformed additional parameters.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
-    // `&Value` is itself a `Deserializer`, so the probe allocates nothing —
-    // this runs on every `Unknown` item, and provider-native payloads can be
-    // large and frequent.
+    // Deserialize by reference to avoid cloning large unknown payloads.
     if AssistantContent::deserialize(payload).is_ok() {
         return true;
     }
-    // A string `text` alongside an `additional_params` key: a text item
-    // whose params were malformed enough to fail even the tolerant decode.
-    // Its text is real transcript content.
+    // Malformed metadata must not hide the loss of an otherwise valid text field.
     payload
         .get("text")
         .is_some_and(serde_json::Value::is_string)
@@ -125,7 +76,7 @@ pub fn assistant_text_items_from_choice(choice: &[AssistantContent]) -> Vec<Assi
 pub struct StreamedInvalidToolCall {
     /// The rejected tool call. For a name delta this is a diagnostic call
     /// assembled from the streamed name and any buffered argument deltas;
-    /// for malformed arguments its `arguments` is `Null` — no object was
+    /// for malformed arguments its `arguments` is `Null`; no object was
     /// ever parsed, and fabricating one would misrepresent the wire.
     pub tool_call: ToolCall,
     /// Rig-generated identifier correlating this call's stream items.
@@ -194,11 +145,7 @@ impl PartialStreamedTurn {
         invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
-        // Every call — the invalid one and each validated peer — already
-        // carries a unique, non-empty `ToolCallId` (minted at the provider
-        // boundary when the wire issued none), so both sides of this
-        // fabricated transcript pair correlate by id with no local minting
-        // and no peer left holding an empty sentinel.
+        // Preserve call IDs so synthetic results correlate with their diagnostic calls.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
 
         let mut retry_results = self
@@ -220,8 +167,6 @@ impl PartialStreamedTurn {
             feedback,
         ));
 
-        // `retry_results` is non-empty: the invalid call's own feedback result
-        // was just pushed unconditionally.
         let user_message = Message::User {
             content: retry_results,
         };
@@ -248,17 +193,11 @@ pub struct StreamedTurn {
     /// in emission order. Carried into the run state so a resumed process
     /// keeps the IDs consumers already saw in tool-call deltas.
     pub block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
-    /// Why the provider stopped generating this turn, when it reported a
-    /// reason — the streamed analogue of `ModelTurn::finish_reason`, so a
-    /// driver that feeds turns through `streamed_turn` records the same
-    /// terminal reason the blocking surface does (rig#2322).
+    /// Provider-reported terminal reason for this turn, when available.
     pub finish_reason: Option<FinishReason>,
 }
 
-/// What the machine decided about a mid-stream invalid tool call.
-///
-/// Deliberately exhaustive: a driver must handle every resolution, so adding
-/// a variant is a breaking change by design.
+/// Resolution a driver must apply to a mid-stream invalid tool call.
 #[derive(Debug)]
 pub enum StreamedResolution {
     /// The tool name was repaired. Apply it via
@@ -285,10 +224,7 @@ pub enum StreamedResolution {
     Ignored,
 }
 
-/// What a driver must do with one ingested stream item.
-///
-/// Deliberately exhaustive: a driver must handle every event, so adding a
-/// variant is a breaking change by design.
+/// Required driver action after ingesting a stream item.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StreamedTurnEvent {
     /// Forward the ingested item to the consumer as-is (text, reasoning, or
@@ -319,12 +255,7 @@ pub enum StreamedTurnEvent {
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).
         emit_final: bool,
-        /// Why the provider stopped generating, when it reported a reason.
-        ///
-        /// Previously dropped here: the assembler read `usage` and `saw_text`
-        /// off the terminal record and discarded the rest, so a turn truncated
-        /// at the output-token limit reached the driver indistinguishable from
-        /// one that simply stopped (rig#2322).
+        /// Why the provider stopped generating, when reported.
         finish_reason: Option<FinishReason>,
         /// The provider's own terminal record, as carried on
         /// `StreamFinal::raw`: what the driver records with
@@ -438,14 +369,10 @@ enum PendingInvalid {
     MalformedArgs { tool_call: ToolCall },
 }
 
-/// Sans-IO accumulator that assembles one streamed model turn. See the
-/// [module docs](self) for the driving protocol.
-///
-/// `Clone + Serialize + Deserialize`, like `AgentRun`: a
-/// mid-stream assembler can be persisted and resumed (same caveats — no
-/// cross-version format stability). Dropping one mid-turn is a normal
-/// cancellation path and is silent unless replayed assistant content was
-/// excluded from assembly, which warns once on drop.
+/// Serializable accumulator for one streamed turn. Persisted state requires the
+/// same library version; it does not itself resume a provider connection.
+/// Drivers must resolve pending invalid calls before ingesting more events.
+/// Dropping warns once if assistant content was excluded, otherwise stays silent.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamedTurnAssembler {
     executable_tool_names: BTreeSet<String>,
@@ -461,7 +388,7 @@ pub struct StreamedTurnAssembler {
     /// snapshot) and must not come back through it at [`Self::finish`].
     ignored_calls: Vec<rig_core::message::ToolCallId>,
     /// Terminal reason from this turn's provider final record, retained so
-    /// [`Self::finish`] can carry it onto the [`StreamedTurn`] (rig#2322).
+    /// [`Self::finish`] can carry it onto the [`StreamedTurn`].
     finish_reason: Option<FinishReason>,
     /// Replayed assistant blocks excluded from assembly this turn (see
     /// [`unknown_payload_loses_assistant_content`]): counted per item,
@@ -469,16 +396,9 @@ pub struct StreamedTurnAssembler {
     excluded_assistant_content: ExclusionCount,
 }
 
-/// Count of replayed assistant blocks excluded from assembly in one turn.
-///
-/// The loudness contract lives on this guard's `Drop`, so it holds on
-/// *every* termination path — `finish`, stream errors, hook cancellation,
-/// abandonment, truncation — exactly once, and zero exclusions stay silent.
-/// A dedicated one-field guard (not a `Drop` impl on the assembler itself)
-/// keeps the assembler's fields freely movable.
-/// `Clone` copies the count: each lineage owns its exclusions and warns on
-/// its own drop. Serde carries the count so a persisted mid-stream assembler
-/// resumes with its loudness contract intact.
+/// Persisted count of excluded assistant blocks. Each clone warns once on drop
+/// when nonzero, including cancellation and error paths. A separate drop guard
+/// leaves the assembler's fields movable.
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 struct ExclusionCount(usize);
@@ -533,15 +453,8 @@ impl StreamedTurnAssembler {
         &self.text
     }
 
-    /// Reasoning text accumulated for the currently pending part identified by
-    /// `correlator`.
-    ///
-    /// Completed parts are deliberately skipped: a later delta may reuse a
-    /// correlator after a completed restatement, in which case ingestion opens
-    /// a new pending part and this returns that new part's aggregate.
-    /// The provider-issued id of the reasoning part identified by
-    /// `correlator`, when its block start carried one. Reused keys refer to
-    /// their newest part, including a pending part with no provider id.
+    /// Return the newest matching reasoning part's provider ID, or `None` if
+    /// absent. Reused correlators refer to their latest pending or completed part.
     pub fn reasoning_provider_id(&self, correlator: &BlockId) -> Option<&str> {
         self.reasoning_parts
             .iter()
@@ -562,25 +475,14 @@ impl StreamedTurnAssembler {
             })
     }
 
-    /// Normalize the provider aggregate into the content committed for this
-    /// turn. The reasoning is supplied by the caller: the finish path drains
-    /// its parts by value ([`Self::drain_reasoning`]) instead of cloning
-    /// them, while the partial-turn surface assembles borrowed
-    /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
-    /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
+    /// Combine accepted calls and reasoning with provider text and images in
+    /// canonical order. Without calls or reasoning, preserve the provider choice.
     fn canonical_choice_with(
         pending_tool_calls: Vec<(ToolCall, BlockId)>,
         reasoning: Vec<Reasoning>,
         provider_choice: &[AssistantContent],
     ) -> Vec<AssistantContent> {
         if !pending_tool_calls.is_empty() || !reasoning.is_empty() {
-            // The grouping is rig-core's `canonical_streamed_choice`, over
-            // the assembler's own inputs: the reasoning it accumulated, the
-            // text items the streamed surface reports (an empty text block
-            // without params is dropped), the calls it accepted (a call the
-            // provider delivered but the assembler rejected is not here) and
-            // every image the provider delivered. The regroup guard above is
-            // rig-core's on those inputs: a reasoning block or a call.
             let parts = reasoning
                 .into_iter()
                 .map(AssistantContent::Reasoning)
@@ -691,9 +593,8 @@ impl StreamedTurnAssembler {
         group_reasoning(self.reasoning_parts.iter().cloned())
     }
 
-    /// [`Self::assembled_reasoning`], consuming the parts — the finish path
-    /// owns the assembler, and reasoning blocks can carry large encrypted
-    /// payloads that should move rather than clone.
+    /// Consume reasoning parts in canonical grouping, avoiding copies of large
+    /// encrypted payloads.
     fn drain_reasoning(&mut self) -> Vec<Reasoning> {
         group_reasoning(std::mem::take(&mut self.reasoning_parts).into_iter())
     }
@@ -726,10 +627,7 @@ impl StreamedTurnAssembler {
                 self.text.push_str(text);
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
-            // Block bookkeeping the assembler does not fold: the message id
-            // (read off the stream by the driver), text block boundaries and
-            // metadata (the provider's aggregate carries them), a tool-call
-            // block opening (its deltas open the assembly).
+            // The driver and provider aggregate retain message identity and text metadata.
             StreamEvent::BlockStart {
                 kind: BlockKind::Message | BlockKind::Text { .. } | BlockKind::ToolCall,
                 ..
@@ -746,8 +644,6 @@ impl StreamedTurnAssembler {
                 id,
                 kind: BlockKind::Reasoning { provider_id },
             } => {
-                // The block's durable provider id arrives at its start; the
-                // part opens here (or on its first delta) and keeps it.
                 let pending = self.reasoning_parts.iter_mut().find(|part| {
                     part.matches_key(id) && matches!(part.state, ReasoningPartState::Pending(_))
                 });
@@ -800,14 +696,8 @@ impl StreamedTurnAssembler {
                 id,
                 delta: Delta::Reasoning { text: reasoning },
             } => {
-                // Deltas lack signatures/encrypted content that full blocks
-                // carry; mixing them into completed reasoning causes
-                // providers like Anthropic to reject with "signature required",
-                // so each part's text is kept aside, keyed by the stream
-                // correlator, until its completed block (if any) supersedes
-                // it. Only the provider-issued id may become the assembled
-                // block's durable id — the public correlator is rig-generated
-                // and must never enter history.
+                // Keep unsigned deltas separate until an authoritative completed block
+                // supplies metadata. Only provider IDs, not correlators, enter history.
                 let index = self
                     .reasoning_parts
                     .iter()
@@ -835,20 +725,14 @@ impl StreamedTurnAssembler {
                 end: BlockClose::ToolCall(_),
                 block,
             } => {
-                // The completed call is on the end event when the accumulator
-                // finalized one; an end that dropped its call (never fully
-                // arrived) assembles nothing. Neither is forwarded: the
-                // driver reports the model's completed calls itself when the
-                // turn commits.
+                // The driver emits completed calls at turn commit, not at block end.
                 if self
                     .delta_states
                     .get(block_id)
                     .is_some_and(|state| state.ignored)
                 {
-                    // The ignored call's end: the call was dropped at its
-                    // name, so it is neither pending nor re-validated.
-                    // Its durable id may arrive only now and differ from
-                    // the stream block key used at the name delta.
+                    // The final durable ID may differ from the name delta's block key;
+                    // retain it so provider snapshots cannot restore an ignored call.
                     if let Some(AssistantContent::ToolCall(call)) = block {
                         self.ignored_calls.push(call.id.clone());
                     }
@@ -888,7 +772,6 @@ impl StreamedTurnAssembler {
                     .get(&key)
                     .is_some_and(|state| state.ignored)
                 {
-                    // A delta of an ignored call: swallowed with the call.
                     return Ok(Vec::new());
                 }
                 match delta {
@@ -929,7 +812,6 @@ impl StreamedTurnAssembler {
                         }
                     }
                     Delta::Text { .. } | Delta::TextMeta { .. } | Delta::Reasoning { .. } => {
-                        // Excluded by the arm's pattern.
                         Ok(vec![StreamedTurnEvent::EmitIngested])
                     }
                 }
@@ -956,17 +838,8 @@ impl StreamedTurnAssembler {
                 }])
             }
             StreamEvent::Unknown(payload) => {
-                // Unmodeled provider item (e.g. a hosted-tool result): forward it
-                // to the consumer but do not fold it into the accumulated
-                // assistant message — there is no `AssistantContent::Unknown`, and
-                // it must not perturb text/tool-call/reasoning accumulation.
-                //
-                // The exclusion loses transcript content when the payload is
-                // rig assistant content (a replayed tagged block, not a
-                // stream-item shape). Counted here — text deltas arrive
-                // per-token, so per-item warns could flood the log — and
-                // surfaced as one warning at turn end; the payload itself
-                // stays redacted.
+                // Unknown items have no assistant-content representation. Count lost
+                // assistant blocks for one warning without exposing payloads or flooding logs.
                 if unknown_payload_loses_assistant_content(payload.value()) {
                     self.excluded_assistant_content.0 += 1;
                     tracing::debug!(
@@ -1033,10 +906,7 @@ impl StreamedTurnAssembler {
                 Vec::new()
             }
             (StreamedResolution::Ignored, PendingInvalid::NameDelta { block_id }) => {
-                // The ignored call's state stays as a tombstone: its later
-                // argument deltas and its end are swallowed rather than
-                // buffered (which the pending-delta check would refuse) or
-                // re-validated at the block's end.
+                // Retain a tombstone so later deltas cannot buffer or resurrect this call.
                 self.ignored_calls
                     .push(rig_core::message::ToolCallId::from_block(&block_id));
                 let state = self.delta_states.entry(block_id).or_default();
@@ -1049,7 +919,7 @@ impl StreamedTurnAssembler {
     }
 
     /// Error when argument deltas were buffered for a tool call whose name
-    /// never validated — a provider-stream consistency violation.
+    /// never validated, indicating an inconsistent provider stream.
     pub fn pending_delta_error(&self) -> Option<CompletionError> {
         self.delta_states
             .iter()
@@ -1139,13 +1009,9 @@ impl StreamedTurnAssembler {
         vec![StreamedTurnEvent::InvalidToolCall(invalid)]
     }
 
-    /// Surface a tool call whose complete arguments were not JSON
-    /// (rig#2447), as reported by the provider stream's accumulator.
-    ///
-    /// The provider already finalized the block, so the call is parked for
-    /// resolution with no deltas to replay. The diagnostic call carries the
-    /// accumulator's durable id and provider handle — the same ones a
-    /// parseable call would have had — and `Null` arguments.
+    /// Surface malformed completed arguments for resolution. Retains raw argument
+    /// text and call identity, uses `Null` parsed arguments, and clears pending
+    /// delta bookkeeping because the provider accumulator already closed the block.
     pub fn surface_malformed_input(
         &mut self,
         detail: &rig_core::error::MalformedToolInput,
@@ -1191,12 +1057,8 @@ impl StreamedTurnAssembler {
         } else {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
-        // Diagnostic only: the durable provider id is unknown at delta
-        // time — so the call takes the block's name as its correlation
-        // handle (deterministic: a re-run of the same wire yields the same
-        // id) and `provider` stays `None` (hooks faithfully observe that no
-        // provider id exists). The same id correlates the retry transcript
-        // pair in `rollback_messages`.
+        // Provider identity is not known yet; use the block's deterministic ID
+        // to correlate diagnostics and rollback results without inventing a provider ID.
         ToolCall::new(
             rig_core::message::ToolCallId::from_block(key),
             ToolFunction::new(name.to_string(), diagnostic_args),

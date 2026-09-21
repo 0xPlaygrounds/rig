@@ -1,5 +1,10 @@
-//! The record as a fold over effect entities: the world's [`Recorder`],
-//! fed by the plugin's systems.
+//! Effect recording and cancellation observers for the world bus.
+//!
+//! ```
+//! use rig_ecs::bus::record::DeliveryBatch;
+//! let batch = DeliveryBatch::default();
+//! assert_eq!(batch.0, 0);
+//! ```
 
 use std::sync::Arc;
 
@@ -34,8 +39,8 @@ impl Recording {
         Self(Arc::new(recorder))
     }
 
-    /// Install `recorder` on `world`, describing every handler bound so
-    /// far to it first, as a bus driver's `record_to` does.
+    /// Begin delivery tracking, describe currently bound handlers in key order,
+    /// and install `recorder` as the world's recording resource.
     pub fn install(world: &mut World, recorder: impl Recorder + Send + Sync) {
         let recording = Self::new(recorder);
         recording.0.begin_delivery_tracking();
@@ -128,11 +133,9 @@ pub fn record_outcome(
     }
 }
 
-/// What the handler's recording observer saw of one dispatch, shared
-/// with the effect entity: the outcome the innermost handler answered —
-/// what the record holds, whatever verdict a layer's `after` gave the
-/// world — and whether a layer discarded the dispatch before any handler
-/// served it. Never serialized: in-flight state.
+/// Shared in-flight observation state containing the original handler answer
+/// and whether a layer discarded dispatch. Not serialized; layer verdicts do not
+/// replace the recorded answer.
 #[derive(Component, Clone, Default)]
 pub struct Observed(pub Arc<ObservedState>);
 
@@ -191,11 +194,9 @@ impl ObservedState {
     }
 }
 
-/// The observer installed on task-served dispatches: layer decisions and
-/// original answers reach the record through it
-/// (`Observe::discard`, `Observe::patch`), and the events and the outcome
-/// it is told are the innermost handler's — what the record holds,
-/// whatever verdict the outer reply carries to the world.
+/// Records original answers, stream items, and layer patches or discards for a
+/// task-served dispatch. Once observation closes, worker callbacks cannot mutate
+/// the recording.
 pub struct WorldObserver {
     /// Explicit host operation, already bound to this dispatch's subject.
     pub adapter: Option<rig_core::observe::AdapterContext>,
@@ -329,15 +330,10 @@ impl rig_core::serve::Observe for WorldObserver {
     }
 }
 
-/// An in-flight effect losing `InFlight` without an outcome — a despawn,
-/// its own or an ancestor's — is a cancelled dispatch: the record says so,
-/// as it does when a consumer drops its `Pending` on rig-bus.
-///
-/// An effect losing `InFlight` with an outcome landed but not yet settled
-/// — despawned from the `On<Add, EffectOutcome>` observer that is its
-/// readiness signal, before `settle` ran — is an answered dispatch whose
-/// settlement will never happen: the record closes here with the answer
-/// the handler gave, as `settle` would have closed it.
+/// Close recording when an effect leaves flight before settlement.
+/// Preserve any original handler answer and tool output; otherwise record
+/// cancellation. An observed answer cancelled before delivery gets a cancellation
+/// boundary, not an invented outcome delivery. Discarded dispatches stay unrecorded.
 pub fn record_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<(
@@ -425,9 +421,7 @@ pub fn witness_cancelled(
     witness.observe(observation);
 }
 
-/// A handler bound (or re-bound) while recording: described to the
-/// recorder, as a driver describes each handler installed after recording
-/// started.
+/// Describe an inserted or replaced [`Bound`] component to the installed recorder.
 pub fn record_bound(
     inserted: On<Insert, Bound>,
     bound: Query<&Bound>,

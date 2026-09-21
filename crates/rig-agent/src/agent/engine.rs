@@ -1,21 +1,6 @@
-//! The agent engine: one drive loop for both surfaces, plus the two
-//! [`TurnSource`]s that fetch a model turn for it.
-//!
-//! [`drive_agent`] owns everything that does not depend on the medium — step
-//! dispatch over the sans-IO [`AgentRun`], the run-start and completion-call
-//! hooks, request preparation, model selection, the `Done` memory append.
-//! Per turn it hands the prepared request to a [`TurnSource`]:
-//! [`UnaryTurnSource`] issues one `completion()` call (the blocking
-//! [`AgentRunner::run`]), [`StreamingTurnSource`] opens a provider stream and
-//! drives a [`StreamedTurnAssembler`] (the streaming [`AgentRunner::stream`]).
-//! Both hand the assembled response to [`settle_model_turn`], which fires the
-//! response and model-turn hooks and applies the resulting action, so the two
-//! surfaces cannot disagree on how a turn is accepted, retried, or stopped.
-//! Tool execution is likewise shared: [`drive_tool_calls`] runs a turn's calls
-//! through [`run_single_tool`].
-//!
-//! The blocking surface folds this engine to its final response; the streaming
-//! surface forwards its [`DriveItem`]s.
+//! Shared agent drive loop, tool dispatch, and turn settlement. Unary and
+//! streaming [`TurnSource`] implementations supply model responses; the engine
+//! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
 use std::sync::{
     Arc,
@@ -72,7 +57,7 @@ use crate::{
 /// A boxed, medium-specific item stream for one engine step (model turn or tool
 /// batch). Boxed so a generic [`drive_agent`] can forward it without the
 /// per-step future leaking into the engine's own (`Send`) inference.
-// Same browser-wasm predicate as `StreamingResult` above, for the same reason.
+// Browser streams may capture non-Send provider futures.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub(crate) type DriveStream<'a> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send + 'a>>;
@@ -81,16 +66,9 @@ pub(crate) type DriveStream<'a> =
 pub(crate) type DriveStream<'a> =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + 'a>>;
 
-/// One item emitted by the shared engine [`drive_agent`].
-///
-/// `Item`s are forwarded to a streaming consumer (and ignored by the blocking
-/// fold); `Done` carries both the canonical [`PromptResponse`] the blocking
-/// surface returns and the medium-specific final stream item the streaming
-/// surface yields.
+/// Engine output: stream items for forwarding or a canonical terminal response.
 pub(crate) enum DriveItem {
-    /// An intermediate stream item (assistant delta, tool call/result, a
-    /// per-call `CompletionCall`, or — last, for the streaming surface — the
-    /// final response item).
+    /// Stream event, including the streaming surface's final response item.
     Item(MultiTurnStreamItem),
     /// The run finished; carries the canonical response the blocking fold
     /// returns. The streaming surface has already received the final item as the
@@ -98,13 +76,9 @@ pub(crate) enum DriveItem {
     Done(PromptResponse),
 }
 
-/// The per-medium half of the agent loop: how a turn is fetched from the model,
-/// how its tools are executed, and how the run's spans/usage/final item are
-/// shaped. The medium-independent outer loop (turn counting, the `CompletionCall`
-/// hook, request preparation, memory) lives once in [`drive_agent`]; only the
-/// genuinely divergent pieces are behind this trait. Invalid-tool-call recovery
-/// is one of them — it lives inside each source's `run_model_turn` (end-of-turn
-/// for blocking, mid-stream for streaming), not in `drive_agent`.
+/// Medium-specific turn execution, telemetry, and final-item construction.
+/// Implementations resolve invalid calls during model ingestion and feed accepted
+/// turns or tool results back into the run.
 pub(crate) trait TurnSource: WasmCompatSend {
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
@@ -183,13 +157,9 @@ pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     }
 }
 
-/// The single agent drive loop, shared by the blocking and streaming surfaces.
-///
-/// Owns the medium-independent loop — `next_step` dispatch, the `CompletionCall`
-/// hook + request preparation, the `Done` memory append — and delegates the
-/// medium-specific model call, tool execution, span shaping and finalization to
-/// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
-/// the blocking surface folds them to `Done`.
+/// Drive run steps, hooks, request preparation, and memory append using `source`.
+/// Yields stream items and a terminal response, or settles and yields an error.
+/// Only engine-owned agent spans receive run-level telemetry.
 pub(crate) fn drive_agent<S>(
     runner: AgentRunner,
     mut source: S,
@@ -203,17 +173,10 @@ where
     S: TurnSource,
 {
     async_stream::stream! {
-        // Run-scoped hook context: minted once by the surface (the memory
-        // load is a dispatch too, so it needs the context before the drive
-        // starts) and shared by every hook event on both surfaces; the
-        // per-turn index is advanced on each `CallModel` step below.
-        // Seed the entries a resumed run carried, so `HookContext::entries`
-        // replays the full record from the first hook event on.
+        // Hooks must see resumed entries from their first invocation.
         hook_ctx.seed_entries(run.entries());
-        // Flush hook appends into the run's record. Called at every step
-        // boundary and in the Done arm, so the run — the serializable record
-        // — is current whenever it can be observed. Entries appended by the
-        // terminal `on_run_settled` hook are documented as not persisted.
+        // Step-boundary flushing includes hook state in serialization; settlement
+        // appends occur after the final flush and remain local.
         macro_rules! flush_entries {
             () => {
                 for entry in hook_ctx.drain_pending_entries() {
@@ -221,11 +184,7 @@ where
                 }
             };
         }
-        // Every error ending settles *before* its error is yielded: a
-        // consumer that stops at the first `Err` — the idiomatic
-        // `while let Some(item) = stream.next().await { let item = item?; }`
-        // — has then already seen `on_run_settled`, and "exactly once per
-        // run" holds without asking anyone to poll to `None`.
+        // Settle before yielding an error because consumers need not poll again.
         macro_rules! settle_error {
             ($err:expr) => {{
                 if runner.config.hooks.observes(StepEventKind::RunSettled) {
@@ -248,17 +207,9 @@ where
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
         let mut pending_tool_snapshot: Option<Arc<ToolCatalog>> = None;
-        // Routing state: the model behind the preceding *issued* attempt. It
-        // advances immediately before the selected model's unary or streaming
-        // operation is invoked, so a completion-call stop, selection stop, or
-        // preparation failure leaves it unchanged while a provider error still
-        // counts. The run carries it (`AgentRun::previous_model`), so a
-        // resumed run's selection hook sees the model the head asked.
+        // Restore routing history so resumed hooks see the last issued model.
         let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
 
-        // Pre-run hook: fired once with the initial prompt before any model
-        // call. Rewrites chain across the stack in registration order; the
-        // first stop wins and terminates the run before any provider work.
         if runner.config.hooks.observes(StepEventKind::RunStart) {
             let action = match run.initial_prompt() {
                 Some(prompt) => {
@@ -296,10 +247,8 @@ where
             }
         }
 
-        // Drive one medium-specific step stream: forward its items, and on the
-        // first error store error usage, surface it, and end the run. A macro
-        // because `yield`/`break 'outer` cannot cross a fn boundary; the loop
-        // label is passed in because labels are hygienic across the macro edge.
+        // A macro keeps yield and loop termination in the caller's scope;
+        // macro hygiene requires passing the loop label explicitly.
         macro_rules! drive_step {
             ($label:lifetime, $step_stream:expr) => {{
                 let mut step_stream = $step_stream;
@@ -344,9 +293,7 @@ where
                     }
                     hook_ctx.set_turn(turn);
 
-                    // Completion-call hooks resolve FIRST: a stop here suppresses
-                    // model selection entirely, and their merged `RequestPatch`
-                    // is handed to the selection hooks below.
+                    // Selection must see merged request patches and must not run after a stop.
                     let request_patch =
                         match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
@@ -359,11 +306,7 @@ where
                             CompletionCallOutcome::Proceed(request_patch) => request_patch,
                         };
 
-                    // Resolve routing once at the model-call boundary, after the
-                    // completion-call hooks proceed. The resulting handle is
-                    // cloned into the prepared attempt, so request preparation
-                    // inspects the *selected* model's captured capabilities and
-                    // the same handle executes the request.
+                    // Preparation and execution must use the same selected model's capabilities.
                     let default_label = runner.config.model_ref();
                     let selected_label = match runner.config.hooks.on_model_select(
                         &hook_ctx,
@@ -404,10 +347,7 @@ where
                         }
                     };
 
-                    // Record this turn's base system prompt — the patched-or-baseline
-                    // preamble, before any output-mode augmentation the request builder
-                    // appends. Borrow rather than clone since it only needs to outlive
-                    // span creation.
+                    // Telemetry uses the effective preamble before output-mode augmentation.
                     let effective_preamble = request_patch
                         .as_ref()
                         .and_then(|o| o.preamble.as_deref())
@@ -415,8 +355,7 @@ where
 
                     let chat_span = source.open_chat_span(&runner, effective_preamble);
 
-                    // Pin Tool output mode once committed so later turns stay
-                    // consistent even if the per-turn tool set changes (#1928).
+                    // Pin output mode across registry changes between turns.
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let mut prepared = match build_prepared_completion_request(
                         &runner,
@@ -452,12 +391,7 @@ where
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
                     }
 
-                    // The attempt is now committed: advance `previous_model`
-                    // immediately before the model turn is driven (the
-                    // streaming request is issued on first poll of the turn
-                    // stream). An issued attempt counts even when
-                    // the provider returns an error; every stop/error path
-                    // above left `previous_model` untouched.
+                    // Only issued attempts advance routing history, including provider errors.
                     run.set_previous_model(selected_label.clone());
                     previous_model = Some(selected_label);
 
@@ -473,13 +407,8 @@ where
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
-                    // A resumed run arrives with its calls pending and no
-                    // snapshot from this process: the snapshot is driver
-                    // state, not run state (it pins registrations, which
-                    // are not serializable). Rebuild it from what the run
-                    // recorded it advertised for this turn — the registry's
-                    // current registrations under those names — so the
-                    // record is enough to continue (durable execution).
+                    // Resume cannot restore registration leases; bind advertised names
+                    // to this process's current implementations.
                     if pending_tool_snapshot.is_none()
                         && let Some(advertised) = run.advertised_tools()
                     {
@@ -512,18 +441,14 @@ where
                 }
                 AgentRunStep::Done(response) => {
                     flush_entries!();
-                    // Run-completion marker, unifying the blocking and streaming
-                    // drivers' run-finished logs into one shared event.
                     tracing::info!(
                         turn = run.turn(),
                         max_turns = runner.config.max_turns,
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    // The answer stands whatever the append says; how the
-                    // append settled rides on the response so a caller can
-                    // tell a persisted transcript from one the backend
-                    // refused without a hook or the effect log.
+                    // Append failure does not discard the answer; expose acknowledgement
+                    // separately without assuming a failed append wrote nothing.
                     let memory_append = append_run_messages(
                         &runner,
                         &hook_ctx,
@@ -532,8 +457,6 @@ where
                     )
                     .await;
                     let response = response.with_memory_append(memory_append);
-                    // The run has settled successfully: nothing follows this
-                    // response — the error endings settle before their yield.
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
                         runner
                             .config

@@ -1,23 +1,15 @@
-//! The agent's systems: one per named set of [`RigSet`], in the bus
-//! module's `RigSchedule`, run once per pass by its runner.
+//! Agent run lifecycle and request-processing systems in [`RigSchedule`].
 //!
-//! | set | true before | written during |
-//! |---|---|---|
-//! | `Advance` (first) | a `Ready` run has no phase | `open_runs`: the `Prompt` becomes the last utterance; the run is `RunPhase::Assembling`, or `LoadingMemory` with its `Load` effect |
-//! | `Advance` | a `Ready` run in `Assembling` has no fresh turn | a turn is spawned `ChildOf` the run with its adverts and attachments, or the run fails `MaxTurns` |
-//! | `Select` | a run may lack a model of its own | the agent's `UsesModel` is copied to the run |
-//! | `Assemble` | a fresh turn's graph is complete | `gather_turn`: the graph as [`AssemblyInputs`] on the turn (the settings resolved, the history after edits and limits via the cache, the attachments, the allowed adverts, the output mode and the output tool's name minted, the `ToolAccess` snapshot), or the retrievals, or a failure; `fold_turn`: the fold spawns the turn's effect and the run is `AwaitingModel` |
-//! | `Patch` | the folded effect is a `PendingEffect` | a user system may rewrite it (the second steering slot) |
-//! | `Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to `ToolPolicy.concurrency`; before it, after `Patch`, `backoff::hold_retries` holds a retry's completion under `Backoff` until the world's clock releases it |
-//! | *the bus's `Gate`, `Dispatch`, `Collect`, `Judge`* | | |
-//! | `Fold` | the effect may have streamed or landed | `Outputs` on the turn, per pass; `discover_streamed_invalid_calls` |
-//! | `Judge` | the turn's outputs are complete | a user system may rewrite them, or an `EffectOutcome` of a tool child |
-//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_memory` (the conversation loaded); `resolve_invalid_defaults`; `land_batch`: the results as one user utterance, or a failure; `record_usage`: the completion's usage into the run's `Usage`; `judge_invalid_calls`: the pending invalid calls' verdict — a failure, an abandoned turn, or the turn's content edited; `read_turn`: `Materialised`, a provider retry (`ProviderRetried`, `ProviderRetrying`, `Assembling`) or a failure, an invalid call awaiting its resolution, or [`TurnRead`] on the turn; `materialise_assistant`: the assistant utterance, or a retry's feedback and another turn, or the empty answer; `materialise_batch`: the tool batch and `ResolvingTools`; `materialise_reprompt`: a reprompt and another turn; `materialise_answer`: the answer and `Settled`. A content failure ends that run only |
-//! | `Checkpoint` | committed graph writes are visible | nothing: the host's slot to inspect or save before the next advance |
-//! | `Settle` | a run settled or failed this pass | `append_memory`; `diagnostics::measure` when the app has a `DiagnosticsStore`; observers fire on `Settled`/`Failed` |
+//! Hosts edit the graph before [`RigSet::Assemble`], folded effects in
+//! [`RigSet::Patch`], and outputs in [`RigSet::Judge`].
 //!
-//! The first steering slot is any system before `Assemble`: it edits the
-//! graph (utterances, documents, grants, settings).
+//! ```
+//! use bevy_ecs::schedule::IntoScheduleConfigs;
+//! use rig_ecs::{RigPlugin, bus::RigSchedule, systems::RigSet};
+//! let mut app = bevy_app::App::new();
+//! app.add_plugins(RigPlugin::default());
+//! app.add_systems(RigSchedule, (|| {}).in_set(RigSet::Checkpoint));
+//! ```
 
 use crate::agent::checkpoint::{
     ToolTurnCommit, ToolTurnCommitted, ToolTurnHolds, TurnAssistant, TurnResults,
@@ -262,7 +254,7 @@ pub struct Folded(pub OutputKind);
 pub struct Materialised;
 
 /// A tool a turn may call: its name, its handler key, and its handler
-/// entity — `None` when the run's `ToolAccess.executable` named it rather
+/// entity; `None` when the run's `ToolAccess.executable` named it rather
 /// than an advert (the bus routes the key).
 #[derive(Debug, Clone)]
 pub struct GrantedTool {
@@ -274,13 +266,9 @@ pub struct GrantedTool {
     pub handler: Option<Entity>,
 }
 
-/// What `read_turn` read of a complete turn, for the rest of
-/// `Materialise`'s chain: the turn's content (after the judge's and the
-/// invalid resolutions' edits), the provider's message id, the tools it
-/// may call, and — once `materialise_assistant` spawned it — its
-/// assistant utterance. Lives one pass: the step that ends the turn's
-/// reading (an ending, a reprompt, the batch, a content failure) removes
-/// it, and the chain's last system removes any left.
+/// Complete turn content after judgement and invalid-call edits, with executable
+/// tools and the materialised assistant entity. Transient within one
+/// [`RigSet::Materialise`] pass; removed when the turn finishes processing.
 #[derive(Component, Debug, Clone)]
 pub struct TurnRead {
     /// The provider's message id, when the answer carried one.
@@ -361,8 +349,8 @@ impl bevy_app::Plugin for AgentPlugin {
 }
 
 impl AgentPlugin {
-    /// The world half of the plugin, for a test that drives `RigSchedule`
-    /// itself; the bus must be installed first.
+    /// Install agent systems, counters, and observers for a host-driven schedule.
+    /// Panics unless the bus policy and schedules have already been installed.
     pub fn install(world: &mut World) {
         install_agent(world);
     }
@@ -452,9 +440,7 @@ impl PhaseCommands for bevy_ecs::system::EntityCommands<'_> {
     }
 }
 
-/// A content error ends the run `Failed(Content)`: the per-run boundary of
-/// every system that writes the graph — the run that failed ends, and the
-/// system goes on to the next run.
+/// Fail only the affected run with a content error, removing any settled marker.
 fn fail_content(commands: &mut Commands, run: Entity, error: ContentError) {
     commands
         .entity(run)
@@ -485,14 +471,10 @@ pub struct RunDespawnRefused {
     pub reason: RunBusy,
 }
 
-/// The run entry points, on `Commands` and on `World`. The `Commands`
-/// form queues the work and reserves the entity: the run exists — its
-/// bundle, its utterances, its `Ready` — once the commands apply, and
-/// `Advance` sees it on the first schedule pass after that; a run spawned
-/// in a system is visible to the runtime only after that system's
-/// commands are flushed. The `World` form does the same work at once.
-/// Commands queued in order apply in order: a `cancel_run` or
-/// `despawn_run` queued after a `spawn_run` finds the run.
+/// Spawn, cancel, and remove runs through a world or deferred commands.
+/// World operations apply immediately; commands reserve spawn IDs immediately
+/// but populate runs only when flushed. Ordered commands preserve dependencies
+/// between spawning, cancelling, and removing a run.
 pub trait RunCommands {
     /// What `despawn_run` reports: the refusal, on `World`; nothing on
     /// `Commands`, which triggers [`RunDespawnRefused`] on the run instead.
@@ -521,14 +503,10 @@ pub trait RunCommands {
     /// still on it, and a scene saves the prompt with the failed run.
     fn cancel_run(&mut self, run: Entity, reason: impl Into<String>);
 
-    /// Despawn an ended run and everything that is its: turns, utterances,
-    /// adverts, attachments and the settled effects under them (`ChildOf`
-    /// is linked, so the despawn is deep), a `Streamed` fold included.
-    /// The world keeps nothing of a run by itself — a host that runs for
-    /// long must despawn the runs it is done reading, or their graphs and
-    /// folds accumulate for the life of the world. Refused while the run
-    /// has not ended or an effect of it is still in flight; nothing is
-    /// despawned then.
+    /// Despawn an ended run and its linked descendants, including stream folds.
+    /// Refuses without mutation if the entity is not a run, has not ended, or
+    /// has pending or in-flight effects. Hosts must remove finished runs to
+    /// reclaim their graphs; the runtime does not remove them automatically.
     fn despawn_run(&mut self, run: Entity) -> Self::Despawned;
 }
 
@@ -602,13 +580,8 @@ impl RunCommands for Commands<'_, '_> {
     }
 }
 
-/// The run on the reserved `run` entity: the bundle, the prompt, the
-/// history utterances, `Ready`, and the opening at once, so the world form
-/// hands back a run whose utterances are in the graph. Every step looks
-/// the run up afresh: a run despawned before it was populated, or by a
-/// host observer while it was (an `Add<Run>` observer that refuses it,
-/// say), is simply gone — the steps after the despawn do nothing, and no
-/// utterance is spawned under a run that is not there.
+/// Populate and open a reserved run with its history and prompt. Stop if a host
+/// observer removes the run during insertion; content errors mark the run failed.
 fn spawn_run_at(
     world: &mut World,
     run: Entity,
@@ -682,14 +655,9 @@ fn despawn_run_in(world: &mut World, run: Entity) -> Result<(), RunBusy> {
     Ok(())
 }
 
-/// First in `RigSet::Advance`: every [`Ready`](crate::agent::Ready) run without a phase and
-/// without an ending is opened — its [`Prompt`] spawned as its last
-/// utterance and taken off, then its first phase: `Assembling`, or, for
-/// an agent that `Remembers` given no history, `LoadingMemory` with the
-/// conversation's `Load` effect (CONTRACT §11). A run the host populates
-/// by hand starts here, the pass after it writes `Ready`; a run
-/// `spawn_run` made was opened at once. A `Prompt` a hand-made run gives
-/// before `Ready` is never read before the run opens.
+/// Open ready, phaseless, nonterminal runs before advancement. Consumes their
+/// prompts into history and starts assembly, or loads memory first when the agent
+/// remembers and no history was supplied. Content errors fail the affected run.
 pub fn open_runs(mut commands: Commands, runs: Query<Entity, Unopened>) {
     // Queued: the opening writes the graph, and the chain's sync point
     // applies it before `advance` reads.
@@ -726,8 +694,6 @@ fn open_run(world: &mut World, run: Entity) {
             .insert(Failed(Failure::Content(error)));
         return;
     }
-    // An agent that remembers, and a run given no history: the conversation
-    // is loaded before the first turn (CONTRACT §11).
     let memory = (!had_history)
         .then(|| {
             let agent = agent?;
@@ -765,6 +731,7 @@ fn open_run(world: &mut World, run: Entity) {
 }
 
 /// Spawn one utterance `ChildOf` `run`, last among its siblings.
+/// Returns content conversion errors and removes the new utterance on failure.
 pub fn spawn_utterance(
     world: &mut World,
     run: Entity,
@@ -800,11 +767,10 @@ fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
         .unwrap_or_default()
 }
 
-/// `RigSet::Advance`: a `Ready` run in `Assembling` with no fresh turn gets one —
-/// `ChildOf` the run, with an advert per grant and an attachment per
-/// context link, in the agent's order (an agent with `Retrieves` links
-/// gets a `Retrieving` turn instead: the adverts and attachments come with
-/// the results) — or, at its budget, fails `MaxTurns`.
+/// Advance ready, assembling runs in sequence order, failing exhausted turn budgets.
+/// Creates a fresh turn with ordered grants and context, or a retrieving turn
+/// whose links are populated after retrieval. Commit holds postpone advancement;
+/// provider retries do not consume the turn budget.
 pub fn advance(
     mut commands: Commands,
     runs: Query<(Entity, &RunOf, &Cursor, &RunSeq, &RunPhase), Wanting>,
@@ -851,9 +817,6 @@ pub fn advance(
             .map(|children| children.iter().any(|child| retrievals.get(child).is_ok()))
             .unwrap_or(false);
         if retrieves {
-            // Retrieval first (CONTRACT §12): `gather_turn` spawns the effects
-            // on its first pass over the turn; the adverts and attachments
-            // come with the results (`attach_retrieved`).
             commands.entity(turn).insert(Retrieving);
         } else {
             for Grant(tool) in links_in_order(*agent, &children, &grants) {
@@ -1001,10 +964,9 @@ pub fn attach_retrieved(
     }
 }
 
-/// `RigSet::Materialise`, first: a run whose memory load landed reads it —
-/// the loaded messages become utterances before the prompt, each
-/// `Remembered`, and the run is `Assembling`; a failed load fails the run
-/// (CONTRACT §11).
+/// Materialise loaded memory before the prompt, marking imported utterances
+/// remembered and starting assembly. Failed loads, wrong outcome families, and
+/// content conversion errors fail the affected run.
 pub fn land_memory(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -1071,8 +1033,6 @@ fn land_loaded(
     run: Entity,
     messages: &[rig_core::completion::Message],
 ) -> Result<(), ContentError> {
-    // The loaded messages go first among the run's children: the prompt
-    // (and any history given) comes after them.
     let mut loaded = Vec::with_capacity(messages.len());
     for message in messages {
         if let Some(parts) = MessageParts::from_message(message) {
@@ -1088,10 +1048,9 @@ fn land_loaded(
     Ok(())
 }
 
-/// `RigSet::Settle`: a run that loaded its conversation appends what it
-/// said — every utterance not `Remembered`, in order — when it settles
-/// (CONTRACT §11). The persisted marker distinguishes new work from scene
-/// rehydration; Bevy change-detection ticks are not durable transitions.
+/// Schedule a settled remembering run's ordered, nonremembered utterances for
+/// memory append. Content errors fail the run. A persisted marker prevents
+/// scheduling a second append after checkpoint restoration.
 pub fn append_memory(
     mut commands: Commands,
     settled: Query<(Entity, &RunOf, &Conversation), NeedsMemoryAppend>,
@@ -1522,18 +1481,11 @@ impl Settings<'_, '_> {
     }
 }
 
-/// `RigSet::Assemble`, first: for every fresh turn, in run order, gather
-/// the graph — the run's settings over the agent's, the utterances in
-/// order (after the turn's part edits and the size policy), the
-/// attachments in order, the adverts the patch allows in order, the
-/// model — resolve the output mode, mint the output tool's name once per
-/// run, and leave it all on the turn as [`AssemblyInputs`] for `fold_turn`,
-/// with the run's `ToolAccess` snapshot on the turn.
-/// A retrieving turn instead gets its `Retrieve` effects on its first pass
-/// (CONTRACT §12). A missing selected model or non-completion binding
-/// terminates the run with a provider `HandlerUnavailable` report; it
-/// never silently waits. An output tool named like a granted tool fails
-/// the run `OutputToolCollision`; a content error fails it `Content`.
+/// Gather fresh turns in run order into [`AssemblyInputs`] and retained tool
+/// access snapshots. Applies request edits, size limits, settings, and output
+/// policy; retrieving turns instead dispatch their initial retrievals.
+/// Missing or incompatible models, output-tool collisions, and content errors
+/// fail the affected run.
 pub fn gather_turn(
     mut commands: Commands,
     fresh: Query<FreshTurn, With<Fresh>>,
@@ -1589,7 +1541,6 @@ pub fn gather_turn(
             }
         };
         if turn.retrieving {
-            // A turn whose retrievals are already out gets nothing more.
             let spawned = children
                 .get(turn.entity)
                 .is_ok_and(|children| children.iter().any(|child| retrieving.get(child).is_ok()));
@@ -1603,9 +1554,7 @@ pub fn gather_turn(
             }
             continue;
         }
-        // The size policy (CONTRACT §8.1): the request's tool-result text,
-        // after the part edits `message_with` applied and before the fold;
-        // the graph keeps the full text.
+        // Limit only rendered request text so persisted history remains lossless.
         if let Some(limit) = setting(run, agent, &settings.tool_result_limits) {
             for parts in &mut history {
                 if policy::tool_results_exceed(parts, limit) {
@@ -1613,8 +1562,6 @@ pub fn gather_turn(
                 }
             }
         }
-        // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
-        // folded a completion-call hook's.
         let tools = allowed_tools(
             &mut commands,
             turn.entity,
@@ -1624,8 +1571,7 @@ pub fn gather_turn(
             &bound,
         );
         let attached = attached_documents(turn.entity, patch, &children, &attachments, &documents);
-        // A patched history replaces the prior utterances; the prompt — the
-        // run's last utterance — is still what the turn asks.
+        // History replacement must retain the final utterance as the current prompt.
         if let Some(patched) = patch.and_then(|p| p.history.as_ref()) {
             let prompt = history.pop();
             history = patched.iter().cloned().chain(prompt).collect();
@@ -1693,13 +1639,9 @@ pub fn gather_turn(
     }
 }
 
-/// `RigSet::Assemble`, after `gather_turn`: every fresh turn with its
-/// [`AssemblyInputs`], in run order, is folded — `policy::fold_request`
-/// over what was gathered — and the effect spawned `ChildOf` the turn,
-/// served by the run's model. The turn is `Folded` under its output mode
-/// with empty `Outputs` and materialises under the gathered `ToolAccess`;
-/// its inputs, `Fresh` and `RequestPatch` come off; the run is
-/// `AwaitingModel`.
+/// Fold gathered inputs in run order into completion effects owned by their turns.
+/// Consumes fresh-turn inputs and patches, initializes outputs, and moves runs
+/// to `AwaitingModel`. Turns whose model binding is absent remain unchanged.
 pub fn fold_turn(
     mut commands: Commands,
     mut turns: Query<(Entity, &ChildOf, &mut AssemblyInputs), With<Fresh>>,
@@ -1758,9 +1700,8 @@ pub fn fold_turn(
     }
 }
 
-/// `RigSet::Fold`: the turn's outputs from its effect — the text so far
-/// while it streams (`Changed<Outputs>` is the delta signal), the folded
-/// answer when it lands.
+/// Update turn outputs from streamed text or final outcomes. Changed outputs
+/// signal progress; completed streamed responses use canonical content order.
 pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outputs, With<Turn>>) {
     for EffectViewItem {
         turn_of,
@@ -1776,11 +1717,8 @@ pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outp
         }
         match outcome {
             Some(EffectOutcome(Ok(Outcome::Completion(response)))) => {
-                // A streamed turn is committed in the canonical order every
-                // driver commits one in (reasoning, text, calls): the fold's
-                // arrival order is the wire's, and a wire that delivers a
-                // reasoning part last (Gemini's thought signature) would
-                // otherwise commit a turn no other driver commits.
+                // Wire arrival order is not conversation order; commit reasoning,
+                // text, and calls in the canonical sequence.
                 outputs.content = if streamed.is_some() {
                     canonical_streamed_choice(response.choice.clone())
                 } else {
@@ -1859,13 +1797,9 @@ pub struct ToolChild {
 #[reflect(Component)]
 pub struct BatchHeld;
 
-/// The batch's marker and its ownership go with the hold. A host may
-/// approve a call the batch holds by any route the bus documents —
-/// removing `Held` (which bypasses every owner), or releasing the
-/// `rig-ecs/batch` owner — and the call then dispatches; were the marker
-/// or the owner entry left behind, the batch would keep counting the call
-/// as waiting (its slot accounting silently exceeded) and every later
-/// scene would save a batch owner with no barrier, which no world loads.
+/// Remove batch ownership and its accounting marker when a hold is removed.
+/// Hosts removing `Held` bypass all owners; clearing the marker keeps slot
+/// accounting and checkpoint state consistent with that release.
 pub fn batch_marker_follows_the_hold(
     released: On<Remove, crate::bus::Held>,
     mut commands: Commands,
@@ -1896,14 +1830,9 @@ fn batch_children<'a>(
     found
 }
 
-/// `RigSet::Release`: a turn's batch is let through up to the run's
-/// `ToolPolicy.concurrency` — every call beyond it was spawned `Held` with
-/// the batch's own [`BatchHeld`], and is released in call order as earlier
-/// ones land. Only the batch's holds are lifted: a hold a `Gate` policy
-/// wrote is that policy's, and a call under one occupies its slot until the
-/// policy releases it. Once a landed outcome is one the run fails on,
-/// nothing more is released (fail-fast: in-flight calls drain, unstarted
-/// ones never start).
+/// Release batch-owned holds in call order up to the run's tool concurrency.
+/// Other policies' holds remain intact and consume slots. A terminal tool
+/// failure prevents further releases while already-started calls drain.
 pub fn release_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), With<Batch>>,
@@ -1928,8 +1857,7 @@ pub fn release_batch(
         }) {
             continue;
         }
-        // Let through by the batch and not landed — in flight, about to be,
-        // or waiting on a policy's own hold: a slot is a slot.
+        // Other policies' holds still occupy slots once the batch releases its hold.
         let active = batch
             .iter()
             .filter(|child| !child.batch_held && child.outcome.is_none())
@@ -1955,13 +1883,10 @@ pub fn release_batch(
     }
 }
 
-/// `RigSet::Materialise`, before `record_usage`: a turn whose batch has
-/// landed becomes graph — one user utterance of the results in call order
-/// (CONTRACT §8.1), and the run is `Assembling` again; or, when a landed
-/// outcome is one the run fails on and every started call has landed, the
-/// run fails and the calls never started are despawned (never dispatched,
-/// no record). A call to the output tool beside the batch settles the run
-/// with its arguments once the results are history (unpinned).
+/// Commit a completed tool batch as one user utterance in call order, then
+/// resume assembly or settle an accompanying output-tool call with its arguments.
+/// Terminal failures wait for started calls to drain, fail the run, and despawn
+/// unstarted calls without dispatch or records. Content errors fail the run.
 pub fn land_batch(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2162,11 +2087,8 @@ fn granted_tools(
         .collect()
 }
 
-/// `RigSet::Materialise`, after `land_batch`: an unread turn whose
-/// completion landed has the response's usage counted into its run's
-/// `Usage`, once — before any deferred invalid-call decision consumes the
-/// turn, so an early decision that outlives the stream still counts the
-/// response that actually completed.
+/// Count a landed completion's usage once before deferred invalid-call decisions
+/// consume the turn, including responses completed after an early stream decision.
 pub fn record_usage(
     mut commands: Commands,
     mut turns: Query<(Entity, &ChildOf, &mut Outputs), Unread>,
@@ -2314,16 +2236,11 @@ fn abandon_turn(
     Ok(())
 }
 
-/// `RigSet::Materialise`, after `record_usage`: an unread turn's pending
-/// invalid calls (each with its resolution, `resolve_invalid_defaults`
-/// having written the default) are judged by `invalid_verdict`'s
-/// precedence — a `Fail` (or a `Retry` past `InvalidCalls.retries`, or a
-/// `Skip` under `ToolChoice::None`) fails the run `UnknownToolCall` at
-/// once, even mid-stream; a `Retry` or `Skip` waits for the stream's end,
-/// then abandons the turn where the call surfaced and the run wants
-/// another; repairs and ignores wait for the end and for every delivered
-/// name to be judged, then edit the turn's `Outputs` and the turn goes on
-/// to `read_turn`. The judged calls are despawned.
+/// Apply invalid-call resolutions after usage accounting, in fail/retry/skip/edit
+/// precedence. Failure, exhausted retries, and skips under `ToolChoice::None`
+/// fail immediately, including mid-stream. Other decisions wait for completion;
+/// edits also wait for all delivered names to be validated. Retries and skips
+/// preserve the rejected prefix as history. Consumed call entities are despawned.
 pub fn judge_invalid_calls(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2427,11 +2344,8 @@ pub fn judge_invalid_calls(
     }
 }
 
-/// A completion the provider failed: a retryable failure with budget left
-/// re-issues the same request over the same history (CONTRACT §5) — the
-/// lost turn is read and leaves nothing; the run wants a turn again,
-/// marked so `Advance` does not count it, and the witness is told — else
-/// the run fails `Provider` (or `Cancelled`, for a cancelled dispatch).
+/// Schedule and observe a provider retry when permitted, preserving history and
+/// the model-call budget. Otherwise fail the run with provider or cancellation status.
 fn provider_failed(
     commands: &mut Commands,
     run: Entity,
@@ -2466,17 +2380,10 @@ fn provider_failed(
     commands.entity(run).end(Failed(failure));
 }
 
-/// `RigSet::Materialise`, after `judge_invalid_calls`: a complete, unread
-/// turn with no invalid call pending is read (`Materialised`). A
-/// non-completion answer fails the run `Unsupported`; a provider failure
-/// is a provider retry (`ProviderRetried`, `ProviderRetrying`,
-/// `Assembling`) or `Failed`; an answerless turn the provider cut short is
-/// a lost turn, not an empty answer (rig#2322; CONTRACT §4): the run fails
-/// as a response error naming the finish reason. A call to a tool neither
-/// granted nor the output tool becomes an `InvalidCall` entity `ChildOf`
-/// the turn awaiting its resolution, and the turn stays unread. Else the
-/// turn's content, the response's message id and the tools it may call
-/// go on the turn as [`TurnRead`] for the rest of the chain.
+/// Read completed turns without pending invalid calls into [`TurnRead`].
+/// Unsupported outcomes and truncated, answerless responses fail the run;
+/// provider errors retry within budget or fail. Unpermitted ordinary tool calls
+/// create invalid-call entities and leave the turn unread until resolved.
 pub fn read_turn(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &Outputs), Unread>,
@@ -2566,9 +2473,6 @@ pub fn read_turn(
             granted,
             assistant: None,
         };
-        // Invalid calls: tools neither granted nor the output tool. They
-        // become entities awaiting a resolution; the turn stays unread
-        // until then.
         let invalid: Vec<_> = read
             .calls()
             .filter(|call| {
@@ -2598,14 +2502,9 @@ pub fn read_turn(
     }
 }
 
-/// The read turn becomes history: an empty turn is not history and answers
-/// nothing — a `Retry` written on it (CONTRACT §9.4) still asks again (the
-/// feedback becomes history, the empty turn does not, another turn begins);
-/// without one the run settles on the empty answer. A `Retry` on a turn
-/// with calls is refused (`Failed(Unsupported)`: steer the calls instead);
-/// one on a text turn makes the turn and the feedback history and asks
-/// again. Else the assistant utterance is spawned and noted on the
-/// `TurnRead`. Every ending takes the `TurnRead` off.
+/// Materialise assistant history or retry a tool-free turn. Empty turns settle
+/// empty unless retried; retries retain history only when feedback is supplied.
+/// Tool-bearing retries fail as unsupported. Returns content conversion errors.
 fn say_assistant(
     commands: &mut Commands,
     assets: &mut BinaryAssets,
@@ -2660,11 +2559,8 @@ fn say_assistant(
     Ok(())
 }
 
-/// `RigSet::Materialise`, after `read_turn`: every read turn, in run
-/// order, becomes history as `say_assistant` says — the assistant
-/// utterance (unless the turn is empty), or a retry's feedback and another
-/// turn, or the run settled on an empty answer. A content error fails that
-/// run `Content`; the others go on.
+/// Materialise assistant history in run order, processing retries and empty
+/// answers. Content errors fail only the affected run and clear its transient read.
 pub fn materialise_assistant(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2687,13 +2583,9 @@ pub fn materialise_assistant(
     }
 }
 
-/// `RigSet::Materialise`, after `materialise_assistant`: a read turn that
-/// calls granted tools gets its batch — one effect per call `ChildOf` the
-/// turn, in call order, with the run's `ToolContextSpec` inputs and the
-/// advert's handler when one granted the tool, held (`BatchHeld`, the
-/// `rig-ecs/batch` owner) beyond `ToolPolicy.concurrency` — the turn is
-/// `Batch` with its `TurnAssistant`, the run `ResolvingTools`, and the
-/// `TurnRead` comes off.
+/// Spawn granted tool calls in call order with resolved context and handlers.
+/// Calls beyond the concurrency limit receive batch-owned holds. Consumes the
+/// turn read, links its assistant, and moves the run to `ResolvingTools`.
 pub fn materialise_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &TurnRead)>,
@@ -2822,12 +2714,9 @@ fn reprompt_for(
     }
 }
 
-/// `RigSet::Materialise`, after `materialise_batch`: a read turn without
-/// a batch, in `Tool` mode, that earns a reprompt (`reprompt_for`) gets
-/// it — the reprompt on the turn as `Reprompt` and in history as a user
-/// utterance, `OutputRetries` spent, the run `Assembling` again, the
-/// `TurnRead` off. Past the budget the turn is an answer, whatever it
-/// says: `materialise_answer` settles it.
+/// Reprompt tool-output turns at most once and within the model-call budget.
+/// Commits feedback to history, consumes the turn read, and resumes assembly;
+/// content errors fail the run. Exhausted budgets leave the answer for settlement.
 pub fn materialise_reprompt(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2876,12 +2765,10 @@ pub fn materialise_reprompt(
     }
 }
 
-/// `RigSet::Materialise`, last: every read turn still in the chain is an
-/// answer, and the run settles on it — in `Tool` mode with the output
-/// tool called, its arguments (the assistant utterance restated as
-/// rig-agent's reusable history: the reasoning kept, the call replaced by
-/// its JSON text, while the record retains the call); else the turn's
-/// text. The `TurnRead` comes off: nothing of the chain outlives the pass.
+/// Settle remaining reads with output-tool arguments or assistant text.
+/// Output-tool history retains non-call content and appends the JSON answer;
+/// the effect record retains the original call. Clears transient reads and fails
+/// the run if history conversion fails.
 pub fn materialise_answer(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2934,9 +2821,8 @@ pub fn materialise_answer(
     }
 }
 
-/// An effect despawned while its turn was unread — a system in `Patch`
-/// stopping the run, a host cancelling — ends the run `Cancelled`: the
-/// record says so (the bus's cancel observer), and so does the run.
+/// Cancel an active run when its pending completion or batch tool effect is
+/// removed. Existing failures remain unchanged.
 pub fn effect_cancelled(
     removed: On<bevy_ecs::lifecycle::Remove, PendingEffect>,
     effects: Query<(&ChildOf, Has<ToolCallSlot>), With<PendingEffect>>,
@@ -2968,8 +2854,6 @@ pub fn effect_cancelled(
     }
     let cancelled = Failed(Failure::Cancelled(rig_core::serve::cancelled()));
     if is_tool_call && batched && phase == Some(&RunPhase::ResolvingTools) {
-        // A tool child despawned while its batch was out: the run ends
-        // here, the batch with it.
         commands.entity(turn).remove::<Batch>();
         commands.entity(run).end(cancelled);
     } else if !is_tool_call && !materialised && phase == Some(&RunPhase::AwaitingModel) {
@@ -2978,12 +2862,9 @@ pub fn effect_cancelled(
     }
 }
 
-/// `Cancelled(reason)` written on a run (CONTRACT §9.1): the run ends
-/// `Failed(Cancelled)` with the reason, its current turn is read, and every
-/// effect of the run never issued — a completion folded and not yet
-/// dispatched, a tool child held or pending, a hook's own dispatch — is
-/// despawned before the bus sees it (no record). An effect in flight is
-/// left to its handler: the record is the handler's.
+/// Apply a run cancellation unless it already ended. Marks turns materialised
+/// and despawns unissued effects without records. In-flight effects remain owned
+/// by their handlers, which complete their records.
 pub fn run_cancelled(
     added: On<Add, Cancelled>,
     reasons: Query<(&Cancelled, Has<Settled>, Has<Failed>)>,

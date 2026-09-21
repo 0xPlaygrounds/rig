@@ -1,8 +1,10 @@
-//! Voyage AI as data: one config struct, two wires.
+//! Voyage AI configuration and embedding and reranking endpoint wires.
 //!
-//! Wires: [`Embeddings`] (`Embedding`) and [`Rerank`] (`Rerank`) — the two
-//! rows Voyage serves in this crate. Voyage has one dialect, so its
-//! defaults are the config's defaults rather than a table of constants.
+//! ```no_run
+//! use rig_core::providers::voyageai::{VoyageAi, VOYAGE_3_5};
+//! let wire = VoyageAi::from_env()?.embeddings(VOYAGE_3_5, None);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use crate::client::env::{self, EnvError};
 use crate::driver::{HasEmbedding, HasRerank};
@@ -60,8 +62,9 @@ impl VoyageAi {
         self
     }
 
-    /// The embedding wire for `model`, at `ndims` dimensions when the caller
-    /// named one rather than taking the model's published width.
+    /// Build an embedding wire reporting `ndims`, or the known model width,
+    /// or zero if unknown. This does not send an output-dimension override;
+    /// use [`Embeddings::with_output_dimension`] for that.
     pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
@@ -132,8 +135,7 @@ impl Embeddings {
         self
     }
 
-    /// Reject, rather than truncate, an input longer than the model's
-    /// context.
+    /// Set whether overlong inputs are truncated (`true`) or rejected (`false`).
     pub fn with_truncation(mut self, truncation: bool) -> Self {
         self.truncation = Some(truncation);
         self
@@ -269,8 +271,7 @@ impl Rerank {
         self
     }
 
-    /// Reject, rather than truncate, a document longer than the model's
-    /// context.
+    /// Set whether overlong documents are truncated (`true`) or rejected (`false`).
     pub fn with_truncation(mut self, truncation: bool) -> Self {
         self.truncation = Some(truncation);
         self
@@ -321,11 +322,8 @@ impl Wire for Rerank {
     }
 }
 
-/// The top-level keys that recognize a `/rerank` reply: `data`, the field
-/// every ordering carries, and `message` — a 200 whose body is nothing but
-/// Voyage's error envelope is a reply too, and recognizing it here is what
-/// makes the ordering's typed decode fail and hands the frame to the
-/// envelope classifier.
+/// Ranking and error-envelope markers. Recognizing `message` permits fallback
+/// decoding of provider errors returned with successful HTTP status.
 const RERANK_REPLY_MARKERS: &[&str] = &["data", "message"];
 
 /// The key that recognizes the error envelope on its own.
@@ -346,11 +344,8 @@ pub struct RerankDecoder;
 impl Decoder<RerankOp> for RerankDecoder {
     type Event = RerankReply;
 
-    /// Two shapes on one decoder, composed through the classify layer's own
-    /// combinator so no triage verdict is read here: the ordering is the
-    /// shape the wire mostly sends and stays the diagnostic when neither
-    /// decodes, and the envelope is tried exactly when the ordering's
-    /// decode fails.
+    /// Decode a ranking, then an error envelope if ranking decoding fails.
+    /// Retain the ranking diagnostic when neither shape decodes.
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         let data = frame.as_str();
         crate::providers::internal::wire::classify_or(
@@ -375,11 +370,7 @@ impl Decoder<RerankOp> for RerankDecoder {
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<RerankOp>) {
         let reply = match reply {
             RerankReply::Reply(reply) => reply,
-            // A 200 that carried the error envelope instead of an ordering:
-            // the provider's body verbatim, and the driver stamps the status
-            // it arrived under. Without this the frame read as an unmodeled
-            // event, the driver warn-skipped it, and the fold failed with a
-            // `RerankError` naming neither.
+            // Preserve the provider body; the driver adds the actual HTTP status.
             RerankReply::Failure(body) => {
                 out.push(Err(RerankError::from_provider_body(body)));
                 return;

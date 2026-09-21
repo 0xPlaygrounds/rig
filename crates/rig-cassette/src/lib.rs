@@ -18,6 +18,12 @@
 //! The `http` feature enables the native provider cassette engine, including
 //! ordered JSON maps and round-trip float parsing. `bedrock` extends it with
 //! AWS event-stream support. No optional feature is enabled by default.
+//!
+//! ```
+//! let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+//! let snapshot = recorder.log();
+//! assert!(snapshot.is_empty());
+//! ```
 
 pub mod effect_log;
 

@@ -1,3 +1,12 @@
+//! Cohere embedding response types and image-input validation.
+//!
+//! ```
+//! use rig_core::providers::cohere::embeddings::FloatEmbeddings;
+//! let vectors: FloatEmbeddings = serde_json::from_str(r#"{"float": [[0.5]]}"#)?;
+//! assert_eq!(vectors.values.len(), 1);
+//! # Ok::<(), serde_json::Error>(())
+//! ```
+
 use crate::embeddings::EmbeddingError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
@@ -15,12 +24,8 @@ pub struct EmbeddingResponse {
     pub meta: Option<Meta>,
 }
 
-/// The error envelope Cohere can answer a `/v1/embed` **200** with instead
-/// of embeddings: `{"message":"…"}`.
-///
-/// Decoding it is the whole point — it proves the body is the envelope and
-/// nothing else — but the error the consumer sees is built from the raw
-/// body, so the provider's payload rides out verbatim.
+/// Provider error envelope accepted on HTTP 200. The decoder reports its
+/// original body rather than interpreting it as an embedding response.
 #[derive(Debug, Deserialize)]
 pub(super) struct ErrorEnvelope {
     #[allow(dead_code)]
@@ -123,9 +128,8 @@ pub(super) enum ImageInputError {
     TooLarge { actual_bytes: usize },
 }
 
-/// The media type Cohere will accept these bytes as, or the reason it will
-/// not. Sniffing is [`crate::embeddings::image_media_type`]'s; the
-/// acceptance policy (the formats and the 5 MB ceiling) is Cohere's.
+/// Detect an accepted image media type. Returns a document error for unsupported
+/// formats or inputs exceeding 5,000,000 bytes.
 pub(super) fn validate_image(bytes: &[u8]) -> Result<&'static str, EmbeddingError> {
     if bytes.len() > MAX_IMAGE_BYTES {
         return Err(EmbeddingError::DocumentError(Box::new(

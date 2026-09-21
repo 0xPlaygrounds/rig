@@ -5,6 +5,12 @@
 //! release their own named hold; all remaining owners must release before the
 //! run continues. A checkpoint preserves holds, but does not persist host tools
 //! or external side effects.
+//!
+//! ```
+//! use rig_ecs::agent::checkpoint::ToolTurnHolds;
+//! let holds = ToolTurnHolds::default();
+//! assert!(!holds.blocks(1));
+//! ```
 
 use bevy_reflect::Reflect;
 use std::collections::BTreeMap;
@@ -96,6 +102,7 @@ pub enum CheckpointError {
 /// existing owner's boundary later; release that hold explicitly to replace it.
 /// Returns true when a hold was added or moved earlier. Hosts must arm before
 /// advancement; this cannot retract a request that has already dispatched.
+/// Returns an error for a non-live run, empty owner, or zero turn.
 pub fn hold_after_tool_turn(
     world: &mut World,
     run: Entity,
@@ -128,6 +135,8 @@ pub fn hold_after_tool_turn(
 /// Release only the named owner's hold. Also permitted on a terminal run for
 /// host cleanup. Unknown owners are an idempotent no-op. The next schedule
 /// update continues a nonterminal run once no hold blocks its committed turn.
+/// Returns whether an entry was removed, or an error for an empty owner or
+/// entity without [`Run`].
 pub fn release_tool_turn_hold(
     world: &mut World,
     run: Entity,

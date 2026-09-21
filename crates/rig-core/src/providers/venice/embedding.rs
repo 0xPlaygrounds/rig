@@ -1,16 +1,10 @@
 //! Venice's embedding model identifiers.
 //!
-//! From [Venice's embeddings endpoint](https://docs.venice.ai/api-reference/endpoint/embeddings/generate).
-//! The requests run on the shared OpenAI embeddings wire, whose
-//! [`VENICE`](crate::providers::openai::wire::VENICE) dialect carries the base
-//! URL and the `/embeddings` path: Venice is OpenAI-compatible on every field
-//! rig sends — `model`, `input`, `encoding_format`, `dimensions` (honored — a
-//! request for 256 dimensions returns 256), and `user` (accepted for
-//! compatibility) — and it answers with `usage`.
+//! ```
+//! use rig_core::providers::venice::embedding::TEXT_EMBEDDING_BGE_M3;
+//! assert_eq!(TEXT_EMBEDDING_BGE_M3, "text-embedding-bge-m3");
+//! ```
 
-// ================================================================
-// Venice Embedding API
-// ================================================================
 /// `text-embedding-bge-m3`
 pub const TEXT_EMBEDDING_BGE_M3: &str = "text-embedding-bge-m3";
 /// `text-embedding-bge-en-icl`

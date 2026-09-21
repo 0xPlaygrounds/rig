@@ -1,6 +1,11 @@
 //! Run endings for the world's witness, including settlement, failure,
 //! cancellation and removal before an ending. Lifecycle observers see the
 //! same ending components whether written by the runtime or a host system.
+//!
+//! ```
+//! let mut world = bevy_ecs::world::World::new();
+//! rig_ecs::systems::witness::install(&mut world);
+//! ```
 
 use bevy_ecs::prelude::*;
 use rig_core::observe::{Action, Emitter, HostAction, Observation, Reason, Stage, Subject};
@@ -48,8 +53,6 @@ pub(crate) fn observe_provider_retry(
         budget,
         reason: Reason::with_detail(report.kind.code(), report.message.clone()),
     };
-    // A fact of two integers and a reason serializes; if it ever does not,
-    // the ending still names the failure, so the retry is not lost twice.
     if let Ok(action) = fact.action() {
         witness.observe(Observation::new(
             subject,

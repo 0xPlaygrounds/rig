@@ -1,5 +1,12 @@
-//! A checkpoint's executable requirements are validated before installing any
-//! handler or state. Construction stays with the host; no provider is named here.
+//! Validate checkpoint requirements and install host-constructed handlers.
+//!
+//! ```
+//! use rig_ecs::{RigPlugin, checkpoint::{Checkpoint, RestoreMode, load_world}};
+//! let mut app = bevy_app::App::new();
+//! app.add_plugins(RigPlugin::default());
+//! load_world(&Checkpoint::default(), app.world_mut(), RestoreMode::Strict, [])?;
+//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! ```
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -31,8 +38,9 @@ pub enum RestoreMode {
 }
 
 impl Checkpoint {
-    /// The original advertised contracts, before destination aliasing. This
-    /// inspection performs no credential lookup or provider construction.
+    /// Return original advertised contracts in key order, before destination aliasing.
+    /// Returns an error for malformed descriptors, inconsistent keys, or duplicates;
+    /// performs no credential lookup or provider construction.
     pub fn requirements(&self) -> Result<Vec<HandlerDescriptor>, ErrorReport> {
         let mut keys = HashSet::new();
         let mut requirements = Vec::new();
@@ -57,29 +65,21 @@ impl Checkpoint {
     }
 }
 
-/// Atomically validate and load execution state with its complete handler set.
+/// Validate and load execution state, returning entities in checkpoint order.
+/// Returns an error for invalid state, incomplete or incompatible handlers,
+/// duplicate supplied keys, or keys absent from the saved requirements.
+/// Validation refusal leaves destination state and handlers unchanged.
 ///
-/// The host constructs `handlers` before calling this function. A missing key
-/// must already be served by the destination, including world/system handlers.
-/// Every requirement is checked against the *original* saved descriptor before
-/// aliasing. No state or handler is installed on refusal. Supplied handlers are
-/// installed even when their descriptors match, so credential rotation is not a
-/// silent no-op. Omitted keys explicitly retain existing implementations.
+/// Supplied handlers replace installed implementations even when descriptors
+/// match; omitted keys retain installed handlers, including world/system handlers.
+/// Supplied descriptor keys are normalized to their pair keys. Strict mode compares
+/// all remaining fields against the original saved contracts before aliasing;
+/// saved bound and descriptor keys must agree. Both modes require matching families.
 ///
-/// Each supplied `(HandlerKey, ErasedHandler)` pair authorizes installation at
-/// that dispatch key. The supplied descriptor key is normalized to the pair
-/// key, not compared with its advertised key. Strict restoration compares all
-/// remaining fields (family, model label, capabilities and layers) against the
-/// original saved contract. The saved `Bound.key` and descriptor key must still
-/// agree; an inconsistent saved identity is always refused.
-///
-/// Replay supplies recorded handlers through the same boundary, without live
-/// assembly. Register application insertion observers after loading: observers
-/// are not transactional and must not observe intermediate insertions.
-///
-/// Descriptors do not attest endpoint, credentials, or transport policy; the
-/// host remains responsible for constructing those correctly. Already-running
-/// destination operations retain their captured handlers.
+/// Hosts must construct endpoints, credentials, and transport policy correctly;
+/// descriptors do not attest them. Register insertion observers after loading,
+/// since observers are not transactional. Running destination operations retain
+/// their captured handlers.
 pub fn load_world(
     checkpoint: &Checkpoint,
     world: &mut World,
@@ -146,16 +146,13 @@ pub fn load_world(
         }
     }
 
-    // Both the original graph and the complete implementation set have passed
-    // preflight. No user construction callback runs during installation.
     let loaded = super::load_state(checkpoint, world, assets, aliases)?;
     for entity in &loaded.entities {
         let Some(bound) = world.get::<Bound>(*entity) else {
             continue;
         };
         let key = bound.key.clone();
-        // Bound's insertion hook indexes the saved dispatch key before the
-        // prevalidated implementation becomes serving. Preserve saved names.
+        // Keep saved dispatch keys so restored effects resolve to these implementations.
         if let Some(descriptor) = descriptors.remove(&key) {
             world.entity_mut(*entity).insert(Bound {
                 key: key.clone(),

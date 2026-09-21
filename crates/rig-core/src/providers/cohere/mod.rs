@@ -1,6 +1,5 @@
-//! Cohere API client and Rig integration
+//! Cohere configuration, endpoint wires, and model identifiers.
 //!
-//! # Example
 //! ```no_run
 //! use rig_core::providers::cohere;
 //!
@@ -13,9 +12,7 @@
 //! # }
 //! ```
 //!
-//! A wire says what to send and how to read the reply; `.bind(transport)`
-//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
-//! implements the consumer-facing model traits.
+//! Bind a wire to a transport to obtain a [`crate::driver::Bound`] model.
 
 pub mod completion;
 pub mod embeddings;
@@ -23,10 +20,6 @@ pub mod streaming;
 pub mod wire;
 
 pub use wire::{Chat, Cohere, Embeddings, ImageEmbeddings};
-
-// ================================================================
-// Cohere Completion Models
-// ================================================================
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";
@@ -44,10 +37,6 @@ pub const COMMAND_R7B_12_2024: &str = "command-r7b-12-2024";
 pub const COMMAND_R_PLUS_08_2024: &str = "command-r-plus-08-2024";
 /// `command-r-08-2024` completion model
 pub const COMMAND_R_08_2024: &str = "command-r-08-2024";
-
-// ================================================================
-// Cohere Embedding Models
-// ================================================================
 
 /// `embed-v4.0` embedding model
 pub const EMBED_V4: &str = "embed-v4.0";

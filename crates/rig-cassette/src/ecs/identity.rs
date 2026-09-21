@@ -1,5 +1,12 @@
-//! The header from components: a run's program identity as the log names
-//! it, computed from the agent entity — never from a spec struct.
+//! Program identity and replay compatibility derived from ECS components.
+//!
+//! ```
+//! use bevy_ecs::prelude::*;
+//! use rig_cassette::ecs::identity::required_row;
+//! let mut world = World::new();
+//! let agent = world.spawn_empty().id();
+//! let required = required_row(&mut world, agent);
+//! ```
 
 use crate::effect_log::{EffectLogRecorder, stable_hash};
 use bevy_ecs::prelude::*;
@@ -15,11 +22,9 @@ use rig_ecs::{
     bus::{Bound, Scope},
 };
 
-/// The JSON the header's `run_spec` hashes for `agent`: the shape
-/// `CONTRACT.md` names, built from components, canonicalised by
-/// [`stable_hash`]. The builder's identity: the default turn budget, no
-/// retries, `fail`. Retained solely for builder/corpus header interoperability;
-/// effective replay compatibility uses [`stamp_run`] instead.
+/// Return builder identity JSON from agent components, using the default turn
+/// budget, zero retries, and failure for invalid calls.
+/// Effective replay identity is stamped separately by [`stamp_run`].
 fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
     let preamble = world.get::<Preamble>(agent).and_then(|p| p.0.clone());
     let temperature = world.get::<Temperature>(agent).and_then(|t| t.0);
@@ -96,10 +101,9 @@ fn effective<T: Component>(world: &World, subject: Entity) -> Option<&T> {
     })
 }
 
-/// Effective policy from components, using the same run-over-agent precedence
-/// as execution. This is not the legacy builder-only `LogHeader::run_spec`.
-/// Custom systems and their ordering are represented by `PolicyVersion`.
-/// Ambient tool inputs are not serialized or automatically fingerprinted.
+/// Return effective policy JSON with run components taking precedence over agent
+/// components. Custom systems and ordering require a declared `PolicyVersion`;
+/// ambient tool inputs are not serialized or fingerprinted.
 pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
     let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
     let access = effective::<rig_ecs::agent::ToolAccess>(world, subject).cloned();
@@ -236,7 +240,8 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
     spec
 }
 
-/// The effective policy hash for an agent or run, not a code fingerprint.
+/// Return the effective policy hash for an agent or run, or `None` if
+/// serialization fails. This is not a code fingerprint.
 pub fn spec_hash(world: &mut World, agent: Entity) -> Option<u64> {
     stable_hash(&spec_json(world, agent)).ok()
 }
@@ -316,13 +321,9 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     row
 }
 
-/// Stamp `recorder`'s legacy builder header for corpus interoperability with
-/// logs the classic runtime records. This is **not** a claim of run
-/// compatibility — [`check_replayable`] refuses a log that carries only this
-/// header; [`stamp_run`] is what makes a log replayable. It records the
-/// builder spec hash, the program's hook list as it declares it (`hooks` —
-/// the world has no hook stack to name; a program with none passes an empty
-/// list), the required row, and the bus policy the world runs under.
+/// Stamp the builder-spec hash, declared hooks, required row, and serving policy
+/// for corpus interoperability. A serialization failure leaves the hash unchanged.
+/// This header alone does not establish run compatibility; use [`stamp_run`].
 pub fn stamp_legacy_builder_header(
     world: &mut World,
     agent: Entity,
@@ -337,15 +338,9 @@ pub fn stamp_legacy_builder_header(
     recorder.set_program(hooks, required, bus);
 }
 
-/// Stamp `run`'s program identity under its scope
-/// ([`crate::effect_log::LogHeader::programs`]): the effective run's required row
-/// and policy hash, keyed by the run's `Scope`. A world running several
-/// programs into one log names each this way.
-///
-/// Refused, with the same wording [`check_replayable`] uses, when `run` is
-/// not a run, has no `Scope`, or its policy does not hash: a log stamped
-/// under those conditions could never be verified, so the mistake is
-/// reported here rather than at replay time.
+/// Stamp the effective required row and policy hash under the run's `Scope` in
+/// [`crate::effect_log::LogHeader::programs`]. Returns an error if `run` lacks
+/// `RunOf` or `Scope`, or its policy cannot be hashed.
 pub fn stamp_run(
     world: &mut World,
     run: Entity,

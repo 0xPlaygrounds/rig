@@ -1,30 +1,14 @@
-//! The world's [`Witness`]: the analysis sink the bus's own systems feed at
-//! their decision sites, and the seam a host system emits through.
+//! Optional observation of bus decisions and host policy actions, separate from
+//! effect recording and replay identity.
 //!
-//! Beside [`Recording`](super::Recording), not inside it: the record is the
-//! replay oracle (what a handler served and answered); a witness sees the
-//! program around it — an intent held and released, denied before flight,
-//! refused by the driver, replaced after the
-//! record closed, cancelled in flight, a stream that ended before its
-//! terminal record. Every fact is emitted where it happens, by the system
-//! that owns it, or by a lifecycle observer for the transitions a user
-//! system makes with a plain component write (`Held`, a `Gate` denial, a
-//! `Judge` replacement); those carry [`Emitter::unknown`] unless the policy
-//! names itself through [`Witnessing::emit`].
+//! [`Witnessing::install`] installs lifecycle observers once; later calls replace
+//! the sink. Scene insertion can re-emit restored gate state, while in-place
+//! outcome mutation emits nothing automatically and must be witnessed explicitly.
 //!
-//! Install with [`Witnessing::install`], once per world: a later call
-//! replaces the sink and installs no second set of observers. Absent, nothing
-//! here runs: every emission site reads `Option<Res<Witnessing>>`, and the
-//! observers return at once, so a world without a witness pays a resource
-//! lookup per site.
-//!
-//! Two limits a reader of the trace must know. A scene load restores
-//! `Held` and pre-dispatch outcomes by component insert, so a witnessed
-//! world observes the restored gate state again (as `Held` / `Denied`) at
-//! the load; the facts are true of the restored world, not new decisions.
-//! And a `Judge` that rewrites an outcome in place through `Mut<EffectOutcome>`
-//! raises no lifecycle event: only an insert is observed, so such a policy
-//! must emit for itself.
+//! ```
+//! let emitter = rig_ecs::bus::bus_emitter();
+//! assert_eq!(emitter.name, rig_ecs::bus::BUS_EMITTER);
+//! ```
 
 use std::sync::Arc;
 
@@ -46,8 +30,7 @@ pub fn bus_emitter() -> Emitter {
     Emitter::versioned(BUS_EMITTER, env!("CARGO_PKG_VERSION"))
 }
 
-/// How far up a `ChildOf` chain a subject is resolved: a host bug that
-/// makes a cycle ends here, not in an observer that never returns.
+/// Maximum ancestry steps when resolving a subject, bounding work for cycles.
 const WALK_LIMIT: usize = 4096;
 
 /// The world's witness. Cloning shares the sink. `Send + Sync` on every
@@ -145,8 +128,8 @@ impl SeenOutcome {
     }
 }
 
-/// A 64-bit FNV-1a hash of a value's serde form, for in-process equality
-/// of two outcomes without keeping either. Not a stable cross-process id.
+/// Return the 64-bit FNV-1a hash of serialized JSON, or the offset basis if
+/// serialization fails. Intended for in-process comparisons, not stable identity.
 pub fn fingerprint<T: serde::Serialize>(value: &T) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     if let Ok(bytes) = serde_json::to_vec(value) {
@@ -427,8 +410,8 @@ fn observe_outcome_replaced(
     *seen = now;
 }
 
-/// An intent left the world before dispatch (a program's cancel despawned
-/// it): never served, no record — the witness is the only trace.
+/// Emit cancellation when an unanswered, unissued intent leaves the world.
+/// No effect record exists for an intent that was never served.
 fn observe_pending_despawned(
     removed: On<Remove, PendingEffect>,
     state: Query<(Has<Issued>, Has<EffectOutcome>), With<PendingEffect>>,

@@ -1,4 +1,12 @@
-//! Binary payloads shared by content hash. Source spelling belongs to each use.
+//! Binary payloads shared by content hash, with source spelling retained per use.
+//!
+//! ```
+//! use rig_ecs::agent::content::binary::BinaryAssets;
+//! let mut assets = BinaryAssets::default();
+//! let id = assets.insert(vec![1, 2, 3])?;
+//! assert_eq!(assets.get(id)?, &[1, 2, 3]);
+//! # Ok::<(), rig_ecs::agent::content::binary::BinaryError>(())
+//! ```
 
 use bevy_reflect::Reflect;
 use std::collections::{BTreeMap, BTreeSet};
@@ -139,7 +147,7 @@ impl BinaryAssets {
         self.payloads.is_empty()
     }
 
-    /// Borrow an asset's bytes.
+    /// Borrow an asset's bytes, or return [`BinaryError::Missing`].
     pub fn get(&self, id: BinaryId) -> Result<&[u8], BinaryError> {
         self.payloads
             .get(&id)
@@ -147,7 +155,8 @@ impl BinaryAssets {
             .ok_or(BinaryError::Missing)
     }
 
-    /// Retain bytes once, deduplicated by SHA-256.
+    /// Retain bytes once, deduplicated by SHA-256. Return a limit error when
+    /// allocation bounds are exceeded or a corruption error on a hash collision.
     pub fn insert(&mut self, bytes: Vec<u8>) -> Result<BinaryId, BinaryError> {
         if bytes.len() > self.limits.per_asset {
             return Err(BinaryError::Limit);
@@ -173,7 +182,8 @@ impl BinaryAssets {
     }
 
     /// Convert a transport source to graph data. Repeated encoded strings are
-    /// decoded once while their asset remains retained.
+    /// decoded once while their cached spelling and asset remain retained.
+    /// Returns errors for invalid base64, allocation limits, or inconsistent assets.
     pub fn intern(&mut self, source: DocumentSourceKind) -> Result<PartSource, BinaryError> {
         Ok(match source {
             DocumentSourceKind::Url(value) => PartSource::Url(value),
@@ -279,7 +289,8 @@ impl BinaryAssets {
             .ok_or(BinaryError::Limit)
     }
 
-    /// Rebuild exactly the transport source represented by this use.
+    /// Rebuild the transport source with its saved spelling, returning an error
+    /// for missing bytes, invalid spelling metadata, or size overflow.
     pub fn resolve(&self, source: &PartSource) -> Result<DocumentSourceKind, BinaryError> {
         self.resolved_len(source)?;
         Ok(match source {
@@ -358,6 +369,7 @@ impl BinaryAssets {
 
     /// Validate all saved identities and limits in an isolated store. The caller
     /// installs it only after graph handles and the rest of the scene validate.
+    /// Returns an error for incorrect hashes, duplicate IDs, or exceeded limits.
     pub fn from_payloads(
         payloads: impl IntoIterator<Item = (BinaryId, Vec<u8>)>,
         limits: BinaryLimits,
@@ -401,7 +413,8 @@ impl BinaryAssets {
     }
 
     /// Build an isolated merged store using the destination's limits. Invalid
-    /// hashes, duplicate saved IDs or allocation excess never mutate the destination.
+    /// hashes, duplicate saved IDs, invalid base64, or allocation excess return an
+    /// error without mutating the destination.
     pub fn merged(&self, records: &[BinaryRecord]) -> Result<Self, BinaryError> {
         if records.len() > self.limits.count {
             return Err(BinaryError::Limit);

@@ -1,18 +1,12 @@
 //! xAI's model identifiers and its dialect.
 //!
-//! xAI speaks the OpenAI wires, so it has no client and no completion model
-//! of its own: [`DIALECT`] carries the base URL, the `XAI_API_KEY` variable,
-//! the `x-request-id` header and the quirks below — its completion is the
-//! Responses endpoint at `/v1/responses`, and its image and speech endpoints
-//! are OpenAI-shaped under `/v1`.
+//! [`DIALECT`] configures the Responses endpoint and reads `XAI_API_KEY`.
 //!
-//! # Example
 //! ```no_run
 //! use rig_core::providers::openai::OpenAI;
 //! use rig_core::providers::xai;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // The wire; `.bind(transport)` joins it to a socket.
 //! let grok = OpenAI::from_env_with(&xai::DIALECT)?.completion(xai::GROK_3);
 //! # let _ = grok;
 //! # Ok(())
@@ -29,7 +23,7 @@ pub use audio_generation::TTS_1;
 #[cfg(feature = "image")]
 pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO};
 
-/// xAI completion models.
+/// Identifier for the Grok 2 December 2024 model.
 pub const GROK_2_1212: &str = "grok-2-1212";
 pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
 pub const GROK_3: &str = "grok-3";
@@ -44,15 +38,9 @@ use crate::providers::openai::wire::{
     Dialect, ImageBody, Quirks, ResponsesContract, ResponsesQuirks, Route, SpeechBody,
 };
 
-/// xAI, as an OpenAI dialect.
-///
-/// Every field is what this gateway does differently. Its endpoints live
-/// under `/v1` on a bare host; its text-to-speech endpoint is `/v1/tts` and
-/// takes a body of its own, as does its image endpoint. Its Responses
-/// endpoint rejects top-level `instructions` so system messages stay in
-/// `input`, answers a 200 with its error envelope, publishes a finished
-/// function call at its `output_item.done` rather than at the terminal, and
-/// its native structured output does not compose with tool calls.
+/// xAI endpoint and encoding configuration. Responses system messages remain
+/// in `input`; error envelopes may arrive with HTTP 200. Completed function calls
+/// arrive at `output_item.done`, and structured output cannot combine with tools.
 pub const DIALECT: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
     quirks: Quirks {

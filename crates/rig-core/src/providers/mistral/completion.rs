@@ -1,24 +1,10 @@
-//! Mistral's model identifiers and its own view of a reply.
+//! Mistral chat model identifiers and typed responses with service-tier and audio usage.
 //!
-//! Mistral is an OpenAI chat-completions dialect, so it has no client and no
-//! completion model of its own:
-//! [`openai::wire::MISTRAL`] carries
-//! the base URL, the `MISTRAL_API_KEY` variable, the `mistral-correlation-id`
-//! request id, the `/v1`-prefixed paths, and the rewrite Mistral needs —
-//! `any` for a forced tool choice, a forced choice relaxed beside a structured
-//! response format, its assistant-message schema (`prefix`, no
-//! `reasoning_content`), and its content chunks (text-only arrays flattened to
-//! a string; images, audio and documents rebuilt as Mistral's own chunks).
-//!
-//! What remains here is data: the model identifiers, and
-//! [`CompletionResponse`] — the typed read of Mistral's own reply document,
-//! which a completion carries verbatim on
-//! [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
-//! It is not a second mapping: the normalized response is produced by the
-//! wire's decoder, and this type is how a caller reads the provider-native
-//! fields that mapping does not name — [`Usage::service_tier`],
-//! [`Usage::prompt_audio_seconds`], and the audio tokens Mistral reports
-//! *beside* `prompt_tokens` rather than inside it.
+//! ```no_run
+//! use rig_core::providers::{mistral, openai::wire::{MISTRAL, OpenAI}};
+//! let wire = OpenAI::from_env_with(&MISTRAL)?.chat(mistral::MISTRAL_SMALL);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -139,9 +125,7 @@ pub struct PromptTokensDetails {
     /// Number of tokens served from the prompt cache.
     #[serde(default)]
     pub cached_tokens: u64,
-    /// Tokens the audio-input models charge for the prompt's audio. Reported
-    /// *alongside* `prompt_tokens` rather than inside it — the two plus
-    /// `completion_tokens` are what add up to `total_tokens`.
+    /// Input audio tokens, separate from `prompt_tokens`; both contribute to total usage.
     #[serde(default)]
     pub audio_tokens: u64,
 }
@@ -157,13 +141,7 @@ pub struct Usage {
     pub completion_tokens: usize,
     pub prompt_tokens: usize,
     pub total_tokens: usize,
-    /// Capacity tier that served the request, when Mistral reports it.
-    ///
-    /// Although the generated `UsageInfo` reference currently omits this
-    /// field, the live chat-completions wire includes values such as
-    /// `"standard"` in both blocking responses and terminal stream chunks,
-    /// and a caller typing `CompletionResponse::raw` as this document should
-    /// not lose it.
+    /// Capacity tier that served the request, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     /// Duration in seconds of audio tokens in the prompt (audio-input models only).
@@ -174,11 +152,8 @@ pub struct Usage {
     /// `prompt_tokens_details.cached_tokens`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub num_cached_tokens: Option<u64>,
-    /// In-depth breakdown of prompt token usage.
-    ///
-    /// Not aliased to the singular `prompt_token_details` Mistral's
-    /// embeddings reply also carries (always `null`, beside this key): serde
-    /// would reject that document as a duplicate field.
+    /// Prompt token breakdown. The singular `prompt_token_details` key is not an
+    /// alias because responses may contain both spellings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }

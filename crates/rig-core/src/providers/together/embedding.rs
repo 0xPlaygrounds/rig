@@ -1,14 +1,12 @@
 //! Together AI's embedding model identifiers.
 //!
-//! From [Together AI Reference](https://docs.together.ai/reference/embeddings).
-//! The requests run on the shared OpenAI embeddings wire, whose
-//! [`TOGETHER`](crate::providers::openai::wire::TOGETHER) dialect carries the
-//! `/v1/embeddings` path and the parameters Together does not accept there
-//! (`encoding_format`, `user`) so they are refused before a request is sent.
+//! ```no_run
+//! use rig_core::providers::{together, openai::wire::{OpenAI, TOGETHER}};
+//! let wire = OpenAI::from_env_with(&TOGETHER)?
+//!     .embeddings(together::BGE_BASE_EN_V1_5, None);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
-// ================================================================
-// Together AI Embedding API
-// ================================================================
 pub const BGE_BASE_EN_V1_5: &str = "BAAI/bge-base-en-v1.5";
 pub const BGE_LARGE_EN_V1_5: &str = "BAAI/bge-large-en-v1.5";
 pub const BERT_BASE_UNCASED: &str = "bert-base-uncased";

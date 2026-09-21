@@ -1,7 +1,10 @@
-//! A per-turn request patch: what a driver may change about one model call
-//! before [`prepare_request`](super::prepare::prepare_request)
-//! binds it — plain data, produced by hooks in rig-agent and by any other
-//! driver's equivalent.
+//! Per-turn overrides applied before request preparation without changing agent defaults.
+//!
+//! ```
+//! use rig_agent::run::patch::RequestPatch;
+//! let patch = RequestPatch::new().temperature(0.2).max_tokens(256);
+//! assert!(!patch.is_empty());
+//! ```
 
 use rig_core::completion::Document;
 use rig_core::message::{Message, ToolChoice};

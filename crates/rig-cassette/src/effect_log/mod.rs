@@ -1,65 +1,19 @@
-//! Record and replay for the effect bus.
+//! Durable effect logs, checkpoints, recorders, and replay handlers.
 //!
-//! An [`EffectLog`] is a recorded run: a [`LogHeader`] — the
-//! run-spec hash an agent stamps, the handlers registered when recording
-//! began, the effect signature — and every exchange in dispatch order
-//! (`rig_core::effect::EffectRecord`). The [`EffectLogRecorder`] is the
-//! [`Recorder`](rig_core::serve::Recorder) a driver such as rig-agent's `BusDriver`
-//! writes to (its `record_to`); the
-//! [`EffectLogReplayer`] is a handler that answers the same dispatches from
-//! the record instead of a provider, one per key (a runtime registers
-//! them through this crate's `agent` or `ecs` integration). A
-//! log is checked by its data, not a global format number in its header.
+//! Replayers validate recorded handler identities and publish saved tool outputs
+//! before resolving outcomes. Callers must reapply executable middleware and
+//! exclude secrets and live capabilities from durable tool outputs. Exact
+//! delivery replay requires runtime delivery metadata and retained stream items.
 //!
-//! Records hold explicitly published tool result values separately from
-//! the ordinary outcome, including error outcomes. Replayers publish these
-//! values before resolving the outcome. The recorded map excludes inbound
-//! tool context and live scopes; handlers must publish before resolving and
-//! must not put secrets or live capabilities into durable result values.
-//! The `tool_output` field is required: `null` explicitly records no
-//! publication, an object records published values (possibly empty). Omission
-//! cannot establish whether values were lost and is rejected when decoding.
-//! A log header has no global format number and refuses any key this rig
-//! does not know, `format` included. The separate [`Checkpoint`] envelope
-//! has its own [`CHECKPOINT_FORMAT`].
+//! ```
+//! use rig_cassette::effect_log::EffectLog;
 //!
-//! Custom outcomes use an explicit `payload` field beneath the `outcome`
-//! tag, so strings, numbers, booleans, null, arrays and objects retain their
-//! original JSON value. The previous flattened custom outcome form is not
-//! emitted; regenerate affected fixtures through their owning producers.
-//!
-//! A replayer preserves a recorded handler's semantic family, including model
-//! identity and capabilities, even when that key has records. Required keys
-//! include every scoped [`ProgramIdentity`] row. Conflicting declarations are
-//! refused. Executable middleware is reapplied by the caller; replayers do not
-//! claim to have executed the recorded descriptor's layers. Descriptor-less
-//! legacy exchanges may infer a fallback description, which cannot establish
-//! verified semantic compatibility for a program.
-//!
-//! [`LogHeader::deliveries`] optionally records consumer-visible outcome and
-//! stream batches. rig-ecs records and enforces these schedule boundaries;
-//! the shared replayer alone only supplies exchanges and event sequences.
-//! rig-agent's bus does not record ECS schedule boundaries. A log without
-//! this metadata, or a folded stream without event bytes, cannot prove exact
-//! partial-state or first-visible-answer policy replay. Batch numbers are
-//! not a clock, a whole-world snapshot, or an external-side-effect guarantee.
-//! Kept streams also retain error items in [`LogHeader::stream_errors`], with
-//! positions among all items. Errors before or after `Final` remain in their
-//! original order; the folded outcome alone cannot reconstruct them. Empty
-//! metadata is omitted on the wire. Historical logs lacking error positions
-//! can replay their successful events and a folded error, but cannot prove
-//! the original sequence of error items.
-//!
-//! The vocabulary is rig-core's, the runtimes are rig-agent's bus and rig-ecs; this crate is
-//! the persistence story over both, and what a host that saves and restores
-//! in-flight effects (a scene, a durable run) depends on.
-//!
-//! Tool identities nested in requests, outcomes and events retain their explicit
-//! or generated origin tags. Legacy bare-string tool identities are rejected when
-//! decoding; a checkpoint envelope's format number does not convert its nested
-//! payloads. Regenerate derived logs through their owning replay producers when
-//! intentionally migrating this encoding, keeping genuine provider recordings
-//! unchanged and reviewing the semantic differences before replacing fixtures.
+//! let log = EffectLog::default();
+//! let (checkpoint, tail) = log.checkpoint(0, ());
+//! let resumed = EffectLog::from_checkpoint(&checkpoint, tail)?;
+//! assert!(resumed.is_empty());
+//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! ```
 
 mod log;
 mod recorder;
