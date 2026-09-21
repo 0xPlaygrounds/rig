@@ -13,11 +13,13 @@
 //! that CI runs and that need a real parser rather than a grep.
 //!
 //! ```console
+//! cargo xtask check-packaging     # fail on stowaways and unused dependencies
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
 //! ```
 
 mod bevy;
+mod packaging;
 mod test_layout;
 mod verify;
 mod wires;
@@ -31,6 +33,7 @@ fn main() -> ExitCode {
 
     let result = match task.as_deref() {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
+        Some("check-packaging") => packaging::check(&workspace_root()),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
@@ -52,6 +55,10 @@ usage: cargo xtask <task>
 tasks:
   verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
   verify --check ID           run one check by id (CI runs one per job)
+  check-packaging             fail if the published facade carries files that
+                              are not its source, if a manifest names a
+                              dependency its sources never use, or if a facade
+                              feature is outside the additivity guard
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
   check-wires                 fail if anything under rig-core's providers/ is
