@@ -15,7 +15,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Conversation, Remembers, Run, Settled},
     bus::{EffectOutcome, Held, Issued, PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
 use run_support::*;
@@ -144,7 +144,7 @@ fn settled_snapshot_before_finalization_schedules_one_append() {
     // not that abandoning another live branch undoes its writes.
     let calls = Arc::new(Mutex::new(vec![]));
     let (mut restored, _, _) = setup(calls.clone(), false);
-    load_world(&checkpoint, restored.world_mut()).unwrap();
+    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     tick_until(&mut restored, "new finalization completed", appended);
     assert_eq!(appends(restored.world_mut()).len(), 1);
     assert_eq!(calls.lock().unwrap().len(), 1);
@@ -159,7 +159,7 @@ fn completed_append_is_not_scheduled_again_after_load() {
     let checkpoint = save_world(first.world_mut()).unwrap();
     drop(first);
     let (mut restored, _, _) = setup(calls.clone(), false);
-    load_world(&checkpoint, restored.world_mut()).unwrap();
+    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     for _ in 0..10 {
         restored.update();
     }
@@ -199,7 +199,7 @@ fn queued_append_survives_without_a_second_operation() {
     let checkpoint = save_world(first.world_mut()).unwrap();
     drop(first);
     let (mut restored, _, _) = setup(calls.clone(), false);
-    let loaded = load_world(&checkpoint, restored.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     for effect in loaded.with::<PendingEffect>(restored.world()) {
         restored.world_mut().entity_mut(effect).remove::<Held>();
     }
@@ -220,7 +220,7 @@ fn unresolved_external_write_reissues_the_same_operation_identity() {
     let checkpoint = save_world(first.world_mut()).unwrap();
     drop(first);
     let (mut restored, _, _) = setup(calls.clone(), false);
-    let loaded = load_world(&checkpoint, restored.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     assert!(!loaded.with::<Run>(restored.world()).is_empty());
     tick_until(&mut restored, "retried append completed", appended);
     assert_eq!(appends(restored.world_mut()).len(), 1);

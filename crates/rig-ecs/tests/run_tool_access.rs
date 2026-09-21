@@ -179,7 +179,7 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
 fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     use rig_ecs::{
         agent::{Outputs, Run},
-        checkpoint::{Checkpoint, load_world, save_world},
+        checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     };
     let mut first = app();
     let (model, _) = Capturing::new("model", "unused");
@@ -216,7 +216,7 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     let mut restored = app();
     let (model, _) = Capturing::new("model", "unused");
     register(&mut restored, "model", model);
-    load_world(&checkpoint, restored.world_mut()).expect("restore graph");
+    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).expect("restore graph");
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()

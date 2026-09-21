@@ -21,7 +21,7 @@ use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{Grant, Owner, Run, RunOf, Settled},
     bus::{IdCounter, PendingEffect, Seq},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -110,7 +110,8 @@ fn a_world_and_its_loaded_checkpoint_save_alike() {
     for _ in 0..7 {
         second.world_mut().spawn_empty();
     }
-    let loaded = load_world(&saved, second.world_mut()).expect("the handlers are bound");
+    let loaded = load_world(&saved, second.world_mut(), RestoreMode::Strict, [])
+        .expect("the handlers are bound");
     let again = save_world(second.world_mut()).expect("serializes");
     let (after, _) = json_and_seqs(&again);
     assert_eq!(
@@ -146,7 +147,7 @@ fn a_world_and_its_loaded_checkpoint_save_alike() {
         ))
         .id();
     let own_seq = third.world().get::<Seq>(own).unwrap().0;
-    load_world(&saved, third.world_mut()).expect("the handlers are bound");
+    load_world(&saved, third.world_mut(), RestoreMode::Strict, []).expect("the handlers are bound");
     third.world_mut().despawn(own);
     let (mut shifted, seqs_after) = json_and_seqs(&save_world(third.world_mut()).unwrap());
     let offset = seqs_after[0] - seqs[0];

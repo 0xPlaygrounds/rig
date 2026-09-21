@@ -72,12 +72,90 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 }
 
 /// The request one `encode` produced, for the envelope assertions.
-fn encoded(wire: &CopilotWire) -> http::Request<Body> {
+fn encoded(wire: &impl Wire<Op = Completion>) -> http::Request<Body> {
     let mut encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
     assert_eq!(encoded.requests.len(), 1, "one route, one request");
     encoded.requests.remove(0)
+}
+
+#[test]
+fn dedicated_and_catalog_construction_encode_identical_requests() {
+    use crate::providers::registry::{ProviderConfig, ProviderId};
+    let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
+    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
+        let dedicated = Copilot::new(token).completion(model);
+        let ProviderConfig::OpenAi(preset) = ProviderId::resolve("copilot").unwrap().config(token)
+        else {
+            panic!("Copilot is an OpenAI-family preset")
+        };
+        let generic = preset.completion(model);
+        assert_eq!(dedicated.wire, generic);
+        assert_same_requests(encoded(&dedicated), encoded(&generic));
+        let explicit = match &generic {
+            OpenAiWire::Chat(_) => encoded(&preset.chat(model)),
+            OpenAiWire::Responses(_) => encoded(&preset.responses(model)),
+        };
+        assert_same_requests(encoded(&generic), explicit);
+    }
+}
+
+fn assert_same_requests(mut direct: http::Request<Body>, mut catalog: http::Request<Body>) {
+    assert_eq!(direct.uri(), catalog.uri());
+    // Each encode creates its own transport request id.
+    for request in [&mut direct, &mut catalog] {
+        assert!(
+            !request
+                .headers_mut()
+                .remove("x-request-id")
+                .unwrap()
+                .is_empty()
+        );
+    }
+    assert_eq!(direct.headers(), catalog.headers());
+    let (Body::Bytes(direct), Body::Bytes(catalog)) = (direct.into_body(), catalog.into_body())
+    else {
+        panic!("JSON request bodies")
+    };
+    assert_eq!(direct, catalog);
+}
+
+#[test]
+fn explicit_routes_keep_the_session_envelope_and_configuration() {
+    use crate::providers::openai::Route;
+    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
+        for route in [Route::Chat, Route::Responses] {
+            let provider = OpenAI::with_key(&DIALECT, "session-token")
+                .with_base_url("https://gateway.invalid/copilot")
+                .with_route(route)
+                .with_system_instructions_placement(SystemInstructionsPlacement::Instructions);
+            let selected = provider.completion(model);
+            let explicit = match route {
+                Route::Chat => encoded(&provider.chat(model)),
+                Route::Responses => {
+                    assert!(provider.responses(model).strict_tools);
+                    encoded(&provider.responses(model))
+                }
+            };
+            assert_same_requests(encoded(&selected), explicit);
+        }
+    }
+}
+
+#[test]
+fn a_manual_copilot_wrapper_keeps_its_envelope_after_deserialization() {
+    let wire = CopilotWire {
+        wire: OpenAI::new("").chat("model").into(),
+        intent: CopilotIntent::Edits,
+    };
+    let reloaded: CopilotWire =
+        serde_json::from_value(serde_json::to_value(&wire).unwrap()).unwrap();
+    for wire in [&wire, &reloaded] {
+        let request = encoded(wire);
+        assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
+        assert_eq!(request.headers()["openai-intent"], "conversation-edits");
+    }
 }
 
 // ── routing ─────────────────────────────────────────────────────────────
@@ -205,7 +283,7 @@ async fn registry_request(
         .config("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
         .completion_handler(
             "copilot",
-            &reference.model,
+            reference.model(),
             BoxedHttpClient::new(transport.clone()),
         );
     let mut request = prompt();
@@ -288,7 +366,8 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
                 .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
         ),
         super::super::GPT_4O,
-    );
+    )
+    .unwrap();
     let saved = serde_json::to_string(&reference).expect("configuration serializes");
     let loaded = serde_json::from_str(&saved).expect("configuration reloads");
     let request =

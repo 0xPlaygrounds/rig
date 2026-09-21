@@ -16,15 +16,18 @@ fn transport() -> crate::http_client::BoxedHttpClient {
 /// itself — the fixed point a persisted reference relies on.
 #[test]
 fn every_registered_identity_round_trips_through_its_qualified_spelling() {
+    let mut unique = std::collections::HashSet::new();
     let mut seen = 0;
     for id in ProviderId::all() {
+        assert!(unique.insert(id), "duplicate selection: {id}");
+        assert_eq!(ProviderId::new(id.vendor(), id.format()), Some(id));
         let qualified = id.to_string();
         assert_eq!(
             ProviderId::resolve(&qualified),
             Ok(id),
             "`{qualified}` must resolve to itself"
         );
-        let reference = ProviderRef::registered(id, "m");
+        let reference = ProviderRef::registered(id, "m").unwrap();
         let json = serde_json::to_string(&reference).expect("a reference serializes");
         assert_eq!(json, format!("\"{qualified}:m\""));
         assert_eq!(
@@ -34,6 +37,139 @@ fn every_registered_identity_round_trips_through_its_qualified_spelling() {
         seen += 1;
     }
     assert!(seen > 20, "the registry is not empty: {seen}");
+}
+
+#[test]
+fn configured_references_never_retain_a_credential() {
+    for id in ProviderId::all() {
+        let config = id.config("embedded-secret");
+        assert!(!config.is_unauthenticated());
+        let reference = ProviderRef::configured(config.clone(), "model").unwrap();
+        assert_eq!(
+            reference,
+            ProviderRef::configured(config.with_credential("another-secret"), "model").unwrap()
+        );
+        let mut json = serde_json::to_value(&reference).unwrap();
+        let wire = json["config"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+            .next()
+            .unwrap();
+        wire["api_key"] = serde_json::json!("deserialized-secret");
+        assert_eq!(
+            serde_json::from_value::<ProviderRef>(json).unwrap(),
+            reference
+        );
+        let Provider::Configured(recipe) = reference.provider() else {
+            panic!("an explicit recipe")
+        };
+        assert!(
+            recipe.is_unauthenticated(),
+            "{id}: credential must not enter persistent recipe data"
+        );
+        assert!(
+            !reference.config("host-secret").is_unauthenticated(),
+            "the host can still construct a credentialed model"
+        );
+    }
+}
+
+#[test]
+fn configured_copilot_hosts_stay_explicit_when_credentials_change() {
+    let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
+    let id = ProviderId::resolve("copilot").unwrap();
+    for (initial_key, resolved_key, expected_host) in [
+        ("", token, "https://api.githubcopilot.com"),
+        (
+            token,
+            "host-secret",
+            "https://api.individual.githubcopilot.com",
+        ),
+    ] {
+        let reference = ProviderRef::configured(id.config(initial_key), "gpt-4o").unwrap();
+        let saved = serde_json::to_string(&reference).unwrap();
+        let restored = serde_json::from_str::<ProviderRef>(&saved).unwrap();
+        for reference in [reference, restored] {
+            let ProviderConfig::OpenAi(config) = reference.config(resolved_key) else {
+                panic!("Copilot is an OpenAI-family preset")
+            };
+            assert_eq!(config.base_url, expected_host);
+            assert_eq!(config.api_key.expose(), resolved_key);
+        }
+    }
+    let reference = ProviderRef::registered(id, "gpt-4o").unwrap();
+    let ProviderConfig::OpenAi(config) = reference.config(token) else {
+        panic!("Copilot is an OpenAI-family preset")
+    };
+    assert_eq!(config.base_url, "https://api.individual.githubcopilot.com");
+}
+
+#[test]
+fn model_validation_applies_to_constructors_and_structured_input() {
+    let id = ProviderId::resolve("deepseek").unwrap();
+    assert!(ProviderRef::registered(id, "").is_err());
+    assert!(ProviderRef::configured(id.config(""), "").is_err());
+    let json = serde_json::json!({"config": id.config(""), "model": ""});
+    assert!(serde_json::from_value::<ProviderRef>(json).is_err());
+    for reference in [
+        ProviderRef::registered(id, "namespace/model:tag").unwrap(),
+        ProviderRef::configured(id.config(""), "namespace/model:tag").unwrap(),
+    ] {
+        assert_eq!(reference.model(), "namespace/model:tag");
+        assert_eq!(
+            serde_json::from_value::<ProviderRef>(serde_json::to_value(&reference).unwrap())
+                .unwrap(),
+            reference
+        );
+    }
+}
+
+#[test]
+fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
+    let custom =
+        openai::wire::Dialect::gateway("private", "https://private.invalid", "PRIVATE_KEY");
+    let config = ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(&custom, ""));
+    assert_eq!(config.id(), None);
+    let reference = ProviderRef::configured(config, "model").unwrap();
+    assert_eq!(reference.id(), None);
+    assert_eq!(reference.to_string(), "private/openai:model");
+    assert!(
+        serde_json::to_value(&reference).is_err(),
+        "an unreloadable dialect must not enter persisted data"
+    );
+
+    let modified = openai::wire::Dialect {
+        base_url: "https://modified.invalid",
+        ..openai::wire::OPENAI
+    };
+    let config = ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(&modified, ""));
+    assert!(
+        serde_json::to_value(&config).is_err(),
+        "custom dialect payload must not silently disappear"
+    );
+    let id = config.id().unwrap();
+    assert_eq!(id, ProviderId::resolve("openai").unwrap());
+    let ProviderConfig::OpenAi(preset) = id.config("") else {
+        panic!("OpenAI preset")
+    };
+    assert_eq!(preset.base_url, openai::wire::OPENAI.base_url);
+}
+
+#[test]
+fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
+    for dialect in [
+        anthropic::wire::compatible("private", "https://private.invalid", "PRIVATE_KEY", None),
+        anthropic::wire::Dialect {
+            base_url: "https://modified.invalid",
+            ..anthropic::wire::ANTHROPIC
+        },
+    ] {
+        let config =
+            ProviderConfig::Anthropic(anthropic::wire::Anthropic::with_dialect("", &dialect));
+        assert!(serde_json::to_value(&config).is_err());
+        let _handler = config.completion_handler("custom", "model", transport());
+    }
 }
 
 /// A vendor with two protocol families keeps both qualified references
@@ -138,12 +274,12 @@ fn malformed_input_refuses() {
 fn the_model_identifier_keeps_its_separators() {
     let tagged =
         ProviderRef::parse("llamacpp/openai:qwen3:4b").expect("a tag is part of the model");
-    assert_eq!(tagged.model, "qwen3:4b");
+    assert_eq!(tagged.model(), "qwen3:4b");
     assert_eq!(tagged.to_string(), "llamacpp/openai:qwen3:4b");
 
     let pathed =
         ProviderRef::parse("together/openai:meta-llama/Llama-3-70b").expect("so is a namespace");
-    assert_eq!(pathed.model, "meta-llama/Llama-3-70b");
+    assert_eq!(pathed.model(), "meta-llama/Llama-3-70b");
     assert_eq!(
         serde_json::from_str::<ProviderRef>(&serde_json::to_string(&pathed).unwrap()).unwrap(),
         pathed
@@ -197,7 +333,7 @@ fn configurations_round_trip_and_stay_distinct() {
 
     let mut written = Vec::new();
     for config in [&plain, &elsewhere, &on_chat, &as_messages] {
-        let reference = ProviderRef::configured(config.clone(), "gpt-4.1-mini");
+        let reference = ProviderRef::configured(config.clone(), "gpt-4.1-mini").unwrap();
         let json = serde_json::to_string(&reference).expect("a configuration serializes");
         assert!(
             json.starts_with(r#"{"config":{"openai":"#),
@@ -211,7 +347,7 @@ fn configurations_round_trip_and_stay_distinct() {
         // Only the credential is lost, and it is lost by contract.
         assert_eq!(
             read,
-            ProviderRef::configured(config.clone().with_credential(""), "gpt-4.1-mini")
+            ProviderRef::configured(config.clone().with_credential(""), "gpt-4.1-mini").unwrap()
         );
         written.push(json);
     }
@@ -237,7 +373,7 @@ fn a_configuration_is_never_written_as_shorthand() {
         }
         other => panic!("{other:?}"),
     };
-    let reference = ProviderRef::configured(config, "venice-uncensored");
+    let reference = ProviderRef::configured(config, "venice-uncensored").unwrap();
     assert_eq!(
         reference.to_string(),
         "venice/openai:venice-uncensored",
@@ -341,7 +477,7 @@ fn a_gateway_absent_from_the_old_vocabulary_is_materializable() {
     assert_eq!(reference.to_string(), "venice/openai:venice-uncensored");
     let config = reference.config("vk-test");
     assert!(!config.is_unauthenticated(), "the host rehydrated it");
-    let handler = config.completion_handler("default", &reference.model, transport());
+    let handler = config.completion_handler("default", reference.model(), transport());
     let descriptor = handler.descriptor();
     assert!(
         format!("{descriptor:?}").contains("default"),
@@ -358,15 +494,16 @@ fn equivalent_reference_and_configuration_describe_themselves_alike() {
     let configured = ProviderRef::configured(
         ProviderId::resolve("deepseek/openai").unwrap().config(""),
         "deepseek-chat",
-    );
+    )
+    .unwrap();
     assert_eq!(registered.id(), configured.id());
     let from_reference = registered
         .config("k")
-        .completion_handler("default", &registered.model, transport())
+        .completion_handler("default", registered.model(), transport())
         .descriptor();
     let from_config = configured
         .config("k")
-        .completion_handler("default", &configured.model, transport())
+        .completion_handler("default", configured.model(), transport())
         .descriptor();
     assert_eq!(from_reference, from_config);
 }
@@ -450,7 +587,7 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
         panic!("a Messages configuration");
     };
     let mut encoded = config
-        .messages(&reference.model)
+        .messages(reference.model())
         .encode(
             CompletionRequestBuilder::unbound("hello").build(),
             Mode::Unary,
@@ -505,14 +642,14 @@ fn credentials_never_enter_a_serialized_reference() {
     const SENTINEL: &str = "sk-do-not-leak";
     for id in ProviderId::all() {
         for reference in [
-            ProviderRef::registered(id, "m"),
-            ProviderRef::configured(id.config(SENTINEL), "m"),
+            ProviderRef::registered(id, "m").unwrap(),
+            ProviderRef::configured(id.config(SENTINEL), "m").unwrap(),
         ] {
             let json = serde_json::to_string(&reference).expect("serializes");
             assert!(!json.contains(SENTINEL), "{json}");
             let read: ProviderRef = serde_json::from_str(&json).expect("reads back");
             assert!(
-                match &read.provider {
+                match read.provider() {
                     Provider::Registered(_) => true,
                     Provider::Configured(config) => config.is_unauthenticated(),
                 },

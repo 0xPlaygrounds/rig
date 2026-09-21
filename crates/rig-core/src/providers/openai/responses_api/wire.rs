@@ -54,10 +54,10 @@ impl Responses {
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
         Self {
             system_instructions: provider.system_instructions_placement(),
+            strict_tools: provider.dialect.quirks.copilot_session,
             provider,
             model: model.into(),
             tools: Vec::new(),
-            strict_tools: false,
         }
     }
 
@@ -195,6 +195,10 @@ impl Wire for Responses {
         // the driver folds it.
         let codex = quirks.contract == ResponsesContract::Codex;
         let streaming = matches!(mode, Mode::Streaming) || codex;
+        let builder = self.provider.completion_headers(
+            &request,
+            http::Request::post(self.provider.uri(quirks.path, None)),
+        );
         let request = self.responses_request(request, streaming)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -203,9 +207,7 @@ impl Wire for Responses {
         );
         let body = serde_json::to_vec(&request)?;
 
-        let request = self
-            .provider
-            .headers(http::Request::post(self.provider.uri(quirks.path, None)))
+        let request = builder
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(body))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;

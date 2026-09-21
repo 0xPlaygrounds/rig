@@ -12,7 +12,7 @@ fn world(parts: MessageParts) -> (World, Entity) {
 }
 
 fn assert_checkpoint_round_trip(world: &mut World, expected: &MessageParts) {
-    use rig_ecs::checkpoint::{Checkpoint, load_world, register_types, save_world};
+    use rig_ecs::checkpoint::{Checkpoint, RestoreMode, load_world, register_types, save_world};
 
     register_types(world);
     let saved = save_world(world).unwrap();
@@ -22,7 +22,8 @@ fn assert_checkpoint_round_trip(world: &mut World, expected: &MessageParts) {
         .install(&mut restored);
     rig_ecs::systems::AgentPlugin::install(&mut restored);
     register_types(&mut restored);
-    let loaded = load_world(&saved, &mut restored).unwrap();
+    // Content-only graph: nothing is bound, so the complete requirement set is empty.
+    let loaded = load_world(&saved, &mut restored, RestoreMode::Strict, []).unwrap();
     let utterances = loaded.with::<Utterance>(&restored);
     assert_eq!(utterances.len(), 1);
     assert_eq!(&read_message(&restored, utterances[0]).unwrap(), expected);

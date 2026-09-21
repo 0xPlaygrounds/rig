@@ -33,7 +33,7 @@ use rig_ecs::{
         ToolCallSlot, ToolPolicy, Turn, Utterance,
     },
     bus::{BusSet, EffectOutcome, Held, PendingEffect, RigSchedule, Streamed, release_hold},
-    checkpoint::{load_world, save_world},
+    checkpoint::{RestoreMode, load_world, save_world},
     systems::{BatchHeld, RigSet, RunBusy, RunCommands},
 };
 
@@ -250,7 +250,7 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
     let saved = save_world(app.world_mut()).expect("saves");
     let corpus::world::Opened { mut app, .. } =
         corpus::world::open(&program, &log, RequestCheck::Payload);
-    load_world(&saved, app.world_mut())
+    load_world(&saved, app.world_mut(), RestoreMode::Strict, [])
         .unwrap_or_else(|error| panic!("{approval:?}: the scene loads: {error}"));
 }
 

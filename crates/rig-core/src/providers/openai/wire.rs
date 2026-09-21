@@ -603,6 +603,8 @@ impl ResponsesQuirks {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Quirks {
+    /// Use Copilot's session endpoint, model-dependent routing and editor envelope.
+    pub copilot_session: bool,
     /// How the dialect authenticates.
     pub auth: Auth,
     /// How the dialect addresses a model.
@@ -736,6 +738,7 @@ impl Quirks {
     /// are the fields OpenAI itself states.
     pub const fn openai() -> Self {
         Self {
+            copilot_session: false,
             auth: Auth::Bearer,
             routing: Routing::Path,
             completion_route: Route::Chat,
@@ -839,9 +842,15 @@ impl Dialect {
 /// all, and two dialects that agreed on every field but one would still be
 /// two different providers. So the name is the whole wire format, and a name
 /// this build does not know is an error rather than a silently
-/// half-constructed provider.
+/// half-constructed provider. Serialization likewise refuses unregistered or
+/// modified definitions: writing only their name would silently lose their payload.
 impl Serialize for Dialect {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if dialects::by_name(self.name) != Some(self) {
+            return Err(serde::ser::Error::custom(
+                "an unregistered or modified OpenAI dialect cannot be persisted by name; use configuration overrides",
+            ));
+        }
         serializer.serialize_str(self.name)
     }
 }
@@ -931,9 +940,16 @@ impl OpenAI {
     /// the instructions and caller identity its gateway expects, if any.
     pub fn with_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
         let quirks = &dialect.quirks;
+        let api_key = api_key.into();
+        let base_url = if quirks.copilot_session {
+            crate::providers::copilot::base_url_from_token(api_key.expose())
+        } else {
+            None
+        }
+        .unwrap_or_else(|| dialect.base_url.to_owned());
         Self {
-            api_key: api_key.into(),
-            base_url: dialect.base_url.to_owned(),
+            api_key,
+            base_url,
             dialect: *dialect,
             route: None,
             // Azure carries an `api-version` on every route, and formatting
@@ -1138,16 +1154,17 @@ impl OpenAI {
         self
     }
 
-    /// The completion endpoint this configuration serves: the dialect's
-    /// flagship unless [`with_route`](Self::with_route) chose otherwise.
+    /// The configured endpoint or dialect's static default. Copilot session
+    /// routing additionally chooses an endpoint by model when no override is set.
     pub fn completion_route(&self) -> Route {
         self.route.unwrap_or(self.dialect.quirks.completion_route)
     }
 
     /// The completion wire for `model` on this configuration's
     /// [`completion_route`](Self::completion_route): Responses for OpenAI,
-    /// xAI and ChatGPT, Chat Completions for every compatible gateway,
-    /// unless [`with_route`](Self::with_route) chose the other one.
+    /// xAI and ChatGPT, model-dependent routing for Copilot sessions, and
+    /// Chat Completions for other compatible gateways, unless
+    /// [`with_route`](Self::with_route) chose the other one.
     pub fn completion(&self, model: impl Into<String>) -> OpenAiWire {
         OpenAiWire::new(self.clone(), model)
     }
@@ -1197,6 +1214,30 @@ impl OpenAI {
     #[cfg(feature = "audio")]
     pub fn speech(&self, model: impl Into<String>) -> Speech {
         Speech::new(self.clone(), model)
+    }
+
+    pub(crate) fn completion_headers(
+        &self,
+        request: &crate::completion::CompletionRequest,
+        builder: http::request::Builder,
+    ) -> http::request::Builder {
+        let mut builder = self.headers(builder);
+        if self.dialect.quirks.copilot_session {
+            use crate::providers::copilot;
+            for (name, value) in copilot::default_headers(
+                self.api_key.expose(),
+                copilot::request_initiator(request),
+                copilot::request_has_vision(request),
+                Default::default(),
+            ) {
+                // The editor envelope replaces shared identity/auth headers.
+                if let Some(headers) = builder.headers_mut() {
+                    headers.remove(name);
+                }
+                builder = builder.header(name, value);
+            }
+        }
+        builder
     }
 
     /// Resolve `path` against the base URL, applying Azure's

@@ -1,24 +1,19 @@
-//! Running reqwest futures when the caller has no tokio runtime.
+//! Poll reqwest in its selected reactor context without spawning an operation.
 //!
-//! Async `reqwest` needs a tokio reactor on native targets. Inside a tokio
-//! runtime the transport awaits reqwest futures directly. Outside one — Bevy
-//! task pools, smol, `futures::executor::block_on` — it spawns them onto a
-//! lazily started, single-worker fallback runtime and awaits the resulting
-//! [`JoinHandle`](tokio::task::JoinHandle) from the caller's executor; a
-//! `JoinHandle` is a plain runtime-agnostic future, so no `block_on` or
-//! thread parking is involved. Everything that touches the reqwest response —
-//! reading a body, polling a byte stream — must likewise run on the tokio
-//! side, which is why the off-runtime paths read bodies eagerly or forward
-//! streams through a channel instead of handing reqwest futures back.
+//! The caller owns the future/stream throughout its lifetime. Entering a handle
+//! for each poll lets non-Tokio executors use the fallback reactor without a
+//! detached request or a forwarding task. Bodies capture the same context as
+//! the request, even if the host moves them to a different executor.
 
+use futures::{Stream, stream};
 use rig_core::http_client::Error;
-use std::future::Future;
-use std::sync::LazyLock;
+use std::{
+    future::{Future, poll_fn},
+    pin::pin,
+    sync::LazyLock,
+};
 use tokio::runtime::{Handle, Runtime};
 
-/// The fallback runtime, or the reason it could not start. A `LazyLock`
-/// initializer cannot return an error, so the failure is stored and surfaced
-/// as a transport error on every request that needs the runtime.
 static RUNTIME: LazyLock<Result<Runtime, RuntimeUnavailable>> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -28,49 +23,40 @@ static RUNTIME: LazyLock<Result<Runtime, RuntimeUnavailable>> = LazyLock::new(||
         .map_err(|err| RuntimeUnavailable(err.to_string()))
 });
 
-/// The fallback tokio runtime could not be started.
-///
-/// Private: this module is private, so a `pub` here was unnameable by callers
-/// anyway. The failure reaches them as the `Error::Instance` this is boxed
-/// into, whose `Display` carries the message. `rig-tungstenite` keeps the same
-/// type private for the same reason.
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("rig-reqwest: failed to start the fallback tokio runtime: {0}")]
 struct RuntimeUnavailable(String);
 
-fn runtime() -> Result<&'static Runtime, Error> {
-    RUNTIME.as_ref().map_err(|err| Error::instance(err.clone()))
+/// A supplied current runtime must have enabled I/O and timers and remain
+/// driven until its operations finish. A Handle does not keep a Runtime alive
+/// or prove its drivers were enabled; that remains the host's responsibility.
+fn context() -> Result<Handle, Error> {
+    match Handle::try_current() {
+        Ok(handle) => Ok(handle),
+        Err(_) => RUNTIME
+            .as_ref()
+            .map(|runtime| runtime.handle().clone())
+            .map_err(|error| Error::instance(error.clone())),
+    }
 }
 
-/// Whether the current task already runs inside a tokio runtime.
-///
-/// A caveat: a `current_thread` runtime built without
-/// `enable_io()`/`enable_time()` answers `true` here, and reqwest then panics
-/// with "there is no reactor running". `Handle::try_current()` cannot
-/// distinguish a runtime with the I/O driver from one without it, so a host
-/// that builds its own runtime must enable I/O. `rig-tungstenite`'s backend
-/// shares the caveat and documents it in the same place.
-pub(crate) fn in_tokio() -> bool {
-    Handle::try_current().is_ok()
+pub(crate) fn bind<F: Future>(future: F) -> Result<impl Future<Output = F::Output>, Error> {
+    let handle = context()?;
+    Ok(async move {
+        let mut future = pin!(future);
+        poll_fn(|cx| {
+            let _entered = handle.enter();
+            future.as_mut().poll(cx)
+        })
+        .await
+    })
 }
 
-/// Run `future` to completion on the fallback runtime, awaiting its result
-/// from whatever executor the caller is on. Only call this when
-/// [`in_tokio`] is false; inside a runtime, just `.await` the future.
-pub(crate) async fn run_off_runtime<F>(future: F) -> Result<F::Output, Error>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    runtime()?.spawn(future).await.map_err(Error::instance)
-}
-
-/// Spawn a detached task on the fallback runtime (used to drive a body
-/// stream into a channel while the caller polls the receiver elsewhere).
-pub(crate) fn spawn_off_runtime<F>(future: F) -> Result<(), Error>
-where
-    F: Future<Output = ()> + Send + 'static,
-{
-    runtime()?.spawn(future);
-    Ok(())
+pub(crate) fn bind_stream<S: Stream>(stream: S) -> Result<impl Stream<Item = S::Item>, Error> {
+    let handle = context()?;
+    let mut stream = Box::pin(stream);
+    Ok(stream::poll_fn(move |cx| {
+        let _entered = handle.enter();
+        stream.as_mut().poll_next(cx)
+    }))
 }

@@ -1,8 +1,7 @@
 //! The bundled transport must work when the caller has no tokio runtime —
 //! Bevy task pools, smol, `futures::executor` — for both a unary request and a
-//! streamed body. A local hyper-less server is not available without tokio,
-//! so the server side runs on its own tokio runtime thread while the client
-//! side is driven entirely by `futures::executor::block_on`.
+//! streamed body. A blocking local server runs on its own std thread while
+//! the client is driven by `futures::executor::block_on`.
 
 #![allow(clippy::expect_used)]
 
@@ -97,7 +96,7 @@ fn streamed_body_without_a_tokio_runtime() {
 }
 
 #[tokio::test]
-async fn unary_request_inside_a_tokio_runtime_takes_the_direct_path() {
+async fn unary_request_inside_a_tokio_runtime() {
     let url = serve_once("hello from tokio", 1);
     let client = ReqwestClient::default();
     let request = Request::builder()
@@ -108,4 +107,40 @@ async fn unary_request_inside_a_tokio_runtime_takes_the_direct_path() {
     let response = client.send::<_, Bytes>(request).await.expect("send");
     let body = response.into_body().await.expect("body");
     assert_eq!(&body[..], b"hello from tokio");
+}
+
+#[test]
+fn bodies_can_move_off_the_request_executor() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(1)
+        .build()
+        .expect("runtime");
+    let client = ReqwestClient::default();
+    let request = Request::builder()
+        .uri(serve_once("moved unary", 1))
+        .body(NoBody)
+        .expect("request");
+    let response = runtime
+        .block_on(client.send::<_, Bytes>(request))
+        .expect("response");
+    let body = futures::executor::block_on(response.into_body()).expect("body");
+    assert_eq!(&body[..], b"moved unary");
+
+    let request = Request::builder()
+        .uri(serve_once("moved stream", 4))
+        .body(NoBody)
+        .expect("request");
+    let response = runtime
+        .block_on(client.send_streaming(request))
+        .expect("response");
+    let body = futures::executor::block_on(async {
+        let mut stream = response.into_body();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            bytes.extend_from_slice(&chunk.expect("chunk"));
+        }
+        bytes
+    });
+    assert_eq!(body, b"moved stream");
 }

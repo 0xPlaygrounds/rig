@@ -264,6 +264,22 @@ pub struct HandlerTable {
     served: HashMap<Entity, Served>,
 }
 
+impl HandlerTable {
+    pub(crate) fn contains(&self, entity: Entity) -> bool {
+        self.served.contains_key(&entity)
+    }
+
+    /// Installation after checkpoint preflight, without deferred commands or
+    /// a second fallible validation step halfway through the transaction.
+    pub(crate) fn install(world: &mut World, entity: Entity, handler: ErasedHandler) {
+        world
+            .non_send_mut::<Self>()
+            .served
+            .insert(entity, Served::Task(handler));
+        world.entity_mut(entity).insert(Handler);
+    }
+}
+
 /// A `Handler` component removed — a deregistration, a despawn — takes the
 /// handler out of the table with it.
 pub fn unbound(removed: On<Remove, Handler>, mut table: NonSendMut<HandlerTable>) {

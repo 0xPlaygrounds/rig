@@ -489,89 +489,32 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
-### 12.1 A model bound as data
+### 12.1 Host assembly, runtime execution
 
-A `bus::ProviderBinding` component is the data half of a provider-served
-key: `key`, a `provider` ([`ProviderRef`], rig-core's), `label` (the
-`ModelRef` the descriptor advertises; the reference's model id unless set)
-and a `credential` *reference* (a name the host's resolver knows — never a
-secret). It holds nothing executable, and it holds no provider vocabulary of
-its own: `ProviderKind`, the `base_url` override and the `extra_params` bag
-are gone.
+The host constructs an HTTP or SDK `CompletionModel`, wraps it in a
+`CompletionAdapter`, and installs the erased handler under a dispatch key.
+ECS stores the live handler and its `Bound` descriptor, not provider launch
+configuration. It performs no provider discovery, credential resolution,
+transport selection or SDK preparation.
 
-A `ProviderRef` is either a **registered selection** —
-`vendor/format:model`, whose configuration is the registry's preset — or an
-explicit **configuration** plus a model. `format` is a protocol family
-(`openai`, `anthropic`, `gemini`), never a route: the OpenAI family covers
-both Chat Completions and the Responses endpoint, and which one a
-configuration serves is its own `route` field. Persisted registered
-references are always qualified (`deepseek:x` read, `deepseek/openai:x`
-written); an explicit configuration is written as an object and keeps every
-non-secret host, route and option it names. Anything a provider
-configuration can express, a binding can express — including a gateway
-(Venice, Together, OpenRouter, …) that never had a `ProviderKind` variant.
+For declarative HTTP launching, the host may use rig-core's bounded
+`providers::registry::{ProviderRef, ProviderConfig}` constructors. They are
+optional host utilities, not ECS components or a universal SDK recipe. The
+host retains launch settings separately and reapplies explicit endpoint,
+authentication, proxy/redirect/TLS and runtime policy on live reconstruction.
+An explicitly selected default-looking endpoint remains explicit.
 
-The executable half is built on the host's word:
-`materialize_bindings(world)` (or the `materialize` system, which leaves a
-refusal in `MaterializeFailed`) reads the host-installed `Materializer`
-resource — a credential resolver and a transport factory, both host
-closures; rig-ecs reads no environment variable and picks no transport —
-builds the reference's configuration with the resolved credential, asks it
-for the completion wire for every binding nothing serves yet, binds it to
-the host's transport and registers a `CompletionAdapter` under the binding's
-key through `Handlers::register_erased`, on the binding's own entity, so the
-bound `HandlerDescriptor` is the one a hand-registered adapter produces and
-the policy hash (§10) is unchanged by how the key came to be served. A
-binding changes no `HandlerDescriptor`: every golden is unchanged. Secrets
-never enter the world: the resolver returns a `Secret` whose `Debug` is
-redacted, a configuration's credential is redacted in its serialized form
-and empty when read back, the secret lives only inside the built client, and
-the binding's `Debug`, JSON and every `MaterializeError` name the reference
-alone.
+A dispatch key, a model label and a connection are different facts.
+`HandlerDescriptor` advertises execution metadata; equality does not attest
+endpoint, credential, tenant or transport policy. Catalog membership likewise
+does not prove launch readiness. SDK credential refresh and its runtime are
+host/client-lifetime resources, not per-effect tasks.
 
-Precedence and refusals, all or nothing per call — every credential
-resolved, every client built and every registration checked before the
-first registration: a key is registered only when it is free or bound on
-the binding's own entity with the descriptor about to be registered, so
-`Handlers::bind` (which refuses only a key bound to another family) cannot
-refuse one, and every error leaves the handlers as they were. Should a
-registration nonetheless be refused, what the call registered before it is
-unserved again and every `Bound` the call inserted is taken out or put back
-as saved (`Register`):
-
-| the world holds | `materialize_bindings` |
-|---|---|
-| a binding on an entity nothing serves, no `Bound` | built, `Bound` inserted, served: `materialized` |
-| a binding beside a `Bound` nothing serves (a checkpoint load) | built; the built descriptor must equal the saved one, else `DescriptorDrift`; served: `materialized` |
-| a binding beside a `Bound` something serves (a hand-registered handler, an earlier materialization, a replayer) | left alone: `kept` — the existing handler wins, no credential resolved, no transport built |
-| a binding whose key another entity's `Bound` holds — served there (a hand registration made before the binding's own `Bound` was spawned, a replayer) or not, and whether or not the binding carries a `Bound` of its own | left alone: `kept` — the existing handler wins, the binding's own `Bound` untouched |
-| two binding entities with one key | `DuplicateKey` |
-| a binding beside a `Bound` of another key | `KeyMismatch` |
-| no `Materializer` | `NoMaterializer` |
-| a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
-
-A selection this build does not register, an ambiguous shorthand, an unknown
-dialect or a misspelled typed option is refused by the *reader*, before
-anything is spawned — which is why there is no materialization variant for
-any of them. Pinned by `run_binding.rs`; the harness
-(`crates/rig-cassette/tests/common/ecs_matrix/world.rs`) binds `golden/model:default` this way
-on every ungated cassette wire, with a resolver that maps the reference
-`cassette` to the cassette's key and a factory that hands out the cassette
-transport, and every cell's request is the byte-identical one a
-hand-registered adapter sent.
-
-`bus::provider_diagnostics(&World)` reports the same state, read-only: the
-selections this build registers with their credential guidance (an
-environment variable, and whether it is required — an optional-auth
-selection such as `llamacpp/openai` is a hint), and every binding with its
-entity, key, model, canonical `vendor/format` label, credential reference
-and whether *another* entity serves its key. It never exposes a `Secret` or
-a whole configuration, it spawns and resolves nothing, and it shares the
-"served elsewhere" predicate with materialization, so a binding's own stale
-`Bound` — what a checkpoint load leaves — is not counted as somebody else
-serving its key.
-
-[`ProviderRef`]: https://docs.rs/rig-core/latest/rig_core/providers/registry/struct.ProviderRef.html
+`ProviderBinding`, `Materializer`, credential-reference reflection and
+provider-specific ECS diagnostics are removed. Old checkpoints containing
+those unregistered component paths are refused, not silently stripped. The
+host must explicitly migrate launch data out of such checkpoints before
+resuming them. Execution diagnostics remain on their existing runtime paths.
 
 ## 13. Resume is a checkpoint load; two runs
 
@@ -583,8 +526,9 @@ registers the type with `#[reflect(Component)]` in the world's
 each component under its type path, an `Entity` in a component as the index
 of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
 `binaries` (the binary store, every retained payload once per content hash).
-`save_world(&mut World)` takes it; `load_world(&Checkpoint, &mut World)`
-spawns it and returns `Loaded` (the entities by checkpoint index;
+`save_world(&mut World)` takes it;
+`load_world(&Checkpoint, &mut World, RestoreMode, handlers)` validates its
+complete implementation set, spawns it and returns `Loaded` (the entities by checkpoint index;
 `Loaded::with::<C>` filters them). `Checkpoint::{to_json, from_json}` are the
 wire form. `checkpoint::register_types` registers every component and wrapper
 of the crate; `RigPlugin` calls it. The envelope's `format` is 2; format 1's
@@ -603,11 +547,23 @@ Loading validates the whole checkpoint in a scratch world first — the binary
 store merged with the destination's under the destination's limits, every
 utterance readable, content parents and part components well formed, request
 edits linking a turn to a part, `Ready` and `Prompt` on runs only, batch holds
-with their barrier, owner and slot — so a refusal leaves the destination
-untouched; `run_content_scene` exercises this with populated destination
+with their barrier, owner and slot, and an original saved `Bound` contract for
+every unfinished effect — so a refusal leaves the destination untouched; `run_content_scene` exercises this with populated destination
 worlds and shared payloads (hash mismatches, missing handles, invalid parents).
 Part sources reference payloads by SHA-256 identity; the store retains the
 asset-count and decoded-byte limits from section 1.
+
+Saving captures data, not proof of resumability: an unfinished streamed effect
+without a continuation cursor, or an unfinished effect whose handler was never
+registered or was removed before saving, can still be saved for inspection but
+cannot resume. A destination binding cannot invent the absent saved contract.
+Register required handlers before saving resumable work, or settle unsupported
+effects before saving. An offline migration must explicitly author any missing
+contract and validate the resulting graph; `Replace` is not a validation bypass.
+This deliberately moves missing-contract failure ahead of resumed dispatch,
+rather than silently converting an incomplete checkpoint into new execution.
+Open world handlers retain their ability to inspect arbitrary input kinds;
+their advertised family is not an input validation rule.
 
 
 A checkpoint preserves consumed effect ids even when their entities have been
@@ -640,22 +596,32 @@ mid-flight forking.
 Insertion observers/change detection can fire on load; install application
 observers afterward or guard restoration.
 
-Provider bindings (§12.1) are checkpoint data like any other component: a
-`ProviderBinding` rides on its entity, beside the `Bound` the handler held
-when saved (none for one never materialized). Loading is data only — no
-credential is resolved, no transport built, no client made: the entity is
-spawned as it was, bound under its saved descriptor so the graph's links to
-the key resolve, and left unserved (a dispatch to it is `HandlerUnavailable`)
-until the host calls `materialize_bindings`, which must then build the saved
-descriptor exactly. A checkpoint entity whose `Bound` names a key the loading
-world already serves merges into that entity — the existing handler wins,
-every link to the checkpoint's handler resolves to it, and a later
-materialization reports it `kept` — so a world over the log's replayers loads
-the same checkpoint unchanged; a key served here by another family is
-refused before any spawn. Pinned by `run_binding.rs`
-(`a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
-`a_checkpoint_load_validates_its_bindings`) and by every world-resume cell
-whose restored world materializes `golden/model:default` from the checkpoint.
+`Checkpoint::requirements()` exposes the original saved descriptors;
+`Checkpoint::validate(&World)` validates saved data before the host performs
+side-effectful construction. Loading accepts `(HandlerKey, ErasedHandler)`
+pairs already constructed by the host and an explicit `RestoreMode`:
+
+| mode/input | contract |
+|---|---|
+| `Strict` | every supplied or retained implementation matches the original saved descriptor before aliasing |
+| `Replace` | the host explicitly accepts descriptor changes within the same effect family |
+| supplied key | installs that implementation even when its descriptor matches, so credential rotation is real |
+| omitted key | retains the destination's already-serving implementation; an unserved or absent key refuses the whole load |
+| duplicate, extraneous or mismatched key | refuses before state or handler installation |
+
+Every saved handler requirement must be satisfied before any resumed state
+is installed. A failed batch leaves destination state and handlers unchanged.
+Aliasing reuses destination entities, but cannot erase the original descriptor
+before strict comparison. Existing operations retain their captured handlers;
+replacement applies to new dispatches. The host chooses whether to cancel or
+drain existing work before replacement.
+
+Replay selects and installs recorded handlers before this boundary, without
+credential lookup, secret collection, SDK initialization or live transport
+construction. It can load strictly over matching preinstalled replayers with
+an empty supplied set. Logical effects, HTTP recordings, execution checkpoints
+and host launch settings remain separate products. Pinned by `run_binding.rs`
+and the cassette world's resume/replay matrix.
 
 The binding's saved shape changed with the provider vocabulary, and there is
 no legacy reader: a checkpoint written before the cutover does not load.
