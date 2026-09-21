@@ -1,7 +1,7 @@
 //! Code generation for `#[rig_tool]`.
 
 use convert_case::{Case, Casing};
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use std::ops::Deref;
 use syn::{Attribute, Expr, ExprLit, Lit, Meta, PathArguments, ReturnType, Type};
@@ -154,6 +154,9 @@ pub(crate) fn expand_rig_tool(
     // generated JSON schema.
     let mut model_params = Vec::new();
     let mut call_arguments = Vec::new();
+    // Generated locals must not shadow the original function, even in a nested scope.
+    let arguments_ident = format_ident!("args", span = Span::mixed_site());
+    let context_ident = format_ident!("_context", span = Span::mixed_site());
     let mut context: Option<(&syn::PatType, syn::Ident)> = None;
 
     for arg in input_fn.sig.inputs.iter() {
@@ -181,7 +184,7 @@ pub(crate) fn expand_rig_tool(
                 ));
             };
             context = Some((pat_type, param_ident.ident.clone()));
-            call_arguments.push(quote! { _context });
+            call_arguments.push(quote! { #context_ident });
             continue;
         }
 
@@ -193,7 +196,7 @@ pub(crate) fn expand_rig_tool(
         };
 
         let ident = &param_ident.ident;
-        call_arguments.push(quote! { args.#ident });
+        call_arguments.push(quote! { #arguments_ident.#ident });
         model_params.push(ModelParam {
             ident,
             ty: &pat_type.ty,
@@ -312,13 +315,14 @@ pub(crate) fn expand_rig_tool(
         quote!(#tool_module::PortableTool)
     };
 
-    let context_arg = has_context.then(|| quote! { _context: &mut #tool_module::ToolContext, });
+    let context_arg =
+        has_context.then(|| quote! { #context_ident: &mut #tool_module::ToolContext, });
     let await_suffix = is_async.then(|| quote!(.await));
     let call_impl = quote! {
         async fn call(
             &self,
             #context_arg
-            args: Self::Args,
+            #arguments_ident: Self::Args,
         ) -> Result<Self::Output, Self::Error> {
             #fn_name(#(#call_arguments),*) #await_suffix
         }
