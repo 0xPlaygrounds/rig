@@ -15,20 +15,19 @@ async fn _context(
 }
 
 #[tokio::test]
-async fn function_named_args_is_not_shadowed() -> Result<(), ToolExecutionError> {
+async fn function_named_args_is_not_shadowed() {
     let result = PortableTool::call(
         &Args,
         ArgsParameters {
             value: "portable".into(),
         },
     )
-    .await?;
-    assert_eq!(result, "portable");
-    Ok(())
+    .await;
+    assert_eq!(result.ok().as_deref(), Some("portable"));
 }
 
 #[tokio::test]
-async fn function_named_context_is_not_shadowed() -> Result<(), ToolExecutionError> {
+async fn function_named_context_is_not_shadowed() {
     let result = Tool::call(
         &Context,
         &mut ToolContext::new(),
@@ -36,21 +35,21 @@ async fn function_named_context_is_not_shadowed() -> Result<(), ToolExecutionErr
             value: "contextual".into(),
         },
     )
-    .await?;
-    assert_eq!(result, "contextual");
-    Ok(())
+    .await;
+    assert_eq!(result.ok().as_deref(), Some("contextual"));
 }
 
 #[tokio::test]
-async fn nested_free_function_keeps_lexical_resolution() -> Result<(), ToolExecutionError> {
+async fn nested_free_function_keeps_lexical_resolution() {
     #[rig_tool]
     fn args(value: u32) -> Result<u32, ToolExecutionError> {
         Ok(value + 1)
     }
 
     assert_eq!(
-        PortableTool::call(&Args, ArgsParameters { value: 41 }).await?,
-        42
+        PortableTool::call(&Args, ArgsParameters { value: 41 })
+            .await
+            .ok(),
+        Some(42)
     );
-    Ok(())
 }

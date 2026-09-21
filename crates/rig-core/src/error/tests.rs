@@ -36,13 +36,16 @@ fn retrieval_wrapping_preserves_embedding_error_classification() {
 
 /// These are normalization contracts over captured parts, not provider wire behavior.
 #[test]
-fn vector_http_reports_preserve_response_details() -> Result<(), Box<dyn std::error::Error>> {
+fn vector_http_reports_preserve_response_details() {
     let body = " {\n  \"error\": {\"code\": \"quota_exceeded\", \"message\": \"café\"}\n}\n";
     let mut headers = http::HeaderMap::new();
     headers.insert("retry-after", http::HeaderValue::from_static("7"));
     headers.append("x-metadata", http::HeaderValue::from_static("first"));
     headers.append("x-metadata", http::HeaderValue::from_static("second"));
-    headers.insert("x-opaque", http::HeaderValue::from_bytes(b"\x80")?);
+    let Ok(opaque) = http::HeaderValue::from_bytes(b"\x80") else {
+        panic!("opaque header must be representable");
+    };
+    headers.insert("x-opaque", opaque);
     let mut request_id = http::HeaderValue::from_static("not-provider-identified");
     request_id.set_sensitive(true);
     headers.insert("x-request-id", request_id);
@@ -82,13 +85,11 @@ fn vector_http_reports_preserve_response_details() -> Result<(), Box<dyn std::er
     assert_eq!(report.message, error.to_string());
     assert_eq!(report.source_chain, chain);
     assert_eq!(ErrorReport::from(error), report);
-    Ok(())
 }
 
 /// Both store reply paths must use the existing response code and status policy.
 #[test]
-fn vector_reply_reports_preserve_machine_codes_and_status_retryability()
--> Result<(), Box<dyn std::error::Error>> {
+fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
     let bodies = [
         (
             r#"{"error":{"code":"quota_exceeded","status":"ignored","type":"ignored"}}"#,
@@ -128,7 +129,9 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability()
         (599, true),
         (600, false),
     ] {
-        let status = StatusCode::from_u16(status)?;
+        let Ok(status) = StatusCode::from_u16(status) else {
+            panic!("invalid test status");
+        };
         for (body, code) in bodies {
             let transport = http_client::Error::non_success_with_details(
                 status,
@@ -168,7 +171,6 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability()
             }
         }
     }
-    Ok(())
 }
 
 #[test]

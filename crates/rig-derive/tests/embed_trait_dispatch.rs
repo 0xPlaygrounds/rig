@@ -23,8 +23,10 @@ struct Document {
 }
 
 #[test]
-fn annotated_field_uses_its_embed_trait() -> Result<(), EmbedError> {
-    Leaf.embed(&mut TextEmbedder::default())?;
-    assert_eq!(to_texts(Document { leaf: Leaf })?, vec!["trait"]);
-    Ok(())
+fn annotated_field_uses_its_embed_trait() {
+    assert!(Leaf.embed(&mut TextEmbedder::default()).is_ok());
+    assert_eq!(
+        to_texts(Document { leaf: Leaf }).ok(),
+        Some(vec!["trait".to_owned()])
+    );
 }

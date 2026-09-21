@@ -12,7 +12,7 @@ async fn capture(
 }
 
 #[test]
-fn typed_raw_response_can_be_stored_and_recovered() -> Result<(), Box<dyn std::error::Error>> {
+fn typed_raw_response_can_be_stored_and_recovered() -> anyhow::Result<()> {
     // Tie the named type to the real method without constructing a client or making an RPC.
     let _ = capture;
     let raw: VertexGenerateContentOutput = serde_json::from_value(serde_json::json!({
@@ -25,27 +25,27 @@ fn typed_raw_response_can_be_stored_and_recovered() -> Result<(), Box<dyn std::e
     }))?;
     let saved = SavedResponse(raw);
     let VertexGenerateContentOutput(wire) = saved.0;
-    assert_eq!(wire.response_id, "offline-vertex-response");
-    assert_eq!(
+    anyhow::ensure!(wire.response_id == "offline-vertex-response");
+    anyhow::ensure!(
         wire.candidates
             .first()
-            .map(|candidate| candidate.avg_logprobs),
-        Some(-0.25)
+            .map(|candidate| candidate.avg_logprobs)
+            == Some(-0.25)
     );
 
     let response: CompletionResponse = VertexGenerateContentOutput(wire).try_into()?;
-    assert!(
+    anyhow::ensure!(
         matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hello")
     );
     let restored: VertexGenerateContentOutput = serde_json::from_value(response.raw)?;
-    assert_eq!(restored.0.response_id, "offline-vertex-response");
-    assert_eq!(
+    anyhow::ensure!(restored.0.response_id == "offline-vertex-response");
+    anyhow::ensure!(
         restored
             .0
             .candidates
             .first()
-            .map(|candidate| candidate.avg_logprobs),
-        Some(-0.25)
+            .map(|candidate| candidate.avg_logprobs)
+            == Some(-0.25)
     );
     Ok(())
 }

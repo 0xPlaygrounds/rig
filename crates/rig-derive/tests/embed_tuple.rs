@@ -25,31 +25,35 @@ struct Named<T> {
 }
 
 #[test]
-fn tuple_fields_keep_their_original_indices() -> Result<(), EmbedError> {
+fn tuple_fields_keep_their_original_indices() {
     let document = BasicTuple(7, "first".into(), false, "second".into());
     assert_eq!(document.0, 7);
     assert!(!document.2);
-    assert_eq!(to_texts(document)?, vec!["first", "second"]);
-    Ok(())
+    assert_eq!(
+        to_texts(document).ok(),
+        Some(vec!["first".to_owned(), "second".to_owned()])
+    );
 }
 
 #[test]
-fn generic_tuple_supports_basic_and_custom_fields() -> Result<(), EmbedError> {
+fn generic_tuple_supports_basic_and_custom_fields() {
     let document = MixedTuple(false, "body", 9, 42);
     assert!(!document.0);
     assert_eq!(document.2, 9);
-    assert_eq!(to_texts(document)?, vec!["body", "count:42"]);
-    Ok(())
+    assert_eq!(
+        to_texts(document).ok(),
+        Some(vec!["body".to_owned(), "count:42".to_owned()])
+    );
 }
 
 #[test]
-fn named_fields_retain_basic_and_custom_dispatch() -> Result<(), EmbedError> {
+fn named_fields_retain_basic_and_custom_dispatch() {
     assert_eq!(
         to_texts(Named {
             body: "body",
             count: 42
-        })?,
-        vec!["body", "count:42"],
+        })
+        .ok(),
+        Some(vec!["body".to_owned(), "count:42".to_owned()]),
     );
-    Ok(())
 }
