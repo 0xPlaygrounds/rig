@@ -10408,7 +10408,6 @@ version = "0.42.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "fastrand",
  "futures",
  "http 1.4.2",
  "indexmap 2.14.0",
@@ -10552,7 +10551,6 @@ dependencies = [
  "futures-timer",
  "glob",
  "http 1.4.2",
- "indexmap 2.14.0",
  "lopdf",
  "mime",
  "mime_guess",
@@ -10560,7 +10558,6 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "ordered-float",
- "pin-project-lite",
  "proptest",
  "quick-xml",
  "redis",
@@ -10633,11 +10630,8 @@ dependencies = [
  "anyhow",
  "fastembed",
  "rig-core",
- "schemars 1.2.1",
  "serde",
- "serde_json",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -10655,7 +10649,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tokio-stream",
  "tonic 0.14.6",
  "tonic-build",
  "tonic-prost",
@@ -10720,7 +10713,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -10778,7 +10770,6 @@ dependencies = [
  "testcontainers",
  "tokio",
  "tokio-test",
- "tracing",
  "tracing-subscriber",
  "uuid",
 ]
@@ -10810,12 +10801,9 @@ dependencies = [
  "reqwest 0.13.4",
  "reqwest-middleware",
  "rig-core",
- "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
- "tracing",
  "tracing-subscriber",
  "url",
 ]
@@ -10848,7 +10836,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tracing",
  "tracing-subscriber",
  "uuid",
 ]
@@ -10859,7 +10846,6 @@ version = "0.42.0"
 dependencies = [
  "anyhow",
  "chrono",
- "futures",
  "httpmock",
  "rig-core",
  "rig-reqwest",
@@ -10901,7 +10887,6 @@ name = "rig-sqlite"
 version = "0.42.0"
 dependencies = [
  "anyhow",
- "chrono",
  "httpmock",
  "rig-core",
  "rig-reqwest",
@@ -10927,9 +10912,7 @@ dependencies = [
  "serde_json",
  "surrealdb",
  "tokio",
- "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

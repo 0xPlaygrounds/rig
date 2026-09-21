@@ -9,10 +9,14 @@
 //!    README artwork, the Nix flake, `examples/` data and a `tests/` tree that
 //!    cannot compile from the package at all - its `rig-test-support` dev
 //!    dependency is path-only, so Cargo strips it when publishing.
+//! 2. **A manifest asks for what the crate uses.** A `[dependencies]` entry no
+//!    source ever names is still resolved, still built and still part of every
+//!    consumer's supply chain. `rig-bedrock` pulled the `rig-derive`
+//!    proc-macro into every consumer for the sake of two examples.
 //!
-//! The file list comes from `cargo package --list` and the package set from
-//! `cargo metadata`, so this checks what Cargo will actually publish rather
-//! than re-implementing its include rules.
+//! Manifest data comes from `cargo metadata` and the file list from
+//! `cargo package --list`, so this checks what Cargo will actually do rather
+//! than re-implementing its manifest parsing.
 //!
 //! # Why this only ever runs `cargo package --list`
 //!
@@ -78,6 +82,16 @@ const CRATES_IO_CAP: u64 = 10 * 1024 * 1024;
 /// Raising it is fine, as a reviewed diff, which is the point.
 const SIZE_CEILING: u64 = 8 * 1024 * 1024;
 
+/// Dependencies a crate really needs but never names in a checked-in file,
+/// with the reason. Code a build script writes into `OUT_DIR` is not on disk
+/// to scan, so the one crate with a build script needs its generated code's
+/// dependency spelled out here.
+const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[(
+    "rig-gemini-grpc",
+    "tonic-prost",
+    "named by the tonic service code build.rs generates into OUT_DIR",
+)];
+
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let metadata = metadata(workspace, &["--no-deps"])?;
     let packages = packages(&metadata)?;
@@ -85,11 +99,12 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let mut failures = Vec::new();
     failures.extend(facade_ships_only_its_source(workspace)?);
     failures.extend(packages_stay_under_the_ceiling(workspace, &packages)?);
+    failures.extend(dependencies_are_used(&packages)?);
 
     if failures.is_empty() {
         println!(
-            "ok: the facade publishes only its allowlist and {} published crates are under \
-             {SIZE_CEILING} B uncompressed",
+            "ok: the facade publishes only its allowlist, and {} published crates are under \
+             {SIZE_CEILING} B uncompressed and name only dependencies their sources use",
             packages.len()
         );
         return Ok(());
@@ -175,6 +190,61 @@ fn packages_stay_under_the_ceiling(
     Ok(failures)
 }
 
+/// 3. Every non-target dependency a published crate declares is named by its
+///    own sources. Target-conditional entries are exempt: a `cfg`-gated
+///    dependency is sometimes present only to activate a feature on a crate
+///    another dependency pulls in.
+fn dependencies_are_used(packages: &BTreeMap<String, Package>) -> Result<Vec<String>, String> {
+    let mut failures = Vec::new();
+    for (name, package) in packages {
+        let sources = package.sources()?;
+        if sources.is_empty() {
+            return Err(format!(
+                "{name}: no source files found; refusing to pass vacuously"
+            ));
+        }
+        let mut unused: Vec<String> = Vec::new();
+        for dependency in &package.dependencies {
+            let identifier = dependency.identifier();
+            let generated = GENERATED_CODE_DEPENDENCIES
+                .iter()
+                .any(|(package, dep, _)| *package == name && *dep == dependency.name);
+            if !generated && !sources.iter().any(|source| names(source, &identifier)) {
+                unused.push(format!(
+                    "{} (as `{identifier}`)",
+                    dependency
+                        .rename
+                        .clone()
+                        .unwrap_or_else(|| dependency.name.clone())
+                ));
+            }
+        }
+        if !unused.is_empty() {
+            let refs: Vec<&str> = unused.iter().map(String::as_str).collect();
+            failures.push(format!(
+                "  {name}: `[dependencies]` names {} crate(s) no source under src/ or build.rs \
+                 uses. Delete them, or move them to `[dev-dependencies]` if only tests and \
+                 examples need them:\n{}",
+                unused.len(),
+                indent(&refs)
+            ));
+        }
+    }
+    Ok(failures)
+}
+
+/// Whether `source` uses `identifier` as a crate name: a whole word, not a
+/// substring of a longer path segment (`serde` must not match `serde_json`).
+fn names(source: &str, identifier: &str) -> bool {
+    let boundary =
+        |byte: Option<&u8>| !matches!(byte, Some(b) if b.is_ascii_alphanumeric() || *b == b'_');
+    let bytes = source.as_bytes();
+    source.match_indices(identifier).any(|(at, _)| {
+        boundary(at.checked_sub(1).and_then(|before| bytes.get(before)))
+            && boundary(bytes.get(at + identifier.len()))
+    })
+}
+
 fn indent(lines: &[&str]) -> String {
     lines
         .iter()
@@ -204,6 +274,49 @@ fn package_listing(workspace: &Path, name: &str) -> Result<Vec<String>, String> 
 
 struct Package {
     root: std::path::PathBuf,
+    dependencies: Vec<Dependency>,
+}
+
+struct Dependency {
+    name: String,
+    rename: Option<String>,
+}
+
+impl Dependency {
+    fn identifier(&self) -> String {
+        self.rename
+            .clone()
+            .unwrap_or_else(|| self.name.clone())
+            .replace('-', "_")
+    }
+}
+
+impl Package {
+    /// Every Rust source Cargo compiles into the library, plus its build script.
+    fn sources(&self) -> Result<Vec<String>, String> {
+        let mut sources = Vec::new();
+        let build = self.root.join("build.rs");
+        if build.is_file() {
+            sources.push(read(&build)?);
+        }
+        let mut stack = vec![self.root.join("src")];
+        while let Some(directory) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries {
+                let path = entry
+                    .map_err(|error| format!("{}: {error}", directory.display()))?
+                    .path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|extension| extension == "rs") {
+                    sources.push(read(&path)?);
+                }
+            }
+        }
+        Ok(sources)
+    }
 }
 
 fn read(path: &Path) -> Result<String, String> {
@@ -235,10 +348,26 @@ fn packages(metadata: &Value) -> Result<BTreeMap<String, Package>, String> {
                 .as_str()
                 .ok_or_else(|| format!("{name} has no manifest path"))?,
         );
+        let dependencies = field(package, "dependencies")
+            .as_array()
+            .ok_or_else(|| format!("{name} has no dependency list"))?
+            .iter()
+            .filter(|dependency| {
+                field(dependency, "kind").is_null() && field(dependency, "target").is_null()
+            })
+            .map(|dependency| Dependency {
+                name: field(dependency, "name")
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                rename: field(dependency, "rename").as_str().map(str::to_owned),
+            })
+            .collect();
         packages.insert(
             name,
             Package {
                 root: manifest.parent().unwrap_or(manifest).to_path_buf(),
+                dependencies,
             },
         );
     }
