@@ -150,6 +150,34 @@ fn request(app: &mut bevy_app::App) -> Result<(), ErrorReport> {
 
 #[test]
 fn explicit_policy_survives_live_reconstruction_and_replay_never_collects_secrets() {
+    // Isolate poisoned vendor inputs without mutating this process's environment
+    // or reading any real credential. Only the explicit token may reach the wire.
+    const ISOLATED: &str = "RIG_HOST_TEST_POISONED_VENDOR_INPUTS";
+    if std::env::var_os(ISOLATED).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "explicit_policy_survives_live_reconstruction_and_replay_never_collects_secrets",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env(ISOLATED, "1")
+            .env("GEMINI_API_KEY", "vendor-fallback-poison")
+            .env("GOOGLE_API_KEY", "vendor-fallback-poison")
+            .env(
+                "GOOGLE_APPLICATION_CREDENTIALS",
+                "/nonexistent-rig-test-credentials",
+            )
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     proxy.set_nonblocking(true).unwrap();
     let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
