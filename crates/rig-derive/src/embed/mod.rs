@@ -97,6 +97,14 @@ fn reject_conflicting_embed_attributes(data_struct: &DataStruct) -> syn::Result<
     Ok(())
 }
 
+// The index belongs to the entire struct, before annotation filtering.
+fn field_member(index: usize, field: &syn::Field) -> syn::Member {
+    field.ident.clone().map_or_else(
+        || syn::Member::Unnamed(syn::Index::from(index)),
+        syn::Member::Named,
+    )
+}
+
 trait StructParser {
     // Handles fields tagged with `#[embed]`
     fn basic(
@@ -117,10 +125,8 @@ impl StructParser for DataStruct {
     ) -> (TokenStream, usize) {
         let embed_targets = basic_embed_fields(self)
             // Iterate over every field tagged with `#[embed]`
-            .map(|field| {
+            .map(|(field_name, field)| {
                 add_struct_bounds(generics, &field.ty, embed_trait);
-
-                let field_name = &field.ident;
 
                 quote! {
                     self.#field_name
@@ -140,9 +146,7 @@ impl StructParser for DataStruct {
         let embed_targets = custom_embed_fields(self)?
             // Iterate over every field tagged with `#[embed(embed_with = "...")]`
             .into_iter()
-            .map(|(field, custom_func_path)| {
-                let field_name = &field.ident;
-
+            .map(|(field_name, custom_func_path)| {
                 quote! {
                     #custom_func_path(embedder, self.#field_name.clone())?;
                 }

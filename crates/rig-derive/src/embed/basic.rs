@@ -1,19 +1,26 @@
 use proc_macro2::TokenStream;
 use syn::{Attribute, DataStruct, Meta, parse_quote};
 
-use super::EMBED;
+use super::{EMBED, field_member};
 
 /// Finds and returns fields with simple `#[embed]` attribute tags only.
-pub(crate) fn basic_embed_fields(data_struct: &DataStruct) -> impl Iterator<Item = &syn::Field> {
-    data_struct.fields.iter().filter(|field| {
-        field.attrs.iter().any(|attribute| match attribute {
-            Attribute {
-                meta: Meta::Path(path),
-                ..
-            } => path.is_ident(EMBED),
-            _ => false,
+pub(crate) fn basic_embed_fields(
+    data_struct: &DataStruct,
+) -> impl Iterator<Item = (syn::Member, &syn::Field)> {
+    data_struct
+        .fields
+        .iter()
+        .enumerate()
+        .filter(|(_, field)| {
+            field.attrs.iter().any(|attribute| match attribute {
+                Attribute {
+                    meta: Meta::Path(path),
+                    ..
+                } => path.is_ident(EMBED),
+                _ => false,
+            })
         })
-    })
+        .map(|(index, field)| (field_member(index, field), field))
 }
 
 /// Adds bounds to where clause that force all fields tagged with `#[embed]` to implement the `Embed` trait.
