@@ -59,7 +59,7 @@ pub type MemoryBackendError = Box<dyn std::error::Error + 'static>;
 pub enum MemoryError {
     /// The backing store failed to load, append, or clear messages.
     #[error("Memory backend error: {0}")]
-    Backend(MemoryBackendError),
+    Backend(#[source] MemoryBackendError),
 
     /// A history-shaping filter or policy rejected the loaded history.
     #[error("Memory policy error: {0}")]

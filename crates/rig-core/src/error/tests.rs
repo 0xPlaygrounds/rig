@@ -583,3 +583,31 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
         assert!(report.request_id.is_none());
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("backend failed")]
+struct NestedBackendError(#[source] std::io::Error);
+
+#[test]
+fn wrapped_memory_error_retains_nested_sources() {
+    let error = MemoryError::backend(NestedBackendError(std::io::Error::other("disk")));
+    assert!(
+        std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.source_chain, vec!["backend failed", "disk"]);
+    assert_eq!(report.message, error.to_string());
+}
+
+#[test]
+fn wrapped_document_error_retains_nested_sources() {
+    let error = EmbeddingError::DocumentError(Box::new(NestedBackendError(std::io::Error::other(
+        "document",
+    ))));
+    assert!(
+        std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.source_chain, vec!["backend failed", "document"]);
+    assert_eq!(report.message, error.to_string());
+}
