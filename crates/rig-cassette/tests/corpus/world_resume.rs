@@ -19,7 +19,7 @@ use rig_cassette::effect_log::{Checkpoint, EffectLog, RequestCheck};
 use rig_ecs::{
     agent::{Cursor, Failed, MessageParts, Run, RunOf, RunPhase, Settled},
     bus::{EffectOutcome, IdCounter, RigSchedule},
-    checkpoint::{load_world, save_world},
+    checkpoint::{RestoreMode, load_world, save_world},
     systems::{Fresh, RunCommands},
 };
 
@@ -50,6 +50,7 @@ pub fn world_resume_reproduces(
         mut app,
         handlers,
         reached: _,
+        asks: _,
     } = open(program, &log, check);
     let world = app.world_mut();
     super::world_hooks::install(world, program);
@@ -173,12 +174,38 @@ pub fn world_resume_reproduces(
     // ticked to the golden's ending.
     let Opened {
         mut app,
-        handlers: _,
+        handlers: tail_handlers,
         reached,
+        asks,
     } = open(program, &continuation, check);
+    // A key the head dispatched to before the cut and the continuation
+    // never does (an outcome hook's note) has no replayer in the tail
+    // world, yet the checkpoint still requires it. The host builds those
+    // from the recording — never from a live provider — and hands them to
+    // the load, which installs them with the state they serve.
+    let served: std::collections::HashSet<_> =
+        tail_handlers.iter().map(|(key, _)| key.clone()).collect();
+    let supplied: Vec<_> = scene
+        .requirements()
+        .expect("the scene's requirements")
+        .into_iter()
+        .filter(|descriptor| !served.contains(&descriptor.key))
+        .map(|descriptor| {
+            let handler =
+                super::world::replayer_handler(program, &log, check, &descriptor.key, &asks);
+            (descriptor.key, handler)
+        })
+        .collect();
     let world = app.world_mut();
     world.resource_mut::<IdCounter>().0 = next_id;
-    let loaded = load_world(&scene, world).expect("the scene's handlers are bound");
+    // `Strict`: a resumed world serves exactly the implementations the head
+    // saved, whether it already had them or the host supplied them here.
+    let loaded = load_world(&scene, world, RestoreMode::Strict, supplied).unwrap_or_else(|error| {
+        panic!(
+            "{}: the scene's handlers are bound: {error}",
+            program.fixture
+        )
+    });
     let run = loaded
         .with::<Run>(world)
         .first()

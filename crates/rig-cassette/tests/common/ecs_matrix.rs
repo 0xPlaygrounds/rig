@@ -71,7 +71,7 @@ use rig_core::wire::Secret;
 use cells::Cell;
 use corpus::Program;
 use rig_core::providers::registry::ProviderConfig;
-use rig_ecs::bus::ProviderBinding;
+use rig_core::serve::ErasedHandler;
 
 /// The owner every producer names itself: the golden's keys are
 /// `golden/model:default`, `golden/tool:<name>#<n>`, `golden/memory`.
@@ -129,43 +129,36 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         self.route.clone().expect("the wire names a route model")
     }
 
-    /// The default model as data (CONTRACT §12): the `ProviderBinding` a
-    /// head world binds `golden/model:default` through instead of a
-    /// hand-registered adapter, beside what the harness `Materializer`
-    /// resolves and sends through — the head wire's own key (under the
-    /// reference [`CASSETTE_CREDENTIAL`]) and its own socket, so the
-    /// materialized model is the head model rebuilt: same model id, same
-    /// configuration, same credential, same cassette. `None` for a model the
-    /// harness cannot describe (a wrapped transport, a mock): that wire
-    /// stays hand-registered.
+    /// The default model as configuration data (CONTRACT §12): the recipe a
+    /// *host* rebuilds `golden/model:default` from, instead of the harness
+    /// hand-registering the wire's own adapter — the head wire's
+    /// configuration without its credential, its model id, and, held beside
+    /// the recipe and never in a world, the head wire's own key and socket.
+    /// A client the host builds from this is the head model rebuilt: same
+    /// model id, same configuration, same credential, same cassette. `None`
+    /// for a model the harness cannot describe (a wrapped transport, a
+    /// mock): that wire stays hand-registered.
     ///
     /// A bound wire already holds the provider's configuration, so the
-    /// binding carries *that* — dialect, host and every typed option
+    /// recipe carries *that* — dialect, host and every typed option
     /// included — rather than a re-description of it. No dialect is
-    /// undescribable any more: what used to need an enum variant per vendor
-    /// is now the configuration itself. The one thing the arms add is the
-    /// route, because a concrete wire says which endpoint it is and a
+    /// undescribable: what used to need an enum variant per vendor is now
+    /// the configuration itself. The one thing the arms add is the route,
+    /// because a concrete wire says which endpoint it is and a
     /// configuration whose dialect flagships the other one would otherwise
     /// rebuild the wrong grammar.
     pub(crate) fn binding(&self) -> Option<WireBinding> {
         let model: &dyn std::any::Any = &self.model;
-        let key = format!("{OWNER}/model:default");
         let describe = |config: ProviderConfig,
                         model_id: &str,
                         api_key: &Secret,
                         transport: &BoxedHttpClient| {
             Some(WireBinding {
-                // The credential is a *reference* in the world: the
-                // configuration the binding holds carries none, and the
-                // harness resolver supplies the head wire's key at
-                // materialization.
-                binding: ProviderBinding::configured(
-                    key.clone(),
-                    config.with_credential(""),
-                    model_id,
-                    CASSETTE_CREDENTIAL,
-                )
-                .labelled("default"),
+                // The credential is the host's: the configuration that
+                // travels as data carries none, and the host supplies the
+                // head wire's key when it builds the client.
+                config: config.with_credential(""),
+                model: model_id.to_owned(),
                 api_key: api_key.expose().to_owned(),
                 transport: transport.clone(),
             })
@@ -219,17 +212,38 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     }
 }
 
-/// The credential reference every wire binding names; the harness
-/// resolver maps it to the cassette's key.
-pub(crate) const CASSETTE_CREDENTIAL: &str = "cassette";
+/// The adapter label the default model's handler carries, on both sides:
+/// the hand-registered adapter's and the one a host builds from [`WireBinding`].
+pub(crate) const DEFAULT_LABEL: &str = "default";
 
-/// A wire's default model as a binding, with what the harness
-/// `Materializer` needs to rebuild the head model from it.
+/// A wire's default model as host-owned configuration, with the two things
+/// a host needs beside it to rebuild the head model: the credential and the
+/// socket. Neither is ever written to a world, so neither is ever saved.
 pub(crate) struct WireBinding {
-    /// The binding, under `golden/model:default`.
-    pub(crate) binding: ProviderBinding,
-    /// The head wire's key: what `cassette` resolves to.
+    /// The provider configuration, credential-free: the part that is data.
+    pub(crate) config: ProviderConfig,
+    /// The provider's own model identifier.
+    pub(crate) model: String,
+    /// The head wire's key, supplied at construction by the host alone.
     pub(crate) api_key: String,
-    /// The head wire's socket: what the factory hands every binding.
+    /// The head wire's socket: what the host binds the rebuilt client to.
     pub(crate) transport: BoxedHttpClient,
+}
+
+impl WireBinding {
+    /// The completion handler this recipe describes, built here — in the
+    /// host — and served under the harness IO runtime, as a hand-registered
+    /// adapter is. Replay never calls this: a resumed world is handed the
+    /// handlers its checkpoint requires, live or recorded, by whoever opens it.
+    pub(crate) fn handler(&self, runtime: &tokio::runtime::Handle) -> ErasedHandler {
+        let handler = self
+            .config
+            .clone()
+            .with_credential(self.api_key.clone())
+            .completion_handler(DEFAULT_LABEL, &self.model, self.transport.clone());
+        ErasedHandler::new(crate::ecs_agent::RuntimeHandler {
+            inner: std::sync::Arc::new(handler),
+            runtime: runtime.clone(),
+        })
+    }
 }

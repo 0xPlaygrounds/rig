@@ -109,9 +109,7 @@
 //! [`WorldOutcome`], whatever the family. Streaming answers from a system are not
 //! offered (a system answers unary effects).
 
-pub mod binding;
 pub mod collect;
-pub mod diagnostics;
 pub mod dispatch;
 pub mod effect;
 pub mod handlers;
@@ -122,15 +120,7 @@ pub mod reflect;
 pub mod stream_delivery;
 pub mod witness;
 
-pub use binding::{
-    CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
-    ProviderBinding, Secret, materialize, materialize_bindings,
-};
 pub use collect::{Landed, Landing, StreamingView, collect_streams, collect_tasks, settle};
-pub use diagnostics::{
-    BindingReport, CredentialGuidance, ProviderDiagnostics, RegisteredProvider,
-    provider_diagnostics,
-};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
     Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,

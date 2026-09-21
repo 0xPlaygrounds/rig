@@ -81,12 +81,21 @@ enum Command {
 }
 
 /// A socket living on the fallback runtime, reached over channels.
+///
+/// The connection — not any one `recv()` — owns the actor: a cancelled read is
+/// an ordinary event the actor must survive (it keeps the frame it already
+/// took off the socket), while dropping the connection means the socket has no
+/// remaining user and must be released now.
 pub(crate) struct ForwardedConnection {
     commands: futures::channel::mpsc::Sender<Command>,
+    /// Held for its drop, which ends the actor even when the actor is parked
+    /// somewhere it cannot notice the command channel close — a write to a
+    /// peer that stopped reading.
+    _actor: crate::runtime::OwnedTask<()>,
 }
 
-/// The actor's end of the connection went away — it only stops when the
-/// fallback runtime is torn down, which means the process is on its way out.
+/// The actor's end of the connection went away: it has already completed a
+/// close handshake, or the fallback runtime was torn down under it.
 #[derive(Debug, thiserror::Error)]
 #[error("the websocket connection task has stopped")]
 struct ConnectionTaskGone;
@@ -224,8 +233,11 @@ impl ForwardedConnection {
         // a time, and a bound keeps a runaway caller from queueing frames the
         // socket has not accepted.
         let (commands, requests) = futures::channel::mpsc::channel::<Command>(1);
-        crate::runtime::spawn_off_runtime(run_actor(socket, requests))?;
-        Ok(Box::new(Self { commands }))
+        let actor = crate::runtime::spawn_off_runtime(run_actor(socket, requests))?;
+        Ok(Box::new(Self {
+            commands,
+            _actor: actor,
+        }))
     }
 
     /// Send one command and await its answer.

@@ -50,6 +50,44 @@ pub struct Opened {
     pub app: App,
     pub handlers: Vec<(HandlerKey, Entity)>,
     pub reached: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The suspending layer's world, where the program names one: a host
+    /// building a further handler for this world layers it the same way.
+    pub asks: Option<super::Asks>,
+}
+
+/// Which of the program's layer positions `key` is, if any.
+fn layer_at(owner: &str, key: &HandlerKey) -> Option<super::LayerAt> {
+    match key.as_str() {
+        k if k == format!("{owner}/tool:add#0") => Some(super::LayerAt::Tool),
+        k if k == format!("{owner}/model:default") => Some(super::LayerAt::Model),
+        k if k == format!("{owner}/memory") => Some(super::LayerAt::Memory),
+        super::NOTE_KEY => Some(super::LayerAt::Note),
+        _ => None,
+    }
+}
+
+/// The handler [`open`] registers for `key`, built from `log`: the
+/// recorded replayer under the program's layers, where the program names
+/// one at that key. A host resuming a checkpoint builds the
+/// implementations its destination does not already serve this way — from
+/// the recording, never from a live provider.
+pub fn replayer_handler(
+    program: &Program,
+    log: &rig_cassette::effect_log::EffectLog,
+    check: RequestCheck,
+    key: &HandlerKey,
+    asks: &Option<super::Asks>,
+) -> rig_core::serve::ErasedHandler {
+    let replayer = EffectLogReplayer::for_key(log, key)
+        .unwrap_or_else(|error| panic!("{}: `{key}` has a replayer: {error}", program.fixture))
+        .checking(check);
+    let handler = rig_core::serve::ErasedHandler::new(replayer);
+    match layer_at(program.owner, key) {
+        Some(at) if program.layers.iter().any(|spec| spec.at == at) => {
+            super::layered(handler, program, at, asks)
+        }
+        _ => handler,
+    }
 }
 
 pub fn open(
@@ -106,15 +144,7 @@ pub fn open(
         })
         .map(|answer| approval_world(answer, std::sync::Arc::clone(&reached)));
     let owner = program.owner.to_owned();
-    let layer_at = |key: &HandlerKey| -> Option<super::LayerAt> {
-        match key.as_str() {
-            k if k == format!("{owner}/tool:add#0") => Some(super::LayerAt::Tool),
-            k if k == format!("{owner}/model:default") => Some(super::LayerAt::Model),
-            k if k == format!("{owner}/memory") => Some(super::LayerAt::Memory),
-            super::NOTE_KEY => Some(super::LayerAt::Note),
-            _ => None,
-        }
-    };
+    let layer_at = |key: &HandlerKey| layer_at(&owner, key);
     let mut handler_entities: Vec<(HandlerKey, Entity)> = Vec::new();
     Handlers::with(world, |handlers| {
         for replayer in EffectLogReplayer::for_log(log).expect("the golden's replayers") {
@@ -170,6 +200,7 @@ pub fn open(
         app,
         handlers: handler_entities,
         reached,
+        asks,
     }
 }
 
@@ -181,6 +212,7 @@ pub fn world_agent_reproduces(program: &Program) {
         mut app,
         handlers: handler_entities,
         reached,
+        asks: _,
     } = open(program, &log, RequestCheck::Payload);
     let world = app.world_mut();
     super::world_hooks::install(world, program);

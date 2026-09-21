@@ -8,7 +8,7 @@ use rig_ecs::{
         Failed, Failure, Grant, MaxTurns, Output, OutputKind, OutputRetries, OutputToolConfig,
         OutputToolName, Run, RunResult, Settled, ToolChoiceSpec,
     },
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -294,7 +294,7 @@ fn a_checkpoint_restores_custom_configuration_in_a_fresh_world() {
         vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
     );
     register(&mut restored, MODEL, model);
-    load_world(&checkpoint, restored.world_mut()).unwrap();
+    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()

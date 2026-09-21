@@ -22,7 +22,7 @@ use rig_ecs::{
         Failed, Failure, MessageParts, Owner, Prompt, Ready, Run, RunOf, RunPhase, Settled,
         Utterance,
     },
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{Fresh, RunBusy, RunCommands, RunDespawnRefused, spawn_utterance},
 };
 use run_support::*;
@@ -275,7 +275,7 @@ fn a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads() {
             .expect("the agent");
         agent.insert(path.to_owned(), value);
         let count = app.world().entities().len();
-        let error = load_world(&misplaced, app.world_mut()).unwrap_err();
+        let error = load_world(&misplaced, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
         assert!(
             error.message.contains(&format!("{name} is not on a run")),
             "{name}: {}",
@@ -363,7 +363,8 @@ fn a_ready_run_saved_before_it_opened_starts_after_the_load() {
     let (model, requests) = Capturing::new("t/model:m", "hello");
     register(&mut app, "t/model:m", model);
     let saved = Checkpoint::from_json(&json).expect("serde");
-    let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
+    let loaded =
+        load_world(&saved, app.world_mut(), RestoreMode::Strict, []).expect("the model is bound");
     let run = loaded.with::<Run>(app.world())[0];
     let world = app.world_mut();
     assert!(

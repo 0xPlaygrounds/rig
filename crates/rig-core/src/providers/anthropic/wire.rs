@@ -124,6 +124,11 @@ impl Dialect {
 
 impl Serialize for Dialect {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if Self::by_name(self.name).as_ref() != Some(self) {
+            return Err(serde::ser::Error::custom(
+                "an unregistered or modified Anthropic dialect cannot be persisted by name; use configuration overrides",
+            ));
+        }
         serializer.serialize_str(self.name)
     }
 }

@@ -1,11 +1,12 @@
 //! A checkpoint is the world as reflected data: every entity with a
 //! registered reflected component, each component under its type path, an
 //! `Entity` in a component as the index of that entity in the checkpoint.
-//! [`save_world`] takes it; [`load_world`] spawns it into a world — the
-//! host's handlers kept where the checkpoint's keys meet them, in-flight
-//! effects re-issued under their saved ids, the binary store merged — after
-//! validating the whole of it in a scratch world, so a refused checkpoint
-//! leaves the destination untouched.
+//! [`save_world`] takes it; [`load_world`] restores it with an explicit
+//! [`RestoreMode`] and a complete set of host-built or preinstalled handlers.
+//! Original saved descriptors are checked before aliasing. In-flight effects
+//! are re-issued under their saved ids and the binary store is merged only
+//! after preflight, so refusal leaves destination state and handlers untouched.
+//! Provider launch settings and live resources are not checkpoint components.
 //!
 //! What is saved is what is registered with the world's [`AppTypeRegistry`]
 //! as a component or a resource: the crate registers its own
@@ -16,6 +17,9 @@
 //! hooks of their sources at load, in checkpoint order — which is the
 //! world's `Children` order, parents before children.
 
+mod restore;
+pub use restore::{RestoreMode, load_world};
+
 use std::{any::TypeId, collections::HashMap};
 
 use bevy_ecs::{
@@ -25,7 +29,7 @@ use bevy_ecs::{
     resource::IsResource,
 };
 use bevy_reflect::{
-    PartialReflect, TypeRegistration, TypeRegistry,
+    PartialReflect, TypePath, TypeRegistration, TypeRegistry,
     serde::{
         ReflectDeserializerProcessor, ReflectSerializer, ReflectSerializerProcessor,
         TypedReflectDeserializer,
@@ -303,16 +307,15 @@ impl ReflectDeserializerProcessor for Remapped<'_> {
     }
 }
 
-/// A checkpoint entity that carries a `Bound` the destination already
-/// serves under the same key merges into that entity: the existing handler
-/// wins, and every link to the checkpoint's handler resolves to it.
+/// Reuse destination entities for matching dispatch keys. Implementation
+/// selection and original-descriptor validation belong to restoration preflight.
 fn aliases(checkpoint: &Checkpoint, world: &World) -> Result<HashMap<usize, Entity>, ErrorReport> {
     let Some(index) = world.get_resource::<HandlerIndex>() else {
         return Ok(HashMap::new());
     };
     let mut aliases = HashMap::new();
     for (row, entity) in checkpoint.entities.iter().enumerate() {
-        let Some(bound) = entity.get(std::any::type_name::<Bound>()) else {
+        let Some(bound) = entity.get(Bound::type_path()) else {
             continue;
         };
         let bound: Bound = serde_json::from_value(bound.clone())
@@ -436,6 +439,23 @@ fn spawn_into(
 /// Every invariant a loaded graph must hold, checked in the scratch world.
 fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
     for &entity in entities {
+        // A resumable unfinished operation needs a saved dispatch contract.
+        // Do not infer accepted input families from advertised metadata:
+        // open world handlers may deliberately inspect arbitrary effects.
+        if let Some(pending) = world.get::<PendingEffect>(entity)
+            && world.get::<EffectOutcome>(entity).is_none()
+        {
+            world
+                .resource::<HandlerIndex>()
+                .entity(&pending.key)
+                .and_then(|handler| world.get::<Bound>(handler))
+                .ok_or_else(|| {
+                    refused(format!(
+                        "unfinished effect requires missing saved handler `{}`",
+                        pending.key
+                    ))
+                })?;
+        }
         if world
             .get::<Streamed>(entity)
             .is_some_and(|streamed| !streamed.events.is_empty() || !streamed.errors.is_empty())
@@ -530,18 +550,37 @@ fn wire_expansion(world: &mut World) -> Result<(), ErrorReport> {
     Ok(())
 }
 
-/// Load `checkpoint` into `world`: validated in a scratch world first, so a
-/// refusal leaves `world` untouched; the binary store merged; a handler the
-/// world already serves under a checkpoint key kept, the checkpoint's links
-/// resolving to it; every effect taken but unanswered re-issued under its
-/// saved id. Install application observers after loading: an insertion
-/// observer would otherwise see a partially restored entity.
-pub fn load_world(checkpoint: &Checkpoint, world: &mut World) -> Result<Loaded, ErrorReport> {
+/// Preflight the original reflected graph and binary store without mutating
+/// the destination. Handler completeness is validated separately.
+fn validated_state(
+    checkpoint: &Checkpoint,
+    world: &World,
+) -> Result<(BinaryAssets, HashMap<usize, Entity>), ErrorReport> {
     if checkpoint.format != CHECKPOINT_FORMAT {
         return Err(refused(format!(
             "load refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
             checkpoint.format
         )));
+    }
+    // Removed components retain frozen historical wire identifiers; live
+    // components use reflected TypePath identity, independent of Rust modules.
+    for entity in &checkpoint.entities {
+        if let Some(path) = entity.keys().find(|path| {
+            matches!(
+                path.as_str(),
+                "rig_ecs::bus::binding::ProviderBinding" | "rig_ecs::bus::binding::CredentialRef"
+            )
+        }) {
+            return Err(refused(format!(
+                "format-{} checkpoint contains removed `{path}`: migrate provider launch settings to the host, then validate the execution-only checkpoint",
+                checkpoint.format
+            )));
+        }
+    }
+    if !world.contains_resource::<SeqCounter>() || !world.contains_resource::<IdCounter>() {
+        return Err(refused(
+            "the world has no execution counters: install RigPlugin first",
+        ));
     }
     let registry = world
         .get_resource::<AppTypeRegistry>()
@@ -554,29 +593,42 @@ pub fn load_world(checkpoint: &Checkpoint, world: &mut World) -> Result<Loaded, 
         .merged(&checkpoint.binaries)
         .map_err(|error| refused(error.to_string()))?;
     let aliases = aliases(checkpoint, world)?;
-    // The scratch world: the same registry and store, a placeholder for
-    // every merged handler, and nothing else.
+    // Validate the original graph, including every saved descriptor. Aliasing
+    // in the destination must not hide malformed or inconsistent saved data.
     let mut scratch = World::new();
     scratch.insert_resource(registry);
     scratch.insert_resource(assets);
     scratch.init_resource::<SeqCounter>();
     scratch.init_resource::<IdCounter>();
     scratch.init_resource::<HandlerIndex>();
-    let scratch_aliases: HashMap<usize, Entity> = aliases
-        .keys()
-        .map(|row| (*row, scratch.spawn_empty().id()))
-        .collect();
-    let scratch_entities = spawn_into(checkpoint, &mut scratch, &scratch_aliases)?;
+    let scratch_entities = spawn_into(checkpoint, &mut scratch, &HashMap::new())?;
     validate(&mut scratch, &scratch_entities)?;
     let assets = scratch
         .remove_resource::<BinaryAssets>()
         .ok_or_else(|| refused("validated asset store missing"))?;
+    Ok((assets, aliases))
+}
+
+fn load_state(
+    checkpoint: &Checkpoint,
+    world: &mut World,
+    assets: BinaryAssets,
+    aliases: HashMap<usize, Entity>,
+) -> Result<Loaded, ErrorReport> {
     world.insert_resource(assets);
     let entities = spawn_into(checkpoint, world, &aliases)?;
     Ok(Loaded { entities })
 }
 
 impl Checkpoint {
+    /// Validate saved execution data without installing state or constructing
+    /// implementations. Hosts can call this before side-effectful assembly.
+    /// Handler compatibility and completeness are checked by [`load_world`].
+    pub fn validate(&self, world: &World) -> Result<(), ErrorReport> {
+        self.requirements()?;
+        validated_state(self, world).map(|_| ())
+    }
+
     /// The checkpoint as JSON text.
     pub fn to_json(&self) -> Result<String, ErrorReport> {
         serde_json::to_string(self).map_err(|error| refused(error.to_string()))

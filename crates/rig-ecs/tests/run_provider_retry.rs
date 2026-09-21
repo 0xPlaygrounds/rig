@@ -41,7 +41,7 @@ use rig_ecs::{
         RunResult, Settled,
     },
     bus::{Bound, BusSet, Held, PendingEffect, RigSchedule, Witnessing},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -428,7 +428,8 @@ fn a_checkpoint_saved_during_the_hold_resumes_into_the_retry() {
         },
     );
     register(&mut app, ADD, Adder::new(ADD));
-    let loaded = load_world(&saved, app.world_mut()).expect("the handlers are bound");
+    let loaded = load_world(&saved, app.world_mut(), RestoreMode::Strict, [])
+        .expect("the handlers are bound");
     let run = loaded.with::<rig_ecs::agent::Run>(app.world())[0];
     assert_eq!(retried(app.world(), run), 1, "the spent retry is restored");
     for held in holding(&mut app) {

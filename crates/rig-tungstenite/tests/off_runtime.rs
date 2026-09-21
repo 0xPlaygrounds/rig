@@ -20,19 +20,29 @@ use rig_tungstenite::{DefaultWebSocketBuilder as _, DefaultWebSocketClient as _}
 use std::sync::mpsc;
 use std::time::Duration;
 
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    futures::executor::block_on(rig_core::wasm_compat::timeout(
+        std::time::Duration::from_secs(10),
+        future,
+    ))
+    .expect("client operation deadline")
+}
+
 /// Serve one websocket turn on its own tokio runtime, on its own thread: the
 /// server needs a reactor even though the client under test must not have one.
 ///
 /// With `events` empty the server accepts the turn and then goes quiet, which
 /// is what an event timeout has to survive.
 fn serve_one_turn(events: Vec<String>) -> String {
-    serve_one_turn_after(Duration::ZERO, events)
+    serve_one_turn_after(None, events)
 }
 
-/// [`serve_one_turn`], holding the events back for `delay` after the request
-/// arrives, so a test can cancel a read while the frame is provably not yet on
-/// the wire.
-fn serve_one_turn_after(delay: Duration, events: Vec<String>) -> String {
+/// Hold events until the caller releases them, so a cancelled read cannot
+/// race a sleeping server waking up on a loaded machine.
+fn serve_one_turn_after(
+    release: Option<futures::channel::oneshot::Receiver<()>>,
+    events: Vec<String>,
+) -> String {
     use futures::{SinkExt, StreamExt};
 
     let (address_tx, address_rx) = mpsc::channel();
@@ -42,53 +52,58 @@ fn serve_one_turn_after(delay: Duration, events: Vec<String>) -> String {
             .build()
             .expect("server runtime should build");
         runtime.block_on(async move {
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-                .await
-                .expect("bind");
-            address_tx
-                .send(listener.local_addr().expect("address"))
-                .expect("address should send");
-
-            let (stream, _) = listener.accept().await.expect("accept");
-            let mut socket = tokio_tungstenite::accept_async(stream)
-                .await
-                .expect("upgrade");
-
-            let request = socket
-                .next()
-                .await
-                .expect("request should arrive")
-                .expect("request should be valid");
-            assert!(
-                request
-                    .into_text()
-                    .expect("request should be text")
-                    .contains("\"type\":\"response.create\""),
-                "the session should open the turn with response.create"
-            );
-
-            if !delay.is_zero() {
-                tokio::time::sleep(delay).await;
-            }
-
-            for event in events {
-                socket
-                    .send(tokio_tungstenite::tungstenite::Message::text(event))
+            let _ = tokio::time::timeout(Duration::from_secs(30), async move {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
                     .await
-                    .expect("event should send");
-            }
+                    .expect("bind");
+                address_tx
+                    .send(listener.local_addr().expect("address"))
+                    .expect("address should send");
 
-            // Wait for the client's close handshake so the assertion below is
-            // about a completed round trip, not a race.
-            while let Some(Ok(message)) = socket.next().await {
-                if message.is_close() {
-                    break;
+                let (stream, _) = listener.accept().await.expect("accept");
+                let mut socket = tokio_tungstenite::accept_async(stream)
+                    .await
+                    .expect("upgrade");
+
+                let request = socket
+                    .next()
+                    .await
+                    .expect("request should arrive")
+                    .expect("request should be valid");
+                assert!(
+                    request
+                        .into_text()
+                        .expect("request should be text")
+                        .contains("\"type\":\"response.create\""),
+                    "the session should open the turn with response.create"
+                );
+
+                if let Some(release) = release {
+                    release.await.expect("release events");
                 }
-            }
+
+                for event in events {
+                    socket
+                        .send(tokio_tungstenite::tungstenite::Message::text(event))
+                        .await
+                        .expect("event should send");
+                }
+
+                // Wait for the client's close handshake so the assertion below is
+                // about a completed round trip, not a race.
+                while let Some(Ok(message)) = socket.next().await {
+                    if message.is_close() {
+                        break;
+                    }
+                }
+            })
+            .await;
         });
     });
 
-    let address = address_rx.recv().expect("server should report its address");
+    let address = address_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("server should report its address");
     format!("http://{address}/v1")
 }
 
@@ -133,7 +148,7 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
         "this test is meaningless inside a tokio runtime"
     );
 
-    futures::executor::block_on(async move {
+    block_on(async move {
         let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
@@ -183,7 +198,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
         "this test is meaningless inside a tokio runtime"
     );
 
-    futures::executor::block_on(async move {
+    block_on(async move {
         let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
@@ -244,9 +259,10 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
     .to_string();
     // The server holds the delta back, so the read below is provably cancelled
     // before the frame exists — no timing race in either direction.
-    let base_url = serve_one_turn_after(Duration::from_millis(200), vec![delta]);
+    let (release, released) = futures::channel::oneshot::channel();
+    let base_url = serve_one_turn_after(Some(released), vec![delta]);
 
-    futures::executor::block_on(async move {
+    block_on(async move {
         let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
@@ -265,9 +281,10 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
         let cancelled =
             rig_core::wasm_compat::timeout(Duration::from_millis(20), session.next_event()).await;
         assert!(cancelled.is_err(), "the read should have been cancelled");
+        release.send(()).expect("release delta after cancellation");
 
-        // The delta arrives with no reader waiting; the next read must get it
-        // rather than hang for a frame the actor already consumed.
+        // The next read must get the released delta even if the actor had
+        // already accepted the abandoned read command.
         let event = rig_core::wasm_compat::timeout(Duration::from_secs(5), session.next_event())
             .await
             .expect("the next read must not hang waiting for a frame that already arrived")

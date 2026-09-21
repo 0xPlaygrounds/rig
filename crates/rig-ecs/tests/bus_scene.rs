@@ -29,7 +29,7 @@ use rig_core::{
 };
 use rig_ecs::{
     bus::{EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Reserved, Streamed, Typed},
-    checkpoint::{Checkpoint, Counters as SavedCounters, load_world},
+    checkpoint::{Checkpoint, Counters as SavedCounters, RestoreMode, load_world},
 };
 
 /// A golden log from the corpus.
@@ -56,7 +56,7 @@ fn completed_stream_survives_json_checkpoint_without_serving_again() {
     assert_eq!(before["events"].as_array().unwrap().len(), STREAM_CAP + 3);
     let saved = checkpoint(&mut live);
     let (mut restored, _, counters) = served();
-    let loaded = load_world(&saved, restored.world_mut()).unwrap();
+    let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let loaded = loaded.with::<PendingEffect>(restored.world())[0];
     tick(&mut restored, 3);
     let after = serde_json::to_value(
@@ -90,9 +90,12 @@ fn unfinished_stream_with_observed_progress_is_refused_before_spawning() {
     });
     assert!(live.world().get::<EffectOutcome>(effect).is_none());
     let saved = checkpoint(&mut live);
+    // The destination serves the saved key, so the refusal is about the
+    // stream's missing cursor and nothing else.
     let mut restored = app();
+    register(&mut restored, "model", MockModel::new(&counters));
     let before = restored.world().entities().len();
-    let error = load_world(&saved, restored.world_mut())
+    let error = load_world(&saved, restored.world_mut(), RestoreMode::Strict, [])
         .expect_err("no cursor to prevent duplicate delivery");
     assert!(error.message.contains("unfinished stream"), "{error:?}");
     assert_eq!(restored.world().entities().len(), before);
@@ -113,7 +116,7 @@ fn an_unfinished_stream_without_progress_restarts_under_its_saved_id() {
     let id = live.world().get::<Issued>(effect).unwrap().0;
     let saved = checkpoint(&mut live);
     let (mut resumed, _, resumed_counters) = served();
-    let loaded = load_world(&saved, resumed.world_mut()).unwrap();
+    let loaded = load_world(&saved, resumed.world_mut(), RestoreMode::Strict, []).unwrap();
     let loaded = loaded.with::<PendingEffect>(resumed.world())[0];
     tick_until(&mut resumed, "restarted stream completed", |world| {
         world.get::<EffectOutcome>(loaded).is_some()
@@ -165,7 +168,7 @@ fn a_checkpoint_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
     let counters = Arc::new(Counters::default());
     let mut app = bus_support::app();
     register(&mut app, "model", MockModel::saying(&counters, "again"));
-    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    let loaded = load_world(&saved, app.world_mut(), RestoreMode::Strict, []).unwrap();
     let loaded = loaded.with::<PendingEffect>(app.world());
     assert_eq!(loaded.len(), 4);
     tick_until(&mut app, "all answered", |world| {
@@ -469,7 +472,7 @@ fn a_loaded_checkpoint_never_collides_with_minted_ids() {
     let mut saved = checkpoint(&mut live);
     saved.counters.next_id = 0;
     let (mut app, _, _) = served();
-    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    let loaded = load_world(&saved, app.world_mut(), RestoreMode::Strict, []).unwrap();
     assert_eq!(loaded.with::<PendingEffect>(app.world()).len(), 3);
     let fresh = answered(&mut app, "minted");
     let minted = app.world().get::<Issued>(fresh).expect("issued").0;
@@ -496,12 +499,12 @@ fn pruned_effects_do_not_refund_issued_ids_after_checkpoint_load() {
         }
         let saved = checkpoint(&mut live);
         let (mut restored, _, _) = served();
-        load_world(&saved, restored.world_mut()).unwrap();
+        load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
         // A second checkpoint with no fresh dispatch must preserve the same
         // allocation history even when no effect entities survived.
         let saved = checkpoint(&mut restored);
         let (mut twice, _, _) = served();
-        load_world(&saved, twice.world_mut()).unwrap();
+        load_world(&saved, twice.world_mut(), RestoreMode::Strict, []).unwrap();
         let next = answered(&mut twice, "fresh dispatch after pruning");
         assert_eq!(
             twice.world().get::<Issued>(next).unwrap().0.as_u64(),
@@ -524,7 +527,7 @@ fn removed_reservations_remain_consumed_after_checkpoint_load() {
     live.world_mut().despawn(reserved);
     let saved = checkpoint(&mut live);
     let (mut restored, _, _) = served();
-    load_world(&saved, restored.world_mut()).unwrap();
+    load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let next = answered(&mut restored, "fresh dispatch after reservation");
     assert_eq!(restored.world().get::<Issued>(next).unwrap().0.as_u64(), 21);
 }
@@ -620,7 +623,7 @@ fn cancelled_highest_id_remains_consumed_after_checkpoint_load() {
     counters.hold.release();
     let mut restored = app();
     register(&mut restored, "model", MockModel::new(&counters));
-    load_world(&saved, restored.world_mut()).unwrap();
+    load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let fresh = answered(&mut restored, "after cancelled highest");
     assert_eq!(restored.world().get::<Issued>(fresh).unwrap().0.as_u64(), 2);
 }
@@ -641,7 +644,7 @@ fn checkpoint_counter_never_rewinds_a_used_destination_and_preserves_exhaustion(
             .world_mut()
             .resource_mut::<rig_ecs::bus::IdCounter>()
             .0 = 100;
-        load_world(&saved, restored.world_mut()).unwrap();
+        load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
         let expected = next_id.max(100);
         assert_eq!(
             restored.world().resource::<rig_ecs::bus::IdCounter>().0,
@@ -684,7 +687,7 @@ fn checkpoint_counter_never_rewinds_a_used_destination_and_preserves_exhaustion(
 #[test]
 fn an_exhausted_checkpoint_can_resume_an_existing_reservation_but_cannot_mint() {
     for reserved_id in [5, u64::MAX - 1] {
-        let mut live = app();
+        let (mut live, _, _) = served();
         live.world_mut().spawn((
             PendingEffect::new("model", completion()),
             Reserved(rig_core::effect::EffectId::from_raw(reserved_id)),
@@ -694,7 +697,7 @@ fn an_exhausted_checkpoint_can_resume_an_existing_reservation_but_cannot_mint() 
         assert_eq!(saved.counters.next_id, u64::MAX, "exhaustion is saved");
         let (mut restored, _, _) = served();
         EffectLogResource::install(restored.world_mut(), EffectLogRecorder::new());
-        let loaded = load_world(&saved, restored.world_mut()).unwrap();
+        let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
         let loaded = loaded.with::<PendingEffect>(restored.world())[0];
         tick_until(&mut restored, "resume with exhausted allocator", |world| {
             world.get::<EffectOutcome>(loaded).is_some()
@@ -776,7 +779,8 @@ fn a_malformed_checkpoint_is_refused_before_world_mutation() {
             .resource_mut::<rig_ecs::bus::IdCounter>()
             .0 = 5;
         let count = restored.world().entities().len();
-        let error = load_world(&bad, restored.world_mut()).expect_err(fault);
+        let error =
+            load_world(&bad, restored.world_mut(), RestoreMode::Strict, []).expect_err(fault);
         assert_eq!(error.kind, rig_core::error::ErrorKind::Request, "{fault}");
         assert_eq!(
             restored.world().entities().len(),

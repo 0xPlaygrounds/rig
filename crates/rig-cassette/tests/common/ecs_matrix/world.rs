@@ -81,10 +81,10 @@ use rig_ecs::{
         UsesModel, Utterance,
     },
     bus::{
-        BusSet, CredentialRef, EffectOutcome, Handlers, IdCounter, InFlight, Materializer,
-        PendingEffect, Policy, RigSchedule, Secret, Streamed, materialize_bindings,
+        BusSet, EffectOutcome, Handlers, IdCounter, InFlight, PendingEffect, Policy, RigSchedule,
+        Streamed,
     },
-    checkpoint::{load_world, save_world},
+    checkpoint::{RestoreMode, load_world, save_world},
     systems::{Fresh, RigSet, RunBusy, RunCommands},
 };
 use tokio::sync::Semaphore;
@@ -92,7 +92,7 @@ use tokio::sync::Semaphore;
 use super::cells::{Cell, Memory, ToolKind};
 use super::corpus::{self, CANCEL_ADD_OUTCOME, Ending, Hook, LayerAt, Program, Unhandled};
 use super::faults::{BROKEN_ORCHARD, FailingOrchard, Fault, Scene};
-use super::{CASSETTE_CREDENTIAL, WireBinding};
+use super::{DEFAULT_LABEL, WireBinding};
 use super::{OWNER, Wire};
 use crate::ecs_agent::{RuntimeHandler, io_runtime};
 use crate::goldens::{
@@ -538,71 +538,54 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             runtime: runtime.clone(),
         })
     };
-    // The default model as data (CONTRACT §12, §13): a head world whose
-    // wire the harness can describe, and whose stream is not gated, binds
-    // `golden/model:default` through a `ProviderBinding` the harness
-    // `Materializer` builds the client for — the head client rebuilt from
-    // the binding — so the scene it saves carries the binding and a world
-    // opened over that scene materializes the model from scene data
-    // instead of a hand-registered adapter. A gated model (`FirstDelta`)
-    // and a wire the harness cannot describe stay hand-registered, and a
-    // scene without the binding is served as it was.
+    // The default model as configuration data (CONTRACT §12, §13): a world
+    // whose wire the harness can describe, and whose stream is not gated,
+    // serves `golden/model:default` with a client the *host* builds from
+    // that configuration (`WireBinding::handler`) rather than with the
+    // wire's own adapter. Nothing of the recipe reaches the world, so the
+    // scene a head saves carries only the execution descriptor; the host
+    // rebuilds the same client for the restored world and hands it to
+    // `load_world`, which installs it as part of the load. A gated model
+    // (`FirstDelta`) and a wire the harness cannot describe stay
+    // hand-registered on both sides.
     let default_key = HandlerKey::from(format!("{OWNER}/model:default"));
-    let data_bound: Option<WireBinding> = match (gate, scene) {
-        (None, None) => wire.binding(),
-        (_, Some(scene))
-            if scene.entities.iter().any(|entity| {
-                entity
-                    .get(std::any::type_name::<rig_ecs::bus::ProviderBinding>())
-                    .and_then(|binding| binding.get("key"))
-                    .and_then(|key| key.as_str())
-                    == Some(default_key.as_str())
-            }) =>
-        {
-            Some(wire.binding().expect("the scene's binding is this wire's"))
-        }
-        _ => None,
-    };
+    let data_bound: Option<WireBinding> = gate.is_none().then(|| wire.binding()).flatten();
+    // Built before the load and supplied to it, never installed behind its back.
+    let mut supplied: Vec<(HandlerKey, ErasedHandler)> = Vec::new();
     let model: Option<Entity> = match &data_bound {
         Some(data) => {
-            install_materializer(world, data, &runtime);
+            let handler = data.handler(&runtime);
+            // The configuration captures the model id, base URL, credential
+            // and transport; the host-built handler must describe itself
+            // exactly as the hand-registered adapter over the wire's own
+            // model would, so a wire with model-level settings the
+            // configuration does not carry cannot diverge silently.
+            let by_hand = CompletionAdapter::new(DEFAULT_LABEL, wire.model.clone()).descriptor();
+            let built = handler.descriptor();
+            assert_eq!(
+                (&built.family, &built.layers),
+                (&by_hand.family, &by_hand.layers),
+                "the host-built descriptor is the hand-registered adapter's"
+            );
             if scene.is_some() {
-                // Spawned by the load, materialized after it.
+                // Installed by the load, atomically with the state it serves.
+                supplied.push((default_key.clone(), handler));
                 None
             } else {
-                world.spawn(data.binding.clone());
-                let report =
-                    materialize_bindings(world).expect("the head materializes its binding");
-                assert_eq!(report.materialized, vec![default_key.clone()]);
-                let entity = world
-                    .query_filtered::<Entity, With<rig_ecs::bus::ProviderBinding>>()
-                    .single(world)
-                    .expect("the binding's entity is the handler's");
-                // The binding captures the model id, base URL, credential
-                // and transport; the materialized handler must describe
-                // itself exactly as the hand-registered adapter over the
-                // wire's own model would, so a wire with model-level
-                // settings the binding does not carry cannot diverge
-                // silently.
-                let by_hand = CompletionAdapter::new("default", wire.model.clone()).descriptor();
-                let bound = world
-                    .get::<rig_ecs::bus::Bound>(entity)
-                    .expect("the materialized binding is bound");
-                assert_eq!(bound.key, default_key);
-                assert_eq!(bound.descriptor.key, default_key);
-                assert_eq!(
-                    (&bound.descriptor.family, &bound.descriptor.layers),
-                    (&by_hand.family, &by_hand.layers),
-                    "the materialized descriptor is the hand-registered adapter's"
-                );
-                Some(entity)
+                Some(
+                    Handlers::with(world, |handlers| {
+                        handlers.register_erased(default_key.clone(), handler)
+                    })
+                    .expect("bus installed")
+                    .expect("fresh model key"),
+                )
             }
         }
         None => {
             let model = match gate {
                 Some(tool) => ErasedHandler::new(RuntimeHandler {
                     inner: Arc::new(CompletionAdapter::new(
-                        "default",
+                        DEFAULT_LABEL,
                         FirstDelta {
                             inner: wire.model.clone(),
                             tool,
@@ -611,7 +594,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                     )),
                     runtime: runtime.clone(),
                 }),
-                None => model_handler(wire.model.clone(), "default"),
+                None => model_handler(wire.model.clone(), DEFAULT_LABEL),
             };
             Some(
                 Handlers::with(world, |handlers| {
@@ -767,16 +750,34 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     }
 
     let agent = if let Some(scene) = scene {
-        let loaded = load_world(scene, world).expect("the scene binds to fresh live handlers");
-        if data_bound.is_some() {
-            // The scene's binding, bound and unserved by the load, served now
-            // on the host's word: the client built from scene data.
-            let report =
-                materialize_bindings(world).expect("the restored world materializes its binding");
+        // The checkpoint's requirements name the saved execution descriptors
+        // and nothing about how to build them; the host has already built
+        // what it owns. Strict: a resumed cell serves exactly what it saved.
+        let expected = supplied
+            .iter()
+            .map(|(key, handler)| (key.clone(), handler.descriptor()))
+            .collect::<Vec<_>>();
+        let loaded = load_world(scene, world, RestoreMode::Strict, supplied)
+            .unwrap_or_else(|error| panic!("{}: the scene loads: {error}", cell.name));
+        for (key, descriptor) in expected {
+            // The host-built handler is the one serving the restored key,
+            // under the key the checkpoint saved rather than the one its
+            // adapter names itself.
+            let bound = world
+                .resource::<rig_ecs::bus::HandlerIndex>()
+                .entity(&key)
+                .and_then(|entity| world.get::<rig_ecs::bus::Bound>(entity))
+                .unwrap_or_else(|| panic!("{}: `{key}` is bound after the load", cell.name));
             assert_eq!(
-                report.materialized,
-                vec![default_key.clone()],
-                "{}: the restored model is materialized from scene data",
+                (&bound.key, &bound.descriptor.key),
+                (&key, &key),
+                "{}: the restored model answers the saved key",
+                cell.name
+            );
+            assert_eq!(
+                (&bound.descriptor.family, &bound.descriptor.layers),
+                (&descriptor.family, &descriptor.layers),
+                "{}: the restored model is the host's",
                 cell.name
             );
         }
@@ -869,34 +870,6 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         ),
     );
     (app, agent, recorder, gates)
-}
-
-/// The harness `Materializer`: `cassette` resolves to the head client's
-/// key, every client sends through the head client's transport, and each
-/// built adapter is served under the harness IO runtime as a hand-registered
-/// one is. Any other reference is refused.
-fn install_materializer(world: &mut World, data: &WireBinding, runtime: &tokio::runtime::Handle) {
-    let api_key = data.api_key.clone();
-    let transport = data.transport.clone();
-    let runtime = runtime.clone();
-    world.insert_resource(
-        Materializer::new(
-            move |credential: &CredentialRef| {
-                if credential.as_str() == CASSETTE_CREDENTIAL {
-                    Ok(Secret::from(api_key.clone()))
-                } else {
-                    Err(format!("the harness resolves only `{CASSETTE_CREDENTIAL}`"))
-                }
-            },
-            move || transport.clone(),
-        )
-        .serving(move |handler| {
-            ErasedHandler::new(RuntimeHandler {
-                inner: Arc::new(handler),
-                runtime: runtime.clone(),
-            })
-        }),
-    );
 }
 
 /// The run ended as the program says (the corpus's `assert_ending`, over
@@ -1689,7 +1662,10 @@ fn assert_failed_scene(
     let corpus::world::Opened { mut app, .. } =
         corpus::world::open(&program, log, RequestCheck::Payload);
     let world = app.world_mut();
-    let loaded = load_world(&saved, world)
+    // The replayers the destination already serves are the whole recorded
+    // implementation set: nothing is supplied, and `Strict` holds them to
+    // the descriptors the failed run saved.
+    let loaded = load_world(&saved, world, RestoreMode::Strict, [])
         .unwrap_or_else(|error| panic!("{}: a failed run's scene loads: {error}", cell.name));
     let run = loaded
         .with::<Run>(world)
@@ -1735,7 +1711,7 @@ fn assert_mid_stream_scene_refused(app: &mut App, cell: &Cell, program: &Program
     program.fixture = cell.name;
     let corpus::world::Opened { mut app, .. } =
         corpus::world::open(&program, log, RequestCheck::Payload);
-    let error = load_world(&saved, app.world_mut())
+    let error = load_world(&saved, app.world_mut(), RestoreMode::Strict, [])
         .err()
         .unwrap_or_else(|| {
             panic!(
@@ -2130,12 +2106,37 @@ fn resume(
     program.fixture = cell.name;
     let corpus::world::Opened {
         mut app,
-        handlers: _,
+        handlers: tail_handlers,
         reached,
+        asks,
     } = corpus::world::open(&program, &continuation, RequestCheck::Payload);
+    // A key the head dispatched to before the cut and the continuation
+    // never does has no replayer in the tail world, yet the checkpoint
+    // still requires it: the host builds it from the whole recording and
+    // supplies it to the load.
+    let served: std::collections::HashSet<_> =
+        tail_handlers.iter().map(|(key, _)| key.clone()).collect();
+    let supplied: Vec<_> = scene
+        .requirements()
+        .expect("the scene's requirements")
+        .into_iter()
+        .filter(|descriptor| !served.contains(&descriptor.key))
+        .map(|descriptor| {
+            let handler = corpus::world::replayer_handler(
+                &program,
+                log,
+                RequestCheck::Payload,
+                &descriptor.key,
+                &asks,
+            );
+            (descriptor.key, handler)
+        })
+        .collect();
     let world = app.world_mut();
     world.resource_mut::<IdCounter>().0 = next_id;
-    let loaded = load_world(&scene, world).expect("the scene's handlers are bound");
+    // `Strict`: the resumed world serves exactly what the head saved.
+    let loaded = load_world(&scene, world, RestoreMode::Strict, supplied)
+        .unwrap_or_else(|error| panic!("{}: the scene's handlers are bound: {error}", cell.name));
     let run = loaded
         .with::<Run>(world)
         .first()

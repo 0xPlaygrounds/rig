@@ -9,7 +9,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Failed, MessageParts, RequestPatch, Turn, Utterance, content::parts::*},
     bus::{PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{Fresh, RunCommands},
 };
 
@@ -89,7 +89,7 @@ fn edit_target_is_remapped_with_the_checkpoint() {
     world.spawn((RequestPartEdit::Remove, EditTarget(target), ChildOf(turn)));
     let checkpoint = save_world(&mut world).unwrap();
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
-    let loaded = load_world(&checkpoint, &mut world).unwrap();
+    let loaded = load_world(&checkpoint, &mut world, RestoreMode::Strict, []).unwrap();
     let link = loaded.with::<RequestPartEdit>(&world)[0];
     let remapped = world.get::<EditTarget>(link).unwrap().0;
     assert_ne!(remapped, target);
@@ -144,7 +144,7 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
     ));
     let checkpoint = save_world(&mut world).unwrap();
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
-    let loaded = load_world(&checkpoint, &mut world).unwrap();
+    let loaded = load_world(&checkpoint, &mut world, RestoreMode::Strict, []).unwrap();
     let link = loaded.with::<RequestPartEdit>(&world)[0];
     let remapped = world.get::<EditTarget>(link).unwrap().0;
     let remapped_result = world.get::<ChildOf>(remapped).unwrap().parent();

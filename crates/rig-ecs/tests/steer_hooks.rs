@@ -33,7 +33,7 @@ use rig_ecs::{
         Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
     bus::{Handlers, PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{Fresh, RigSet, RunCommands},
 };
 use run_support::*;
@@ -364,6 +364,8 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     let loaded = load_world(
         &Checkpoint::from_json(&json).expect("serde"),
         app.world_mut(),
+        RestoreMode::Strict,
+        [],
     )
     .expect("loads");
     let turn = loaded.with::<rig_ecs::agent::Turn>(app.world())[0];
@@ -423,6 +425,8 @@ fn reload(
     let loaded = load_world(
         &Checkpoint::from_json(json).expect("serde"),
         app.world_mut(),
+        RestoreMode::Strict,
+        [],
     )
     .expect("loads");
     let run = loaded.with::<rig_ecs::agent::Run>(app.world())[0];
@@ -539,7 +543,7 @@ fn a_checkpoint_preserves_invalid_call_identity_namespaces() {
         },
     );
     let count = destination.world().entities().len();
-    let error = load_world(&legacy, destination.world_mut())
+    let error = load_world(&legacy, destination.world_mut(), RestoreMode::Strict, [])
         .expect_err("legacy component identities must fail load");
     assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
     assert!(

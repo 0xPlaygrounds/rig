@@ -31,11 +31,18 @@
 //! # Running without a tokio runtime
 //!
 //! Async reqwest needs a tokio reactor on native targets. Inside a tokio
-//! runtime this transport awaits reqwest futures directly. Outside one —
-//! Bevy task pools, smol, `futures::executor::block_on` — it drives them on a
-//! lazily started single-worker fallback runtime and hands the caller plain
-//! runtime-agnostic futures (a tokio `JoinHandle`, a `futures` channel receiver
-//! for streamed bodies), so nothing is ever `block_on`'d and no thread parks.
+//! runtime this transport captures its handle. Outside one — Bevy task pools,
+//! smol, `futures::executor::block_on` — it uses a lazily started single-worker
+//! fallback reactor. Requests and bodies enter that context on each poll;
+//! they remain owned by the caller, without detached forwarding tasks. Dropping
+//! them cancels their local operation, not remote work already accepted.
+//!
+//! A host-supplied runtime must enable I/O and timers and remain driven until
+//! requests and bodies finish. A runtime handle alone does not keep it alive.
+//! Stop admitting work, cancel/drop operations, then release clients and shut
+//! down the host runtime. Context detection cannot verify an enabled reactor:
+//! polling under a runtime without I/O/timers can panic in Tokio. A stopped
+//! runtime cannot be restarted by retaining its handle; in-flight I/O fails.
 
 pub use reqwest;
 
@@ -212,26 +219,8 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
     Error::non_success_with_details(status, headers, body)
 }
 
-/// When the body is read.
-///
-/// The two moments look alike and are not interchangeable: the caller decides
-/// which by whether it can still poll reqwest when it awaits the body.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum BodyTiming {
-    /// Hand back a body future the caller awaits later. Only valid where the
-    /// caller can poll reqwest futures — inside a tokio runtime, or on wasm.
-    Lazy,
-    /// Read the body now and hand back a ready future. This is the off-runtime
-    /// path: the future it returns may be polled by an executor that cannot
-    /// drive reqwest, so nothing reqwest-shaped may survive into it.
-    Eager,
-}
-
-/// Build the transport-agnostic response, reading the body at `timing`.
-async fn into_response<U>(
-    response: reqwest::Response,
-    timing: BodyTiming,
-) -> Result<Response<LazyBody<U>>>
+/// Keep successful bodies lazy and owned by the response on every executor.
+async fn into_response<U>(response: reqwest::Response) -> Result<Response<LazyBody<U>>>
 where
     U: From<Bytes>,
     U: WasmCompatSend + 'static,
@@ -245,30 +234,15 @@ where
         *headers = response.headers().clone();
     }
 
-    let body: LazyBody<U> = match timing {
-        BodyTiming::Lazy => Box::pin(async {
-            let bytes = response.bytes().await.map_err(Error::instance)?;
-            Ok(U::from(bytes))
-        }),
-        BodyTiming::Eager => {
-            let bytes = response.bytes().await.map_err(Error::instance)?;
-            Box::pin(std::future::ready(Ok(U::from(bytes))))
-        }
+    let body = async {
+        let bytes = response.bytes().await.map_err(Error::instance)?;
+        Ok(U::from(bytes))
     };
-
+    #[cfg(not(target_family = "wasm"))]
+    let body = runtime::bind(body)?;
+    let body: LazyBody<U> = Box::pin(body);
     res.body(body).map_err(Error::Protocol)
 }
-
-/// The timing the off-runtime side of [`drive`] needs.
-///
-/// On wasm there is no fallback runtime and no off-runtime path, so the body
-/// stays lazy; natively the off-runtime side must not hand reqwest futures to
-/// an executor that cannot poll them.
-const OFF_RUNTIME_TIMING: BodyTiming = if cfg!(target_family = "wasm") {
-    BodyTiming::Lazy
-} else {
-    BodyTiming::Eager
-};
 
 fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
     #[cfg(not(target_family = "wasm"))]
@@ -287,8 +261,7 @@ fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
 
 /// Convert an already-sent streaming response into the transport-agnostic
 /// [`StreamingResponse`], rejecting non-success statuses with the
-/// headers-preserving error. The byte stream is reqwest's own, so this is
-/// only valid where the caller can poll reqwest futures.
+/// headers-preserving error. The body retains the request's reactor context.
 async fn into_streaming_response(response: reqwest::Response) -> Result<StreamingResponse> {
     if !response.status().is_success() {
         return Err(non_success_status_error(response).await);
@@ -296,39 +269,12 @@ async fn into_streaming_response(response: reqwest::Response) -> Result<Streamin
     let res = streaming_head(&response);
 
     use futures::StreamExt;
-    let mapped_stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(
-        response
-            .bytes_stream()
-            .map(|chunk| chunk.map_err(Error::instance)),
-    );
-
-    res.body(mapped_stream).map_err(Error::Protocol)
-}
-
-/// Off-runtime streaming: the body is *driven* on the fallback runtime and
-/// forwarded through a bounded channel; the caller's executor polls only the
-/// receiver, which is a plain `futures` stream.
-#[cfg(not(target_family = "wasm"))]
-async fn into_forwarded_streaming_response(
-    response: reqwest::Response,
-) -> Result<StreamingResponse> {
-    if !response.status().is_success() {
-        return Err(non_success_status_error(response).await);
-    }
-    let res = streaming_head(&response);
-
-    use futures::{SinkExt, StreamExt};
-    let (mut tx, rx) = futures::channel::mpsc::channel::<Result<Bytes>>(16);
-    runtime::spawn_off_runtime(async move {
-        let mut body = response.bytes_stream();
-        while let Some(chunk) = body.next().await {
-            if tx.send(chunk.map_err(Error::instance)).await.is_err() {
-                // Receiver dropped: the consumer stopped reading.
-                break;
-            }
-        }
-    })?;
-    let stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(rx);
+    let stream = response
+        .bytes_stream()
+        .map(|chunk| chunk.map_err(Error::instance));
+    #[cfg(not(target_family = "wasm"))]
+    let stream = runtime::bind_stream(stream)?;
+    let stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(stream);
     res.body(stream).map_err(Error::Protocol)
 }
 
@@ -450,35 +396,17 @@ impl RequestBuilderLike for reqwest_middleware::RequestBuilder {
     }
 }
 
-/// Drive `request` and convert its response on whichever side can poll
-/// reqwest: directly when inside tokio (or on wasm), on the fallback runtime
-/// otherwise — in which case `off_runtime` must produce a response whose
-/// body no longer needs reqwest to be polled.
-async fn drive<B, T, OnRt, OffRt, FutOn, FutOff>(
-    request: B,
-    on_runtime: OnRt,
-    off_runtime: OffRt,
-) -> Result<T>
+/// Select a reactor on first poll and retain it through response conversion.
+async fn drive<B, T, Convert, F>(request: B, convert: Convert) -> Result<T>
 where
     B: RequestBuilderLike,
-    T: WasmCompatSend + 'static,
-    OnRt: FnOnce(reqwest::Response) -> FutOn + WasmCompatSend + 'static,
-    FutOn: Future<Output = Result<T>> + WasmCompatSend,
-    OffRt: FnOnce(reqwest::Response) -> FutOff + WasmCompatSend + 'static,
-    FutOff: Future<Output = Result<T>> + WasmCompatSend,
+    Convert: FnOnce(reqwest::Response) -> F + WasmCompatSend,
+    F: Future<Output = Result<T>> + WasmCompatSend,
 {
+    let operation = async move { convert(request.send_request().await?).await };
     #[cfg(not(target_family = "wasm"))]
-    if !runtime::in_tokio() {
-        return runtime::run_off_runtime(async move {
-            let response = request.send_request().await?;
-            off_runtime(response).await
-        })
-        .await?;
-    }
-    #[cfg(target_family = "wasm")]
-    let _ = &off_runtime;
-    let response = request.send_request().await?;
-    on_runtime(response).await
+    let operation = runtime::bind(operation)?;
+    operation.await
 }
 
 fn send_via<C, T, U>(
@@ -496,11 +424,7 @@ where
         .with_headers(parts.headers)
         .with_body(body.into().into());
 
-    drive(
-        req,
-        |response| into_response::<U>(response, BodyTiming::Lazy),
-        |response| into_response::<U>(response, OFF_RUNTIME_TIMING),
-    )
+    drive(req, into_response::<U>)
 }
 
 fn send_multipart_via<C, U>(
@@ -523,14 +447,7 @@ where
             .with_multipart(form)
     });
 
-    async move {
-        drive(
-            req?,
-            |response| into_response::<U>(response, BodyTiming::Lazy),
-            |response| into_response::<U>(response, OFF_RUNTIME_TIMING),
-        )
-        .await
-    }
+    async move { drive(req?, into_response::<U>).await }
 }
 
 fn send_streaming_via<C, T>(
@@ -547,11 +464,7 @@ where
         .with_headers(parts.headers)
         .with_body(body.into().into());
 
-    #[cfg(not(target_family = "wasm"))]
-    let off = into_forwarded_streaming_response;
-    #[cfg(target_family = "wasm")]
-    let off = into_streaming_response;
-    drive(req, into_streaming_response, off)
+    drive(req, into_streaming_response)
 }
 
 macro_rules! impl_http_client_ext_via {

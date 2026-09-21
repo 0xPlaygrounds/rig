@@ -75,10 +75,34 @@ impl OpenAiWire {
     /// The wire for `model` on `provider`'s
     /// [`completion_route`](OpenAI::completion_route).
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
-        match provider.completion_route() {
+        let model = model.into();
+        let route = provider.route.unwrap_or_else(|| {
+            provider
+                .dialect
+                .quirks
+                .hooks
+                .and_then(|hooks| hooks.model_route)
+                .map_or_else(|| provider.completion_route(), |route| route(&model))
+        });
+        match route {
             Route::Chat => Self::Chat(Chat::new(provider, model)),
             Route::Responses => Self::Responses(Responses::new(provider, model)),
         }
+    }
+
+    /// A wrapper owning the envelope replaces the dialect's envelope here,
+    /// before either encoder consumes the completion request.
+    pub(crate) fn encode_with_headers(
+        &self,
+        request: CompletionRequest,
+        mode: Mode,
+        headers: impl FnOnce(
+            &OpenAI,
+            &CompletionRequest,
+            http::request::Builder,
+        ) -> http::request::Builder,
+    ) -> Result<Encoded, CompletionError> {
+        on_route!(self, wire => wire.encode_with_headers(request, mode, headers))
     }
 
     /// The configuration this wire speaks to.

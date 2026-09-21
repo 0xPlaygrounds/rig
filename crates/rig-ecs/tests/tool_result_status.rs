@@ -27,7 +27,7 @@ use rig_ecs::{
         content::parts::{ContentPart, ToolResultStatus, read_message},
     },
     bus::RigSchedule,
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
 use run_support::*;
@@ -312,7 +312,7 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
     );
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     // Loaded beside the original, into the world its handlers are bound in.
-    let loaded = load_world(&checkpoint, app.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, []).unwrap();
     let after: Vec<_> = results(app.world_mut())
         .into_iter()
         .filter(|(utterance, _, _)| loaded.entities.contains(utterance))
@@ -347,7 +347,7 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
         .unwrap();
     text.insert(type_name::<ToolResultStatus>().to_owned(), status);
     let count = app.world().entities().len();
-    let error = load_world(&misplaced, app.world_mut()).unwrap_err();
+    let error = load_world(&misplaced, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
     assert!(
         error.message.contains("tool result status"),
         "{}",

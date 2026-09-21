@@ -15,7 +15,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Failed, Grant, Output, OutputKind, PolicyVersion, Settled, Temperature},
     bus::{Bound, EffectOutcome, Handlers, PendingEffect},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -177,7 +177,9 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     Replay::default()
         .register(restored.world_mut(), &log)
         .unwrap();
-    load_world(&checkpoint, restored.world_mut())
+    // The registered replayers already serve every saved key under the
+    // descriptors the log recorded for them.
+    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, [])
         .expect("all scope dependencies were reconstructed");
     let unexpected = restored
         .world_mut()

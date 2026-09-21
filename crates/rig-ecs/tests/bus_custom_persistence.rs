@@ -8,7 +8,7 @@ use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::effect::CustomEffect;
 use rig_ecs::{
     bus::{Answer, Asked, EffectOutcome, Handlers, PendingEffect},
-    checkpoint::load_world,
+    checkpoint::{RestoreMode, load_world},
 };
 use serde_json::{Value, json};
 
@@ -106,7 +106,14 @@ where
     );
 
     let mut restored = bus_support::app();
-    let loaded = load_world(&saved, restored.world_mut()).unwrap();
+    // `echo` was served by a system, so the destination binds it the same way
+    // rather than being handed a task handler.
+    Handlers::with(restored.world_mut(), |handlers| {
+        handlers.register_world::<E>("echo")
+    })
+    .unwrap()
+    .unwrap();
+    let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let loaded = loaded.with::<PendingEffect>(restored.world())[0];
     restored.update();
     assert_eq!(

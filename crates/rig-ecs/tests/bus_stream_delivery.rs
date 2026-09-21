@@ -120,7 +120,9 @@ fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none()
     use rig_cassette::ecs::EffectLogResource;
     use rig_cassette::ecs::Replay;
     use rig_cassette::effect_log::EffectLogRecorder;
-    use rig_ecs::checkpoint::load_world;
+    use rig_cassette::effect_log::EffectLogReplayer;
+    use rig_core::serve::ErasedHandler;
+    use rig_ecs::checkpoint::{RestoreMode, load_world};
     let mut live = bus_support::app();
     let recorder = EffectLogRecorder::keeping_stream_events();
     EffectLogResource::install(live.world_mut(), recorder.clone());
@@ -140,7 +142,15 @@ fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none()
     drop(replay);
     let mut restored = bus_support::app();
     let restored_trace = observe(&mut restored);
-    load_world(&saved, restored.world_mut()).unwrap();
+    // The saved handler is the replayer that answered the stream; the restored
+    // world is served by the same recorded implementation, supplied here
+    // rather than assembled live. No delivery plan travels with it.
+    let log = recorder.log();
+    let replayers = EffectLogReplayer::for_log_by_id(&log)
+        .unwrap()
+        .into_iter()
+        .map(|replayer| (replayer.key().clone(), ErasedHandler::new(replayer)));
+    load_world(&saved, restored.world_mut(), RestoreMode::Strict, replayers).unwrap();
     restored.update();
     assert!(restored_trace.lock().unwrap().is_empty());
     assert_eq!(

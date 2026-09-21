@@ -813,7 +813,12 @@ fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
 
 #[test]
 fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
-    use rig_ecs::{bus::Issued, checkpoint::load_world};
+    use rig_cassette::effect_log::EffectLogReplayer;
+    use rig_core::serve::ErasedHandler;
+    use rig_ecs::{
+        bus::{HandlerIndex, Issued},
+        checkpoint::{RestoreMode, load_world},
+    };
     let (log, _) = ordered_live(false);
     let mut first = log.clone();
     first.records.truncate(1);
@@ -829,6 +834,15 @@ fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
     bus_support::tick_until(&mut head, "head complete", |world| {
         world.get::<EffectOutcome>(answered).is_some()
     });
+    // The unfinished tail must carry its advertised contract in the saved
+    // graph even though the head has not dispatched it yet.
+    for replayer in EffectLogReplayer::for_log_by_id(&log.tail(1)).unwrap() {
+        rig_ecs::bus::Handlers::with(head.world_mut(), |handlers| {
+            handlers.register_erased(replayer.key().clone(), ErasedHandler::new(replayer))
+        })
+        .unwrap()
+        .unwrap();
+    }
     let tail_effect = head
         .world_mut()
         .spawn((
@@ -841,7 +855,24 @@ fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
     for replay_log in [log.clone(), log.tail(1)] {
         let mut restored = bus_support::app();
         replaying(&mut restored, &replay_log);
-        let loaded = load_world(&saved, restored.world_mut()).unwrap();
+        // A tail says nothing about the key its head already answered, so the
+        // host supplies that saved key's recorded implementation itself. The
+        // full log already describes both, and a supplied handler always
+        // replaces — hence only the keys `replaying` left unserved.
+        let supplied: Vec<_> = EffectLogReplayer::for_log_by_id(&first)
+            .unwrap()
+            .into_iter()
+            .filter(|replayer| {
+                restored
+                    .world()
+                    .resource::<HandlerIndex>()
+                    .entity(replayer.key())
+                    .is_none()
+            })
+            .map(|replayer| (replayer.key().clone(), ErasedHandler::new(replayer)))
+            .collect();
+        let loaded =
+            load_world(&saved, restored.world_mut(), RestoreMode::Strict, supplied).unwrap();
         let loaded = loaded.with::<PendingEffect>(restored.world());
         assert_eq!(loaded.len(), 2);
         bus_support::tick_until(&mut restored, "resumed subset", |world| {
