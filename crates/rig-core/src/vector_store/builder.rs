@@ -57,16 +57,19 @@ where
     }
 
     /// Add documents with auto-generated IDs.
-    /// IDs will have the form `"doc{n}"` where `n` is the index.
+    /// IDs have the form `"doc{n}"`, starting at the current document count and
+    /// skipping occupied IDs so existing documents are never overwritten.
     pub fn documents(mut self, documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) -> Self {
-        let current_index = self.embeddings.len();
-        documents
-            .into_iter()
-            .enumerate()
-            .for_each(|(i, (doc, embeddings))| {
-                self.embeddings
-                    .insert(format!("doc{}", i + current_index), (doc, embeddings));
-            });
+        let mut index = self.embeddings.len();
+        for (doc, embeddings) in documents {
+            let mut id = format!("doc{index}");
+            while self.embeddings.contains_key(&id) {
+                index += 1;
+                id = format!("doc{index}");
+            }
+            self.embeddings.insert(id, (doc, embeddings));
+            index += 1;
+        }
         self
     }
 
