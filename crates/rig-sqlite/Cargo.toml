@@ -22,7 +22,6 @@ sqlite-vec = { workspace = true }
 thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
-chrono = { workspace = true }
 
 [dev-dependencies]
 rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }

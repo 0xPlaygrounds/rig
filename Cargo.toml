@@ -12,6 +12,49 @@ autoexamples = false
 # The published tarball no longer sweeps the provider cassettes: they live with
 # the engine that reads them (`crates/rig-cassette/fixtures/cassettes`), which
 # Cargo skips here because it is its own package.
+#
+# This manifest is both the workspace root and the `rig` facade package, so the
+# package directory is the whole repository and `cargo package` sweeps it: CI
+# workflows, README artwork, the Nix flake, release tooling, `examples/` data
+# and a `tests/` tree that cannot compile from the tarball at all, since its
+# `rig-test-support` dev dependency is path-only and Cargo strips it when
+# publishing. The facade's own source is one file of re-exports.
+#
+# An allowlist, not an exclude list (#2349): "not shipped" is the safe default,
+# so this does not need extending every time the repository grows a directory,
+# and it is the only form that keeps out untracked-but-unignored files - cargo
+# packages whatever happens to be lying next to the manifest at publish time.
+#
+# NOTE: this is [package].include and must stay ABOVE the [workspace] header.
+# Below it, it parses as `workspace.include` and is ignored with only an
+# unused-key warning. The `exclude` further down is [workspace].exclude, which
+# is member discovery - a different key. `include` and `exclude` cannot coexist
+# on [package]: `include` wins and `exclude` goes inert.
+#
+# Patterns need the leading `/`. Cargo's globs are gitignore-style and match at
+# any depth, so an unanchored "README.md" would also pull in
+# `examples/README.md` and `tests/README.md`.
+#
+# LICENSE must be listed explicitly: `license = "MIT"` is an SPDX expression,
+# not `license-file`, so cargo does not add the file on its own.
+#
+# Packaging emits a `warning: ignoring test 'x'` line per test target. Do NOT
+# silence those with `autotests = false`: that stops local discovery too and
+# recreates the "tests run in no CI job" hole in the `default-members` comment
+# below (#2258). `cargo xtask check-packaging` gates the result.
+include = [
+    "/src/**",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/MIGRATING.md",
+    # Referenced by README.md, which registries render from the tarball. The
+    # other five img/ files are referenced by nothing and stay out.
+    "/img/rig-rebranded-logo-white.svg",
+    "/img/rig-rebranded-logo-black.svg",
+    "/img/built-by-playgrounds.svg",
+    "/img/ryzome-bg.png",
+]
 
 [package.metadata.docs.rs]
 all-features = true

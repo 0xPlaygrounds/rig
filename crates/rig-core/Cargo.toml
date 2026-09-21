@@ -31,7 +31,6 @@ bytes = { workspace = true }
 epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
-indexmap = { workspace = true }
 lopdf = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }
@@ -47,7 +46,6 @@ url = { workspace = true }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 fastrand = { workspace = true }
-pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }
 # futures-timer's default backend uses a background timer thread, which cannot

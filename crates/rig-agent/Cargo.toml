@@ -21,7 +21,6 @@ doctest = true
 
 [dependencies]
 async-stream = { workspace = true }
-fastrand = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
