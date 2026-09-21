@@ -582,6 +582,8 @@ pub struct ResponsesQuirks {
     pub system_instructions: SystemInstructionsPlacement,
     /// Which contract this dialect's endpoint speaks.
     pub contract: ResponsesContract,
+    /// Whether newly constructed Responses wires normalize tools for strict validation.
+    pub strict_tools_by_default: bool,
 }
 
 impl ResponsesQuirks {
@@ -591,9 +593,44 @@ impl ResponsesQuirks {
             path: "/responses",
             system_instructions: SystemInstructionsPlacement::Instructions,
             contract: ResponsesContract::OpenAi,
+            strict_tools_by_default: false,
         }
     }
 }
+
+/// Optional executable extensions to the shared OpenAI dialect.
+///
+/// Store this value in a `static`: equality means the same extension definition,
+/// not equality of function addresses (which code generation can merge or duplicate).
+/// This lets named dialect persistence reject replaced hooks without interpreting
+/// their behavior or pretending arbitrary callbacks can be serialized.
+#[derive(Debug)]
+pub struct DialectHooks {
+    /// Derive a default endpoint from a credential. `None` uses the dialect's
+    /// static URL. Called only at construction, never on credential replacement.
+    pub default_endpoint: Option<fn(&str) -> Option<String>>,
+    /// Select the default route for a model, unless configuration chose a route.
+    pub model_route: Option<fn(&str) -> Route>,
+    /// Apply the completion envelope after shared authentication and identity.
+    /// Called once by either completion encoder; builder errors remain attached
+    /// and are returned when the encoder finishes the request.
+    pub completion_envelope: Option<CompletionEnvelope>,
+}
+
+/// A dialect's completion headers, applied to the authenticated request builder.
+pub type CompletionEnvelope = fn(
+    &OpenAI,
+    &crate::completion::CompletionRequest,
+    http::request::Builder,
+) -> http::request::Builder;
+
+impl PartialEq for DialectHooks {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+impl Eq for DialectHooks {}
 
 /// Everything about a dialect that is not its identity: paths, capability
 /// flags, and the one body rewrite it needs.
@@ -603,8 +640,8 @@ impl ResponsesQuirks {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Quirks {
-    /// Use Copilot's session endpoint, model-dependent routing and editor envelope.
-    pub copilot_session: bool,
+    /// Provider-owned extensions for defaults and completion headers.
+    pub hooks: Option<&'static DialectHooks>,
     /// How the dialect authenticates.
     pub auth: Auth,
     /// How the dialect addresses a model.
@@ -738,7 +775,7 @@ impl Quirks {
     /// are the fields OpenAI itself states.
     pub const fn openai() -> Self {
         Self {
-            copilot_session: false,
+            hooks: None,
             auth: Auth::Bearer,
             routing: Routing::Path,
             completion_route: Route::Chat,
@@ -941,12 +978,11 @@ impl OpenAI {
     pub fn with_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
         let quirks = &dialect.quirks;
         let api_key = api_key.into();
-        let base_url = if quirks.copilot_session {
-            crate::providers::copilot::base_url_from_token(api_key.expose())
-        } else {
-            None
-        }
-        .unwrap_or_else(|| dialect.base_url.to_owned());
+        let base_url = quirks
+            .hooks
+            .and_then(|hooks| hooks.default_endpoint)
+            .and_then(|endpoint| endpoint(api_key.expose()))
+            .unwrap_or_else(|| dialect.base_url.to_owned());
         Self {
             api_key,
             base_url,
@@ -1154,15 +1190,15 @@ impl OpenAI {
         self
     }
 
-    /// The configured endpoint or dialect's static default. Copilot session
-    /// routing additionally chooses an endpoint by model when no override is set.
+    /// The configured route or dialect's static default. A model-route hook
+    /// may refine the default when a completion wire is constructed.
     pub fn completion_route(&self) -> Route {
         self.route.unwrap_or(self.dialect.quirks.completion_route)
     }
 
     /// The completion wire for `model` on this configuration's
     /// [`completion_route`](Self::completion_route): Responses for OpenAI,
-    /// xAI and ChatGPT, model-dependent routing for Copilot sessions, and
+    /// xAI and ChatGPT, model-dependent routing when a dialect supplies it, and
     /// Chat Completions for other compatible gateways, unless
     /// [`with_route`](Self::with_route) chose the other one.
     pub fn completion(&self, model: impl Into<String>) -> OpenAiWire {
@@ -1221,23 +1257,16 @@ impl OpenAI {
         request: &crate::completion::CompletionRequest,
         builder: http::request::Builder,
     ) -> http::request::Builder {
-        let mut builder = self.headers(builder);
-        if self.dialect.quirks.copilot_session {
-            use crate::providers::copilot;
-            for (name, value) in copilot::default_headers(
-                self.api_key.expose(),
-                copilot::request_initiator(request),
-                copilot::request_has_vision(request),
-                Default::default(),
-            ) {
-                // The editor envelope replaces shared identity/auth headers.
-                if let Some(headers) = builder.headers_mut() {
-                    headers.remove(name);
-                }
-                builder = builder.header(name, value);
-            }
+        let builder = self.headers(builder);
+        match self
+            .dialect
+            .quirks
+            .hooks
+            .and_then(|hooks| hooks.completion_envelope)
+        {
+            Some(envelope) => envelope(self, request, builder),
+            None => builder,
         }
-        builder
     }
 
     /// Resolve `path` against the base URL, applying Azure's

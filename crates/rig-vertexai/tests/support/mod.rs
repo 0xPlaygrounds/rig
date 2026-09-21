@@ -130,11 +130,24 @@ impl LocalEndpoint {
             let state = Arc::clone(&state);
             let progress = Arc::clone(&progress);
             async move {
+                // The accept task owns every socket task, including on panic
+                // and endpoint drop. JoinSet also reaps completed connections.
+                let mut connections = tokio::task::JoinSet::new();
                 loop {
-                    let Ok((stream, _)) = listener.accept().await else {
-                        return;
-                    };
-                    tokio::spawn(serve(stream, Arc::clone(&state), Arc::clone(&progress)));
+                    tokio::select! {
+                        accepted = listener.accept() => {
+                            let Ok((stream, _)) = accepted else { return; };
+                            let state = Arc::clone(&state);
+                            let progress = Arc::clone(&progress);
+                            connections.spawn(async move {
+                                let _ = tokio::time::timeout(
+                                    std::time::Duration::from_secs(60),
+                                    serve(stream, state, progress),
+                                ).await;
+                            });
+                        }
+                        _ = connections.join_next(), if !connections.is_empty() => {}
+                    }
                 }
             }
         });

@@ -494,42 +494,12 @@ pub const XIAOMIMIMO: Dialect = Dialect {
     )
 };
 
-/// Every dialect this build knows, for
-/// [`Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
-///
-/// Keyed by [`Dialect::name`], so the regional and endpoint variants that
-/// share a provider name are not listed: a stored wire keeps its base URL,
-/// which is what distinguishes them.
-const ALL: &[&Dialect] = &[
-    &OPENAI,
-    &AZURE,
-    &DEEPSEEK,
-    &GROQ,
-    &HYPERBOLIC,
-    &MIRA,
-    &PERPLEXITY,
-    &TOGETHER,
-    &HUGGINGFACE,
-    &LLAMACPP,
-    &MISTRAL,
-    &OPENROUTER,
-    &VENICE,
-    &DOUBLEWORD,
-    &ZAI,
-    &MINIMAX,
-    &MOONSHOT,
-    &XIAOMIMIMO,
-    &crate::providers::xai::DIALECT,
-    &crate::providers::chatgpt::DIALECT,
-    &crate::providers::copilot::wire::DIALECT,
-];
-
 /// The dialect named `name`, or `None` when this build has no such provider.
 pub fn by_name(name: &str) -> Option<&'static Dialect> {
-    ALL.iter().copied().find(|dialect| dialect.name == name)
+    all().find(|dialect| dialect.name == name)
 }
 
 /// Every dialect this build knows, in declaration order.
 pub fn all() -> impl Iterator<Item = &'static Dialect> {
-    ALL.iter().copied()
+    crate::providers::registry::OPENAI_DIALECTS.iter().copied()
 }

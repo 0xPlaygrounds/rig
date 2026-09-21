@@ -26,9 +26,9 @@ use tokio::net::TcpListener;
 /// the test, short enough that a regression fails rather than hangs.
 const CLOSE_DEADLINE: Duration = Duration::from_secs(10);
 
-/// Bigger than any plausible socket buffer, so a write the peer is not reading
-/// provably cannot complete — and so an aborted one is visible as bytes that
-/// never arrive. Under tungstenite's 16 MiB default frame cap.
+/// Under tungstenite's default frame cap. Size alone is not proof of a stall:
+/// the test also observes bytes arriving, a pending send, and an incomplete
+/// payload after cancellation while the peer remains open.
 const STALLED_PAYLOAD: usize = 12 * 1024 * 1024;
 
 /// Read everything the peer still sends, returning the byte count once it
@@ -49,7 +49,12 @@ async fn drain_to_close(stream: &mut tokio::net::TcpStream) -> usize {
 /// then answers nothing, leaving the handshake pending forever.
 ///
 /// Reports whether the client's socket closed within [`CLOSE_DEADLINE`].
-fn stall_the_handshake() -> (String, mpsc::Receiver<bool>) {
+fn stall_the_handshake() -> (
+    String,
+    futures::channel::oneshot::Receiver<()>,
+    mpsc::Receiver<bool>,
+) {
+    let (arrived, arrival) = futures::channel::oneshot::channel();
     let (address_tx, address_rx) = mpsc::channel();
     let (closed_tx, closed_rx) = mpsc::channel();
 
@@ -61,63 +66,83 @@ fn stall_the_handshake() -> (String, mpsc::Receiver<bool>) {
             .build()
             .expect("server runtime should build");
         runtime.block_on(async move {
-            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-            address_tx
-                .send(listener.local_addr().expect("address"))
-                .expect("address should send");
+            let _ = tokio::time::timeout(Duration::from_secs(30), async move {
+                let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+                address_tx
+                    .send(listener.local_addr().expect("address"))
+                    .expect("address should send");
 
-            let (mut stream, _) = listener.accept().await.expect("accept");
-            let mut request = [0u8; 4096];
-            let _ = stream.read(&mut request).await;
+                let (mut stream, _) = listener.accept().await.expect("accept");
+                let mut request = [0u8; 4096];
+                assert!(stream.read(&mut request).await.expect("upgrade request") > 0);
+                arrived.send(()).expect("arrival");
 
-            let closed = tokio::time::timeout(CLOSE_DEADLINE, drain_to_close(&mut stream))
-                .await
-                .is_ok();
-            let _ = closed_tx.send(closed);
+                let closed = tokio::time::timeout(CLOSE_DEADLINE, drain_to_close(&mut stream))
+                    .await
+                    .is_ok();
+                let _ = closed_tx.send(closed);
+            })
+            .await;
         });
     });
 
-    let address = address_rx.recv().expect("server should report its address");
-    (format!("ws://{address}/"), closed_rx)
+    let address = address_rx
+        .recv_timeout(CLOSE_DEADLINE)
+        .expect("server should report its address");
+    (format!("ws://{address}/"), arrival, closed_rx)
 }
 
-/// A server that completes the upgrade, then stops reading for `pause` before
-/// draining the raw socket — raw, so a message larger than tungstenite's frame
-/// limits is still counted rather than rejected.
-///
-/// Reports the bytes it received and whether the socket closed within
-/// [`CLOSE_DEADLINE`].
-fn accept_then_stop_reading(pause: Duration) -> (String, mpsc::Receiver<(usize, bool)>) {
+/// Hold the peer open until the test explicitly permits draining. Peeking
+/// proves the actor started writing without releasing socket backpressure.
+fn accept_then_stop_reading(
+    observe_write: bool,
+) -> (
+    String,
+    futures::channel::oneshot::Receiver<()>,
+    futures::channel::oneshot::Sender<()>,
+    mpsc::Receiver<(usize, bool)>,
+) {
     let (address_tx, address_rx) = mpsc::channel();
     let (report_tx, report_rx) = mpsc::channel();
-
+    let (arrived, arrival) = futures::channel::oneshot::channel();
+    let (drain, draining) = futures::channel::oneshot::channel();
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("server runtime should build");
+            .expect("server runtime");
         runtime.block_on(async move {
-            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-            address_tx
-                .send(listener.local_addr().expect("address"))
-                .expect("address should send");
-
-            let (stream, _) = listener.accept().await.expect("accept");
-            let mut socket = tokio_tungstenite::accept_async(stream)
-                .await
-                .expect("upgrade");
-
-            tokio::time::sleep(pause).await;
-
-            let stream = socket.get_mut();
-            let drained = tokio::time::timeout(CLOSE_DEADLINE, drain_to_close(stream)).await;
-            let closed = drained.is_ok();
-            let _ = report_tx.send((drained.unwrap_or_default(), closed));
+            // This safety deadline exceeds every client-side observation.
+            let _ = tokio::time::timeout(Duration::from_secs(30), async move {
+                let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+                address_tx
+                    .send(listener.local_addr().expect("address"))
+                    .expect("address send");
+                let (stream, _) = listener.accept().await.expect("accept");
+                let mut socket = tokio_tungstenite::accept_async(stream)
+                    .await
+                    .expect("upgrade");
+                let stream = socket.get_mut();
+                if observe_write {
+                    let mut byte = [0; 1];
+                    assert!(
+                        stream.peek(&mut byte).await.expect("peek") > 0,
+                        "peer closed before writing"
+                    );
+                    arrived.send(()).expect("arrival");
+                }
+                draining.await.expect("permit draining");
+                let drained = tokio::time::timeout(CLOSE_DEADLINE, drain_to_close(stream)).await;
+                let closed = drained.is_ok();
+                let _ = report_tx.send((drained.unwrap_or_default(), closed));
+            })
+            .await;
         });
     });
-
-    let address = address_rx.recv().expect("server should report its address");
-    (format!("ws://{address}/"), report_rx)
+    let address = address_rx
+        .recv_timeout(CLOSE_DEADLINE)
+        .expect("server address");
+    (format!("ws://{address}/"), arrival, drain, report_rx)
 }
 
 fn handshake_request(url: &str) -> Request<NoBody> {
@@ -141,18 +166,23 @@ fn assert_no_tokio_runtime() {
 /// runtime, holding a socket nothing can ever reach.
 #[test]
 fn an_abandoned_connect_releases_the_socket_it_opened() {
-    let (url, closed) = stall_the_handshake();
+    let (url, arrival, closed) = stall_the_handshake();
     assert_no_tokio_runtime();
 
     futures::executor::block_on(async {
-        let client = TungsteniteClient::new();
-        let connecting = client.connect(handshake_request(&url), ConnectOptions::new());
-        let abandoned =
-            rig_core::wasm_compat::timeout(Duration::from_millis(500), connecting).await;
-        assert!(
-            abandoned.is_err(),
-            "the server never answers the upgrade, so the connect must still be pending here"
-        );
+        rig_core::wasm_compat::timeout(CLOSE_DEADLINE, async {
+            let client = TungsteniteClient::new();
+            let connecting = client.connect(handshake_request(&url), ConnectOptions::new());
+            futures::pin_mut!(connecting);
+            match futures::future::select(connecting, arrival).await {
+                futures::future::Either::Right((arrival, _)) => arrival.expect("upgrade arrived"),
+                futures::future::Either::Left(_) => {
+                    panic!("held handshake completed before cancellation")
+                }
+            }
+        })
+        .await
+        .expect("client deadline");
     });
 
     assert!(
@@ -167,15 +197,20 @@ fn an_abandoned_connect_releases_the_socket_it_opened() {
 /// back instead of keeping a task alive for the life of the process.
 #[test]
 fn a_dropped_idle_connection_releases_the_socket() {
-    let (url, report) = accept_then_stop_reading(Duration::ZERO);
+    let (url, _arrival, drain, report) = accept_then_stop_reading(false);
     assert_no_tokio_runtime();
 
     futures::executor::block_on(async {
-        let connection = TungsteniteClient::new()
-            .connect(handshake_request(&url), ConnectOptions::new())
-            .await
-            .expect("the session should connect off-runtime");
-        drop(connection);
+        rig_core::wasm_compat::timeout(CLOSE_DEADLINE, async {
+            let connection = TungsteniteClient::new()
+                .connect(handshake_request(&url), ConnectOptions::new())
+                .await
+                .expect("the session should connect off-runtime");
+            drop(connection);
+            drain.send(()).expect("drain after owner drop");
+        })
+        .await
+        .expect("client deadline");
     });
 
     let (received, closed) = report
@@ -192,30 +227,36 @@ fn a_dropped_idle_connection_releases_the_socket() {
 /// connection go away. Dropping the connection must still end it.
 #[test]
 fn a_dropped_stalled_connection_releases_the_socket() {
-    // The server completes the upgrade and then reads nothing for long enough
-    // that the write below is provably still in flight when the connection is
-    // dropped.
-    let (url, report) = accept_then_stop_reading(Duration::from_secs(1));
+    let (url, arrival, drain, report) = accept_then_stop_reading(true);
     assert_no_tokio_runtime();
 
     futures::executor::block_on(async {
+        rig_core::wasm_compat::timeout(CLOSE_DEADLINE, async {
         let mut connection = TungsteniteClient::new()
             .connect(handshake_request(&url), ConnectOptions::new())
             .await
             .expect("the session should connect off-runtime");
 
         let payload = Bytes::from(vec![0u8; STALLED_PAYLOAD]);
+        let mut sending = connection.send(Frame::Binary(payload));
+        match futures::future::select(sending.as_mut(), arrival).await {
+            futures::future::Either::Right((arrival, _)) => arrival.expect("write reached peer"),
+            futures::future::Either::Left(_) => panic!("write completed before stall observation"),
+        }
         let stalled = rig_core::wasm_compat::timeout(
             Duration::from_millis(200),
-            connection.send(Frame::Binary(payload)),
+            sending.as_mut(),
         )
         .await;
         assert!(
             stalled.is_err(),
             "a peer that is not reading cannot absorb {STALLED_PAYLOAD} bytes: the write should still be in flight"
         );
+        drop(sending);
 
         drop(connection);
+        drain.send(()).expect("drain after owner drop");
+        }).await.expect("client deadline");
     });
 
     let (received, closed) = report

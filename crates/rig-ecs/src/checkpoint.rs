@@ -29,7 +29,7 @@ use bevy_ecs::{
     resource::IsResource,
 };
 use bevy_reflect::{
-    PartialReflect, TypeRegistration, TypeRegistry,
+    PartialReflect, TypePath, TypeRegistration, TypeRegistry,
     serde::{
         ReflectDeserializerProcessor, ReflectSerializer, ReflectSerializerProcessor,
         TypedReflectDeserializer,
@@ -315,7 +315,7 @@ fn aliases(checkpoint: &Checkpoint, world: &World) -> Result<HashMap<usize, Enti
     };
     let mut aliases = HashMap::new();
     for (row, entity) in checkpoint.entities.iter().enumerate() {
-        let Some(bound) = entity.get(std::any::type_name::<Bound>()) else {
+        let Some(bound) = entity.get(Bound::type_path()) else {
             continue;
         };
         let bound: Bound = serde_json::from_value(bound.clone())
@@ -562,6 +562,8 @@ fn validated_state(
             checkpoint.format
         )));
     }
+    // Removed components retain frozen historical wire identifiers; live
+    // components use reflected TypePath identity, independent of Rust modules.
     for entity in &checkpoint.entities {
         if let Some(path) = entity.keys().find(|path| {
             matches!(

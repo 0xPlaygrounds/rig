@@ -2,6 +2,7 @@
 //! never enters the world; only its advertised execution contract is saved.
 
 use crate::bus_support;
+use bevy_reflect::TypePath;
 use rig_core::{
     driver::Bind,
     effect::HandlerKey,
@@ -27,6 +28,28 @@ fn handler(label: &str, token: &str, endpoint: &str) -> (ErasedHandler, Recordin
         ErasedHandler::new(CompletionAdapter::new(label, model)),
         http,
     )
+}
+
+// Forward real execution while varying only the advertised contract.
+struct AdvertisedHandler {
+    descriptor: rig_core::effect::HandlerDescriptor,
+    inner: ErasedHandler,
+}
+
+impl rig_core::serve::Serve for AdvertisedHandler {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        self.descriptor.clone()
+    }
+
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        self.inner.handle(kind, dispatch).await
+    }
 }
 
 fn saved(keys: &[&str]) -> Checkpoint {
@@ -137,7 +160,13 @@ fn a_matching_supplied_handler_really_rotates_the_live_connection() {
     assert!(loaded.entities.contains(&entity));
     dispatch(&mut app);
     assert!(old_http.requests().is_empty());
-    assert_eq!(new_http.requests().len(), 1);
+    let requests = new_http.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].uri.starts_with("https://new.invalid/v1"));
+    assert_eq!(
+        requests[0].headers.get("authorization").unwrap(),
+        "Bearer new"
+    );
 }
 
 #[test]
@@ -151,6 +180,132 @@ fn omitted_handlers_keep_matching_preinstalled_implementations() {
     load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, []).unwrap();
     dispatch(&mut app);
     assert_eq!(http.requests().len(), 1);
+}
+
+#[test]
+fn supplied_advertised_key_is_normalized_to_the_saved_dispatch_key() {
+    let checkpoint = saved(&[KEY]);
+    assert!(
+        checkpoint
+            .entities
+            .iter()
+            .any(|row| row.contains_key(Bound::type_path()))
+    );
+    let saved_descriptor = checkpoint.requirements().unwrap().remove(0);
+    let mut app = bus_support::app();
+    let (live, http) = handler("saved", "rotated", "https://rebound.invalid/v1");
+    let mut advertised = live.descriptor();
+    advertised.key = "another/advertised-key".into();
+    assert_ne!(advertised.key, saved_descriptor.key);
+    let supplied = ErasedHandler::new(AdvertisedHandler {
+        descriptor: advertised,
+        inner: live,
+    });
+    load_world(
+        &checkpoint,
+        app.world_mut(),
+        RestoreMode::Strict,
+        [(KEY.into(), supplied)],
+    )
+    .unwrap();
+    assert_eq!(descriptor(&mut app, KEY), saved_descriptor);
+    assert_eq!(
+        Handlers::with(app.world_mut(), |h| h.keys()).unwrap(),
+        vec![HandlerKey::from(KEY)]
+    );
+    dispatch(&mut app);
+    assert_eq!(http.requests().len(), 1);
+    assert_eq!(
+        http.requests()[0].headers.get("authorization").unwrap(),
+        "Bearer rotated"
+    );
+}
+
+#[test]
+fn key_normalization_preserves_every_strict_descriptor_comparison() {
+    use rig_core::effect::FamilyDescriptor;
+
+    for difference in [
+        "family",
+        "model",
+        "capabilities",
+        "added-layer",
+        "removed-layer",
+        "layer-order",
+    ] {
+        for mode in [RestoreMode::Strict, RestoreMode::Replace] {
+            let mut checkpoint = saved(&[KEY]);
+            let mut original = checkpoint.requirements().unwrap().remove(0);
+            original.layers = vec!["outer".into(), "inner".into()];
+            checkpoint.entities[0].get_mut(Bound::type_path()).unwrap()["descriptor"] =
+                serde_json::to_value(&original).unwrap();
+            let (live, http) = handler("saved", "new", "https://new.invalid/v1");
+            let mut advertised = original.clone();
+            advertised.key = "different/advertised-key".into();
+            match difference {
+                "family" => advertised.family = FamilyDescriptor::Memory {},
+                "model" => {
+                    let FamilyDescriptor::Completion { model, .. } = &mut advertised.family else {
+                        panic!("completion descriptor")
+                    };
+                    *model = "other-model".into();
+                }
+                "capabilities" => {
+                    let FamilyDescriptor::Completion { capabilities, .. } = &mut advertised.family
+                    else {
+                        panic!("completion descriptor")
+                    };
+                    capabilities.composes_native_output_with_tools =
+                        !capabilities.composes_native_output_with_tools;
+                }
+                "added-layer" => advertised.layers.push("additional".into()),
+                "removed-layer" => {
+                    advertised.layers.pop();
+                }
+                "layer-order" => advertised.layers.reverse(),
+                _ => unreachable!(),
+            }
+            let mut app = bus_support::app();
+            let (old, old_http) = handler("saved", "old", "https://old.invalid/v1");
+            let entity = Handlers::with(app.world_mut(), |h| h.register_erased(KEY, old))
+                .unwrap()
+                .unwrap();
+            let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
+            let count = app.world().entities().len();
+            let supplied = ErasedHandler::new(AdvertisedHandler {
+                descriptor: advertised.clone(),
+                inner: live,
+            });
+            let result = load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), supplied)]);
+            if mode == RestoreMode::Strict || difference == "family" {
+                let error = result.unwrap_err().to_string();
+                assert!(
+                    error.contains(if difference == "family" {
+                        "changed effect family"
+                    } else {
+                        "original saved descriptor"
+                    }),
+                    "{difference}: {error}"
+                );
+                assert_eq!(app.world().entities().len(), count);
+                assert_eq!(
+                    save_world(app.world_mut()).unwrap().to_json().unwrap(),
+                    before,
+                    "{difference}"
+                );
+                dispatch(&mut app);
+                assert_eq!(old_http.requests().len(), 1);
+                assert!(http.requests().is_empty());
+            } else {
+                assert!(result.unwrap().entities.contains(&entity));
+                advertised.key = KEY.into();
+                assert_eq!(descriptor(&mut app, KEY), advertised);
+                dispatch(&mut app);
+                assert!(old_http.requests().is_empty());
+                assert_eq!(http.requests().len(), 1);
+            }
+        }
+    }
 }
 
 #[test]
@@ -303,45 +458,87 @@ fn malformed_state_cannot_replace_a_live_handler() {
 
 #[test]
 fn old_provider_bearing_checkpoints_are_refused_not_silently_stripped() {
-    let mut checkpoint = saved(&[KEY]);
-    checkpoint.entities[0].insert(
-        "rig_ecs::bus::binding::ProviderBinding".into(),
-        serde_json::json!({"provider":"openai:model"}),
-    );
-    let app = bus_support::app();
-    let error = checkpoint.validate(app.world()).unwrap_err();
-    assert!(error.to_string().contains("ProviderBinding"));
-    assert!(error.to_string().contains("format-2"));
-    assert!(
-        error
-            .to_string()
-            .contains("migrate provider launch settings to the host")
-    );
+    // These are frozen historical wire paths, not identities of live types.
+    for path in [
+        "rig_ecs::bus::binding::ProviderBinding",
+        "rig_ecs::bus::binding::CredentialRef",
+    ] {
+        let mut checkpoint = saved(&[KEY]);
+        checkpoint.entities[0].insert(path.into(), serde_json::json!({"provider":"openai:model"}));
+        let mut app = bus_support::app();
+        let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
+        let error = checkpoint.validate(app.world()).unwrap_err().to_string();
+        assert!(error.contains(path));
+        assert!(error.contains("format-2"));
+        assert!(error.contains("migrate provider launch settings to the host"));
+        for mode in [RestoreMode::Strict, RestoreMode::Replace] {
+            let (live, http) = handler("saved", "new", "https://unused.invalid/v1");
+            let error = load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), live)])
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(path));
+            assert_eq!(
+                save_world(app.world_mut()).unwrap().to_json().unwrap(),
+                before
+            );
+            assert!(
+                Handlers::with(app.world_mut(), |h| h.keys())
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(http.requests().is_empty());
+        }
+    }
 }
 
 #[test]
-fn inconsistent_or_duplicate_saved_keys_are_refused() {
-    let mut checkpoint = saved(&[KEY]);
-    checkpoint.entities.push(checkpoint.entities[0].clone());
-    assert!(
-        checkpoint
-            .requirements()
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate saved")
-    );
-    checkpoint.entities.pop();
-    let value = checkpoint.entities[0]
-        .get_mut(std::any::type_name::<Bound>())
-        .unwrap();
-    value["key"] = serde_json::json!("different");
-    assert!(
-        checkpoint
-            .requirements()
-            .unwrap_err()
-            .to_string()
-            .contains("descriptor key")
-    );
+fn inconsistent_or_duplicate_saved_keys_are_refused_atomically() {
+    for duplicate in [false, true] {
+        for mode in [RestoreMode::Strict, RestoreMode::Replace] {
+            let mut checkpoint = saved(&[KEY]);
+            let expected = if duplicate {
+                checkpoint.entities.push(checkpoint.entities[0].clone());
+                "duplicate saved"
+            } else {
+                checkpoint.entities[0].get_mut(Bound::type_path()).unwrap()["descriptor"]["key"] =
+                    serde_json::json!("different");
+                "descriptor key"
+            };
+            assert!(
+                checkpoint
+                    .requirements()
+                    .unwrap_err()
+                    .to_string()
+                    .contains(expected)
+            );
+            let mut app = bus_support::app();
+            let (old, old_http) = handler("saved", "old", "https://old.invalid/v1");
+            Handlers::with(app.world_mut(), |h| h.register_erased(KEY, old))
+                .unwrap()
+                .unwrap();
+            let before = save_world(app.world_mut()).unwrap().to_json().unwrap();
+            let count = app.world().entities().len();
+            assert!(
+                checkpoint
+                    .validate(app.world())
+                    .unwrap_err()
+                    .to_string()
+                    .contains(expected)
+            );
+            let (new, new_http) = handler("saved", "new", "https://new.invalid/v1");
+            let error =
+                load_world(&checkpoint, app.world_mut(), mode, [(KEY.into(), new)]).unwrap_err();
+            assert!(error.to_string().contains(expected));
+            assert_eq!(app.world().entities().len(), count);
+            assert_eq!(
+                save_world(app.world_mut()).unwrap().to_json().unwrap(),
+                before
+            );
+            dispatch(&mut app);
+            assert_eq!(old_http.requests().len(), 1);
+            assert!(new_http.requests().is_empty());
+        }
+    }
 }
 
 #[test]

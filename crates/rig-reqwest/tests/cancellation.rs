@@ -12,6 +12,14 @@ use std::{
     time::Duration,
 };
 
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    futures::executor::block_on(rig_core::wasm_compat::timeout(
+        Duration::from_secs(10),
+        future,
+    ))
+    .expect("operation reached its deadline")
+}
+
 /// Hold the response open until the client releases it. The server deadline
 /// bounds failures without making a successful test depend on a sleep.
 fn held_response(
@@ -25,14 +33,32 @@ fn held_response(
     let url = format!("http://{}/", listener.local_addr().expect("address"));
     let (accepted, received) = futures::channel::oneshot::channel();
     let (closed, disconnected) = mpsc::channel();
+    listener.set_nonblocking(true).expect("nonblocking");
     std::thread::spawn(move || {
-        let (mut socket, _) = listener.accept().expect("accept");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() >= deadline {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("accept: {error}"),
+            }
+        };
+        socket.set_nonblocking(false).expect("blocking socket");
+        socket
+            .set_write_timeout(Some(Duration::from_secs(3)))
+            .expect("write deadline");
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
             .expect("deadline");
         let mut request = Vec::new();
         let mut byte = [0];
         while !request.ends_with(b"\r\n\r\n") {
+            assert!(std::time::Instant::now() < deadline, "request deadline");
             socket.read_exact(&mut byte).expect("request");
             request.push(byte[0]);
         }
@@ -59,10 +85,15 @@ fn held_response(
 #[test]
 fn dropping_a_pending_request_releases_the_connection() {
     let (url, received, disconnected) = held_response(false);
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let mut send = Box::pin(client.send::<_, Bytes>(request));
-    futures::executor::block_on(async {
+    block_on(async {
         match futures::future::select(send.as_mut(), received).await {
             futures::future::Either::Right((received, _)) => {
                 received.expect("request reached server")
@@ -85,15 +116,26 @@ fn the_supplied_timeout_releases_a_pending_request() {
     let (url, received, disconnected) = held_response(false);
     let client = reqwest::Client::builder()
         .no_proxy()
-        .timeout(Duration::from_millis(100))
+        .timeout(Duration::from_secs(1))
         .build()
         .expect("client");
     let client = ReqwestClient::new(client);
     let started = std::time::Instant::now();
     let request = Request::builder().uri(url).body(NoBody).expect("request");
-    assert!(futures::executor::block_on(client.send::<_, Bytes>(request)).is_err());
+    let error = block_on(client.send::<_, Bytes>(request))
+        .err()
+        .expect("request times out");
+    match error {
+        rig_core::http_client::Error::Instance(error) => assert!(
+            error
+                .downcast_ref::<reqwest::Error>()
+                .is_some_and(reqwest::Error::is_timeout),
+            "the supplied client deadline, not an unrelated transport failure"
+        ),
+        other => panic!("expected request timeout, got {other}"),
+    }
     assert!(started.elapsed() < Duration::from_secs(2));
-    futures::executor::block_on(received).expect("request reached server");
+    block_on(received).expect("request reached server");
     assert!(
         disconnected
             .recv_timeout(Duration::from_secs(4))
@@ -105,7 +147,12 @@ fn the_supplied_timeout_releases_a_pending_request() {
 fn dropping_before_first_poll_never_connects() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     listener.set_nonblocking(true).expect("nonblocking");
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder()
         .uri(format!(
             "http://{}/",
@@ -123,11 +170,16 @@ fn dropping_before_first_poll_never_connects() {
 #[test]
 fn dropping_a_lazy_unary_body_releases_the_connection() {
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let response = futures::executor::block_on(client.send::<_, Bytes>(request))
-        .expect("headers without waiting for body");
-    futures::executor::block_on(received).expect("request reached server");
+    let response =
+        block_on(client.send::<_, Bytes>(request)).expect("headers without waiting for body");
+    block_on(received).expect("request reached server");
     drop(response.into_body());
     assert!(
         disconnected
@@ -139,10 +191,15 @@ fn dropping_a_lazy_unary_body_releases_the_connection() {
 #[test]
 fn dropping_a_polled_unary_body_releases_the_connection() {
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let response = futures::executor::block_on(client.send::<_, Bytes>(request)).expect("response");
-    futures::executor::block_on(received).expect("request reached server");
+    let response = block_on(client.send::<_, Bytes>(request)).expect("response");
+    block_on(received).expect("request reached server");
     assert!(
         response.into_body().now_or_never().is_none(),
         "body is pending and dropped"
@@ -158,12 +215,21 @@ fn dropping_a_polled_unary_body_releases_the_connection() {
 fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let response = runtime
-        .block_on(client.send::<_, Bytes>(request))
+        .block_on(rig_core::wasm_compat::timeout(
+            Duration::from_secs(10),
+            client.send::<_, Bytes>(request),
+        ))
+        .expect("request deadline")
         .expect("response");
-    futures::executor::block_on(received).expect("request reached server");
+    block_on(received).expect("request reached server");
     drop(response); // No entered Tokio context: drop must still release I/O.
     assert!(
         disconnected
@@ -178,28 +244,42 @@ fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
 fn host_runtime_shutdown_releases_io_and_late_body_polling_returns_an_error() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let response = runtime
-        .block_on(client.send::<_, Bytes>(request))
+        .block_on(rig_core::wasm_compat::timeout(
+            Duration::from_secs(10),
+            client.send::<_, Bytes>(request),
+        ))
+        .expect("request deadline")
         .expect("response");
-    futures::executor::block_on(received).expect("request reached server");
+    block_on(received).expect("request reached server");
     runtime.shutdown_background();
     assert!(
         disconnected
             .recv_timeout(Duration::from_secs(4))
             .expect("server finished")
     );
-    assert!(futures::executor::block_on(response.into_body()).is_err());
+    assert!(block_on(response.into_body()).is_err());
 }
 
 #[test]
 fn dropping_an_idle_stream_releases_the_connection_without_another_chunk() {
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::default();
+    let client = ReqwestClient::new(
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let response = futures::executor::block_on(client.send_streaming(request)).expect("response");
-    futures::executor::block_on(received).expect("request reached server");
+    let response = block_on(client.send_streaming(request)).expect("response");
+    block_on(received).expect("request reached server");
     drop(response);
     assert!(
         disconnected

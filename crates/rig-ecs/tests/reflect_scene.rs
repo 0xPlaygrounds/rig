@@ -16,7 +16,7 @@ mod run_support;
 use std::any::type_name;
 
 use bevy_ecs::prelude::*;
-use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
+use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize, TypePath};
 use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{Grant, Owner, Run, RunOf, Settled},
@@ -68,12 +68,12 @@ fn ran() -> bevy_app::App {
 }
 
 /// The checkpoint's entities carrying `C`, by index.
-fn entities_with<C: Component>(checkpoint: &Checkpoint) -> Vec<usize> {
+fn entities_with<C: Component + TypePath>(checkpoint: &Checkpoint) -> Vec<usize> {
     checkpoint
         .entities
         .iter()
         .enumerate()
-        .filter(|(_, entity)| entity.contains_key(type_name::<C>()))
+        .filter(|(_, entity)| entity.contains_key(C::type_path()))
         .map(|(index, _)| index)
         .collect()
 }
@@ -187,7 +187,7 @@ fn entity_references_are_checkpoint_indexes() {
             entities_with::<rig_ecs::bus::Bound>(&saved)
                 .into_iter()
                 .find(
-                    |row| saved.entities[*row][type_name::<rig_ecs::bus::Bound>()]["key"]
+                    |row| saved.entities[*row][rig_ecs::bus::Bound::type_path()]["key"]
                         == serde_json::json!(MODEL)
                 )
                 .expect("the model's handler")
@@ -239,4 +239,40 @@ fn user_numeric_arrays_preserve_order_and_duplicates() {
         .find_map(|entity| entity.get(type_name::<OrderedNumbers>()))
         .expect("registered user component is exported");
     assert_eq!(*value, serde_json::json!([3, 1, 2, 1]));
+}
+
+#[derive(Clone, Component, Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(opaque)]
+#[reflect(Component, Serialize, Deserialize)]
+#[type_path = "host_checkpoint_contract"]
+struct StableComponent(u64);
+
+#[test]
+fn custom_reflected_path_survives_checkpoint_roundtrip() {
+    assert_ne!(StableComponent::type_path(), type_name::<StableComponent>());
+    let mut source = app();
+    source.register_type::<StableComponent>();
+    source.world_mut().spawn(StableComponent(42));
+    let saved = save_world(source.world_mut()).unwrap();
+    let row = entities_with::<StableComponent>(&saved)[0];
+    assert!(!saved.entities[row].contains_key(type_name::<StableComponent>()));
+    let saved = Checkpoint::from_json(&saved.to_json().unwrap()).unwrap();
+    let mut destination = app();
+    destination.register_type::<StableComponent>();
+    let loaded = load_world(&saved, destination.world_mut(), RestoreMode::Strict, []).unwrap();
+    assert_eq!(
+        destination
+            .world()
+            .get::<StableComponent>(loaded.entities[row])
+            .unwrap()
+            .0,
+        42
+    );
+    assert_eq!(
+        save_world(destination.world_mut())
+            .unwrap()
+            .to_json()
+            .unwrap(),
+        saved.to_json().unwrap()
+    );
 }

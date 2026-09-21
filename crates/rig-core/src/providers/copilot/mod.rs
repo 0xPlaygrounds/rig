@@ -158,8 +158,8 @@ pub use openai::EncodingFormat;
 /// Copilot's editor envelope: the headers every request on every route
 /// carries. Without them the API answers 400 regardless of the body.
 ///
-/// One definition, applied by [`wire`] to the finished request, because two
-/// of the three routes are shared wires Copilot does not own.
+/// One definition, applied by [`wire`] during completion encoding or to the
+/// finished request for the other routes.
 pub(crate) fn default_headers(
     api_key: &str,
     initiator: &'static str,

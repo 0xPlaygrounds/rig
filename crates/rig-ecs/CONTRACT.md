@@ -523,8 +523,8 @@ resuming them. Execution diagnostics remain on their existing runtime paths.
 the effects, the handlers' `Bound`s, a host's own components once the host
 registers the type with `#[reflect(Component)]` in the world's
 `AppTypeRegistry` — parents before children, siblings in `Children` order,
-each component under its type path, an `Entity` in a component as the index
-of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
+each component under its Bevy reflected `TypePath`, an `Entity` in a component
+as the index of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
 `binaries` (the binary store, every retained payload once per content hash).
 `save_world(&mut World)` takes it;
 `load_world(&Checkpoint, &mut World, RestoreMode, handlers)` validates its
@@ -542,6 +542,18 @@ host component is simply not saved
 a saved type path the loading world has not registered is refused
 (`missing_registration_and_invalid_payload_are_refused_before_spawning`).
 Resources, system-local and external state are host-owned.
+
+Each supplied `(HandlerKey, ErasedHandler)` pair authorizes the dispatch key
+where that implementation is installed. `load_world` normalizes the supplied
+descriptor key to that key; `Strict` compares every remaining field against
+the original saved contract, including family, model label, capabilities and
+layer order. Saved `Bound.key` and descriptor key must agree in both restore
+modes. `Replace` permits changed metadata within the same effect family.
+Equal descriptors still install the supplied implementation (including rotated
+credentials); omitted handlers retain matching installed implementations in
+`Strict`. Destination operations already running retain their captured handlers.
+Current component lookup uses reflected type identity. Removed provider component
+paths remain frozen historical wire identifiers for named migration refusals.
 
 Loading validates the whole checkpoint in a scratch world first — the binary
 store merged with the destination's under the destination's limits, every

@@ -46,6 +46,7 @@ impl Serve for HostedVertex {
 async fn assemble(endpoint: &LocalEndpoint, credentials: &SentinelCredentials) -> ErasedHandler {
     let service = PredictionService::builder()
         .with_endpoint(endpoint.url())
+        .with_attempt_timeout(std::time::Duration::from_secs(60))
         .with_credentials(credentials.credentials())
         .build()
         .await

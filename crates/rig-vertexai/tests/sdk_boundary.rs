@@ -41,6 +41,7 @@ async fn hosted_model(
 ) -> CompletionModel {
     let service = PredictionService::builder()
         .with_endpoint(endpoint.url())
+        .with_attempt_timeout(std::time::Duration::from_secs(60))
         .with_credentials(credentials.credentials())
         .build()
         .await
@@ -284,12 +285,15 @@ async fn a_cancelled_completion_releases_its_rpc_and_leaves_the_client_usable() 
     let credentials = SentinelCredentials::rotating("cancel-token");
     let model = hosted_model(&endpoint, &credentials).await;
 
-    let cancelled = tokio::time::timeout(
-        Duration::from_millis(250),
-        model.completion(request("abandoned")),
-    )
-    .await;
-    assert!(cancelled.is_err(), "the held-open call produced no outcome");
+    // Arrival, not elapsed time, establishes that there is real work to cancel.
+    {
+        let completion = model.completion(request("abandoned"));
+        tokio::pin!(completion);
+        tokio::select! {
+            result = &mut completion => panic!("held RPC completed before cancellation: {result:?}"),
+            () = endpoint.wait_for_requests(1) => {}
+        }
+    }
 
     endpoint.wait_for_disconnects(1).await;
     assert_eq!(
@@ -298,9 +302,9 @@ async fn a_cancelled_completion_releases_its_rpc_and_leaves_the_client_usable() 
         "the abandoned RPC's connection was actually closed, not left dangling"
     );
 
-    let response = model
-        .completion(request("next"))
+    let response = tokio::time::timeout(Duration::from_secs(10), model.completion(request("next")))
         .await
+        .expect("subsequent completion deadline")
         .expect("the shared client and its credentials survived the cancellation");
     assert!(
         matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "after")
@@ -339,6 +343,7 @@ async fn supplying_both_a_client_and_credentials_is_refused() {
     let credentials = SentinelCredentials::rotating("conflicting-token");
     let service = PredictionService::builder()
         .with_endpoint(endpoint.url())
+        .with_attempt_timeout(std::time::Duration::from_secs(60))
         .with_credentials(credentials.credentials())
         .build()
         .await

@@ -49,6 +49,95 @@ pub struct Chat {
 }
 
 impl Chat {
+    pub(crate) fn encode_with_headers(
+        &self,
+        request: CompletionRequest,
+        mode: Mode,
+        headers: impl FnOnce(
+            &OpenAI,
+            &CompletionRequest,
+            http::request::Builder,
+        ) -> http::request::Builder,
+    ) -> Result<Encoded, CompletionError> {
+        let quirks = &self.provider.dialect.quirks;
+        // Azure's deployment URL remains pinned to the handle, not a request override.
+        let uri = self.provider.uri(
+            quirks.completion_path,
+            self.provider.deployment(&self.model),
+        );
+        let builder = headers(
+            &self.provider,
+            &request,
+            http::Request::post(uri).header("Content-Type", "application/json"),
+        );
+        if !quirks.accepts_file_ids {
+            refuse_file_ids(&request)?;
+        }
+        let mut typed = unary::CompletionRequest::try_from(unary::OpenAIRequestParams {
+            model: self.model.clone(),
+            request,
+            strict_tools: self.strict_tools,
+            tool_result_array_content: self.tool_result_array_content,
+            supports_response_format: quirks.supports_response_format,
+            response_format_with_tools: quirks.response_format_with_tools,
+            supports_tools: quirks.supports_tools,
+            supports_image_tool_results: quirks.supports_image_tool_results,
+            reasoning_details: quirks.reasoning_details,
+        })?;
+        self.prepare(&mut typed)?;
+
+        // The resolved model, not the handle's: a per-request override
+        // changes which endpoint answers, so it decides the spelling too.
+        let modern_output_cap = match quirks.output_cap {
+            OutputCap::Legacy => false,
+            OutputCap::OpenAiReasoningFamilies => is_openai_reasoning_model(&typed.model),
+        };
+        let mut body = request_body(&typed, modern_output_cap)?;
+
+        if mode == Mode::Streaming {
+            if quirks.stream_include_usage {
+                // Shallow, so `include_usage` is inserted *into* any
+                // caller-supplied `stream_options` rather than merged over
+                // it: the caller's keys survive and the usage chunk is still
+                // requested.
+                match body.get_mut("stream_options") {
+                    Some(serde_json::Value::Object(options)) => {
+                        options
+                            .entry("include_usage")
+                            .or_insert(serde_json::Value::Bool(true));
+                    }
+                    Some(_) => {}
+                    None => {
+                        body = crate::json_utils::merge(
+                            body,
+                            serde_json::json!({"stream_options": {"include_usage": true}}),
+                        );
+                    }
+                }
+            }
+            body = crate::json_utils::merge(body, serde_json::json!({"stream": true}));
+        }
+        self.finalize(&mut body)?;
+
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions request",
+            &body,
+        );
+
+        let request = builder
+            .body(Body::Bytes(serde_json::to_vec(&body)?))
+            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+
+        // A streamed reply is SSE; the unary reply is one whole JSON body.
+        let framing = match mode {
+            Mode::Streaming => Framing::Sse,
+            Mode::Unary => Framing::Whole,
+        };
+        Ok(Encoded::new(request, framing)
+            .with_request_id_header(self.provider.dialect.request_id_header))
+    }
+
     /// The wire for `model` on `provider`, with every option off.
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
         Self {
@@ -823,82 +912,7 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
-        let quirks = &self.provider.dialect.quirks;
-        // Azure's deployment URL remains pinned to the handle, not a request override.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
-        let builder = self.provider.completion_headers(
-            &request,
-            http::Request::post(uri).header("Content-Type", "application/json"),
-        );
-        if !quirks.accepts_file_ids {
-            refuse_file_ids(&request)?;
-        }
-        let mut typed = unary::CompletionRequest::try_from(unary::OpenAIRequestParams {
-            model: self.model.clone(),
-            request,
-            strict_tools: self.strict_tools,
-            tool_result_array_content: self.tool_result_array_content,
-            supports_response_format: quirks.supports_response_format,
-            response_format_with_tools: quirks.response_format_with_tools,
-            supports_tools: quirks.supports_tools,
-            supports_image_tool_results: quirks.supports_image_tool_results,
-            reasoning_details: quirks.reasoning_details,
-        })?;
-        self.prepare(&mut typed)?;
-
-        // The resolved model, not the handle's: a per-request override
-        // changes which endpoint answers, so it decides the spelling too.
-        let modern_output_cap = match quirks.output_cap {
-            OutputCap::Legacy => false,
-            OutputCap::OpenAiReasoningFamilies => is_openai_reasoning_model(&typed.model),
-        };
-        let mut body = request_body(&typed, modern_output_cap)?;
-
-        if mode == Mode::Streaming {
-            if quirks.stream_include_usage {
-                // Shallow, so `include_usage` is inserted *into* any
-                // caller-supplied `stream_options` rather than merged over
-                // it: the caller's keys survive and the usage chunk is still
-                // requested.
-                match body.get_mut("stream_options") {
-                    Some(serde_json::Value::Object(options)) => {
-                        options
-                            .entry("include_usage")
-                            .or_insert(serde_json::Value::Bool(true));
-                    }
-                    Some(_) => {}
-                    None => {
-                        body = crate::json_utils::merge(
-                            body,
-                            serde_json::json!({"stream_options": {"include_usage": true}}),
-                        );
-                    }
-                }
-            }
-            body = crate::json_utils::merge(body, serde_json::json!({"stream": true}));
-        }
-        self.finalize(&mut body)?;
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "OpenAI Chat Completions request",
-            &body,
-        );
-
-        let request = builder
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
-
-        // A streamed reply is SSE; the unary reply is one whole JSON body.
-        let framing = match mode {
-            Mode::Streaming => Framing::Sse,
-            Mode::Unary => Framing::Whole,
-        };
-        Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        self.encode_with_headers(request, mode, OpenAI::completion_headers)
     }
 
     fn decoder(&self, mode: Mode) -> ChatDecoder {

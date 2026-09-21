@@ -98,6 +98,36 @@ use crate::serve::ErasedHandler;
 use crate::serve::adapters::CompletionAdapter;
 use crate::wire::{HasCompletion, Secret, Wire};
 
+/// Every dialect this build knows, for
+/// [`openai::wire::Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
+///
+/// Keyed by [`openai::wire::Dialect::name`], so the regional and endpoint variants that
+/// share a provider name are not listed: a stored wire keeps its base URL,
+/// which is what distinguishes them.
+pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
+    &openai::wire::OPENAI,
+    &openai::wire::AZURE,
+    &openai::wire::DEEPSEEK,
+    &openai::wire::GROQ,
+    &openai::wire::HYPERBOLIC,
+    &openai::wire::MIRA,
+    &openai::wire::PERPLEXITY,
+    &openai::wire::TOGETHER,
+    &openai::wire::HUGGINGFACE,
+    &openai::wire::LLAMACPP,
+    &openai::wire::MISTRAL,
+    &openai::wire::OPENROUTER,
+    &openai::wire::VENICE,
+    &openai::wire::DOUBLEWORD,
+    &openai::wire::ZAI,
+    &openai::wire::MINIMAX,
+    &openai::wire::MOONSHOT,
+    &openai::wire::XIAOMIMIMO,
+    &crate::providers::xai::DIALECT,
+    &crate::providers::chatgpt::DIALECT,
+    &crate::providers::copilot::wire::DIALECT,
+];
+
 /// A protocol family: the request grammar a provider speaks, and so which of
 /// this crate's configuration types describes it.
 ///

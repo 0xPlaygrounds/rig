@@ -176,3 +176,168 @@ fn map_wire_reaches_system_instructions_as_messages_on_the_responses_route_only(
         body(responses(), as_messages),
     );
 }
+
+/// Synthetic hooks test extension dispatch and precedence, which recorded provider traffic cannot exercise.
+#[test]
+fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
+    use super::super::{Dialect, DialectHooks, Quirks};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static ENVELOPES: AtomicUsize = AtomicUsize::new(0);
+    static HOOKS: DialectHooks = DialectHooks {
+        default_endpoint: Some(|key| (key == "regional").then(|| "https://region.invalid".into())),
+        model_route: Some(|model| {
+            if model == "responses-model" {
+                Route::Responses
+            } else {
+                Route::Chat
+            }
+        }),
+        completion_envelope: Some(|provider, request, mut builder| {
+            ENVELOPES.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(provider.api_key.expose(), "regional");
+            assert!(!request.chat_history.is_empty());
+            assert_eq!(
+                builder.headers_ref().unwrap()[http::header::AUTHORIZATION],
+                "Bearer regional"
+            );
+            builder
+                .headers_mut()
+                .unwrap()
+                .remove(http::header::AUTHORIZATION);
+            builder
+                .header(http::header::AUTHORIZATION, "custom credential")
+                .header("x-custom-envelope", "applied")
+        }),
+    };
+    let dialect = Dialect {
+        quirks: Quirks {
+            hooks: Some(&HOOKS),
+            ..Quirks::openai()
+        },
+        ..Dialect::gateway("custom", "https://default.invalid", "UNUSED_KEY")
+    };
+    assert_eq!(
+        OpenAI::with_key(&dialect, "other").base_url,
+        "https://default.invalid"
+    );
+    let provider = OpenAI::with_key(&dialect, "regional");
+    assert_eq!(provider.base_url, "https://region.invalid");
+    assert!(matches!(
+        provider.completion("responses-model"),
+        OpenAiWire::Responses(_)
+    ));
+    assert!(matches!(
+        provider.completion("chat-model"),
+        OpenAiWire::Chat(_)
+    ));
+    let mut calls = 0;
+    for model in ["responses-model", "chat-model"] {
+        for route in [Route::Chat, Route::Responses] {
+            let overridden = provider
+                .clone()
+                .with_route(route)
+                .with_base_url("https://explicit.invalid");
+            for wire in [
+                overridden.completion(model),
+                match route {
+                    Route::Chat => overridden.chat(model).into(),
+                    Route::Responses => overridden.responses(model).into(),
+                },
+            ] {
+                for mode in [Mode::Unary, Mode::Streaming] {
+                    let encoded = wire.encode(request(), mode).unwrap();
+                    calls += 1;
+                    assert_eq!(ENVELOPES.load(Ordering::SeqCst), calls);
+                    let [request] = encoded.requests.as_slice() else {
+                        panic!("one request")
+                    };
+                    assert_eq!(request.uri().host(), Some("explicit.invalid"));
+                    assert_eq!(
+                        request.uri().path(),
+                        match route {
+                            Route::Chat => "/chat/completions",
+                            Route::Responses => "/responses",
+                        }
+                    );
+                    assert_eq!(request.headers()["x-custom-envelope"], "applied");
+                    assert_eq!(
+                        request.headers()[http::header::AUTHORIZATION],
+                        "custom credential"
+                    );
+                    assert_eq!(
+                        request
+                            .headers()
+                            .get_all(http::header::AUTHORIZATION)
+                            .iter()
+                            .count(),
+                        1
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        serde_json::to_value(&provider).is_err(),
+        "custom callbacks cannot round-trip by name"
+    );
+}
+
+/// A synthetic dialect isolates the default capability from provider identity; no server is involved.
+#[test]
+fn responses_strict_tools_default_is_an_independent_capability() {
+    use super::super::{Dialect, OPENAI, Quirks, ResponsesQuirks};
+    let dialect = Dialect {
+        quirks: Quirks {
+            responses: ResponsesQuirks {
+                strict_tools_by_default: true,
+                ..ResponsesQuirks::openai()
+            },
+            ..OPENAI.quirks
+        },
+        ..OPENAI
+    };
+    let provider = OpenAI::with_key(&dialect, "test");
+    assert!(provider.responses("model").strict_tools);
+    assert!(!provider.chat("model").strict_tools);
+    let strict = body(provider, untouched);
+    let ordinary = body(OpenAI::new("test"), untouched);
+    assert_eq!(strict["tools"][0]["strict"], true);
+    assert_eq!(
+        strict["tools"][0]["parameters"]["additionalProperties"],
+        false
+    );
+    assert_ne!(ordinary["tools"][0]["strict"], true);
+    assert!(!OpenAI::new("test").responses("model").strict_tools);
+}
+
+/// Invalid local headers fail before transport, so there is no cassette interaction.
+#[test]
+fn completion_envelope_builder_errors_are_returned_on_both_routes() {
+    use super::super::{Dialect, DialectHooks, OPENAI, Quirks};
+    static HOOKS: DialectHooks = DialectHooks {
+        default_endpoint: None,
+        model_route: None,
+        completion_envelope: Some(|_, _, builder| builder.header("invalid\nname", "value")),
+    };
+    let provider = OpenAI::with_key(
+        &Dialect {
+            quirks: Quirks {
+                hooks: Some(&HOOKS),
+                ..OPENAI.quirks
+            },
+            ..OPENAI
+        },
+        "test",
+    );
+    for wire in [
+        OpenAiWire::from(provider.chat("model")),
+        provider.responses("model").into(),
+    ] {
+        assert!(wire.encode(request(), Mode::Unary).is_err());
+    }
+    assert!(
+        serde_json::to_value(&provider).is_err(),
+        "a registered name cannot hide changed hooks"
+    );
+}

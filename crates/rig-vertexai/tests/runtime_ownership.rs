@@ -107,6 +107,7 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
                 LocalEndpoint::spawn([Reply::ok(text_response("from the worker"))]).await;
             let service = PredictionService::builder()
                 .with_endpoint(endpoint.url())
+                .with_attempt_timeout(std::time::Duration::from_secs(60))
                 .with_credentials(credentials.credentials())
                 .build()
                 .await
@@ -127,7 +128,14 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
             tokio::runtime::Handle::try_current().is_err(),
             "the worker thread is not itself a runtime"
         );
-        handle.block_on(model.completion(request("hello from a worker")))
+        handle.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                model.completion(request("hello from a worker")),
+            )
+            .await
+            .expect("worker completion deadline")
+        })
     });
     let response = worker
         .join()

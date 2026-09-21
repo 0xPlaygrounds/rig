@@ -95,6 +95,37 @@ fn start(
     Ok(app)
 }
 
+fn accept(listener: TcpListener) -> std::net::TcpStream {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        match listener.accept() {
+            Ok((socket, _)) => {
+                socket.set_nonblocking(false).unwrap();
+                socket
+                    .set_write_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                return socket;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(std::time::Instant::now() < deadline, "accept deadline");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("accept: {error}"),
+        }
+    }
+}
+
+// Reap even if polling or an assertion fails. Inherited output cannot fill a
+// pipe while the parent waits, and remains visible to libtest/nextest.
+struct Child(std::process::Child);
+impl Drop for Child {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 fn server(status: &str, extra: &str, body: &str) -> (String, mpsc::Receiver<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1beta", listener.local_addr().unwrap());
@@ -104,13 +135,15 @@ fn server(status: &str, extra: &str, body: &str) -> (String, mpsc::Receiver<Stri
     );
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let (mut socket, _) = listener.accept().unwrap();
+        let mut socket = accept(listener);
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
             .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         let mut bytes = Vec::new();
         let mut byte = [0];
         while !bytes.ends_with(b"\r\n\r\n") {
+            assert!(std::time::Instant::now() < deadline, "request deadline");
             socket.read_exact(&mut byte).unwrap();
             bytes.push(byte[0]);
         }
@@ -153,8 +186,8 @@ fn explicit_policy_survives_live_reconstruction_and_replay_never_collects_secret
     // Isolate poisoned vendor inputs without mutating this process's environment
     // or reading any real credential. Only the explicit token may reach the wire.
     const ISOLATED: &str = "RIG_HOST_TEST_POISONED_VENDOR_INPUTS";
-    if std::env::var_os(ISOLATED).is_none() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
+    if std::env::var(ISOLATED).as_deref() != Ok("1") {
+        let mut child = Child(std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 "explicit_policy_survives_live_reconstruction_and_replay_never_collects_secrets",
@@ -168,16 +201,34 @@ fn explicit_policy_survives_live_reconstruction_and_replay_never_collects_secret
                 "GOOGLE_APPLICATION_CREDENTIALS",
                 "/nonexistent-rig-test-credentials",
             )
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+            .spawn()
+            .unwrap());
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let status = loop {
+            if let Some(status) = child.0.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "isolated gateway test timed out"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert!(status.success(), "isolated gateway test failed: {status}");
         return;
     }
+    assert_eq!(
+        std::env::var("GEMINI_API_KEY").unwrap(),
+        "vendor-fallback-poison"
+    );
+    assert_eq!(
+        std::env::var("GOOGLE_API_KEY").unwrap(),
+        "vendor-fallback-poison"
+    );
+    assert_eq!(
+        std::env::var("GOOGLE_APPLICATION_CREDENTIALS").unwrap(),
+        "/nonexistent-rig-test-credentials"
+    );
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     proxy.set_nonblocking(true).unwrap();
     let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
@@ -271,13 +322,15 @@ fn effect_despawn_and_world_drop_release_an_idle_http_operation() {
         let (accepted, received) = mpsc::channel();
         let (closed, disconnected) = mpsc::channel();
         let server = std::thread::spawn(move || {
-            let (mut socket, _) = listener.accept().unwrap();
+            let mut socket = accept(listener);
             socket
                 .set_read_timeout(Some(Duration::from_secs(3)))
                 .unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
             let mut headers = Vec::new();
             let mut byte = [0];
             while !headers.ends_with(b"\r\n\r\n") {
+                assert!(std::time::Instant::now() < deadline, "request deadline");
                 socket.read_exact(&mut byte).unwrap();
                 headers.push(byte[0]);
             }

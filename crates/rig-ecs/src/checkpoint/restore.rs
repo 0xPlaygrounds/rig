@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::TypePath;
 use rig_core::{
     effect::{HandlerDescriptor, HandlerKey},
     error::ErrorReport,
@@ -16,7 +17,8 @@ use crate::bus::{Bound, HandlerIndex, handlers::HandlerTable};
 /// How the host authorizes the implementations serving a resumed checkpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestoreMode {
-    /// Every implementation must match the original saved descriptor. Supplied
+    /// Every implementation must match the original saved descriptor after
+    /// supplied-key normalization (see [`load_world`]). Supplied
     /// handlers replace matching installed handlers, including credential rotation;
     /// omitted handlers keep the matching installed implementation. A supplied
     /// task may replace a world/system implementation with the same descriptor;
@@ -35,7 +37,7 @@ impl Checkpoint {
         let mut keys = HashSet::new();
         let mut requirements = Vec::new();
         for row in &self.entities {
-            if let Some(value) = row.get(std::any::type_name::<Bound>()) {
+            if let Some(value) = row.get(Bound::type_path()) {
                 let bound: Bound = serde_json::from_value(value.clone())
                     .map_err(|error| refused(format!("invalid saved handler: {error}")))?;
                 if bound.key != bound.descriptor.key {
@@ -63,6 +65,13 @@ impl Checkpoint {
 /// aliasing. No state or handler is installed on refusal. Supplied handlers are
 /// installed even when their descriptors match, so credential rotation is not a
 /// silent no-op. Omitted keys explicitly retain existing implementations.
+///
+/// Each supplied `(HandlerKey, ErasedHandler)` pair authorizes installation at
+/// that dispatch key. The supplied descriptor key is normalized to the pair
+/// key, not compared with its advertised key. Strict restoration compares all
+/// remaining fields (family, model label, capabilities and layers) against the
+/// original saved contract. The saved `Bound.key` and descriptor key must still
+/// agree; an inconsistent saved identity is always refused.
 ///
 /// Replay supplies recorded handlers through the same boundary, without live
 /// assembly. Register application insertion observers after loading: observers
