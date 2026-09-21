@@ -130,7 +130,7 @@ impl StructParser for DataStruct {
 
         (
             quote! {
-                #(#embed_targets.embed(embedder)?;)*
+                #(#embed_trait::embed(&#embed_targets, embedder)?;)*
             },
             embed_targets.len(),
         )
