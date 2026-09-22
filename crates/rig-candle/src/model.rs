@@ -1,65 +1,16 @@
-//! Local, CPU-only Llama-compatible and Qwen3 inference for Rig, backed by Candle.
-//!
-//! Models are loaded entirely from caller-provided owned or borrowed byte
-//! buffers. This crate performs no filesystem or network access. On
-//! `wasm32-unknown-unknown`, inference runs
-//! synchronously inside the completion future; browser applications should own
-//! and invoke the model in a Web Worker to avoid blocking the UI thread.
+//! Byte-backed CPU completion models and builders for validated checkpoints.
+//! Native inference runs on blocking workers with bounded stream delivery.
+//! Dropping a completion or stream signals cancellation between forward passes;
+//! admission permits remain held until the worker exits. WASM inference runs
+//! synchronously and collects stream events before returning them.
 //!
 //! ```no_run
-//! use rig_agent::agent::AgentBuilder;
-//! use rig_candle::{CandleModel, ModelData};
+//! use rig_candle::{CandleError, CandleModel, ModelData};
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let data = ModelData {
-//!     config: std::fs::read("./model/config.json")?,
-//!     tokenizer: std::fs::read("./model/tokenizer.json")?,
-//!     weights: std::fs::read("./model/model.safetensors")?,
-//! };
-//! let model = CandleModel::from_safetensors_async(data).await?;
-//! let agent = AgentBuilder::new(model)
-//!     .preamble("You are a helpful assistant.")
-//!     .temperature(0.7)
-//!     .max_tokens(256)
-//!     .build();
-//! let answer = agent.prompt("Explain Rust ownership briefly.").await?.output;
-//! println!("{answer}");
-//! # Ok(())
-//! # }
+//! fn load(data: ModelData) -> Result<CandleModel, CandleError> {
+//!     CandleModel::builder(data).temperature(0.0).max_tokens(256).build()
+//! }
 //! ```
-//!
-//! The validated profiles are unsharded Llama 3 safetensors,
-//! SmolLM2-360M-Instruct Q4_K_M GGUF, and (on native targets) the official
-//! Qwen3-4B Q4_K_M GGUF. Conversation rendering is explicit; tokenizer-provided
-//! templates are validated where necessary but never executed.
-//!
-//! Qwen3 supports Rig function definitions, all portable `ToolChoice` modes,
-//! assistant tool-call history, correlated text/JSON tool results, buffered
-//! agent runs, and streaming agent runs. Qwen control markup is buffered for
-//! one model turn before complete tool calls are emitted, so partial XML never
-//! leaks as assistant text. Tool arguments are checked for JSON object syntax;
-//! the registered Rig tool remains responsible for typed/schema validation.
-//! Direct `CompletionRequest::output_schema` is rejected because decoding is
-//! not grammar constrained. Agent `OutputMode::Tool` is supported through Rig's
-//! synthetic final-result tool.
-//!
-//! Request `max_tokens` and `temperature` override builder defaults. The
-//! Candle-specific `additional_params` keys are `top_k`, `top_p`, `seed`,
-//! `repeat_penalty`, and `repeat_last_n`; unknown keys are rejected. Output is
-//! clamped to the context capacity remaining after tokenizing the prompt.
-//!
-//! Native inference is admitted asynchronously and runs in `spawn_blocking`.
-//! [`CandleModelBuilder::max_concurrent_requests`] defaults to one to control CPU
-//! and KV-cache memory pressure. Dropping a native completion future signals
-//! cooperative cancellation. Streaming uses an eight-fragment bounded channel;
-//! dropping the stream signals the same cancellation while keeping the admission
-//! permit until the blocking worker exits. A forward operation already in progress
-//! cannot be interrupted, so cancellation is observed at the next generation
-//! boundary. WASM does not use native synchronization or threads and collects its
-//! synchronously generated events before exposing them as a compatible stream.
-//!
-//! Multimodal content, accelerators, shards, arbitrary tokenizer chat templates,
-//! provider-hosted tools, and in-crate downloads are unsupported.
 
 use std::sync::Arc;
 
@@ -107,10 +58,8 @@ const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
 
-/// A cheaply cloneable, CPU-only Candle completion model.
-///
-/// A model always owns loaded weights: it is only constructible through the
-/// builders, which is what removing `CompletionModel::make` made expressible.
+/// Cloneable CPU completion model sharing validated, loaded weights.
+/// Each inference owns its cache and sampler.
 #[derive(Clone)]
 pub struct CandleModel {
     state: Arc<LoadedModel>,
@@ -364,15 +313,8 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-/// The in-process generation channel as a
-/// [`Decoder`](rig_core::wire::Decoder) over typed generation events.
-///
-/// The producer sends already-typed [`GenerationEvent`]s, so classification
-/// is total: **this family never produces `Unknown`** — there is no foreign
-/// wire to be forward-compatible with — and decode errors cannot occur,
-/// since no decoding happens between the generator and the driver. Routing
-/// through the shared driver keeps the terminal and truncation semantics on
-/// the one policy site the conformance corpus pins.
+/// Converts typed local generation events through the shared completion driver.
+/// Every input is modeled; no byte decoding or unknown-frame classification occurs.
 struct CandleAdapter;
 
 impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> for CandleAdapter {
@@ -416,11 +358,8 @@ fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, s
     .with_finish_reason(response.finish_reason.into()))
 }
 
-/// Drive already-typed generation events through the full shared pipeline —
-/// driver policy, canonical grammar, terminal normalization.
-///
-/// The events-first conformance seam: grammar scenarios feed events directly
-/// with no model load.
+/// Normalizes typed generation events through the shared completion driver.
+/// No model loading is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<GenerationEvent, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend
@@ -433,12 +372,8 @@ pub fn stream_from_events(
 }
 
 impl CandleModel {
-    /// Run one local completion and return this crate's own response record.
-    ///
-    /// This is the escape hatch for the local generation metrics rig does not
-    /// normalize (timings, tokens/second, the local finish reason).
-    /// [`CompletionModel::completion`] runs the same inference and normalizes
-    /// its result — the model is never run twice.
+    /// Runs one local completion and returns text, usage, and generation metrics.
+    /// Returns request-validation, inference, or native task errors.
     pub async fn raw_completion(
         &self,
         request: CompletionRequest,
@@ -510,10 +445,7 @@ impl CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            // Route the channel through the shared driver so the frame-triage
-            // policy and terminal semantics are the one conformance-pinned
-            // site; dropping the driver stream drops the receiver, which
-            // still signals cancellation.
+            // Dropping the driver stream drops the receiver and signals cancellation.
             let stream = run_wire_stream(
                 CandleReceiverStream {
                     receiver,

@@ -67,7 +67,6 @@ impl AwsCompletionRequest {
             .collect::<Result<Vec<_>, _>>()?;
 
         if !tools.is_empty() {
-            // Convert rig's ToolChoice to AWS Bedrock ToolChoice
             use aws_sdk_bedrockruntime::types as aws_bedrock;
             let tool_choice = self
                 .inner
@@ -187,7 +186,6 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
-        // Compute before the history is moved below.
         let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
             Message::Assistant { content, .. } => content
                 .iter()
@@ -223,14 +221,8 @@ impl AwsCompletionRequest {
             messages.push(message);
         }
 
-        // Bedrock rejects cache points placed after reasoning blocks
-        // ("Cache point cannot be inserted after reasoning block"). When the
-        // request carries any reasoning content (round-tripped from a prior
-        // turn), Anthropic's backend treats the trailing cache point as
-        // following reasoning even when the literal previous block is a tool
-        // result. Skip the message-level checkpoint in that case; the
-        // system-prompt cache point still applies and captures the largest
-        // stable prefix.
+        // Reasoning anywhere in history prevents a trailing message checkpoint,
+        // even after tool results; the system checkpoint remains valid.
         if self.prompt_caching
             && !has_reasoning
             && let Some(last_msg) = messages.last_mut()

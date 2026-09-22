@@ -1,21 +1,14 @@
-//! Types that replace the AWS Bedrock Runtime SDK's `ConverseOutput` type.
-//! This is required so that we can impl Serialize and Deserialize.
+//! Serializable representations of Bedrock Converse responses.
+//! Guardrail trace, performance configuration, and service tier remain SDK types
+//! available in process but omitted from serialization.
 //!
-//! Rig's normalized [`CompletionResponse`](rig_core::completion::CompletionResponse)
-//! reads only part of the Converse response, but this type is what
-//! `raw_completion` hands back — the escape hatch whose whole purpose is that
-//! nothing the provider sent has been thrown away. Model-specific extras
-//! (`additional_model_response_fields`) are carried as plain
-//! [`serde_json::Value`].
+//! ```
+//! use rig_bedrock::types::converse_output::StopReason;
 //!
-//! The guardrail trace, performance configuration and service tier keep the
-//! SDK's own types rather than gaining hand-written mirrors: they are deeply
-//! nested (a guardrail assessment alone is a dozen types), and a mirror that
-//! drifts from the SDK would reintroduce exactly the silent loss this exists
-//! to prevent. Those three are `#[serde(skip)]` because the SDK types are not
-//! `Serialize`, so a serialized `InternalConverseOutput` — a cassette fixture,
-//! a persisted response — omits them while an in-process caller reads them in
-//! full.
+//! let value = serde_json::to_value(StopReason::EndTurn)?;
+//! assert_eq!(value, "EndTurn");
+//! # Ok::<(), serde_json::Error>(())
+//! ```
 use std::fmt;
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
@@ -24,8 +17,7 @@ use serde::{Deserialize, Serialize};
 use super::errors::TypeConversionError;
 use super::json::AwsDocument;
 
-/// Our own implementation of the AWS Bedrock runtime "converse" operation output.
-/// The reason why we need to implement this is that we need to impl Deserialize/Serialize on top of this.
+/// Converse response with serializable content and in-process SDK metadata.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct InternalConverseOutput {
     /// <p>The result from the call to <code>Converse</code>.</p>
@@ -38,18 +30,11 @@ pub struct InternalConverseOutput {
     pub metrics: Option<ConverseMetrics>,
     /// <p>Additional fields in the response that are unique to the model.</p>
     pub additional_model_response_fields: Option<serde_json::Value>,
-    /// The AWS request id, taken from the response's `x-amzn-RequestId`
-    /// header. Always present on a successful call, and the identifier AWS
-    /// support asks for.
+    /// AWS request ID from response metadata, when supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
-    /// <p>A trace object that contains information about the Guardrail behavior.</p>
-    ///
-    /// Populated when the request carried a guardrail configuration with
-    /// tracing enabled (see
-    /// [`CompletionModel::with_guardrail`](crate::completion::CompletionModel::with_guardrail));
-    /// it is the only place Bedrock explains *why* a turn stopped with
-    /// [`StopReason::GuardrailIntervened`].
+    /// Guardrail assessment returned when tracing is enabled.
+    /// Omitted from serialization and absent after deserialization.
     #[serde(skip)]
     pub trace: Option<aws_bedrock::ConverseTrace>,
     /// <p>Model performance settings for the request.</p>
@@ -89,13 +74,8 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
         let request_id =
             aws_sdk_bedrockruntime::operation::RequestId::request_id(&value).map(str::to_string);
 
-        // `ConverseOutput` is `#[non_exhaustive]` and hides `_request_id`, so
-        // the rest pattern is mandatory and cannot be traded for a
-        // compile-time guard: every field the SDK adds arrives here silently.
-        // That is how the guardrail trace, performance config and service tier
-        // came to be dropped, so the list below is checked against the SDK
-        // type when the dependency moves, and `converse_output_carries_every_
-        // sdk_field` pins the ones known today.
+        // The non-exhaustive SDK output requires a rest pattern; dependency
+        // upgrades need a field audit because additions cannot fail this match.
         let aws_sdk_bedrockruntime::operation::converse::ConverseOutput {
             output,
             stop_reason,
@@ -430,19 +410,12 @@ pub struct ToolUseBlock {
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ToolResultStatus {
-    /// Renamed due to linting
+    /// Tool execution failed.
     #[serde(rename = "Error")]
     IsError,
     Success,
     Unknown(UnknownVariantValue),
 }
-
-// TryFrom<T> implementations
-//
-// The AWS SDK's "string enums" (unit variants only) and unions (one payload
-// per variant) mirror mechanically, so the impls are macro-generated. The
-// error strings match the historical hand-written impls exactly:
-// `Unknown variant for TYPE: {invalid:?}`.
 
 /// Mirror a unit-variant AWS enum: emits owned + borrowed `TryFrom<aws>`
 /// impls. Unlisted variants (including this crate's `Unknown`) fall through to
@@ -650,8 +623,6 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for ToolResultContentBlock {
         }
     }
 }
-
-// Struct conversions.
 
 impl TryFrom<aws_bedrock::TokenUsage> for TokenUsage {
     type Error = TypeConversionError;

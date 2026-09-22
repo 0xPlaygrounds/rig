@@ -1,3 +1,12 @@
+//! Configuration builder for the in-memory vector store.
+//!
+//! ```
+//! use rig_core::vector_store::builder::InMemoryVectorStoreBuilder;
+//!
+//! let store = InMemoryVectorStoreBuilder::<String>::new().build();
+//! # let _ = store;
+//! ```
+
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -39,8 +48,6 @@ where
 
     /// Set the index strategy for the vector store.
     ///
-    /// # Examples
-    ///
     /// ```
     /// use rig_core::vector_store::{builder::InMemoryVectorStoreBuilder, IndexStrategy};
     ///
@@ -73,7 +80,7 @@ where
         self
     }
 
-    /// Add documents with explicit IDs.
+    /// Adds documents with explicit IDs, replacing existing entries with matching IDs.
     pub fn documents_with_ids(
         mut self,
         documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,

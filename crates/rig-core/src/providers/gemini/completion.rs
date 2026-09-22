@@ -1,7 +1,13 @@
-// ================================================================
-//! Google Gemini Completion Integration
-//! From [Gemini API Reference](https://ai.google.dev/api/generate-content)
-// ================================================================
+//! Completion wires and types for the [Gemini GenerateContent API](https://ai.google.dev/api/generate-content).
+//!
+//! ```no_run
+//! use rig_core::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let wire = Gemini::from_env()?.generate_content(GEMINI_2_5_FLASH);
+//! # Ok(())
+//! # }
+//! ```
 /// `gemini-3.1-flash-lite-preview` completion model
 pub const GEMINI_3_1_FLASH_LITE_PREVIEW: &str = "gemini-3.1-flash-lite-preview";
 /// `gemini-3-flash-preview` completion model
@@ -43,25 +49,11 @@ use gemini_api_types::{
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
 
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-/// Stable descriptor name for the Gemini GenerateContent API.
-///
-/// Recorded on every normalized response and stream this module produces, and
-/// on the telemetry spans, so the two never drift apart.
+/// Provider name used in normalized responses, streams, and telemetry.
 pub const PROVIDER_NAME: &str = "gcp.gemini";
 
-/// The Gemini GenerateContent wire: `generateContent` when a caller wants
-/// one reply, `streamGenerateContent?alt=sse` when it wants the reply as it
-/// is produced.
-///
-/// The two are one wire because they are one endpoint family answering with
-/// one document shape — only the delivery differs, which is what [`Mode`]
-/// names. The decoder is
-/// [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder) in
-/// both modes; the mode it is built for decides only what its EOF means.
+/// Completion wire for unary `generateContent` and SSE `streamGenerateContent`.
+/// Both modes use [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenerateContent {
     /// The key and the API root.
@@ -83,17 +75,9 @@ impl GenerateContent {
         }
     }
 
-    /// Read every request's prefix from an explicit `cachedContents` handle.
-    ///
-    /// Gemini's *explicit* context cache, which is a different feature from
-    /// the implicit prefix caching that happens with no API surface at all:
-    /// it hits on the first request and across unrelated conversations, at
-    /// the cost of billing storage per token-hour. The cache owns the system
-    /// instruction, the tool set *and* the tool choice, so a request built
-    /// from this wire must carry none of the three — `encode` rejects that
-    /// before the request goes out rather than letting Gemini answer 400.
-    /// See [`crate::providers::gemini::cached_content`] for which agent
-    /// shapes can use a handle at all.
+    /// Use an explicit `cachedContents/<id>` handle as every request's prefix.
+    /// Encoding rejects requests with their own system instruction, tools, or
+    /// tool choice. See [`crate::providers::gemini::cached_content`] for cache ownership.
     pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
         self.cached_content = Some(name.into());
         self
@@ -112,9 +96,7 @@ impl Wire for GenerateContent {
         Some(&self.model)
     }
 
-    /// The endpoint has its own canonical name for a whole reply
-    /// (`generate_content`), and the streamed span keeps the name the
-    /// streaming path has always recorded.
+    /// Select the telemetry operation for unary or streamed completion.
     fn telemetry(&self, streaming: bool) -> CompletionOperation {
         if streaming {
             CompletionOperation::ChatStreaming
@@ -149,8 +131,7 @@ impl Wire for GenerateContent {
             .header("Content-Type", "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
-        // Gemini reports no transport request-id response header (verified
-        // against the live API); the normalized id is None by design.
+        // Gemini supplies no transport request-id response header.
         Ok(Encoded::new(request, framing))
     }
 
@@ -189,24 +170,8 @@ pub(crate) fn create_request_body(
         .unwrap_or_else(|| Value::Object(Map::new()));
     let mut additional_tools =
         extract_tools_from_additional_params(&mut additional_params_payload)?;
-    // Lift any `cachedContent` out of `additional_params` so it lands in the
-    // typed field instead of being flattened in beside it. Flattened fields
-    // serialize *after* named ones, so leaving it here would overwrite the typed
-    // value — and, worse, skip the conflict validation entirely, because that
-    // only inspects the typed fields. Callers reach this path whenever they set
-    // the handle through `additional_params` without touching
-    // `with_cached_content`, which is the plainest route there is.
-    // Every spelling, not just the camelCase one. `cached_content` is a working
-    // wire spelling — measured: it reaches the cache lookup and answers
-    // `CachedContent not found` for a bogus handle — so a handle written that
-    // way used to skip the lift, and with it every check `with_cached_content`
-    // owns: the conflict refusal, the `cachedContents/<id>` shape check, the
-    // string-type check and the set-twice comparison. It still reached the wire,
-    // because the blob is flattened verbatim.
-    //
-    // Each spelling found is fed through `with_cached_content` in turn, so two
-    // spellings carrying different handles are caught by the set-twice rule that
-    // is already there.
+    // Validate both proto JSON spellings through the typed cache field so
+    // flattened parameters cannot bypass conflicts or specify competing handles.
     let mut smuggled_cached_content = Vec::new();
     for spelling in CACHED_CONTENT {
         let Some(value) = additional_params_payload
@@ -224,19 +189,8 @@ pub(crate) fn create_request_body(
             }
         }
     }
-    // The other two fields a cached content owns are *detected* here and left
-    // exactly where the caller put them.
-    //
-    // Deserializing them into the typed fields was tried and reverted: rig's
-    // `ToolConfig`/`FunctionCallingMode` model `mode` and a snake_case
-    // `allowed_function_names` only, so round-tripping a caller's config
-    // through them silently dropped `allowedFunctionNames` — turning a request
-    // restricted to one function into one free to call any — and hard-failed
-    // every `mode` rig does not model (`MODE_UNSPECIFIED`, `VALIDATED`, and
-    // whatever Google adds next). `Content` is narrower than the wire the same
-    // way. An `additional_params` blob is a deliberate escape hatch for shapes
-    // rig has no type for; narrowing it through a type is the one thing it must
-    // not do.
+    // Preserve untyped instructions and tool configuration verbatim; typed
+    // conversion could discard restrictions or reject unmodeled provider values.
     let smuggled_system_instruction =
         smuggled_field(&additional_params_payload, &SYSTEM_INSTRUCTION);
     let smuggled_tool_config = smuggled_field(&additional_params_payload, &TOOL_CONFIG);
@@ -246,23 +200,14 @@ pub(crate) fn create_request_body(
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params_payload)?;
 
-    // Apply output_schema to generation_config, creating one if needed
     if let Some(schema) = output_schema {
         let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
         cfg.response_mime_type = Some("application/json".to_string());
         cfg.response_json_schema = Some(schema.to_value());
     }
 
-    // `Option::map` is a no-op on `None`, so a request that set `temperature` or
-    // `max_tokens` without ALSO supplying an `additional_params.generationConfig`
-    // used to drop both silently — `.max_tokens(8)` on a Gemini agent never
-    // reached `maxOutputTokens` and the model ran to its own limit. Create the
-    // config when either field is set, mirroring the `output_schema` arm above.
-    //
-    // `GenerationConfig::default()` is all-`None` and every field is
-    // `skip_serializing_if = "Option::is_none"`, so a caller who sets one field
-    // does not silently acquire the other: the unset field stays off the wire
-    // and Gemini applies its own default.
+    // Explicit limits must work without additional generation parameters.
+    // Unset fields remain absent so model defaults still apply.
     if temperature.is_some() || max_tokens.is_some() {
         let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
 
@@ -289,11 +234,7 @@ pub(crate) fn create_request_body(
             role: Some(Role::Model),
         })
     };
-    // A preamble and an `additional_params.systemInstruction` are two answers to
-    // one question. Before this they were both put on the wire and Gemini took
-    // the last, so the preamble the caller wrote was silently discarded; now the
-    // ambiguity is reported, matching how a doubly-set `cachedContent` is
-    // treated.
+    // Gemini rejects duplicate system-instruction fields rather than selecting one.
     if let (Some(typed), Some(spelling)) = (&system_instruction, smuggled_system_instruction) {
         return Err(CompletionError::RequestError(
             format!(
@@ -382,11 +323,7 @@ pub fn split_system_messages_from_history(
     (system, remaining)
 }
 
-/// Both spellings Gemini accepts for `systemInstruction`.
-///
-/// The API speaks proto3 JSON, which accepts a field under its lowerCamelCase
-/// alias *and* its original proto name. A check that knows only one of them is
-/// a check with a documented bypass.
+/// Proto3 JSON accepts both lowerCamelCase and original proto field names.
 const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
 
 /// Both spellings Gemini accepts for `toolConfig`. See [`SYSTEM_INSTRUCTION`].
@@ -395,21 +332,11 @@ const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
 /// Both spellings Gemini accepts for `cachedContent`. See [`SYSTEM_INSTRUCTION`].
 const CACHED_CONTENT: [&str; 2] = ["cachedContent", "cached_content"];
 
-/// The spelling Gemini accepts for `tools`. A one-element list because the proto
-/// name and its JSON alias coincide; kept in this shape so the three lookups in
-/// `with_cached_content` read alike and a second spelling has somewhere to go.
+/// The shared proto and JSON spelling of the tools field.
 const TOOLS: [&str; 1] = ["tools"];
 
-/// The spelling under which one of `spellings` appears in an `additional_params`
-/// blob, if any of them does.
-///
-/// Presence, never the value. `additional_params` is the escape hatch for wire
-/// shapes rig has no type for, so nothing on this path may narrow it by parsing:
-/// deserializing a caller's `toolConfig` into rig's own type drops every field
-/// that type does not model — `allowedFunctionNames` among them, which turns a
-/// request restricted to one function into one free to call any — and rejects
-/// every `mode` rig has not enumerated. An explicit `null` counts as absent,
-/// matching how serde treats a missing field.
+/// Return the first spelling present with a non-null value in `payload`.
+/// Inspect presence without narrowing untyped provider fields.
 fn smuggled_field<'a>(payload: &Value, spellings: &[&'a str]) -> Option<&'a str> {
     let object = payload.as_object()?;
     spellings
@@ -497,12 +424,8 @@ mod erased_wire {
     }
 }
 
-/// A prompt Gemini refused to answer: `promptFeedback.blockReason` is set and
-/// no candidate is returned. Both wires (`generateContent` and
-/// `streamGenerateContent`) spell it the same way, so both surface the same
-/// error, naming the reason and the safety ratings that explain it, instead
-/// of a generic missing-candidate failure (unary) or a stream that ends
-/// before its terminal record (streaming).
+/// Convert a specified prompt block reason into a provider error with safety ratings.
+/// Content refusals are final; unknown and `OTHER` reasons are transient.
 pub(crate) fn blocked_prompt_error(
     feedback: &gemini_api_types::PromptFeedback,
 ) -> Option<CompletionError> {
@@ -530,17 +453,6 @@ pub(crate) fn blocked_prompt_error(
         "Gemini blocked the prompt: block_reason={}{ratings}",
         reason.as_wire_str()
     );
-    // A block on the prompt's content (`SAFETY`, `BLOCKLIST`,
-    // `PROHIBITED_CONTENT`) is the provider's verdict: a refusal, final —
-    // the provider's reply with `refusal` set, the block reason as its
-    // code, no status and no transient verdict, so `is_retryable` is false
-    // and `ErrorReport::refusal` is true. A block for `OTHER` ("blocked due
-    // to unknown reasons" in Google's reference) is not a verdict on the
-    // content — the same prompt is answered on the next call — and a
-    // reason this crate does not know yet is by definition unknown too.
-    // Those travel as a provider response with the transport's own
-    // transient verdict, so `is_retryable` says so without any caller
-    // reading the message.
     Some(match reason {
         gemini_api_types::BlockReason::Safety
         | gemini_api_types::BlockReason::Blocklist
@@ -581,27 +493,9 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-/// Place a trailing `thoughtSignature` — one that rode a part carrying no
-/// `thought` flag — onto the assistant content mapped so far.
-///
-/// Gemini hangs the signature on a trailing part instead of on the thought
-/// it belongs to — recorded on gemini-3-flash-preview and on
-/// gemini-2.5-flash alike — and the signature is replay-required state the provider
-/// validates (`MISSING_THOUGHT_SIGNATURE`). Only `Reasoning` round-trips it
-/// back onto a request, so it has to land on one — and *which* one is the
-/// same question the streaming accumulator answers, so the answer is the
-/// same:
-///
-/// * an earlier unsigned reasoning block takes it, because that block holds
-///   the chain-of-thought the signature signs
-///   (`streaming/parts.rs::a_trailing_signature_signs_the_finished_block`);
-/// * with no such block, it becomes a signature-only reasoning part, which
-///   is what the accumulator records when nothing streamed.
-///
-/// Blocking and streaming therefore normalize the same bytes to the same
-/// choice, which is the point: a turn replayed from either transport sends
-/// the signature back the same way. Public because the gRPC transport's
-/// unary mapper answers the same question about the same wire.
+/// Attach a trailing signature to the last reasoning item whose first text is unsigned.
+/// If none exists, append a signature-only reasoning item.
+/// This preserves provider state required for replay.
 pub fn attach_trailing_signature(
     content: &mut Vec<completion::AssistantContent>,
     signature: String,
@@ -641,9 +535,6 @@ pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
 pub mod gemini_api_types {
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
-    // =================================================================
-    // Gemini API Types
-    // =================================================================
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
@@ -707,20 +598,8 @@ pub mod gemini_api_types {
         pub error: Option<Value>,
     }
 
-    /// The model-visible text of a content's parts, in order.
-    ///
-    /// A `thought: true` part is the model's chain-of-thought, not its answer:
-    /// `thinkingConfig.includeThoughts` puts both in the same `parts` array,
-    /// distinguished only by that flag. Every reader that wants the response
-    /// *text* must skip them — the completion mapper routes them to
-    /// [`crate::message::AssistantContent::Reasoning`] instead, and a reader
-    /// that takes them for output text reports reasoning as the answer.
-    ///
-    /// The *skip* rule lives here; the *join* rule stays with each caller,
-    /// because they differ legitimately: a transcript is one continuous text
-    /// whose part boundaries are not sentence boundaries, so transcription
-    /// concatenates, while a reader that presents a candidate's blocks keeps
-    /// a newline between them.
+    /// Iterate over visible text in wire order, excluding thought and non-text parts.
+    /// Callers choose how to join part boundaries.
     pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
         content.parts.iter().filter_map(|part| match &part.part {
             PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),
@@ -804,10 +683,10 @@ pub mod gemini_api_types {
     #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
     pub struct Part {
-        /// whether or not the part is a reasoning/thinking text or not
+        /// Whether this part contains reasoning rather than visible output.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thought: Option<bool>,
-        /// an opaque sig for the thought so it can be reused - is a base64 string
+        /// Opaque base64 signature required to replay the thought.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thought_signature: Option<String>,
         #[serde(flatten)]
@@ -816,9 +695,8 @@ pub mod gemini_api_types {
         pub additional_params: Option<Value>,
     }
 
-    /// A datatype containing media that is part of a multi-part [Content] message.
-    /// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in Part.data.
-    /// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
+    /// One content payload in a multipart [`Content`] message.
+    /// Inline media requires an IANA MIME type.
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
     pub enum PartKind {
@@ -831,8 +709,6 @@ pub mod gemini_api_types {
         CodeExecutionResult(CodeExecutionResult),
     }
 
-    // This default instance is primarily so we can easily fill in the optional fields of `Part`
-    // So this instance for `PartKind` (and the allocation it would cause) should be optimized away
     impl Default for PartKind {
         fn default() -> Self {
             Self::Text(String::new())
@@ -864,15 +740,9 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Map a media body onto the Gemini part kind that carries it.
-    ///
-    /// Gemini takes every non-text body one of exactly two ways — a URI
-    /// reference (`fileData`) or a base64 payload (`inlineData`) — and rejects
-    /// the rest. `kind` names the medium in the rejection messages.
-    /// `string_is_data` says whether an untagged [`DocumentSourceKind::String`]
-    /// counts as a payload for this medium: it does for images and documents,
-    /// whose bodies routinely arrive as an unlabelled base64 string, but a bare
-    /// string is never audio or video.
+    /// Convert a URL or base64 media source into a Gemini part.
+    /// Accept untagged strings as base64 only when `string_is_data` is true.
+    /// Reject other sources with a conversion error naming `kind`.
     fn media_source_to_part_kind(
         kind: &str,
         mime_type: String,
@@ -980,7 +850,6 @@ pub mod gemini_api_types {
                     name,
                     content,
                 }) => {
-                    // The executed tool's name travels as required data.
                     let function_name = name;
                     let mut response_values = Vec::new();
                     let mut parts: Vec<FunctionResponsePart> = Vec::new();
@@ -1000,12 +869,8 @@ pub mod gemini_api_types {
                                             image.media_type.as_ref(),
                                         )?;
 
-                                        // Gemini's Developer API rejects synthetic `$ref` links
-                                        // for inline function-response parts even when their
-                                        // display names match. References are optional, so keep
-                                        // structured output in `response` and media in ordered
-                                        // `parts`, which both streaming and non-streaming models
-                                        // accept.
+                                        // Gemini rejects synthetic `$ref` links for inline
+                                        // function-response media, so preserve ordered parts directly.
                                         FunctionResponsePart {
                                             inline_data: Some(FunctionResponseInlineData {
                                                 mime_type: mime_type.to_string(),
@@ -1084,7 +949,6 @@ pub mod gemini_api_types {
                         let part = match data {
                             DocumentSourceKind::String(text) => PartKind::Text(text),
                             DocumentSourceKind::Base64(data) => {
-                                // Decode base64 text payloads.
                                 let text = String::from_utf8(
                                     base64::engine::general_purpose::STANDARD
                                         .decode(&data)
@@ -1260,8 +1124,7 @@ pub mod gemini_api_types {
         pub data: String,
     }
 
-    /// A predicted FunctionCall returned from the model that contains a string representing the
-    /// FunctionDeclaration.name with the arguments and their values.
+    /// A model-requested function call with its name, arguments, and optional identifier.
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     pub struct FunctionCall {
         /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores
@@ -1284,9 +1147,7 @@ pub mod gemini_api_types {
         }
     }
 
-    /// The result output from a FunctionCall that contains a string representing the FunctionDeclaration.name
-    /// and a structured JSON object containing any output from the function is used as context to the model.
-    /// This should contain the result of aFunctionCall made based on model prediction.
+    /// Result of a model-requested function call, returned as context to the model.
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
     pub struct FunctionResponse {
         /// The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes,
@@ -1373,10 +1234,7 @@ pub mod gemini_api_types {
         HarmCategorySexuallyExplicit,
         HarmCategoryDangerousContent,
         HarmCategoryCivicIntegrity,
-        /// A category this crate does not know yet (Google adds them without
-        /// notice: `HARM_CATEGORY_JAILBREAK`, the `HARM_CATEGORY_IMAGE_*`
-        /// family), carried verbatim so a rating — and a blocked prompt's
-        /// only chunk, which carries the ratings — stays deserializable.
+        /// An unrecognized category, preserved verbatim without rejecting the rating.
         #[serde(untagged)]
         Unknown(String),
     }
@@ -1529,10 +1387,7 @@ pub mod gemini_api_types {
         TooManyToolCalls,
         /// The provider could not parse the generated response into a valid protocol shape.
         MalformedResponse,
-        /// A finish reason this crate does not know yet. Google adds wire
-        /// values without notice; carrying the spelling verbatim keeps the
-        /// whole payload deserializable — and the finish observable — instead
-        /// of failing on the new value, matching the gRPC crate's handling.
+        /// An unrecognized finish reason, preserved verbatim without rejecting the response.
         #[serde(untagged)]
         Unknown(String),
     }
@@ -1565,19 +1420,9 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Map a Google `finishReason` — in its wire SCREAMING_SNAKE spelling —
-    /// onto rig's normalized vocabulary.
-    ///
-    /// Every Google surface (Gemini REST, Gemini gRPC, Vertex AI) publishes the
-    /// same vocabulary, so they share one table and can never disagree about
-    /// what a reason means; each transport supplies only its own spelling
-    /// accessor and its own fallback for a discriminant it cannot name.
-    ///
-    /// Only the four reasons that have a normalized counterpart are folded in;
-    /// everything else — including Google's own `OTHER` and the tool-protocol
-    /// failures — is carried verbatim so a reason rig does not model never reads
-    /// as a natural stop. `None` for `FINISH_REASON_UNSPECIFIED`: it is the
-    /// proto default and means the service reported no reason.
+    /// Normalize a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
+    /// Return `None` for `FINISH_REASON_UNSPECIFIED`. Preserve reasons without a
+    /// normalized counterpart as `Other`, including tool-protocol failures.
     pub fn map_google_finish_reason(wire_name: &str) -> Option<crate::completion::FinishReason> {
         Some(match wire_name {
             "FINISH_REASON_UNSPECIFIED" => return None,
@@ -1647,38 +1492,22 @@ pub mod gemini_api_types {
         pub log_probability: Option<f64>,
     }
 
-    /// Gemini API Configuration options for model generation and outputs. Not all parameters are
-    /// configurable for every model. From [Gemini API Reference](https://ai.google.dev/api/generate-content#generationconfig)
-    /// ### Rig Note:
-    /// Can be serialized into a type-safe
-    /// [`CompletionRequest::additional_params`](crate::completion::CompletionRequest::additional_params)
-    /// value or a runtime builder's additional parameters.
-    ///
-    /// Every field defaults to `None`, and every field is
-    /// `skip_serializing_if = "Option::is_none"`. A default config therefore
-    /// puts *nothing* on the wire and lets Gemini apply each model's own
-    /// documented default. Do not reintroduce non-`None` defaults here: this
-    /// type seeds request construction, so a value set here is silently imposed
-    /// on callers who never asked for it (rig#2322 — a hardcoded
-    /// `max_output_tokens: Some(4096)` capped structured-output and image
-    /// requests at 4096 tokens regardless of the caller's budget).
+    /// Model generation options from the [Gemini API](https://ai.google.dev/api/generate-content#generationconfig).
+    /// Supported fields depend on the model. All fields default to `None` and
+    /// are omitted when unset, preserving provider defaults.
     #[derive(Debug, Default, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {
-        /// The set of character sequences (up to 5) that will stop output generation. If specified, the API will stop
-        /// at the first appearance of a stop_sequence. The stop sequence will not be included as part of the response.
+        /// Up to five stop sequences. Generation ends at the first match,
+        /// excluding that sequence from the response.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub stop_sequences: Option<Vec<String>>,
-        /// MIME type of the generated candidate text. Supported MIME types are:
-        ///     - text/plain:  (default) Text output
-        ///     - application/json: JSON response in the response candidates.
-        ///     - text/x.enum: ENUM as a string response in the response candidates.
-        /// Refer to the docs for a list of all supported text MIME types
+        /// Output MIME type: `text/plain` by default, `application/json` for JSON,
+        /// or `text/x.enum` for a string enum.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_mime_type: Option<String>,
-        /// Output schema of the generated candidate text. Schemas must be a subset of the OpenAPI schema and can be
-        /// objects, primitives or arrays. If set, a compatible responseMimeType must also  be set. Compatible MIME
-        /// types: application/json: Schema for JSON response. Refer to the JSON text generation guide for more details.
+        /// OpenAPI-subset output schema for objects, primitives, or arrays.
+        /// Requires `response_mime_type` to be `application/json`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_schema: Option<Schema>,
         /// Optional. The output schema of the generated response.
@@ -1698,43 +1527,27 @@ pub mod gemini_api_types {
         /// unset, this will default to 1.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub candidate_count: Option<i32>,
-        /// The maximum number of tokens to include in a response candidate. Note: The default value varies by model, see
-        /// the Model.output_token_limit attribute of the Model returned from the getModel function.
+        /// Maximum output tokens per candidate. The provider default depends on the model.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub max_output_tokens: Option<u64>,
-        /// Controls the randomness of the output. Note: The default value varies by model, see the Model.temperature
-        /// attribute of the Model returned from the getModel function. Values can range from [0.0, 2.0].
+        /// Sampling temperature in `[0.0, 2.0]`. The provider default depends on the model.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub temperature: Option<f64>,
-        /// The maximum cumulative probability of tokens to consider when sampling. The model uses combined Top-k and
-        /// Top-p (nucleus) sampling. Tokens are sorted based on their assigned probabilities so that only the most
-        /// likely tokens are considered. Top-k sampling directly limits the maximum number of tokens to consider, while
-        /// Nucleus sampling limits the number of tokens based on the cumulative probability. Note: The default value
-        /// varies by Model and is specified by theModel.top_p attribute returned from the getModel function. An empty
-        /// topK attribute indicates that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
+        /// Maximum cumulative token probability for nucleus sampling.
+        /// The provider default depends on the model.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub top_p: Option<f64>,
-        /// The maximum number of tokens to consider when sampling. Gemini models use Top-p (nucleus) sampling or a
-        /// combination of Top-k and nucleus sampling. Top-k sampling considers the set of topK most probable tokens.
-        /// Models running with nucleus sampling don't allow topK setting. Note: The default value varies by Model and is
-        /// specified by theModel.top_p attribute returned from the getModel function. An empty topK attribute indicates
-        /// that the model doesn't apply top-k sampling and doesn't allow setting topK on requests.
+        /// Maximum number of likely tokens considered for sampling.
+        /// Set only for models whose metadata reports top-k support.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub top_k: Option<i32>,
-        /// Presence penalty applied to the next token's logprobs if the token has already been seen in the response.
-        /// This penalty is binary on/off and not dependent on the number of times the token is used (after the first).
-        /// Use frequencyPenalty for a penalty that increases with each use. A positive penalty will discourage the use
-        /// of tokens that have already been used in the response, increasing the vocabulary. A negative penalty will
-        /// encourage the use of tokens that have already been used in the response, decreasing the vocabulary.
+        /// Penalty for tokens already present in the response, independent of frequency.
+        /// Positive values discourage reuse; negative values encourage it.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub presence_penalty: Option<f64>,
-        /// Frequency penalty applied to the next token's logprobs, multiplied by the number of times each token has been
-        /// seen in the response so far. A positive penalty will discourage the use of tokens that have already been
-        /// used, proportional to the number of times the token has been used: The more a token is used, the more
-        /// difficult it is for the  model to use that token again increasing the vocabulary of responses. Caution: A
-        /// negative penalty will encourage the model to reuse tokens proportional to the number of times the token has
-        /// been used. Small negative values will reduce the vocabulary of a response. Larger negative values will cause
-        /// the model to  repeating a common token until it hits the maxOutputTokens limit: "...the the the the the...".
+        /// Penalty scaled by each token's frequency in the response.
+        /// Positive values discourage repetition; negative values encourage it
+        /// and may produce repetition until the output limit.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub frequency_penalty: Option<f64>,
         /// If true, export the logprobs results in response.
@@ -1817,14 +1630,7 @@ pub mod gemini_api_types {
         pub max_items: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub min_items: Option<i32>,
-        /// A tool's argument properties.
-        ///
-        /// Serialized in sorted key order: `HashMap` iteration order is
-        /// randomized per instance, and this field sits in the `tools` block,
-        /// which Gemini renders at the very *front* of the cacheable prefix. An
-        /// unsorted map therefore gave every request carrying a multi-property
-        /// tool a different prefix, so Gemini's context cache could never hit —
-        /// see `crate::json_utils::serialize_map_sorted`.
+        /// Argument properties, serialized in sorted key order to stabilize cache prefixes.
         #[serde(
             skip_serializing_if = "Option::is_none",
             serialize_with = "crate::json_utils::serialize_optional_map_sorted"
@@ -1849,13 +1655,11 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Flattens a JSON schema by resolving all `$ref` references inline.
-    /// It takes a JSON schema that may contain `$ref` references to definitions
-    /// in `$defs` or `definitions` sections and returns a new schema with all references
-    /// resolved and inlined. This is necessary for APIs like Gemini that don't support
-    /// schema references.
+    /// Inline references from `$defs` or `definitions` and remove those sections.
+    /// Return unchanged input if neither section exists. Return an error for a
+    /// non-object definitions section, unsupported reference paths, or missing definitions.
+    /// Callers must supply acyclic references.
     pub fn flatten_schema(mut schema: Value) -> Result<Value, CompletionError> {
-        // extracting $defs if they exist
         let defs = schema
             .as_object()
             .and_then(|obj| obj.get("$defs").or_else(|| obj.get("definitions")))
@@ -1873,7 +1677,6 @@ pub mod gemini_api_types {
 
         resolve_refs(&mut schema, defs_obj)?;
 
-        // removing $defs from the final schema because we have inlined everything
         if let Some(obj) = schema.as_object_mut() {
             obj.remove("$defs");
             obj.remove("definitions");
@@ -1893,7 +1696,6 @@ pub mod gemini_api_types {
                 if let Some(ref_value) = obj.get("$ref")
                     && let Some(ref_str) = ref_value.as_str()
                 {
-                    // "#/$defs/Person" -> "Person"
                     let def_name = parse_ref_path(ref_str)?;
 
                     let def = defs.get(&def_name).ok_or_else(|| {
@@ -1921,11 +1723,8 @@ pub mod gemini_api_types {
         Ok(())
     }
 
-    /// Parses a JSON Schema `$ref` path to extract the definition name.
-    ///
-    /// JSON Schema references use URI fragment syntax to point to definitions within
-    /// the same document. This function extracts the definition name from common
-    /// reference patterns used in JSON Schema.
+    /// Extract the suffix of `#/$defs/` or `#/definitions/`.
+    /// Return a response error for any other reference prefix.
     fn parse_ref_path(ref_str: &str) -> Result<String, CompletionError> {
         if let Some(fragment) = ref_str.strip_prefix('#') {
             if let Some(name) = fragment.strip_prefix("/$defs/") {
@@ -2037,14 +1836,12 @@ pub mod gemini_api_types {
     /// Helper function to infer the type of a schema object.
     /// Checks for explicit type, then anyOf/oneOf/allOf, then infers from properties.
     fn infer_type(obj: &serde_json::Map<String, Value>) -> String {
-        // First, try direct type field
         if let Some(type_val) = obj.get("type")
             && let Some(type_str) = extract_type(type_val)
         {
             return type_str;
         }
 
-        // Then try anyOf, oneOf, allOf (in that order)
         if let Some(any_of) = obj.get("anyOf")
             && let Some(type_str) = extract_type_from_composition(any_of)
         {
@@ -2063,7 +1860,6 @@ pub mod gemini_api_types {
             return type_str;
         }
 
-        // Finally, infer object type if properties are present
         if obj.contains_key("properties") {
             "object".to_string()
         } else if obj.contains_key("enum") {
@@ -2079,8 +1875,6 @@ pub mod gemini_api_types {
         fn try_from(value: Value) -> Result<Self, Self::Error> {
             let flattened_val = flatten_schema(value)?;
             if let Some(obj) = flattened_val.as_object() {
-                // Determine which object to use for extracting properties and required fields.
-                // If this object has anyOf/oneOf/allOf, we need to extract properties from the composition.
                 let composition_source = extract_schema_from_composition_obj(obj);
                 let props_source = if obj.get("properties").is_none() {
                     composition_source.clone().unwrap_or_else(|| obj.clone())
@@ -2187,32 +1981,17 @@ pub mod gemini_api_types {
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
         pub generation_config: Option<GenerationConfig>,
-        /// Optional. A list of unique SafetySetting instances for blocking unsafe content. This will be enforced on the
-        /// [GenerateContentRequest.contents] and [GenerateContentResponse.candidates]. There should not be more than one
-        /// setting for each SafetyCategory type. The API will block any contents and responses that fail to meet the
-        /// thresholds set by these settings. This list overrides the default settings for each SafetyCategory specified
-        /// in the safetySettings. If there is no SafetySetting for a given SafetyCategory provided in the list, the API
-        /// will use the default safety setting for that category. Harm categories:
-        ///     - HARM_CATEGORY_HATE_SPEECH,
-        ///     - HARM_CATEGORY_SEXUALLY_EXPLICIT
-        ///     - HARM_CATEGORY_DANGEROUS_CONTENT
-        ///     - HARM_CATEGORY_HARASSMENT
-        /// are supported.
-        /// Refer to the guide for detailed information on available safety settings. Also refer to the Safety guidance
-        /// to learn how to incorporate safety considerations in your AI applications.
+        /// Safety thresholds applied to request content and response candidates.
+        /// Supply at most one setting per category; omitted categories retain defaults.
+        /// Supported categories are hate speech, sexually explicit content,
+        /// dangerous content, and harassment.
         pub safety_settings: Option<Vec<SafetySetting>>,
         /// Optional. Developer set system instruction(s). Currently, text only.
         /// From [Gemini API Reference](https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest)
         pub system_instruction: Option<Content>,
-        /// Optional. Handle of a `cachedContents` resource whose content is
-        /// prepended to this request (`cachedContents/<id>`).
-        ///
-        /// Was a commented-out line here until rig learned to create the
-        /// resource it names — see [`crate::providers::gemini::cached_content`].
-        /// Set it through
-        /// [`GenerateContentRequest::with_cached_content`] rather than by hand:
-        /// the cache owns the system instruction and tools, and sending either
-        /// alongside it is a provider error.
+        /// Cache handle whose content prefixes this request (`cachedContents/<id>`).
+        /// Use [`Self::with_cached_content`] to validate conflicts with system
+        /// instructions, tools, and tool configuration.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub cached_content: Option<String>,
         /// Additional parameters.
@@ -2295,19 +2074,9 @@ pub mod gemini_api_types {
 }
 
 impl gemini_api_types::GenerateContentRequest {
-    /// Point this request at an explicit `cachedContents` handle.
-    ///
-    /// Enforces the two constraints Gemini imposes, before the request leaves
-    /// the process:
-    ///
-    /// * the cache owns `systemInstruction`, `tools` and `toolConfig`, so
-    ///   carrying any of them alongside a handle is rejected. The provider
-    ///   answers this with a 400 reading "CachedContent can not be used with
-    ///   GenerateContent request setting system_instruction, tools or
-    ///   tool_config" — a clear message, but only after a round trip, and
-    ///   without naming *which* of the three the caller set.
-    /// * the handle must look like one (`cachedContents/<id>`), because a bare
-    ///   id is accepted by the type system and rejected by the API.
+    /// Set an explicit cache handle, requiring the `cachedContents/` prefix.
+    /// Return a request error for a different existing handle or for system
+    /// instructions, tools, or tool configuration in typed or additional fields.
     pub fn with_cached_content(&mut self, name: &str) -> Result<(), CompletionError> {
         if !name.starts_with("cachedContents/") {
             return Err(CompletionError::RequestError(
@@ -2319,10 +2088,7 @@ impl gemini_api_types::GenerateContentRequest {
             ));
         }
 
-        // Set twice with different handles: the caller asked for two caches and
-        // only one can win, so refuse rather than pick. Reachable when a request
-        // carries `cachedContent` in `additional_params` *and* the model was
-        // built with `with_cached_content`.
+        // Reject competing handles rather than silently choose a cache.
         if let Some(existing) = self.cached_content.as_deref()
             && existing != name
         {
@@ -2335,17 +2101,8 @@ impl gemini_api_types::GenerateContentRequest {
             ));
         }
 
-        // Read `additional_params` as well as the typed fields. It is
-        // `#[serde(flatten)]`, so anything left in it reaches the wire beside
-        // the typed field — a conflict the provider will reject just the same,
-        // and one that used to walk straight past this check because the check
-        // only looked at the typed side.
-        //
-        // `tools` is looked up here too, even though `create_request_body` has
-        // already moved it onto `self.tools` by this point. This method is
-        // `pub`, and on a request built by hand nothing has run that lift — so
-        // without the lookup, tool declarations in the blob would sit beside a
-        // handle in one body, which is the shape this check exists to refuse.
+        // Hand-built requests can retain conflicting fields in flattened parameters,
+        // so validation must inspect both typed and untyped fields.
         let blob = self.additional_params.as_ref();
         let smuggled = |spellings: &'static [&'static str]| {
             blob.and_then(|payload| smuggled_field(payload, spellings))
@@ -2363,23 +2120,8 @@ impl gemini_api_types::GenerateContentRequest {
             conflicts.push("a tool choice");
         }
         if !conflicts.is_empty() {
-            // "Move them into the cache" is the right remedy for a system
-            // instruction — that is the feature. It is the wrong remedy for
-            // tools, and the difference is structural rather than a gap rig
-            // could close: rig's `Agent` derives the declarations it sends and
-            // the handles it dispatches through from one tool-registry snapshot,
-            // so it can only dispatch a tool it advertised, and a call to
-            // something it never advertised is always an invalid tool call. An
-            // agent therefore cannot execute a function tool set that lives in
-            // the cache, and the message must not send the reader after a
-            // configuration that does not exist.
-            //
-            // Gated on *function* declarations rather than on the field: a
-            // provider-hosted tool (`additional_params.tools = [{"codeExecution":
-            // {}}]`, lifted onto the request by
-            // `extract_tools_from_additional_params`) runs on Gemini's side and
-            // needs no loop, so moving one into the cache does work — and
-            // telling that caller to go write a tool loop would be nonsense.
+            // Cached function declarations need caller-side dispatch, whereas
+            // provider-hosted tools remain executable without an agent tool registry.
             let declares_function = |tool: &Value| {
                 ["functionDeclarations", "function_declarations"]
                     .iter()
@@ -2389,8 +2131,6 @@ impl gemini_api_types::GenerateContentRequest {
                             .is_some_and(|declarations| !declarations.is_empty())
                     })
             };
-            // The blob is scanned as well, for the same hand-built request the
-            // `tools` lookup above exists for.
             let declares_functions = self
                 .tools
                 .iter()

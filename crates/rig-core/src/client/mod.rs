@@ -1,26 +1,13 @@
-//! What is left of provider construction now that a provider is data.
+//! Environment configuration helpers and provider construction and verification errors.
+//! Bind provider configuration to a transport through [`Bound`](crate::driver::Bound).
 //!
-//! A provider is plain configuration (`openai::wire::OpenAI`,
-//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) plus one
-//! [`Wire`](crate::wire::Wire) per API endpoint; binding that configuration to
-//! a transport with [`Bound`](crate::driver::Bound) is what produces a model,
-//! and [`Bound`](crate::driver::Bound) is where `completion(model)`,
-//! `embedding(model, ndims)`, `verify()` and their siblings live. Nothing
-//! generic sits between a provider and its transport any more.
+//! ```no_run
+//! use rig_core::client::required_env_var;
 //!
-//! Three things outlive that move, and this module is exactly those three:
-//!
-//! - [`mod@env`]: reading a provider's configuration out of the process
-//!   environment, with [`EnvError`] naming a variable that is absent or
-//!   unusable.
-//! - [`ProviderClientError`], with [`required_env_var`] and
-//!   [`optional_env_var`]: the faults of *binding* — a credential that cannot
-//!   be read, and a transport that cannot be constructed (no CA store, an
-//!   unusable proxy). Both happen before any wire is driven, so they belong to
-//!   no operation.
-//! - [`VerifyError`]: the `Verify` operation's error. Verification is the one
-//!   operation whose reply *status* is the entire answer, so the 401/403
-//!   reading lives in its error type instead of being restated by every wire.
+//! let credential = required_env_var("OPENAI_API_KEY")?;
+//! # let _ = credential;
+//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! ```
 
 pub mod env;
 pub mod verify;

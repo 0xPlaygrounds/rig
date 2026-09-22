@@ -1,4 +1,11 @@
-//! Canonical model-visible tool output.
+//! Canonical text, JSON, and multimodal tool output.
+//!
+//! ```
+//! use rig_core::tool::ToolOutput;
+//!
+//! let output = ToolOutput::text("done");
+//! assert_eq!(output.as_text(), Some("done"));
+//! ```
 
 use std::{any::Any, fmt};
 
@@ -69,17 +76,8 @@ impl ToolOutput {
         Self::one(ToolResultContent::json(value))
     }
 
-    /// Construct explicit model content.
-    ///
-    /// Rejects an empty list. On `main` the argument type made emptiness
-    /// unrepresentable; as a `Vec` the check lives here instead, because this
-    /// is the one funnel every multi-block construction passes through —
-    /// tools returning [`ToolOutput`] directly and hooks rewriting one
-    /// included. A zero-block tool result cannot be sent (the request
-    /// boundary rejects it), so rejecting at construction surfaces the
-    /// defect where it is made rather than one request later. A tool with a
-    /// genuinely empty result returns one empty text block ([`Self::text`]
-    /// with `""`).
+    /// Constructs explicit model content, rejecting an empty block list.
+    /// Use [`Self::text`] with `""` to represent an empty text result.
     pub fn content(content: Vec<ToolResultContent>) -> Result<Self, ToolExecutionError> {
         let content = crate::message::require_non_empty(content, || {
             ToolExecutionError::other(
@@ -179,10 +177,6 @@ impl From<ToolResultContent> for ToolOutput {
 impl TryFrom<Vec<ToolResultContent>> for ToolOutput {
     type Error = ToolExecutionError;
 
-    // `From` on `main` — the source type was non-empty by construction, so the
-    // conversion could not fail. With `Vec` the emptiness check makes it
-    // fallible; a `From` here would be the unguarded bypass around
-    // [`ToolOutput::content`].
     fn try_from(content: Vec<ToolResultContent>) -> Result<Self, Self::Error> {
         Self::content(content)
     }
@@ -209,12 +203,8 @@ where
     T: Serialize + 'static,
 {
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        // `ToolResultContent` and `Vec<ToolResultContent>` are serializable
-        // because they also serve as transcript types. They nevertheless mean
-        // explicit rich output here; serializing them through the fallback would
-        // silently turn an image into a JSON object. Stable Rust cannot express
-        // a blanket `Serialize` impl with negative exceptions, so preserve these
-        // two canonical rich types before taking the serialization path.
+        // Preserve explicit content types before the serialization fallback so
+        // multimodal blocks are not converted into JSON objects.
         let value = &self as &dyn Any;
         if let Some(output) = value.downcast_ref::<ToolOutput>() {
             return Ok(output.clone());
@@ -223,13 +213,8 @@ where
             return Ok(ToolOutput::one(content.clone()));
         }
         if let Some(content) = value.downcast_ref::<Vec<ToolResultContent>>() {
-            // `ToolOutput::content` rejects an empty list, so an empty
-            // rich-content return surfaces here as a normal tool failure the
-            // agent feeds back to the model, instead of a zero-block result
-            // entering history and aborting the whole run at the next
-            // request's boundary validation. Deliberately not normalized to
-            // an empty text block: inventing content the tool never produced
-            // is the fabrication this crate removed.
+            // Reject empty rich output as a tool failure rather than inventing
+            // text or allowing an invalid result into history.
             return ToolOutput::content(content.clone());
         }
         let is_explicit_json = value.is::<serde_json::Value>();

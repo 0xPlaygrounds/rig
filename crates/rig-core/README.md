@@ -160,6 +160,14 @@ execution. Chat-compatible dialects use the shared `Chat` wire and decoder with
 `Dialect` data and `BodyRewrite` hooks rather than duplicating request conversion.
 This keeps normalization, retry classification, and telemetry consistent.
 
+Each wire encodes requests without transport access and creates a fresh decoder
+for each reply. Buffered and streaming replies use the same classifier and event
+mapping. A buffered response with a distinct shape is another classified event,
+not a separate normalization path. The driver owns framing and asynchronous I/O;
+decoders can be exercised directly with frames without opening a connection.
+Credentials stored in configuration use `Secret`, whose serialized redaction
+must be replaced with a credential when the host reloads the configuration.
+
 Construct normalized completion responses through their builders so finish
 reasons reconcile with tool output. Preserve unknown terminal reasons in `Other`,
 use the selected descriptor's provider name, and retain the decoded provider
@@ -169,6 +177,67 @@ bodies through `WireError::http_response` for failed HTTP responses and
 Credentials require redacted debug output. Provider changes need coverage for
 supported streaming, usage, tool and multimodal content, with examples and facade
 exposure matching the configured capabilities.
+
+Request serialization must use stable map ordering. Randomized `HashMap`
+iteration can change request bytes and serialized schemas embedded in prompts,
+reducing prefix-cache reuse. Compare raw serialized bytes when testing this;
+canonicalized cassette JSON can hide ordering differences. The JSON helpers sort
+map keys and recursively sort rendered values regardless of serde_json's
+`preserve_order` feature.
+
+## Anthropic prompt caching
+
+Manual caching marks the system prompt, final tool definition, and final message
+block. Automatic caching delegates the moving conversation breakpoint to the
+provider. Combined mode retains static-prefix markers within the four-marker
+budget, including any markers already supplied on provider-specific tools.
+
+A longer TTL can keep shared tools and instructions cached across conversations
+without paying the longer storage lifetime for every conversation tail. Set
+`with_static_prefix_cache_ttl(CacheTtl::OneHour)` with automatic five-minute
+caching for this arrangement. One-hour markers must precede five-minute markers;
+request encoding rejects the inverse ordering. Cache-write prices differ by TTL,
+so choose a lifetime based on actual reuse.
+
+Caching is skipped when the prefix through a marker is below the model's minimum:
+
+| Model | Minimum tokens |
+| --- | ---: |
+| `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4096 |
+| `claude-sonnet-4-6` | 2048 |
+| `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1024 |
+| `claude-haiku-4-5` | 4096 |
+
+## Gemini explicit caching
+
+Explicit caching uploads reusable content and returns a `cachedContents` handle.
+Requests can reuse it immediately, including across conversations. Storage is
+billed per token-hour until deletion or expiry, in addition to cached-input
+charges. Implicit prefix caching is automatic and best-effort; it does not
+provide a handle or guarantee a warm first request.
+
+A request using an explicit cache cannot also send `systemInstruction`, `tools`,
+or `toolConfig`. Rig rejects these conflicts before sending. Agents therefore
+need no preamble, advertised tools, or configured tool choice on those turns.
+An empty `RequestPatch::active_tools` allow-list suppresses tool advertisements,
+but does not make cached function declarations executable by the agent. Agent
+advertisement and dispatch share a registry snapshot. To execute functions
+specified in a cache, drive `GenerateContent` directly and append matching
+function responses yourself. Provider-hosted tools such as `codeExecution`
+need no caller-side dispatch.
+
+Native structured output and context documents can accompany a cache because
+neither adds those conflicting fields. `OutputMode::Tool` adds a synthetic tool
+and extends the preamble; `OutputMode::Prompted` adds schema instructions to the
+preamble. Neither can accompany a cache. Extractors select tool output mode.
+
+Cache resource paths accept a bare id or a `cachedContents/` handle. Validation
+rejects path separators, query delimiters, fragments, and traversal segments
+rather than escaping them, so lookup, expiry updates, and deletion cannot be
+retargeted by an invalid handle. A 403 or 404 on an existing handle maps to
+`CachedContentError::Expired`, preserving the provider message because 403 can
+also indicate credential or quota problems. Cache creation does not apply this
+mapping, so authorization failures do not become recreation loops.
 
 ## Provider observations
 

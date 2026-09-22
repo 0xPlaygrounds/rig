@@ -1,9 +1,11 @@
-//! Canonical-transcript invariants of the message model: a valid conversation
-//! answers every assistant tool call in the next user message and carries no
-//! orphan results ([`validate_canonical`]), and a tool's output becomes that
-//! user-message content through one constructor ([`tool_result_output`]).
-//! How an agent loop *uses* these — history threading, recovery feedback,
-//! turn classification — lives with the loop (`rig_agent::run::transcript`).
+//! Conversation validation and constructors for real or synthetic tool results.
+//!
+//! ```
+//! use rig_core::{message::Message, transcript::validate_canonical};
+//!
+//! validate_canonical(&[Message::user("Hello"), Message::assistant("Hi")])?;
+//! # Ok::<(), rig_core::transcript::TranscriptError>(())
+//! ```
 
 use std::collections::BTreeSet;
 
@@ -42,13 +44,11 @@ pub enum TranscriptError {
     },
 }
 
-/// Check that `messages` is a canonical transcript: no two assistant messages
-/// in a row, every assistant tool call answered by a tool result in the very
-/// next message, and no tool result that answers no call from the preceding
-/// assistant message. This is the shape an agent loop produces (rig-agent's
-/// run threads history this way and answers calls with
-/// [`tool_result_message`]) and the shape it expects back when a driver
-/// resumes a run or loads history from memory.
+/// Rejects consecutive assistant messages, unanswered tool-call IDs, and results
+/// without a pending call. Each pending ID must be answered once in the next user
+/// message, before another assistant message or the end of history.
+/// System messages reset the consecutive-assistant check but retain pending calls.
+/// Duplicate call IDs are treated as one pending ID.
 pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
     let mut prev_assistant_calls: Option<BTreeSet<ToolCallId>> = None;
     let mut prev_was_assistant = false;
@@ -115,9 +115,7 @@ fn tool_result_with(
     name: String,
     content: Vec<ToolResultContent>,
 ) -> UserContent {
-    // The *executed* tool's name travels as data on the result: several
-    // wires require it on replay (Gemini `functionResponse.name`, Ollama
-    // tool messages), and an identifier is not a name.
+    // Replay protocols require the executed tool's name separately from its call ID.
     UserContent::tool_result_for(call, provider, name, content)
 }
 
@@ -131,11 +129,9 @@ pub fn tool_result_output(
     tool_result_with(call, provider, name, output.into_content())
 }
 
-/// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
-/// "not executed" notice) as a tool result. Emitted **verbatim as text** and
-/// never re-parsed as structured tool output, so a JSON-shaped message is not
-/// silently reinterpreted as an image/multimodal result. Used identically by the
-/// blocking and streaming drivers so synthetic results match across both.
+/// Constructs a synthetic tool result containing verbatim text, such as recovery
+/// feedback or a skip reason. JSON-shaped text is not reinterpreted as structured
+/// or multimodal output.
 pub fn tool_result_message(
     call: ToolCallId,
     provider: Option<ProviderCallId>,

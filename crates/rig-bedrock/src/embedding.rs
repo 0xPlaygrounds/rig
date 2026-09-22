@@ -20,8 +20,6 @@ pub struct EmbeddingResponse {
     pub input_text_token_count: usize,
 }
 
-// The model-id string values are canonically defined in `crate::completion`;
-// these aliases keep this module's historical public names.
 pub use crate::completion::{
     AMAZON_TITAN_EMBEDDINGS_G1_TEXT as AMAZON_TITAN_EMBED_TEXT_V1,
     AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1 as AMAZON_TITAN_EMBED_IMAGE_V1,
@@ -98,8 +96,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             async {
                 let documents: Vec<String> = documents.into_iter().collect();
 
-                // Deliberately sequential: issuing the requests one at a time keeps
-                // Bedrock's per-account throttling behavior unchanged.
+                // Sequential requests limit concurrent load against account quotas.
                 let mut results = Vec::new();
                 let mut raw = Vec::new();
                 let mut usage = rig_core::completion::Usage::default();
@@ -131,7 +128,6 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 }
 
                 match first_error {
-                    // One Bedrock answer per document: `raw` is the array of them.
                     None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
                         .with_usage(usage)
                         .with_raw(serde_json::Value::Array(raw))),

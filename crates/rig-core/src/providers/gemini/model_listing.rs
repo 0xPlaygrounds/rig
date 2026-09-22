@@ -27,10 +27,7 @@ struct ListModelEntry {
     display_name: Option<String>,
     description: Option<String>,
     input_token_limit: Option<u64>,
-    /// The model's output ceiling. Gemini reports this for every model
-    /// (`gemini-2.5-flash`: 65536) and rig used to drop it on the floor, which
-    /// is why a hardcoded 4096 default went unnoticed for so long — nothing in
-    /// the library ever knew the real limit was ~16x larger (rig#2322).
+    /// Provider-reported maximum output tokens.
     output_token_limit: Option<u64>,
 }
 
@@ -94,8 +91,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
     with_query_pairs("/v1beta/models", &pairs)
 }
 
-/// One decoded page of `GET /v1beta/models`: the models it carried, and the
-/// cursor it named when it named a usable one.
+/// A decoded model page with an optional nonempty continuation cursor.
 #[derive(Debug)]
 struct ListingPage {
     models: Vec<Model>,
@@ -117,10 +113,7 @@ fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ModelListin
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // An empty cursor counts as absent, matching how every other
-    // provider-reported identifier in rig is read. Reporting `Some("")` would
-    // tell the shared loop there is a next page, and re-sending an empty
-    // `pageToken` returns the same page forever.
+    // Sending an empty cursor would repeatedly fetch the same page.
     Ok(ListingPage {
         models,
         next_cursor: page.next_page_token.filter(|token| !token.is_empty()),
@@ -136,13 +129,7 @@ mod tests;
 /// neither is some other endpoint's reply rather than a page of this one.
 const MODEL_PAGE_MARKERS: &[&str] = &["models", "nextPageToken"];
 
-/// How a listing request carries the API key.
-///
-/// Both Gemini providers list from the same endpoint and differ in nothing
-/// else, which is why one endpoint has two wires: GenerateContent appends
-/// the credential as the last `key=` query pair (`Gemini::uri`) while the
-/// Interactions API sends `x-goog-api-key` and names no query credential at
-/// all (`Gemini::interactions_uri`).
+/// API-key placement for a model-listing request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Auth {
     Query,
@@ -158,8 +145,7 @@ fn list_models_request(
     let path = list_models_path(page_token);
     let trimmed = path.trim_start_matches('/');
     let base_url = &provider.base_url;
-    // `list_models_path` always names `pageSize`, so a query credential joins
-    // an existing query string and lands last, as `Gemini::uri` writes it.
+    // The page-size parameter guarantees an existing query string.
     let request = match auth {
         Auth::Query => http::Request::get(format!(
             "{base_url}/{trimmed}&key={}",
@@ -245,11 +231,7 @@ impl Wire for InteractionsModels {
     }
 }
 
-/// Decodes one `GET /v1beta/models` page and follows the cursor it names.
-///
-/// The authentication is the only thing that differs between the two
-/// listing wires' requests, so `auth` keeps the paging rules in one state
-/// machine instead of two copies of them.
+/// Decode model pages and follow cursors using the original authentication mode.
 pub struct ModelsDecoder {
     provider: super::Gemini,
     auth: Auth,
@@ -268,9 +250,7 @@ impl ModelsDecoder {
 }
 
 impl Decoder<ModelListing> for ModelsDecoder {
-    /// The page's raw bytes. `parse_models_page` owns the entry mapping and
-    /// reads the body for its error context, so classification validates the
-    /// page's shape and hands the payload on rather than mapping it twice.
+    /// The page JSON, retained for model-entry error context.
     type Event = String;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -281,9 +261,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, payload: Self::Event, out: &mut Output<ModelListing>) {
-        // Every page gets a fresh decoder, so the cursor that fetched this
-        // one is not in hand here; the endpoint it names is the same either
-        // way, and that is all the diagnostic path reports.
+        // Diagnostics identify the endpoint without retaining the previous page's cursor.
         let path = list_models_path(None);
         match parse_models_page(payload.as_bytes(), &path) {
             Ok(page) => {
@@ -300,11 +278,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 }
 
-/// The credential-check wire: `GET /v1beta/models`, status only.
-///
-/// The listing endpoint is `Provider::VERIFY_PATH` for both Gemini
-/// providers, and the credential goes in the query as every other
-/// GenerateContent-family request puts it.
+/// Check credentials with `GET /v1beta/models`, authenticating through the query.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VerifyKey {
     /// The provider this wire speaks to.
@@ -342,7 +316,7 @@ impl Wire for VerifyKey {
     }
 }
 
-/// A success status is the whole answer; the page is not read for meaning.
+/// Verify a successful response without normalizing model entries.
 #[derive(Default)]
 pub struct VerifyKeyDecoder {
     answered: bool,
@@ -361,8 +335,7 @@ impl Decoder<Verify> for VerifyKeyDecoder {
         out.push(Ok(()));
     }
 
-    /// A 2xx whose body carried nothing this decoder recognizes still
-    /// verifies: the status already answered, and the fold needs one event.
+    /// Emit success if no recognized page supplied an event.
     fn finish(&mut self, out: &mut Output<Verify>) {
         if !self.answered {
             out.push(Ok(()));

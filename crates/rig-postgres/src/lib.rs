@@ -1,12 +1,9 @@
-//! PostgreSQL and pgvector integration for Rig.
+//! PostgreSQL and pgvector vector store for Rig.
 //!
-//! This crate provides [`PostgresVectorStore`], a Rig vector store backed by a
-//! PostgreSQL table with a `pgvector` embedding column. It supports the distance
-//! functions represented by [`PgVectorDistanceFunction`] and query filters via
-//! [`PgSearchFilter`].
-//!
-//! The root `rig` facade re-exports this crate as `rig::postgres` when the
-//! `postgres` feature is enabled.
+//! [`PostgresVectorStore`] searches a table holding a `pgvector` embedding
+//! column using a [`PgVectorDistanceFunction`] and optional [`PgSearchFilter`]
+//! conditions. The `rig` facade re-exports this crate as `rig::postgres` under
+//! the `postgres` feature.
 
 use std::{fmt::Display, fmt::Write as _, ops::RangeInclusive};
 
@@ -24,9 +21,8 @@ use serde_json::Value;
 use sqlx::{PgPool, Postgres, postgres::PgArguments, query::QueryAs};
 use uuid::Uuid;
 
-/// The store is generic over its embedding model `M`, which is fixed for the
-/// store's lifetime: an index populated under one model is only meaningful under
-/// that same model.
+/// Vector store over a Postgres table. Queries are embedded with the same model
+/// `M` that populated the table, so results are meaningless under another model.
 pub struct PostgresVectorStore<M> {
     model: M,
     pg_pool: PgPool,
@@ -34,14 +30,8 @@ pub struct PostgresVectorStore<M> {
     distance_function: PgVectorDistanceFunction,
 }
 
-/* PgVector supported distances
-<-> - L2 distance
-<#> - (negative) inner product
-<=> - cosine distance
-<+> - L1 distance (added in 0.7.0)
-<~> - Hamming distance (binary vectors, added in 0.7.0)
-<%> - Jaccard distance (binary vectors, added in 0.7.0)
- */
+/// pgvector distance operators. `Hamming` and `Jaccard` apply to binary vectors,
+/// and all operators except L2, inner product, and cosine require pgvector 0.7.
 pub enum PgVectorDistanceFunction {
     L2,
     InnerProduct,
@@ -65,14 +55,9 @@ impl Display for PgVectorDistanceFunction {
 }
 
 impl PgVectorDistanceFunction {
-    /// A SQL expression that grows with similarity, so
-    /// [`VectorSearchRequest::threshold`] — documented as a *minimum
-    /// similarity* — can be applied as `score >= $n`. pgvector only exposes
-    /// distances, so the expression is derived per operator: cosine and
-    /// jaccard distances are complements of a similarity in `[0, 1]`; `<#>`
-    /// is already the negated inner product; the metric distances are negated
-    /// so "more similar" still sorts higher. `embedding` and `query` are
-    /// column/placeholder text spliced verbatim.
+    /// Builds a SQL expression increasing with similarity so a minimum-similarity
+    /// threshold applies as `score >= $n`. `embedding` and `query` are spliced
+    /// verbatim and must not carry untrusted input.
     fn score_expression(&self, embedding: &str, query: &str) -> String {
         match self {
             PgVectorDistanceFunction::Cosine | PgVectorDistanceFunction::Jaccard => {
@@ -86,13 +71,12 @@ impl PgVectorDistanceFunction {
     }
 }
 
-/// Placeholder token emitted for every bind parameter. `search_query` rewrites
-/// each occurrence into its numbered form (`$3`, `$4`, ...), so every constructor
-/// below must use this token and nothing else — a stray `?` would reach Postgres
-/// verbatim.
+/// Bind placeholder token. Query rendering renumbers each occurrence, so filter
+/// constructors must emit this token and no other placeholder syntax.
 const PLACEHOLDER: &str = "$";
 
-/// Postgres query filter: a `WHERE` fragment plus the values to bind to it.
+/// Postgres `WHERE` fragment with its bind values. Keys, patterns, and range
+/// bounds are spliced into SQL verbatim; only values are bound.
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct PgSearchFilter(SqlCondition<serde_json::Value>);
 
@@ -163,14 +147,14 @@ impl PgSearchFilter {
 
     // String matching ops
 
-    /// Tests whether the value at `key` matches the (case-sensitive) pattern
-    /// `pattern` should be a valid SQL string pattern, with '%' and '_' as wildcards
+    /// Case-sensitive SQL `LIKE` match. `pattern` is spliced verbatim, so it must
+    /// include its own quoting, with `%` and `_` as wildcards.
     pub fn like(key: &str, pattern: &'static str) -> Self {
         Self(SqlCondition::raw(format!("{key} like {pattern}")))
     }
 
-    /// Tests whether the value at `key` matches the SQL regex pattern
-    /// `pattern` should be a valid regex
+    /// SQL `SIMILAR TO` match. `pattern` is spliced verbatim and must include its
+    /// own quoting.
     pub fn similar_to(key: &str, pattern: &'static str) -> Self {
         Self(SqlCondition::raw(format!("{key} similar to {pattern}")))
     }
@@ -212,7 +196,6 @@ fn bind_value<S>(
                 builder.bind(Value::Array(xs))
             }
         }
-        // Will always be JSONB
         object => builder.bind(object),
     }
 }
@@ -221,7 +204,6 @@ fn bind_value<S>(
 pub struct SearchResult {
     id: Uuid,
     document: Value,
-    //embedded_text: String,
     distance: f64,
 }
 
@@ -258,8 +240,8 @@ impl<M: EmbeddingModel> PostgresVectorStore<M> {
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
-    /// Validates the sample count, embeds the query, and runs the similarity
-    /// search, returning one row per result.
+    /// Embeds the query and runs the search, returning one row per result.
+    /// Errors when the requested sample count exceeds `i64::MAX`.
     async fn run_search<R>(
         &self,
         req: &VectorSearchRequest<PgSearchFilter>,
@@ -312,15 +294,12 @@ impl<M: EmbeddingModel> PostgresVectorStore<M> {
     }
 }
 
-/// Render the search SQL and its bind values (after `$1` = query vector,
-/// `$2` = limit).
+/// Renders the search SQL and the values bound after `$1` (query vector) and
+/// `$2` (limit).
 ///
-/// The threshold is a minimum similarity applied to
-/// [`PgVectorDistanceFunction::score_expression`] inside the inner
-/// `SELECT`'s `WHERE`; it cannot reference the `distance` alias, which is
-/// only visible in the outer query. Returned scores stay raw distances in
-/// ascending order, so callers who never set a threshold see identical
-/// results.
+/// The threshold filters on a similarity expression inside the inner `SELECT`,
+/// since the `distance` alias is only visible to the outer query. Returned
+/// scores remain raw distances ordered ascending regardless of threshold.
 fn render_search_query(
     distance_function: &PgVectorDistanceFunction,
     documents_table: &str,
@@ -329,9 +308,8 @@ fn render_search_query(
 ) -> (String, Vec<serde_json::Value>) {
     let document = if with_document { ", document" } else { "" };
 
-    // Bind order: threshold (if any) first, then filter values. The threshold
-    // condition is rendered after renumbering because its `$1` must stay the
-    // query vector.
+    // Threshold binds before filter values, and its `$1` reference must remain
+    // the query vector rather than being renumbered.
     let mut params = Vec::new();
     let mut conditions = Vec::new();
     let mut counter = 3;
@@ -413,8 +391,8 @@ impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
 impl<M: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<M> {
     type Filter = PgSearchFilter;
 
-    /// Get the top n documents based on the distance to the given query.
-    /// The result is a list of tuples of the form (score, id, document)
+    /// Returns up to `samples` documents as `(distance, id, document)` ordered by
+    /// ascending distance. Rows whose documents fail to deserialize are skipped.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
@@ -429,7 +407,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<M> {
         Ok(rows)
     }
 
-    /// Same as `top_n` but returns the document ids only.
+    /// Like `top_n` but returns `(distance, id)` without deserializing documents.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,

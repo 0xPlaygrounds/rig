@@ -1,9 +1,13 @@
-//! This module provides functionality for working with streaming completion models.
-//! It provides traits and types for generating streaming completion requests and
-//! handling streaming completion responses.
+//! Runtime-independent completion events, response aggregation, and stream controls.
 //!
-//! Provider implementations use these types to expose raw streamed completion
-//! events without depending on a runtime.
+//! ```
+//! use rig_core::streaming::PauseControl;
+//!
+//! let control = PauseControl::new();
+//! control.pause();
+//! assert!(control.is_paused());
+//! control.resume();
+//! ```
 
 mod accumulator;
 mod block_id;
@@ -26,13 +30,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
-/// The mutable state of the fold from stream events to one completion
-/// response, borrowed for one step.
-///
-/// Two surfaces run this fold: [`StreamingCompletionResponse`] as it yields
-/// events, and [`CompletionFold`](crate::operation::CompletionFold) as the
-/// driver folds a buffered reply. Sharing the step is what makes "a unary
-/// reply is a stream of one frame" true rather than aspirational.
+/// Mutable state borrowed for one event-folding step, shared by streaming
+/// responses and [`CompletionFold`](crate::operation::CompletionFold).
 pub(crate) struct FoldStep<'a> {
     pub accumulator: &'a mut BlockAccumulator,
     pub response: &'a mut Option<StreamFinal>,
@@ -144,12 +143,7 @@ pub(crate) fn fold_finish(
     .with_optional_model(terminal.and_then(|response| response.model.clone()))
 }
 
-/// Shared pause flag plus the parked consumer's waker.
-///
-/// `AtomicWaker` holds a single waker, so this is correct only while one
-/// task polls the stream — which `poll_next` taking `Pin<&mut Self>`
-/// enforces. A design that shares one control across multiple streams must
-/// switch to a multi-waiter primitive instead.
+/// Pause flag and single-consumer waker. Must not be shared across streams.
 struct PauseState {
     paused: AtomicBool,
     waker: AtomicWaker,
@@ -195,11 +189,7 @@ impl Default for PauseControl {
     }
 }
 
-/// How the shared assembler treats an argument payload that does not parse as
-/// JSON when a streamed tool call's input ends.
-///
-/// This is genuine wire-family policy, declared by the adapter on the end
-/// event rather than hand-rolled per provider.
+/// Adapter-selected policy for tool arguments that fail to parse at an end event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnparseableToolInput {
@@ -233,69 +223,33 @@ pub struct ToolCallDecoration {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// The provider's terminal stream record, normalized.
+/// Normalized terminal record, emitted only after provider-signaled completion.
+/// EOF without a terminal record is truncation, not a successful completion.
 ///
-/// This replaces the provider-typed final payload that streams used to carry:
-/// usage is a plain field rather than a trait method, and the finish reason is
-/// normalized exactly as on the unary [`CompletionResponse`].
-///
-/// Providers that want their own terminal type keep it behind
-/// their adapter's terminal mapping and serialize it onto [`StreamFinal::raw`].
-///
-/// # Emission contract
-///
-/// A terminal record is emitted only when the provider signaled genuine
-/// completion — its own end-of-response event (an Anthropic `message_delta`
-/// with a stop reason, an OpenAI `[DONE]` / `response.completed`, a Gemini
-/// chunk carrying `finishReason`, and so on). Three failure shapes reach a
-/// consumer, and they are distinct:
-///
-/// | Shape | `Err` item | Stream continues | Terminal record |
-/// |---|---|---|---|
-/// | Transport error (connection lost, HTTP failure) | yes | no | never |
-/// | Malformed frame (recoverable parse error) | yes | yes | if a genuine terminal later arrives |
-/// | Truncation (EOF without the provider's end event) | no | — | never |
-///
-/// On a terminal error (a transport failure or the provider's own failure
-/// event), tool calls that were fully delivered before the failure are yielded
-/// *before* the terminal `Err`; nothing follows the error — the stream then
-/// ends without a terminal record.
-///
-/// Consequently an `Err` item is **not** by itself terminal: a malformed frame
-/// is surfaced and the stream keeps consuming, so a later genuine terminal
-/// still completes it. Consumers must drain the stream to `None` rather than
-/// stop at the first `Err`, and must treat the absence of a terminal record as
-/// truncation, never as a successful usage-less completion.
+/// Recoverable malformed frames yield errors and allow subsequent events.
+/// Transport or provider terminal failures yield already-completed tool calls
+/// before the final error, then end without a terminal record. Consumers must
+/// drain to `None` rather than treating every error item as terminal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(from = "StreamFinalRepr")]
 pub struct StreamFinal {
     /// Token usage reported by the provider for this streamed completion.
     /// A counter the provider did not report is `None`.
     pub usage: Usage,
-    /// Why the model stopped generating, when the provider reported it.
-    ///
-    /// [`StreamingCompletionResponse`] applies
-    /// [`FinishReason::reconcile_with_output`](crate::completion::FinishReason::reconcile_with_output)
-    /// to this value using the tool calls actually seen on the stream, so a
-    /// provider adapter does not need to (and cannot — it has no view of the
-    /// preceding events).
+    /// Provider-reported finish reason. [`StreamingCompletionResponse`] reconciles
+    /// it with the completed tool calls before yielding the terminal event.
     #[serde(default)]
     pub finish_reason: Option<crate::completion::FinishReason>,
-    /// Provider-assigned *assistant message* ID, when available — only IDs the
-    /// provider would recognize on a replayed assistant message. Response-scoped
-    /// identifiers belong in [`StreamFinal::response_id`].
+    /// Provider-assigned assistant message ID suitable for replay.
+    /// Response-scoped identifiers belong in [`Self::response_id`].
     #[serde(default)]
     pub message_id: Option<String>,
-    /// Provider-assigned response-scoped ID, when available — e.g. an OpenAI
-    /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
+    /// Provider-assigned response ID. Must not be replayed as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
-    /// The provider's transport-level request identifier, taken from the SSE
-    /// connection's HTTP response headers (Anthropic `request-id`, OpenAI/xAI
-    /// `x-request-id`). When the source reconnected, this is the connection
-    /// that delivered this terminal record. Never the body's message/response
-    /// id. `None` means the provider did not report one — a documented
-    /// outcome, never an error.
+    /// Request identifier from the HTTP headers of the connection delivering
+    /// this terminal record, including after reconnects. `None` if unreported;
+    /// never the body's message or response ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
     /// Stable descriptor name of the provider that produced this stream.
@@ -303,22 +257,10 @@ pub struct StreamFinal {
     /// Provider-reported model identifier, when available.
     #[serde(default)]
     pub model: Option<String>,
-    /// The provider's own terminal record for this stream, serialized by the
-    /// adapter that mapped it. It is the terminal record as rig's wire type parsed it —
-    /// fields that type does not model are not here — and it is the terminal
-    /// record only, not the stream's frames; see the module docs for why
-    /// frames are a separate mechanism. Every in-tree adapter populates it
-    /// unconditionally.
-    ///
-    /// An escape hatch for provider-specific data rig does not normalize — it
-    /// never replaces a normalized field, and every normalized field means the
-    /// same thing whatever this holds. Required at construction: a terminal
-    /// record is built from the document that produced it, so there is no
-    /// record without one and no sentinel for its absence.
-    ///
-    /// Typed access is recoverable: provider terminal types are
-    /// `Deserialize`, so `provider::StreamingCompletionResponse::deserialize(&raw)`
-    /// returns the provider's own type.
+    /// Required provider terminal document serialized from the adapter's parsed
+    /// wire type, not a transcript of frames. Unmodeled fields may be absent.
+    /// This metadata does not override normalized fields and can be deserialized
+    /// into the corresponding provider terminal type.
     pub raw: serde_json::Value,
 }
 
@@ -366,15 +308,7 @@ impl StreamFinal {
 
 crate::provider_response::response_metadata_setters!(StreamFinal);
 
-/// Wire-shape mirror of [`StreamFinal`], used only for deserialization.
-///
-/// Serde must never construct an invariant-bearing value structurally: a plain
-/// derive would let `"message_id":""` skip the empty-string filtering the
-/// `with_*` setters apply. This mirror deserializes the exact wire shape and
-/// [`From`] funnels it through
-/// [`StreamFinal::new`] and the setters, so every deserialized value satisfies
-/// the same invariants as a constructed one. Serialization stays derived on
-/// [`StreamFinal`] itself, so the wire format is unchanged.
+/// Deserialization shape routed through setters to normalize empty identifiers.
 #[derive(Deserialize)]
 struct StreamFinalRepr {
     usage: Usage,
@@ -413,17 +347,8 @@ impl From<StreamFinalRepr> for StreamFinal {
     }
 }
 
-/// An unmodeled wire payload on the raw passthrough channel.
-///
-/// Wraps the raw JSON with a **redacted** `Debug` (structural metadata only):
-/// unmodeled frames can carry model output or other sensitive provider data,
-/// and `warn!(?value)`-style Debug captures in streaming modules were a
-/// recurring leak class a text scanner existed to police. With the payload
-/// unable to Debug-print its content, that class is structurally closed for
-/// the JSON channel — the redaction is a property of the type, not a
-/// convention. Consumers who want the content opt in explicitly via
-/// [`UnknownPayload::value`]; serialization
-/// is `#[serde(transparent)]`, so wire round-trips are unchanged.
+/// Unmodeled JSON payload with content-redacted `Debug` output.
+/// Serialization preserves the payload; [`Self::value`] explicitly exposes it.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UnknownPayload(serde_json::Value);
@@ -441,7 +366,7 @@ impl UnknownPayload {
 }
 
 impl std::fmt::Debug for UnknownPayload {
-    /// Structural metadata only — never the payload.
+    /// Reports serialized size without exposing payload content.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let bytes = serde_json::to_vec(&self.0).map_or(0, |json| json.len());
         write!(f, "UnknownPayload({bytes} bytes redacted)")
@@ -457,13 +382,8 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// A provider stream: the events an adapter emits, with in-band errors, as
-/// consumed by [`StreamingCompletionResponse`].
-/// The stream a provider hands to [`StreamingCompletionResponse::stream`]:
-/// the impl-side wire, whose error half is the provider's
-/// [`CompletionError`]. It is mapped once, at construction, onto the one
-/// consumer item type — [`StreamEvents`], whose error half is
-/// [`ErrorReport`] on every path (provider, accumulator, bus, hooks).
+/// Adapter events with provider errors. [`StreamingCompletionResponse::stream`]
+/// converts errors to [`ErrorReport`] for consumers.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, CompletionError>> + Send>>;
 
@@ -499,8 +419,7 @@ pub struct StreamingCompletionResponse {
     /// record arrives; a stream a provider opened ([`Self::stream`]) names
     /// its provider up front.
     provider_from_terminal: bool,
-    /// Whether the inner stream already ended: re-polling a drained stream
-    /// — which `Stream` permits and combinators do — stays drained.
+    /// Prevents polling the inner stream after it ends.
     finished: bool,
     /// The provider's normalized terminal record, `None` until the stream
     /// yields it (and forever on truncation or a terminal error).
@@ -526,12 +445,8 @@ impl StreamingCompletionResponse {
         }
     }
 
-    /// A response over events that already speak the wire's error half —
-    /// what the bus hands back (`the bus driver’s stream wrapping`). No mapping.
-    /// `provider` is the name the stream carries until its terminal record
-    /// names the provider that produced it; from then on
-    /// [`Self::provider`] and [`Self::finish`] report that one, so a
-    /// streamed completion names its provider the way a unary one does.
+    /// Wraps normalized events without error conversion. Uses `provider` until
+    /// a terminal record supplies a nonempty provider name.
     pub fn from_events(provider: impl Into<String>, inner: StreamEvents) -> Self {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
@@ -554,9 +469,8 @@ impl StreamingCompletionResponse {
         &self.provider
     }
 
-    /// The aggregated choice so far: every block the events yielded to this
-    /// point have opened, in arrival order. Non-destructive — two snapshots
-    /// are equal and neither changes what [`Self::finish`] returns.
+    /// Returns the accumulated choice without consuming it.
+    /// See [`BlockAccumulator::snapshot`] for unfinished and empty-part handling.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
         self.accumulator.snapshot()
     }
@@ -615,11 +529,8 @@ impl StreamingCompletionResponse {
         self.pause_control.is_paused()
     }
 
-    /// Token usage reported by the provider for this response.
-    ///
-    /// Returns the usage carried by the final response once the stream has
-    /// produced it. Until then — or when the provider does not report streamed
-    /// usage — this returns [`Usage::default`], with every counter `None`.
+    /// Returns terminal usage, or [`Usage::default`] before a terminal record.
+    /// Unreported counters remain `None`.
     pub fn usage(&self) -> Usage {
         self.response
             .as_ref()
@@ -627,14 +538,8 @@ impl StreamingCompletionResponse {
             .unwrap_or_default()
     }
 
-    /// This stream's identity metadata as one
-    /// [`crate::completion::ResponseIdentity`] carrier.
-    ///
-    /// The message id is read from the stream rather than the terminal record:
-    /// an explicit `MessageId` event outranks the terminal's id, and the
-    /// terminal record backfills the field when the stream never saw one. The
-    /// response-scoped and transport ids exist only on the terminal record, so
-    /// they stay `None` for a stream that ended without one.
+    /// Returns response identity. A message-start ID takes precedence over the
+    /// terminal message ID. Response and transport IDs require a terminal record.
     pub fn identity(&self) -> crate::completion::ResponseIdentity {
         crate::completion::ResponseIdentity {
             message_id: self.message_id.clone(),
@@ -653,28 +558,21 @@ impl Stream for StreamingCompletionResponse {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
 
-        // A drained stream stays drained (#2258 H6).
+        // Do not poll the inner stream after termination.
         if stream.finished {
             return Poll::Ready(None);
         }
 
         if stream.is_paused() {
-            // Park rather than re-waking immediately: a self-wake turns a
-            // pause into a busy poll loop that burns the executor for as long
-            // as the consumer stays paused (#2258 H7). Register-then-recheck
-            // is the `AtomicWaker` protocol that also closes the resume race:
-            // `resume` clears the flag before waking, and this poll registers
-            // its waker before re-reading the flag, so a resume racing this
-            // branch either sees the registered waker (and wakes the task) or
-            // is observed by the re-check below.
+            // Register before rechecking to avoid losing a concurrent resume.
+            // Parking without a self-wake prevents busy polling while paused.
             stream.pause_control.state.waker.register(cx.waker());
             if stream.is_paused() {
                 return Poll::Pending;
             }
         }
 
-        // Non-yielding events (duplicate terminals) loop rather than recurse
-        // — a long run of them must not grow the stack (#2258 review P3).
+        // Iterate over duplicate terminals without growing the stack.
         loop {
             return match Pin::new(&mut stream.inner).poll_next(cx) {
                 Poll::Pending => Poll::Pending,
@@ -682,10 +580,8 @@ impl Stream for StreamingCompletionResponse {
                     stream.finished = true;
                     Poll::Ready(None)
                 }
-                // Every error reaches the consumer. Cancellation is *not* an
-                // error here: `cancel()` aborts through `Abortable`, which
-                // terminates the inner stream with `Ready(None)` above, so
-                // the aggregated choice is finished normally.
+                // Cancellation ends the stream without an error item; actual
+                // errors remain visible even if later events can recover.
                 Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
                 Poll::Ready(Some(Ok(event))) => {
                     let step = FoldStep {

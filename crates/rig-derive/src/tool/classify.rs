@@ -4,14 +4,7 @@ use syn::{Attribute, Ident, Meta, Type};
 
 use crate::resolve::CrateRefs;
 
-/// Returns whether `ty` uses an unambiguous fully qualified path to Rig's
-/// tool execution context.
-///
-/// Procedural macros cannot resolve imported type names. Matching only the
-/// last `ToolContext` path segment would therefore steal unrelated application
-/// types with the same name, so only paths rooted at a crate name Rig resolves
-/// to in this build (including Cargo renames) are recognized. Imported aliases
-/// use the explicit `#[rig(context)]` parameter marker instead.
+/// Diagnostic for context parameters lacking a mutable reference.
 const MUT_CONTEXT_MSG: &str = "a `ToolContext` parameter must have type `&mut ToolContext`";
 
 /// Peel grouping (`Group`/`Paren`) wrappers off a type.
@@ -23,6 +16,8 @@ fn peel(ty: &Type) -> &Type {
     }
 }
 
+/// Recognizes qualified context paths under resolved Rig dependencies.
+/// Imported aliases need an explicit marker because macros cannot resolve them.
 fn is_tool_context_type(ty: &Type, refs: &CrateRefs) -> bool {
     let Type::Path(type_path) = peel(ty) else {
         return false;
@@ -72,11 +67,8 @@ pub(crate) fn has_tool_context_marker(attrs: &[Attribute]) -> syn::Result<bool> 
     Ok(marked)
 }
 
-/// Classify a function parameter as the distinguished execution context.
-///
-/// An owned or shared `ToolContext` is almost certainly an authoring mistake:
-/// tools need the exact mutable context supplied by the runtime so result
-/// metadata and mutations remain visible to the caller.
+/// Recognizes marked or qualified context parameters and rejects non-mutable
+/// references or owned values. Other parameters return `false`.
 pub(crate) fn is_tool_context_parameter(
     ty: &Type,
     explicitly_marked: bool,

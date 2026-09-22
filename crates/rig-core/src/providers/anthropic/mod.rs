@@ -1,6 +1,5 @@
-//! Anthropic as data: one config, its wires, and every Messages-format dialect.
+//! Anthropic provider configuration and Messages-format endpoint wires.
 //!
-//! # Example
 //! ```no_run
 //! use rig_core::providers::anthropic;
 //!
@@ -12,9 +11,8 @@
 //! # }
 //! ```
 //!
-//! A wire says what to send and how to read the reply; `.bind(transport)`
-//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
-//! implements the consumer-facing model traits.
+//! Bind a wire with `.bind(transport)` to obtain a [`Bound`](crate::driver::Bound)
+//! implementing the consumer-facing model traits.
 
 pub mod completion;
 pub mod streaming;

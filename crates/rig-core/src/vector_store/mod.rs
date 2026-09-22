@@ -1,13 +1,13 @@
-//! Vector store abstractions for semantic search and retrieval.
+//! Vector-store insertion and similarity-search interfaces.
+//! [`VectorStoreIndex`] implementations also implement [`PortableTool`] when their
+//! filter is deserializable and uses JSON values.
 //!
-//! # Core Traits
+//! ```
+//! use rig_core::vector_store::builder::InMemoryVectorStoreBuilder;
 //!
-//! - [`VectorStoreIndex`]: Query a vector store for similar documents.
-//! - [`InsertDocuments`]: Insert documents and their embeddings.
-//!
-//! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
-//!
-//! Types implementing [`VectorStoreIndex`] automatically implement [`PortableTool`].
+//! let store = InMemoryVectorStoreBuilder::<String>::new().build();
+//! # let _ = store;
+//! ```
 
 use http::StatusCode;
 pub use request::VectorSearchRequest;
@@ -115,14 +115,8 @@ pub fn flatten_embedded<Doc: Serialize, R>(
 pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
     /// Insert precomputed embeddings for each document.
     ///
-    /// **Every document must carry at least one embedding.** The embedding
-    /// list was non-empty by construction until it became a `Vec`; the
-    /// requirement did not go away, it moved to the caller. Implementors do
-    /// not guard it, and what an empty list does varies by store — some
-    /// silently insert nothing, some store a document no similarity search
-    /// can ever return, some surface a confusing driver error. Embeddings
-    /// produced by `EmbeddingsBuilder` always satisfy this; only hand-built
-    /// tuples can violate it.
+    /// Callers must supply at least one embedding per document. Empty-list
+    /// behavior is backend-dependent and is not uniformly validated.
     fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -211,7 +205,7 @@ where
     }
 }
 
-/// Index strategy for the super::InMemoryVectorStore
+/// Candidate-selection strategy for the in-memory vector store.
 #[derive(Clone, Debug, Default)]
 pub enum IndexStrategy {
     /// Checks all documents in the vector store to find the most relevant documents.

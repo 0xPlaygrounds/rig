@@ -1,11 +1,13 @@
-//! Bedrock wire types.
+//! Bedrock response types and request conversions.
+//! Raw completion and image-generation methods return these provider-native types.
 //!
-//! `converse_output` and `assistant_content` are public because
-//! [`CompletionModel::raw_completion`](crate::completion::CompletionModel::raw_completion)
-//! returns `assistant_content::AwsConverseOutput`, which wraps
-//! `converse_output::InternalConverseOutput`: an escape hatch whose type a
-//! caller cannot name is only half an escape hatch. The remaining modules are
-//! request-side conversions with no public return type.
+//! ```
+//! use rig_bedrock::types::text_to_image::TextToImageResponse;
+//!
+//! let response: TextToImageResponse = serde_json::from_str(r#"{"images":[]}"#)?;
+//! assert!(response.error.is_none());
+//! # Ok::<(), serde_json::Error>(())
+//! ```
 
 pub mod assistant_content;
 pub mod converse_output;

@@ -1,15 +1,10 @@
-//! The OpenAI Responses API: the vocabulary of its requests and replies, and
-//! the one decoder that interprets them.
-//!
-//! The endpoint itself — `POST /responses`, its dialects, and the
-//! configuration a host stores — is [`wire`]; everything here is the data
-//! that travels over it.
+//! Request and response types for the OpenAI Responses API.
+//! Endpoint and dialect configuration lives in [`wire`].
 //!
 //! ```no_run
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // The wire; `.bind(transport)` joins it to a socket.
 //! let model = OpenAI::from_env()?.responses(openai::GPT_5_2);
 //! # let _ = model;
 //! # Ok(())
@@ -43,7 +38,7 @@ pub struct CompletionRequest {
     pub input: Vec<InputItem>,
     /// The model name
     pub model: String,
-    /// Instructions (also referred to as preamble, although in other APIs this would be the "system prompt")
+    /// Top-level system instructions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
     /// The maximum number of output tokens.
@@ -52,7 +47,7 @@ pub struct CompletionRequest {
     /// Toggle to true for streaming responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
-    /// The temperature. Set higher (up to a max of 1.0) for more creative responses.
+    /// Sampling temperature. Supported values depend on the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     /// Whether the LLM should be forced to use a tool before returning a response.
@@ -69,16 +64,13 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    /// Adds a provider-native hosted tool (e.g. `web_search`, `file_search`, `computer_use`)
-    /// to the request. These tools are executed by OpenAI's infrastructure, not by Rig's
-    /// agent loop.
+    /// Appends a function or provider-hosted tool to the request.
     pub fn with_tool(mut self, tool: impl Into<ResponsesToolDefinition>) -> Self {
         self.tools.push(tool.into());
         self
     }
 
-    /// Adds multiple provider-native hosted tools to the request. These tools are executed
-    /// by OpenAI's infrastructure, not by Rig's agent loop.
+    /// Appends function or provider-hosted tools in iteration order.
     pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
     where
         I: IntoIterator<Item = Tool>,
@@ -139,10 +131,6 @@ impl InputItem {
     }
 
     /// A user-role input item carrying one content part.
-    ///
-    /// Every user block the history conversion emits — text, image, file, a
-    /// document flattened to text — becomes its own single-part item, so the
-    /// wrapper is built here once instead of per block.
     fn user_content(content: UserContent) -> Self {
         Self {
             role: Some(Role::User),
@@ -178,7 +166,7 @@ pub enum Role {
     System,
 }
 
-/// The type of content used in an [`InputItem`]. Additionally holds data for each type of input content.
+/// Content carried by an [`InputItem`].
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputContent {
@@ -186,10 +174,8 @@ pub enum InputContent {
     Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
-    /// An opaque compaction item, as returned by `/responses/compact` and
-    /// by a response whose context was compacted. OpenAI documents it as
-    /// pass-back-as-is; every field other than `type` is preserved verbatim
-    /// so a stateless client can replay the compacted window (rig#2269).
+    /// Opaque compaction data for replaying a compacted context. All fields
+    /// other than the separately serialized `type` tag are preserved.
     Compaction(Map<String, Value>),
 }
 
@@ -317,12 +303,8 @@ pub enum ToolResultOutputContent {
     },
 }
 
-/// The request error for a document or image source this API cannot carry.
-///
-/// Raw bytes must be base64-encoded by the caller (the wire has no binary
-/// channel); any other source kind is one the Responses input conversion does
-/// not model, and is reported with its own rendering rather than a `Debug`
-/// name.
+/// Returns a request error for an unsupported source.
+/// Callers must base64-encode raw bytes before request conversion.
 fn unsupported_document_source(source: DocumentSourceKind) -> CompletionError {
     match source {
         DocumentSourceKind::Raw(_) => CompletionError::RequestError(
@@ -415,9 +397,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             items.push(InputItem::user_content(UserContent::InputText { text }));
                         }
                         crate::message::UserContent::ToolResult(tool_result) => {
-                            // Provider-issued call id when one exists, else
-                            // rig's minted handle — always present and
-                            // non-empty.
+                            // Prefer provider identity so results match replayed calls.
                             let call_id = tool_result.wire_call_id().into_owned();
                             let output = responses_tool_result_output(tool_result.content)
                                 .map_err(|error| {
@@ -502,12 +482,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
             crate::completion::Message::Assistant { id, content } => {
                 let mut reasoning_items = Vec::new();
                 let mut other_items: Vec<InputItem> = Vec::new();
-                // The turn's one message item under its id: the wire refuses
-                // two input items with one id ("Duplicate item found with id
-                // msg_…"), and a turn the provider delivered as several
-                // `output_text` parts — or as several message items, folded
-                // under the first's id — is one assistant turn, so every text
-                // block of the turn rides that item as one more content part.
+                // Merge text parts under one message ID because duplicate input
+                // item IDs are rejected.
                 let mut message_item: Option<usize> = None;
 
                 for assistant_content in content {
@@ -516,9 +492,6 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             text,
                             additional_params,
                         }) => {
-                            // The whole replay rule lives in
-                            // `assistant_text_replay_message`; `None` means
-                            // the block produces no wire item.
                             let Some(message) =
                                 assistant_text_replay_message(id.clone(), text, additional_params)
                             else {
@@ -598,15 +571,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
     }
 }
 
-/// The canonical blocks of one Responses reasoning item, in the wire's own
-/// field order: every summary, then every raw reasoning text, then the opaque
-/// `encrypted_content` payload.
-///
-/// One builder because both directions of the same item must agree: the unary
-/// decode ([`Output::Reasoning`] → assistant content) and the streaming
-/// done-item restatement (`streaming::reasoning_end_from_done_item`) read the
-/// identical triple, and an empty `encrypted_content` is the wire's "absent"
-/// spelling — it must contribute no block on either path.
+/// Builds reasoning blocks in summary, text, encrypted-content order.
+/// Empty encrypted content contributes no block.
 pub(crate) fn reasoning_content_blocks(
     summary: Vec<ReasoningSummary>,
     content: Vec<String>,
@@ -636,11 +602,7 @@ pub(crate) fn reasoning_content_blocks(
 }
 
 fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<OpenAIReasoning> {
-    // Only wire-genuine ids exist in durable histories: the streaming layer
-    // populates `Reasoning::id` exclusively from `BlockId::Wire`, so an
-    // id-less (rig-keyed) reasoning item arrives here as `None` and drops
-    // from request input, mirroring main's handling. No provenance gate is
-    // needed — a fabricated id structurally cannot reach this function.
+    // Reasoning without a provider item ID cannot be replayed.
     let id = reasoning.id.clone()?;
 
     let mut summary = Vec::new();
@@ -672,7 +634,7 @@ fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<O
     })
 }
 
-/// The definition of a tool response, repurposed for OpenAI's Responses API.
+/// A function or hosted tool available to a Responses request.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ResponsesToolDefinition {
     /// The type of tool.
@@ -794,20 +756,12 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
     }
 }
 
-/// Tool choice for the OpenAI Responses API.
-///
-/// The Responses API accepts the `"auto"`/`"none"`/`"required"` modes shared
-/// with the Chat Completions API, and additionally supports forcing one
-/// specific function (`{"type": "function", "name": "..."}`) or restricting
-/// the model to a subset of the request's tools
-/// (`{"type": "allowed_tools", ...}`).
+/// Automatic, disabled, required, named-function, or restricted tool selection.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum ToolChoice {
-    /// `"auto"`, `"none"`, or `"required"`. The wrapped chat-completions
-    /// enum also has a `Function` variant whose nested wire shape the
-    /// Responses API rejects — use [`ToolChoiceDefinition::Function`] to
-    /// force a function here.
+    /// `"auto"`, `"none"`, or `"required"`. Do not use the wrapped enum's
+    /// `Function` variant; use [`ToolChoiceDefinition::Function`] instead.
     Mode(super::completion::ToolChoice),
     /// A typed tool-choice object (`function` or `allowed_tools`).
     Definition(ToolChoiceDefinition),
@@ -891,8 +845,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
-/// Token usage.
-/// Token usage from the OpenAI Responses API generally shows the input tokens and output tokens (both with more in-depth details) as well as a total tokens field.
+/// Response token counts and optional cached-input and reasoning breakdowns.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ResponsesUsage {
     /// Input tokens
@@ -934,9 +887,7 @@ impl From<ResponsesUsage> for crate::completion::Usage {
     }
 }
 
-/// Sum two optional token-detail breakdowns: both present adds them, one
-/// present carries through unchanged, both absent stays absent — a partial
-/// breakdown must never zero out the side that reported one.
+/// Adds present breakdowns, preserving a lone value or joint absence.
 fn add_optional_details<T: Add<Output = T>>(lhs: Option<T>, rhs: Option<T>) -> Option<T> {
     match (lhs, rhs) {
         (Some(lhs), Some(rhs)) => Some(lhs + rhs),
@@ -996,7 +947,7 @@ impl Add for OutputTokensDetails {
     }
 }
 
-/// Occasionally, when using OpenAI's Responses API you may get an incomplete response. This struct holds the reason as to why it happened.
+/// Provider-reported reason for an incomplete response.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct IncompleteDetailsReason {
     /// The reason for an incomplete [`CompletionResponse`].
@@ -1075,23 +1026,9 @@ impl<'de> Deserialize<'de> for ResponseStatus {
     }
 }
 
-/// Map the Responses API's terminal state onto the normalized finish reason.
-///
-/// This API reports how a turn ended with two fields rather than one: `status`
-/// says whether the turn ran to completion, and `incomplete_details.reason`
-/// says why it did not. Both the unary and streaming paths funnel through here
-/// so they cannot disagree.
-///
-/// `completed` maps to [`completion::FinishReason::Stop`]; the upgrade to
-/// [`completion::FinishReason::ToolCalls`] for a turn that emitted function
-/// calls is applied once, centrally, by
-/// [`completion::CompletionResponse::with_optional_finish_reason`] (and, for
-/// streams, by [`crate::streaming::StreamingCompletionResponse`]).
-///
-/// Anything unrecognized — a new `incomplete_details.reason`, or a terminal
-/// status such as `failed`/`cancelled` that has no normalized counterpart — is
-/// preserved verbatim in OpenAI's spelling instead of being smoothed into a
-/// natural stop. In-flight statuses report no reason at all.
+/// Maps status and incomplete details to a finish reason, preserving unknown
+/// terminal values. In-flight statuses and empty unknown statuses return `None`.
+/// Completed responses map to `Stop`; response assembly upgrades tool-call turns.
 pub(crate) fn map_finish_reason(
     status: &ResponseStatus,
     incomplete_details: Option<&IncompleteDetailsReason>,
@@ -1147,7 +1084,7 @@ pub enum SystemInstructionsPlacement {
     InputSystemMessages,
 }
 
-/// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
+/// Converts a Rig request using the default system-instruction placement.
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = CompletionError;
     fn try_from(
@@ -1358,10 +1295,8 @@ pub struct CompletionResponse {
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
     pub provider_reasoning: Option<String>,
-    /// The transport request id from the `x-request-id` response header — not
-    /// part of the response body; stamped by the request driver, so wire
-    /// deserialization always leaves it `None` and the manual `Serialize`
-    /// (which mirrors the wire body) never emits it.
+    /// Transport request ID from the `x-request-id` header, stamped by the driver.
+    /// Body deserialization leaves it `None`; serialization omits it.
     pub provider_request_id: Option<String>,
     /// The complete object-shaped top-level reasoning metadata returned by the provider.
     ///
@@ -1416,17 +1351,8 @@ struct CompletionResponseWireRef<'a> {
     additional_parameters: &'a AdditionalParameters,
 }
 
-/// The wire shape of a Responses API response body.
-///
-/// Everything past the typed fields is response *metadata* echoed by the
-/// provider (`top_p`, `service_tier`, `store`, …). It is captured as raw JSON
-/// and projected into [`AdditionalParameters`] leniently, because one optional
-/// metadata field disagreeing with its Rust type must never discard a whole
-/// response: OpenAI-compatible endpoints echo `top_p` as an object, and with
-/// `serde_json/arbitrary_precision` enabled anywhere in the dependency graph a
-/// `#[serde(flatten)]` into a typed `f64` rejects even `0.95`, because the
-/// flatten buffer skips the numeric coercions the direct path performs. A
-/// `serde_json::Value` accepts every shape, so the decode cannot fail here.
+/// Response body with untyped echoed metadata. Metadata is decoded separately
+/// so an incompatible optional field does not reject the response.
 #[derive(Deserialize)]
 struct CompletionResponseWire {
     id: String,
@@ -1454,10 +1380,7 @@ impl Serialize for CompletionResponse {
     where
         S: Serializer,
     {
-        // `AdditionalParameters::reasoning` models request configuration. A
-        // response's top-level `reasoning` field is represented by the three
-        // response surfaces above, so omit the request field here to avoid
-        // serializing duplicate `reasoning` keys.
+        // Omit request reasoning configuration to avoid duplicate response keys.
         let mut additional_parameters = self.additional_parameters.clone();
         additional_parameters.reasoning = None;
 
@@ -1505,9 +1428,7 @@ impl<'de> Deserialize<'de> for CompletionResponse {
         let (provider_reasoning, reasoning_metadata) = match response.reasoning {
             Some(Value::String(reasoning)) => (Some(reasoning), None),
             Some(Value::Object(metadata)) => (None, Some(metadata)),
-            // Null, arrays, numbers, and booleans are not documented top-level
-            // reasoning response shapes. Ignore them to preserve the lenient
-            // behavior that predates object-shaped metadata support.
+            // Unsupported reasoning shapes must not reject the response.
             _ => (None, None),
         };
         let reasoning_context = reasoning_metadata
@@ -1548,7 +1469,7 @@ pub struct AdditionalParameters {
     /// The text response format. This is where you would add structured outputs (if you want them).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<TextConfig>,
-    /// What types of extra data you would like to include. This is mostly useless at the moment since the types of extra data to add is currently unsupported, but this will be coming soon!
+    /// Additional response fields to request from the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include: Option<Vec<Include>>,
     /// `top_p`. Mutually exclusive with the `temperature` argument.
@@ -1859,8 +1780,7 @@ pub enum ReasoningSummaryLevel {
     Detailed,
 }
 
-/// Results to additionally include in the OpenAI Responses API.
-/// Note that most of these are currently unsupported, but have been added for completeness.
+/// Additional response fields requested through [`AdditionalParameters::include`].
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Include {
     #[serde(rename = "file_search_call.results")]
@@ -1875,15 +1795,9 @@ pub enum Include {
     CodeInterpreterCallOutputs,
 }
 
-/// A modeled output item from the OpenAI Responses API.
-///
-/// Unrecognized output items — notably provider-native hosted tools such as
-/// `web_search_call`, `file_search_call`, `computer_call`, and
-/// `code_interpreter_call` — decode to [`Output::Unknown`], which preserves
-/// the verbatim item object so callers can inspect or forward it. This keeps
-/// unknown item types from breaking deserialization of the entire
-/// `CompletionResponse` (the invariant that previously caused streaming token
-/// usage to be silently dropped) without discarding the payload along the way.
+/// A Responses output item. Unrecognized types, including hosted tools, decode
+/// to [`Output::Unknown`] with their JSON value preserved. Malformed known
+/// types fail deserialization.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Output {
     Message(OutputMessage),
@@ -1906,14 +1820,7 @@ pub enum Output {
     Unknown(Value),
 }
 
-/// Deserialize helper for the inline-field [`Output::Reasoning`] variant.
-///
-/// `Output`'s (de)serialization is hand-written so [`Output::Unknown`] can carry
-/// a raw [`Value`] (`#[serde(other)]` only applies to a unit variant, which
-/// would force the payload to be dropped). The modeled `Message`/`FunctionCall`
-/// variants deserialize straight into their payload structs; `Reasoning` has no
-/// payload struct of its own, so this mirrors its fields. Same approach as
-/// Anthropic's `Citation`.
+/// Deserialization fields for [`Output::Reasoning`].
 #[derive(Deserialize)]
 struct ReasoningFields {
     id: String,
@@ -1939,9 +1846,8 @@ impl From<ReasoningFields> for Output {
     }
 }
 
-/// Serialize a modeled payload as its tagged wire object — the payload's own
-/// fields plus the internally tagged `"type"`. The key is appended, so the
-/// result is value-equal (not byte-for-byte ordered) to the original item.
+/// Serializes an object payload with a `type` tag. Non-object payloads fail.
+/// Object key order is not preserved.
 fn tagged_output_object<T>(tag: &str, payload: &T) -> Result<Value, serde_json::Error>
 where
     T: Serialize,
@@ -1961,11 +1867,6 @@ impl Serialize for Output {
     where
         S: Serializer,
     {
-        // Hand-written to keep `Unknown` verbatim (mirrors Anthropic's
-        // `Citation`). Known variants emit their modeled fields plus the
-        // internally tagged `type`; `Unknown` re-emits its raw value. The result
-        // is value-equal — not byte-for-byte — to the wire item, since `type` is
-        // appended rather than threaded in declaration order.
         let value = match self {
             Output::Message(message) => tagged_output_object("message", message),
             Output::FunctionCall(call) => tagged_output_object("function_call", call),
@@ -2009,10 +1910,8 @@ impl<'de> Deserialize<'de> for Output {
     where
         D: Deserializer<'de>,
     {
-        // Decode to a `Value` first so an unmodeled item is captured verbatim as
-        // `Unknown`. A modeled `type` with a malformed body still errors (rather
-        // than silently degrading to `Unknown`); an absent or non-string `type`
-        // is itself unmodeled and is captured as `Unknown`. Mirrors `Citation`.
+        // Preserve unmodeled items, including absent or non-string tags.
+        // Malformed bodies with known tags must still fail.
         let value = Value::deserialize(deserializer)?;
         let Some(tag) = value.get("type").and_then(Value::as_str) else {
             return Ok(Output::Unknown(value));
@@ -2055,21 +1954,9 @@ pub struct OutputFunctionCall {
     pub status: ToolStatus,
 }
 
-/// The wire form of a Responses `function_call` item's `arguments`: the raw
-/// string exactly as the provider sent it, parsed into JSON only at
-/// consumption time.
-///
-/// The Responses wire genuinely emits arguments that are not valid JSON: a
-/// turn cut by `max_output_tokens` mid-tool-call restates the call on
-/// `response.output_item.done` (and in `response.incomplete`'s `output[]`)
-/// with the arguments truncated mid-JSON (e.g. `"{\""`) and item status
-/// `incomplete`. Decoding the string eagerly (the old
-/// `json_utils::stringified_json` field) rejected those frames wholesale, so
-/// the stream classified them `Corrupt` instead of ending with a `Length`
-/// terminal. Keeping the raw string makes the typed model accept what the
-/// wire sends; whether a truncated call surfaces is decided by the settled
-/// truncation policy at parse time (partial arguments never fabricate a
-/// call).
+/// Raw Responses function-call arguments, parsed as JSON at consumption time.
+/// Truncated arguments remain valid wire data; parsing them can fail without
+/// discarding the enclosing response or its terminal status.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionCallArguments(String);
 
@@ -2140,9 +2027,7 @@ pub struct OutputMessage {
     pub status: ResponseStatus,
     /// The actual message content
     pub content: Vec<AssistantContent>,
-    /// The generation phase this message belongs to (e.g. `"final_answer"`).
-    /// OpenAI documents that dropping it on a follow-up request degrades
-    /// quality, so it is captured here and re-sent on replay (rig#2269).
+    /// Generation phase, such as `"final_answer"`, preserved for follow-up requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<String>,
 }
@@ -2178,8 +2063,7 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         status: ToolStatus,
-        /// The phase the message was generated in; re-sent because OpenAI
-        /// documents that dropping it degrades follow-up quality (rig#2269).
+        /// Generation phase preserved from the output message.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         phase: Option<String>,
     },
@@ -2209,10 +2093,7 @@ pub enum AssistantContent {
     Refusal { refusal: String },
 }
 
-/// Wire shape of a Responses `output_text` block — this wire's own type, not
-/// the rig-level [`Text`]. `text` is the payload; everything else OpenAI
-/// attaches at the same level (`annotations`, `logprobs`, future keys) is
-/// preserved verbatim so a decoded item re-serializes value-equal.
+/// Responses `output_text` block with unmodeled sibling fields preserved as JSON.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct OutputText {
     pub text: String,
@@ -2243,20 +2124,13 @@ impl OutputText {
         let Some(params) = additional_params else {
             return Self::new(text);
         };
-        // The gate (`into_wire_extras`) collapses malformed-under-key to
-        // "no extras"; loudness for that shape lives in
-        // `assistant_text_replay_message`, this fn's one production caller.
+        // The caller diagnoses malformed extras before this conversion drops them.
         let extras = params
             .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
             .map(|map| {
                 map.into_iter()
-                    // The named field and the tag own `text`/`type`. Extras
-                    // ride a serde flatten, so an unfiltered key here would
-                    // serialize as a *duplicate* JSON key and last-wins
-                    // parsers would read history data as the block's text or
-                    // tag — ingest can never capture these keys, so dropping
-                    // them loses nothing. `phase` is message-level: it is
-                    // lifted onto the assistant item, never onto the block.
+                    // Reserved keys would duplicate the block's text or tag.
+                    // Phase belongs on the message, not the content block.
                     .filter(|(key, _)| {
                         key != "text" && key != "type" && key != OPENAI_RESPONSES_PHASE_KEY
                     })
@@ -2270,29 +2144,16 @@ impl OutputText {
     }
 }
 
-/// The one home for the assistant-text replay rule, shared by both request
-/// conversions. Returns the wire message for a rig text block, or `None`
-/// when the block produces no wire item at all.
-///
-/// The rule: replay honors only *this wire's* extras
-/// ([`OPENAI_RESPONSES_EXTRAS_KEY`]), and deliverability is part of it — the
-/// id-less `AssistantInput` form is a bare string that cannot carry extras,
-/// so an empty block replays only when the id-carrying form is available; a
-/// bare, foreign-annotated, or undeliverable empty block is skipped (its
-/// extras cannot reach this wire anyway, and an empty assistant item the
-/// wire never sent risks a rejection). Every quiet corridor is loud: a
-/// malformed value under the wire's key warns even when the block is
-/// skipped, and own-wire extras stranded on an id-less block warn as they
-/// drop.
+/// Builds an assistant input using only Responses-owned extras. Empty text is
+/// skipped unless both an ID and owned extras are present. Malformed extras
+/// warn before skipping; extras on nonempty ID-less inputs warn and are dropped.
 fn assistant_text_replay_message(
     id: Option<String>,
     text: String,
     additional_params: Option<crate::message::AdditionalParams>,
 ) -> Option<Message> {
-    // Malformed-under-key is loud on every path — the gate below collapses
-    // it to "no extras", so this is the one place that can still tell
-    // malformed from absent. Only reachable via hand-built or mis-migrated
-    // history (ingest always writes an object).
+    // Diagnose malformed extras before normalization makes them indistinguishable
+    // from absent extras, including when empty text is skipped.
     if let Some(non_object) = additional_params
         .as_ref()
         .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
@@ -2344,13 +2205,9 @@ fn assistant_text_replay_message(
     }
 }
 
-/// Key under which an `output_text` block's wire extras (`annotations`,
-/// `logprobs`, future keys) ride on the generic
-/// [`Text::additional_params`](crate::message::Text) — captured on the
-/// **blocking** response path, replayed only by this wire's serializer. The
-/// streaming adapter does not yet route annotation events into params, so a
-/// streamed turn's history carries no extras under this key (follow-up
-/// work, not a silent drop at replay: nothing was captured).
+/// Responses-owned extras in [`Text::additional_params`](crate::message::Text).
+/// Buffered output captures these fields for replay; streaming annotation events
+/// are not captured.
 pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 /// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
@@ -2381,21 +2238,15 @@ pub(crate) fn stamp_phase(text: &mut Text, phase: Option<&str>) {
     )));
 }
 
-/// The rig text block one `output_text`/`refusal` wire block ingests as.
-///
-/// The one ingest site for this wire's blocks: the decoder's unary replay
-/// emits it as the text the stream delivers in deltas, and the `From` impl
-/// below is the public spelling of the same conversion.
+/// Converts output text or a refusal to a Rig text block, retaining nonempty
+/// output-text extras under the Responses key.
 pub(crate) fn text_block(value: AssistantContent) -> Text {
     match value {
         AssistantContent::Refusal { refusal } => Text::new(refusal),
         // Keep this destructuring exhaustive so new wire fields force an
         // explicit capture-or-drop decision.
         AssistantContent::OutputText(OutputText { text, extras }) => {
-            // Capture only extras that carry data: the wire stamps
-            // `"annotations": []` / `"logprobs": []` on every block, and
-            // empty carriers as params would change the replayed request
-            // bytes for content that carries nothing.
+            // Empty metadata must not change replayed request bytes.
             let extras: Map<String, Value> = extras
                 .into_iter()
                 .filter(|(_, value)| {

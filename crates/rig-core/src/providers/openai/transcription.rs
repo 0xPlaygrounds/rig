@@ -3,40 +3,19 @@ use crate::transcription;
 use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
 use serde::{Deserialize, Serialize};
 
-// ================================================================
-// OpenAI Transcription API
-// ================================================================
-
 pub const WHISPER_1: &str = "whisper-1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     pub text: String,
-    /// What the transcription cost, as the endpoint reported it.
-    ///
-    /// Token-billed shapes normalize onto
-    /// [`transcription::TranscriptionResponse::usage`]; the duration-billed
-    /// `seconds` figure has no normalized slot and is read from here (via the
-    /// raw route). Optional because a compatible provider on this wire may
-    /// not report one.
+    /// Optional endpoint-reported usage. Token counts normalize into
+    /// [`transcription::TranscriptionResponse::usage`]; duration remains raw.
     #[serde(default)]
     pub usage: Option<TranscriptionUsage>,
 }
 
-/// The accounting an OpenAI-style transcription endpoint reports.
-///
-/// Two shapes are live and they bill differently: `whisper-1` bills by audio
-/// duration (`{"type":"duration","seconds":6}`), while the
-/// `gpt-4o-transcribe` family bills by token
-/// (`{"type":"tokens","input_tokens":54,…}`).
-///
-/// Each modeled variant pins the wire's own `type`, so selection cannot turn
-/// on which optional keys a payload happens to carry: a future shape that
-/// reported `seconds` *and* token counts would otherwise decode as a duration
-/// and silently drop every token count. Anything whose `type` is unmodeled
-/// falls to the verbatim catch-all rather than failing the whole
-/// transcription — the same invariant the Responses `Output` enum keeps for
-/// unmodeled output items.
+/// Duration or token accounting selected by the wire's `type` tag.
+/// Payloads that do not match a modeled shape are preserved verbatim in `Other`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum TranscriptionUsage {

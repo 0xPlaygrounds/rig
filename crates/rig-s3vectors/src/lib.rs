@@ -1,15 +1,11 @@
-// Tests assert on filter shapes, where a failed conversion should panic loudly
-// rather than be handled; matches the other vector-store crates (e.g. rig-lancedb).
+// Filter-shape assertions should fail loudly rather than handle conversion errors.
 #![cfg_attr(test, allow(clippy::expect_used))]
-//! AWS S3Vectors vector store integration for Rig.
+//! AWS S3Vectors vector store for Rig.
 //!
-//! This crate provides [`S3VectorsVectorStore`], a Rig vector store backed by
-//! AWS S3Vectors indexes. It uses the AWS SDK client supplied by the caller and
-//! maps Rig search filters to S3Vectors filter documents through
-//! [`S3SearchFilter`].
-//!
-//! The root `rig` facade re-exports this crate as `rig::s3vectors` when the
-//! `s3vectors` feature is enabled.
+//! [`S3VectorsVectorStore`] queries an S3Vectors index through a caller-supplied
+//! AWS SDK client, narrowed by [`S3SearchFilter`] filter documents. The `rig`
+//! facade re-exports this crate as `rig::s3vectors` under the `s3vectors`
+//! feature.
 
 use aws_sdk_s3vectors::{
     Client,
@@ -29,13 +25,15 @@ use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// Metadata written for each stored vector, wrapping the document alongside the
+/// text it was embedded from.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateRecord {
     document: serde_json::Value,
     embedded_text: String,
 }
 
-/// S3Vectors filter backed by the AWS SDK's native document type.
+/// S3Vectors metadata filter, built as an SDK document.
 #[derive(Clone, Debug)]
 pub struct S3SearchFilter(aws_smithy_types::Document);
 
@@ -69,7 +67,7 @@ impl SearchFilter for S3SearchFilter {
     }
 }
 
-/// Builds a `Document::Object` from the given entries.
+/// Builds an object document from the given entries.
 fn document_object<K>(entries: impl IntoIterator<Item = (K, Document)>) -> Document
 where
     K: Into<String>,
@@ -82,8 +80,7 @@ where
     )
 }
 
-/// Builds the `{ key: { op: value } }` shape S3Vectors uses for comparison
-/// operators such as `$eq` and `$gt`.
+/// Builds the `{ key: { op: value } }` comparison shape.
 fn document_comparison(key: impl AsRef<str>, op: &str, value: Document) -> Document {
     document_object([(key.as_ref(), document_object([(op, value)]))])
 }
@@ -113,6 +110,7 @@ impl S3SearchFilter {
         Self(document_comparison(key, "$lte", value))
     }
 
+    /// Matches records carrying `key`, rendered as `{"$exists": {key: true}}`.
     pub fn exists(key: impl Into<String>) -> Self {
         let key = key.into();
         Self(document_object([(
@@ -126,9 +124,10 @@ impl S3SearchFilter {
     }
 }
 
-/// The store is generic over its embedding model `M`, which is fixed for the
-/// store's lifetime: an index populated under one model is only meaningful under
-/// that same model.
+/// Vector store backed by an S3Vectors index.
+///
+/// Queries are embedded with the same model `M` that populated the index, so
+/// results are meaningless under another model.
 pub struct S3VectorsVectorStore<M> {
     embedding_model: M,
     client: Client,
@@ -163,8 +162,9 @@ impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
         &self.client
     }
 
-    /// Validates the sample count, embeds the query, and runs the S3Vectors
-    /// query, returning the `(distance, vector)` pairs passing the threshold.
+    /// Embeds the query and runs the S3Vectors query, discarding hits whose
+    /// reported distance is below any request threshold. Errors when the sample
+    /// count exceeds `i32::MAX` or a hit carries no distance.
     async fn run_query(
         &self,
         req: &VectorSearchRequest<S3SearchFilter>,
@@ -264,6 +264,8 @@ impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
     }
 }
 
+/// Converts a JSON value into an SDK document. Numbers outside every supported
+/// representation become null.
 fn json_value_to_document(value: &Value) -> Document {
     match value {
         Value::Null => Document::Null,
@@ -276,7 +278,7 @@ fn json_value_to_document(value: &Value) -> Document {
             } else if let Some(f) = n.as_f64() {
                 Document::Number(aws_smithy_types::Number::Float(f))
             } else {
-                Document::Null // fallback, should never happen
+                Document::Null
             }
         }
         Value::String(s) => Document::String(s.clone()),
@@ -289,6 +291,7 @@ fn json_value_to_document(value: &Value) -> Document {
     }
 }
 
+/// Converts an SDK document into JSON, rendering non-finite floats as strings.
 fn document_to_json_value(value: &Document) -> Value {
     match value {
         Document::Null => Value::Null,
@@ -319,6 +322,9 @@ fn document_to_json_value(value: &Document) -> Value {
 impl<M: EmbeddingModel> VectorStoreIndex for S3VectorsVectorStore<M> {
     type Filter = S3SearchFilter;
 
+    /// Returns matches as `(distance, vector key, metadata)`, where the metadata
+    /// is the stored [`CreateRecord`] wrapper. Errors when a hit carries no
+    /// metadata or it does not deserialize into `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
@@ -338,6 +344,8 @@ impl<M: EmbeddingModel> VectorStoreIndex for S3VectorsVectorStore<M> {
             .collect()
     }
 
+    /// Like `top_n` but returns `(distance, vector key)` without requesting
+    /// metadata.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,

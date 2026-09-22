@@ -1,5 +1,11 @@
-//! Authentication error shared by the OAuth-capable providers (ChatGPT,
-//! Copilot). Re-exported from each provider's `auth` module as `AuthError`.
+//! Shared OAuth errors, device-code callbacks, and authentication transport helpers.
+//!
+//! ```
+//! use rig_core::providers::chatgpt::auth::DeviceCodeHandler;
+//! let handler = DeviceCodeHandler::new(|prompt| {
+//!     println!("Visit {} and enter {}", prompt.verification_uri, prompt.user_code);
+//! });
+//! ```
 
 use crate::http_client::{self, HttpClientExt};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -14,9 +20,8 @@ pub struct DeviceCodePrompt {
     pub user_code: String,
 }
 
-/// The stored device-code callback: thread-safe on every target where the
-/// `WasmCompat*` markers mean `Send`/`Sync`, unconstrained on browser wasm
-/// (where the callback is never invoked — the wasm authenticators ignore it).
+/// Device-code callback with thread-safety bounds outside browser WASM.
+/// Browser WASM authenticators do not invoke it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt) + Send + Sync;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -61,19 +66,14 @@ pub enum AuthError {
     Http(#[from] http_client::Error),
 }
 
-/// Build a request to an auth endpoint. Auth flows talk to fixed, absolute
-/// URLs (GitHub / OpenAI auth hosts), not the provider's API base, so they
-/// drive the transport directly instead of going through the provider client.
+/// Build a request to an absolute authentication URL, independent of the API base.
 pub(crate) fn request(method: http::Method, url: &str) -> http::request::Builder {
     http::Request::builder().method(method).uri(url)
 }
 
-/// Send `req` through the transport and decode a JSON body.
-///
-/// A non-success status surfaces as `AuthError::Http` carrying the
-/// transport's status-bearing error (the equivalent of reqwest's
-/// `error_for_status`), so callers that need to branch on a status — device
-/// flows polling for authorization — read it off the error.
+/// Send `req` and decode its JSON response.
+/// Request and transport failures return [`AuthError::Http`], preserving HTTP
+/// status when available. Invalid JSON returns [`AuthError::Json`].
 pub(crate) async fn send_json<H, T>(
     http: &H,
     req: http::Result<http::Request<bytes::Bytes>>,

@@ -1,9 +1,4 @@
-//! Single authority for how Rig's crates are reachable from the expanding crate.
-//!
-//! Every path the macros emit and every fully qualified type they recognize is
-//! derived from one [`CrateRefs`] resolved once per expansion. Nothing else in
-//! the crate may call [`proc_macro_crate::crate_name`] or hardcode a Rig crate
-//! name.
+//! Resolves Rig dependency paths and recognized context-type paths for macro expansion.
 
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream;
@@ -94,9 +89,8 @@ impl CrateRefs {
         }
     }
 
-    /// Whether `segments` is an unambiguous fully qualified path to the
-    /// runtime `ToolContext` under any name the crates resolve to in this
-    /// build — including Cargo renames and `crate` self-references.
+    /// Recognizes qualified context paths using resolved dependency names,
+    /// including Cargo renames and `crate` self-references.
     pub(crate) fn is_context_path(&self, segments: &[String]) -> bool {
         match segments {
             [root, tool, context] => {

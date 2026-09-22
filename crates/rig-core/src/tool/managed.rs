@@ -1,14 +1,14 @@
-//! Externally managed tool sources.
+//! Registry contracts for refreshable external tool sources.
+//! Generation tokens protect newer registrations from stale refreshes, while
+//! [`PortableDynamicTool::is_live`] reports disconnection without tool execution.
 //!
-//! A tool registry that wants to accept tools from a source it does not own —
-//! a remote protocol whose tool list can change or disconnect (MCP is the
-//! first such source, via `rig-rmcp`) — implements [`ManagedToolSink`]. The
-//! source hands over [`PortableDynamicTool`]s and keeps the returned
-//! [`ManagedToolToken`]s; on refresh it reconciles against them so a newer
-//! local or peer-source registration under the same name is never clobbered
-//! by a stale refresh, and names the source no longer offers are removed.
-//! Liveness comes from [`PortableDynamicTool::is_live`], so a sink can retire
-//! disconnected tools without probing by execution.
+//! ```
+//! use rig_core::tool::ManagedToolToken;
+//!
+//! let token = ManagedToolToken::new();
+//! assert_eq!(token, token.clone());
+//! assert_ne!(token, ManagedToolToken::new());
+//! ```
 
 use std::collections::HashMap;
 use std::sync::Arc;

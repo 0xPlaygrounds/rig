@@ -1,29 +1,15 @@
-//! GitHub Copilot as data: one configuration, one completion wire that
-//! chooses a route, and Copilot's own embeddings and catalogue endpoints.
+//! Copilot configuration and completion, embedding, and catalogue wires.
+//! Completion selects the Responses route for Codex model identifiers and
+//! Chat Completions otherwise. Credentials must be exchanged before encoding.
 //!
-//! Copilot serves *two* completion APIs behind one host, and which one
-//! answers is a property of the model: the Codex-class models take the
-//! Responses request, everything else takes chat completions. The shared
-//! [`OpenAiWire`] is already a wire over both routes, so [`CopilotWire`] is
-//! that enum plus the one thing Copilot adds per turn — the conversation
-//! intent — and every [`Wire`] method delegates to it. The choice itself is
-//! made by the shared wire's constructor using [`routes_through_responses`]
-//! through the dialect's model-route hook. Direct and catalog
-//! construction therefore choose the same route and editor envelope.
+//! ```no_run
+//! use rig_core::providers::copilot::{wire::Copilot, GPT_4O};
 //!
-//! What is Copilot's own is the *envelope*: the editor identity every
-//! request carries (`copilot-integration-id`, `editor-version`,
-//! `openai-intent`, `X-Initiator`, …). The dialect hooks supply it for the
-//! shared completion and modality wires; the public wrapper replaces the
-//! completion hook with its own intent. Every route uses the same envelope
-//! calculation, once per request.
-//!
-//! Copilot's session token is exchanged over the network before the API can
-//! be called at all, and a pure synchronous [`Wire::encode`] has no seat for
-//! a round trip. So the exchange stays in [`super::auth`] and this
-//! configuration holds the credential it produced: [`Copilot::from_auth`] is
-//! the bridge, and [`Copilot::new`] takes an already-exchanged token
-//! directly.
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let wire = Copilot::from_env()?.completion(GPT_4O).with_edits_intent();
+//! # Ok(())
+//! # }
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -54,28 +40,18 @@ use super::{CopilotIntent, PROVIDER_NAME};
 /// OpenAI's wire on both routes, header included.
 const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
 
-/// The credential, in order of precedence. Both spellings are documented, so
-/// both are read.
-/// The variable a missing-credential error names.
+/// Credential variable named in missing-credential errors.
 const PRIMARY_API_KEY_ENV: &str = "GITHUB_COPILOT_API_KEY";
 
-/// The credential variables, in precedence order. A fixed-size array so the
-/// first name — the one a missing-variable error reports — is reachable
-/// without indexing.
+/// Session-token variables in precedence order.
 const API_KEY_ENV: [&str; 2] = ["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
 
 /// The base-URL override, in order of precedence.
 const BASE_URL_ENV: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
 
-/// GitHub Copilot, as an OpenAI dialect.
-///
-/// Both routes are OpenAI's own contract — Copilot relays the chat and the
-/// Responses wire verbatim, header included — except where the Responses
-/// system preamble goes: this backend takes `system` messages inside
-/// `input` rather than top-level `instructions`, which is what
-/// `crates/rig-cassette/fixtures/cassettes/copilot/routing/codex_models_route_through_responses.yaml`
-/// records. Copilot verifies through its token exchange, not a path, and
-/// its editor headers and session-token exchange live in this module.
+/// Copilot dialect with model-based routing and editor-identity headers.
+/// Responses requests place system messages in `input`. Verification uses
+/// token exchange rather than a dedicated endpoint.
 pub const DIALECT: Dialect = Dialect {
     base_url_env: Some("GITHUB_COPILOT_API_BASE"),
     request_id_header: REQUEST_ID_HEADER,
@@ -113,9 +89,7 @@ static HOOKS: DialectHooks = DialectHooks {
     completion_envelope: Some(|provider, request, builder| {
         completion_envelope(provider, request, builder, CopilotIntent::default())
     }),
-    // The modality routes are not a conversation: the client layer sent
-    // them the panel intent and a `user` initiator, and that is what the
-    // recorded traffic carries.
+    // Non-conversational modality requests use panel intent and a user initiator.
     modality_envelope: Some(|provider, request| {
         stamp(
             request,
@@ -148,14 +122,7 @@ fn completion_envelope(
     builder
 }
 
-/// Whether `model` is answered by Copilot's `/responses` route rather than
-/// `/chat/completions`.
-///
-/// Copilot routes its Codex-class models through the Responses API and
-/// everything else — the OpenAI chat models, and the Anthropic and Google
-/// models it fronts — through chat completions. The predicate is the model
-/// identifier alone, so it is a function and not a table: Copilot ships new
-/// `*-codex` models without announcing them.
+/// Return whether `model` contains `codex`, case-insensitively, selecting `/responses`.
 pub fn routes_through_responses(model: &str) -> bool {
     model.to_ascii_lowercase().contains("codex")
 }
@@ -173,23 +140,15 @@ pub struct Copilot {
 }
 
 impl Copilot {
-    /// Copilot, addressed with an already-exchanged session token.
-    ///
-    /// A session token names the REST endpoint it was minted for in its
-    /// `proxy-ep=` segment, and nothing else knows it, so the base URL is
-    /// derived from the token when it carries one. [`Self::with_base_url`]
-    /// and the environment override it.
+    /// Configure Copilot with an exchanged session token.
+    /// Derive a permitted endpoint from `proxy-ep=` when present, otherwise use
+    /// the default. Explicit base-URL settings override token-derived routing.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         credential_of(&OpenAI::with_key(&DIALECT, api_key))
     }
 
-    /// Copilot, addressed with the credential a token exchange resolved.
-    ///
-    /// The exchange itself is [`super::auth`]: it polls a device flow,
-    /// refreshes a cached key and shares a token cache, none of which fits
-    /// in a synchronous `encode`. Its [`AuthContext`](super::auth::AuthContext)
-    /// also names the API base the credential belongs to, which takes
-    /// precedence over the endpoint encoded in the token.
+    /// Configure Copilot from an exchanged auth context.
+    /// The context's API base takes precedence over token-derived routing.
     pub fn from_auth(context: &super::auth::AuthContext) -> Self {
         let mut provider = Self::new(context.api_key.clone());
         if let Some(api_base) = &context.api_base {
@@ -198,13 +157,10 @@ impl Copilot {
         provider
     }
 
-    /// Copilot from the environment: `GITHUB_COPILOT_API_KEY` or
-    /// `COPILOT_API_KEY` for the session token, `GITHUB_COPILOT_API_BASE` or
-    /// `COPILOT_BASE_URL` for the base URL — the variables the client read.
-    ///
-    /// Only the already-exchanged credential is readable this way. A GitHub
-    /// access token or a device-code login is a conversation, not a value:
-    /// run [`super::auth`] and build the provider with [`Self::from_auth`].
+    /// Read an exchanged token from `GITHUB_COPILOT_API_KEY` or `COPILOT_API_KEY`.
+    /// Read the optional base URL from `GITHUB_COPILOT_API_BASE` or `COPILOT_BASE_URL`.
+    /// Earlier nonblank variables take precedence. Return an error for missing
+    /// credentials or invalid environment values; this does not perform token exchange.
     pub fn from_env() -> Result<Self, EnvError> {
         let Some(api_key) = first_env(&API_KEY_ENV)? else {
             return Err(EnvError::Variable {
@@ -238,14 +194,8 @@ impl Copilot {
         }
     }
 
-    /// The embeddings wire for `model`: the shared embeddings wire pointed
-    /// at Copilot.
-    ///
-    /// Copilot relays OpenAI's embeddings contract verbatim, and the one
-    /// thing it is measured to differ in is already [`DIALECT`]'s to state
-    /// (`requires_usage: false`). The width is the caller's, else the
-    /// model's documented one, resolved by the shared wire. The editor
-    /// envelope is the dialect's modality hook.
+    /// Build an embedding wire with Copilot's editor headers and optional usage.
+    /// Use `ndims` when supplied, otherwise the shared wire's model default.
     pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.openai(), model, ndims)
     }
@@ -257,12 +207,7 @@ impl Copilot {
         }
     }
 
-    /// Copilot as the shared OpenAI configuration, which both completion
-    /// routes are wires on.
-    ///
-    /// Built through the constructor rather than a struct literal, so a
-    /// field the shared config grows for another dialect takes its own
-    /// default here instead of having to be restated.
+    /// Convert to shared configuration with Copilot's dialect and explicit endpoint.
     fn openai(&self) -> OpenAI {
         OpenAI::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
     }
@@ -273,11 +218,8 @@ impl Copilot {
     }
 }
 
-/// The first of `names` that is set to something other than blank.
-///
-/// A blank credential authenticates as nobody and a blank base URL addresses
-/// nothing, so an empty value is "unset" here — the filter the client's
-/// `env_value` applied.
+/// Read the first nonblank environment variable in `names`, preserving its value.
+/// Return an error if an encountered variable cannot be decoded.
 fn first_env(names: &[&'static str]) -> Result<Option<String>, EnvError> {
     for name in names {
         if let Some(value) = env::optional(name)?.filter(|value| !value.trim().is_empty()) {
@@ -309,17 +251,9 @@ fn stamp(
     Ok(())
 }
 
-// ── completion ──────────────────────────────────────────────────────────
-
-/// Copilot's completion wire: whichever route this model is served by, plus
-/// the conversation intent the turn declares.
-///
-/// The route is the shared [`OpenAiWire`] pointed at Copilot, so there is
-/// no second request conversion, no second decoder and no second
-/// observation projection for either API; what this type adds is the
-/// `openai-intent` header and the rest of the editor envelope, stamped onto
-/// the request during shared encoding. The wrapper owns the envelope even
-/// when its public `wire` field contains another dialect.
+/// Completion wire with Copilot's conversation intent and editor headers.
+/// Delegates payload handling to `wire`, but overrides its request envelope
+/// even when that field contains another dialect.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CopilotWire {
     /// The route's wire, pointed at Copilot.
@@ -416,8 +350,6 @@ impl Wire for CopilotWire {
     }
 }
 
-// ── model listing ───────────────────────────────────────────────────────
-
 /// Copilot's model-listing wire.
 ///
 /// `GET /models` answers with the whole catalogue, so
@@ -428,11 +360,7 @@ pub struct Models {
     pub provider: Copilot,
 }
 
-/// One entry of Copilot's `{ "data": [...] }` catalogue.
-///
-/// Copilot names the vendor behind each model and nests the modality under
-/// `capabilities.type`, which is where it differs from the OpenAI-shaped
-/// listing every other dialect sends.
+/// Catalogue entry with model identity, vendor, and modality under `capabilities.type`.
 #[derive(Debug, Deserialize)]
 pub struct ModelEntry {
     id: String,
@@ -524,8 +452,6 @@ impl Wire for Models {
         ModelsDecoder
     }
 }
-
-// ── construction traits ─────────────────────────────────────────────────
 
 impl HasCompletion for Copilot {
     type Wire = CopilotWire;

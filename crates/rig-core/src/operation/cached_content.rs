@@ -1,5 +1,10 @@
-//! The cached-content operation: one verb against a provider's explicit
-//! context cache, answered whole.
+//! Explicit context-cache operations and listing-page aggregation.
+//!
+//! ```
+//! use rig_core::{operation::ContextCache, wire::Operation};
+//!
+//! assert_eq!(ContextCache::NAME, "cached_content");
+//! ```
 
 use super::One;
 use crate::providers::gemini::cached_content::{
@@ -7,15 +12,8 @@ use crate::providers::gemini::cached_content::{
 };
 use crate::wire::{Fold, Operation, Reply};
 
-/// Managing an explicit context cache: create, read, list, extend, delete.
-///
-/// A resource lifecycle rather than an assistant turn, but the same shape
-/// as every other unary operation: one request, one reply document. The
-/// verb is the request ([`CachedContentRequest`]), and the reply is the one
-/// of [`CachedContentReply`]'s three shapes the provider answered with. A
-/// listing is paged on a cursor the decoder returns from
-/// [`Decoder::continuation`](crate::wire::Decoder::continuation), and the
-/// fold concatenates the pages.
+/// Creates, reads, lists, updates expiry, or deletes explicit context caches.
+/// Requests use [`CachedContentRequest`]; listing pages are concatenated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContextCache;
 
@@ -38,15 +36,8 @@ impl Operation for ContextCache {
     fn telemetry(_streaming: bool) -> Self::Telemetry {}
 }
 
-/// Takes the one reply a verb answers with, concatenating a listing's pages
-/// in arrival order.
-///
-/// The starting state is [`CachedContentReply::Acknowledged`], which is
-/// what a 2xx carrying nothing to read *is* — how `delete` is answered, and
-/// how an empty collection lists. So there is no "nothing absorbed yet" to
-/// tell apart from it: the fold holds a reply rather than an `Option`, and
-/// finishing cannot fail. A second resource is a provider defect and the
-/// first one latches, matching [`Take`](super::Take).
+/// Concatenates listing pages in arrival order or retains the first resource.
+/// Starts with [`CachedContentReply::Acknowledged`]; finishing never fails.
 #[derive(Default)]
 pub struct CachedContentFold {
     reply: CachedContentReply,

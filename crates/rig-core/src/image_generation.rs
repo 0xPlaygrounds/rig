@@ -1,5 +1,15 @@
-//! Everything related to core image generation abstractions in Rig.
-//! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
+//! Image-generation requests, normalized responses, and model interfaces.
+//!
+//! ```no_run
+//! use rig_core::image_generation::{ImageGenerationModel, ImageGenerationRequestBuilder};
+//!
+//! # async fn example(model: impl ImageGenerationModel) -> Result<(), Box<dyn std::error::Error>> {
+//! let response = ImageGenerationRequestBuilder::new(model)
+//!     .prompt("A mountain lake").width(1024).height(1024).send().await?;
+//! # let _ = response;
+//! # Ok(())
+//! # }
+//! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -21,14 +31,7 @@ crate::provider_response::provider_error_enum!(
     }
 );
 
-/// The normalized image generation response: the image plus the metadata
-/// every provider can report, attributed to the provider that produced it.
-///
-/// This type is concrete — it carries no provider type parameter — so the
-/// provider does not leak into the request builder or into any caller holding
-/// a model. The provider's own payload stays reachable through a model's
-/// inherent `raw_image_generation` method, which performs the same request and
-/// returns the provider's native type, and through [`Self::raw`].
+/// Generated image bytes and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageGenerationResponse {
     /// The generated image, decoded to bytes.
@@ -46,18 +49,11 @@ pub struct ImageGenerationResponse {
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
-    /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
-    /// provider reported none; that is a documented outcome, never an error.
+    /// Transport request ID from HTTP headers, or `None` when unreported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
-    /// The provider's own response for this call: the value the model's
-    /// inherent `raw_image_generation` would have returned, serialized.
-    /// Providers whose endpoint answers with the image bytes directly (no
-    /// JSON envelope) have nothing to serialize here and leave it `Null`;
-    /// their `raw_image_generation` returns the bytes.
-    /// `Value::Null` otherwise means the value was built without a provider
-    /// behind it (a test double), never that the provider sent nothing.
+    /// Provider response metadata. May be null for byte-only responses or
+    /// responses constructed without metadata; image bytes remain in [`Self::image`].
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
@@ -91,25 +87,15 @@ impl ImageGenerationResponse {
 
 crate::provider_response::modality_response_metadata_setters!(ImageGenerationResponse);
 
-/// Convert a provider's own image generation payload into the normalized
-/// [`ImageGenerationResponse`].
-///
-/// The provider descriptor name is an *input*, never something the conversion
-/// knows — several providers share one wire shape, and a hardcoded name would
-/// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
-/// so that out-of-tree provider extensions can implement it on their own
-/// response type without tripping the orphan rule.
+/// Normalizes provider image payloads, attributing the response to the supplied
+/// provider name.
 pub trait NormalizeImageGenerationResponse {
     /// Normalize this payload, attributing it to `provider`.
     fn normalize(self, provider: &str) -> Result<ImageGenerationResponse, ImageGenerationError>;
 }
 
-/// Trait defining an image generation model.
-///
-/// The trait describes only what a model *does*: it has no associated types.
-/// Construction lives on the capability client trait, and `Clone` is required
-/// only by [`ImageGenerationModel::image_generation_request`], which hands the builder its own
-/// copy. The trait is implemented for `Arc<M>` by forwarding.
+/// Generates images from prompts. Only [`Self::image_generation_request`]
+/// requires cloning; `Arc<M>` forwards generation calls.
 pub trait ImageGenerationModel: WasmCompatSend + WasmCompatSync {
     fn image_generation(
         &self,
@@ -145,8 +131,8 @@ pub struct ImageGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-/// A builder for `ImageGenerationRequest`.
-/// Can be sent to a model provider.
+/// Builds image requests after a prompt is supplied. Defaults to 256 by 256
+/// pixels; supported dimensions depend on the provider.
 pub struct ImageGenerationRequestBuilder<M, P = Missing> {
     model: M,
     prompt: P,
@@ -197,7 +183,7 @@ where
         self
     }
 
-    /// Adds additional parameters to the image generation request.
+    /// Replaces provider-specific request parameters.
     pub fn additional_params(mut self, params: Value) -> Self {
         self.additional_params = Some(params);
         self

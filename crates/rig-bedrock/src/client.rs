@@ -15,17 +15,15 @@ pub struct ClientBuilder<'a> {
 }
 
 impl<'a> ClientBuilder<'a> {
-    /// Make sure to verify model and region [compatibility]
-    ///
-    /// [compatibility]: https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html
+    /// Sets the AWS region. The selected model must be
+    /// [available there](https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html).
     pub fn region(mut self, region: &'a str) -> Self {
         self.region = region;
         self
     }
 
-    /// Make sure you have permissions to access [Amazon Bedrock foundation model]
-    ///
-    /// [ Amazon Bedrock foundation model]: <https://docs.aws.amazon.com/bedrock/latest/userguide/model-access-modify.html>
+    /// Loads AWS SDK configuration and constructs a client for the selected region.
+    /// Requests require permission to access the selected Bedrock model.
     pub async fn build(self) -> Client {
         let sdk_config = aws_config::defaults(BehaviorVersion::latest())
             .region(Region::new(String::from(self.region)))
@@ -96,12 +94,8 @@ impl Client {
 }
 
 impl Client {
-    /// Create an AWS Bedrock client whose SDK configuration is loaded from the
-    /// process environment on first use.
-    ///
-    /// Bedrock talks through the AWS SDK rather than an HTTP transport, so
-    /// there is no socket to bind: construction is inherent, and the client
-    /// is itself the [`CompletionProvider`] a `Bound` would be for a wire.
+    /// Creates a client that loads AWS SDK configuration on first use.
+    /// Construction does not validate credentials and always succeeds.
     pub fn from_env() -> Result<Self, rig_core::client::ProviderClientError> {
         Ok(Client::new())
     }
@@ -135,8 +129,7 @@ impl Client {
         ImageGenerationModel::new(self.clone(), model)
     }
 
-    /// Bedrock exposes no credential-check endpoint: the AWS SDK validates
-    /// credentials on first use, so there is nothing to call here.
+    /// Returns success without making a request or validating credentials.
     pub async fn verify(&self) -> Result<(), VerifyError> {
         Ok(())
     }

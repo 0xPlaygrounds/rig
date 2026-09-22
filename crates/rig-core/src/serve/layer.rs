@@ -1,11 +1,13 @@
-//! Interception as handler composition: a [`Layer`] is a [`Serve`] that
-//! wraps another handler and an [`Intercept`] — the policy that sees every
-//! dispatch before the handler does ([`Intercept::before`]) and every
-//! answer after ([`Intercept::after`]). Layers nest by wrapping; a
-//! [`Decision`] and a [`Verdict`] are data. Decisions are program, never
-//! record: the driver's observer moves to the innermost hop, so a denial leaves
-//! no record and a replacement leaves the handler's real answer in it — a
-//! replay re-makes the decision.
+//! Handler composition with pre-dispatch decisions and post-answer verdicts.
+//! Recording observes the innermost handler: denied dispatches leave no record,
+//! and replaced answers retain the handler's original outcome for replay.
+//!
+//! ```
+//! use rig_core::serve::Decision;
+//!
+//! let decision = Decision::deny("Not authorized");
+//! assert!(matches!(decision, Decision::Deny(_)));
+//! ```
 
 use std::sync::{Arc, Mutex};
 
@@ -30,10 +32,8 @@ pub enum Decision {
     /// target name: either change returns an `Internal` report without reaching
     /// the next layer or dispatching. Tool argument patches remain supported.
     Patch(EffectKind),
-    /// Do not serve it: the consumer's outcome is this report, and the
-    /// record holds nothing. [`Decision::deny`] builds the usual one
-    /// (`ErrorKind::Denied`); a report of another kind — `Cancelled`, the
-    /// way a program stops — travels as given.
+    /// Returns this report without invoking the handler or recording a dispatch.
+    /// The report's kind is preserved; [`Decision::deny`] uses `ErrorKind::Denied`.
     Deny(ErrorReport),
 }
 

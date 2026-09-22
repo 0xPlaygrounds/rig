@@ -24,8 +24,7 @@ pub(crate) mod shared_parts {
 
     use crate::streaming::{BlockClose, BlockId, BlockKind, StreamEvent, ToolCallEnd};
 
-    /// A whole function-call part as a canonical tool call — its start and
-    /// its authoritative end (Gemini never streams arguments incrementally).
+    /// Convert a whole function call into canonical start and end events.
     pub(crate) fn function_call(
         name: String,
         args: Value,
@@ -33,23 +32,14 @@ pub(crate) mod shared_parts {
         signature: Option<String>,
         tool_ids: &mut crate::streaming::SyntheticIds,
     ) -> Vec<StreamEvent> {
-        // Never fabricate the identifier that travels upstream: the wire's
-        // own id (when Gemini supplies one) is both the part identity and
-        // the correlation id; an id-less call keys the stream by a minted
-        // identity — counted up per stream, so two id-less calls never
-        // collide on one key — and replays with the id absent. The tool
-        // *name* is never an identity — two calls to the same tool in one
-        // turn must stay distinct, correlated by order and by the
-        // block id.
+        // Id-less calls need distinct local block keys, but must replay without
+        // fabricated provider identifiers, even when they share a tool name.
         let tool_id = wire_id.and_then(crate::streaming::non_empty_id);
         let id = tool_id
             .as_ref()
             .map_or_else(|| tool_ids.mint(), |id| BlockId::wire(id.as_str()));
         let mut end = ToolCallEnd::whole(name, args).with_signature(signature);
-        // Gemini is a single-identifier wire: its one id travels as
-        // `tool_id` and `call_id` stays unset. Filling both from the same
-        // id would take the dual-wire arm downstream and fabricate an
-        // item id Gemini never issued.
+        // Setting call_id as well would invent a second provider identity.
         end.tool_id = tool_id;
         vec![
             StreamEvent::BlockStart {
@@ -104,33 +94,14 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
     &["candidates", "usageMetadata", "promptFeedback", "error"];
 
-/// The Gemini GenerateContent wire's decoder, serving both of its modes.
-///
-/// One decoder decodes `generateContent` and `streamGenerateContent` because
-/// they are the *same document*: the streaming shape is a strict superset of
-/// the unary one (it adds `error` and relaxes `responseId`), every field of
-/// both is optional or defaulted, and a unary reply is simply that document
-/// delivered whole with complete `candidates` instead of in pieces with
-/// partial ones. The superset is the wire's, not rig's — so there is no
-/// unary event variant to select, and nothing to select it with: `classify`
-/// sees a `WireFrame` and is never told the mode. The terminal stays where
-/// the streaming wire needs it, deferred to EOF (see [`Self::finish`]),
-/// which for a one-frame unary reply fires immediately after that frame.
-///
-/// The one difference the two modes cannot share is what an EOF *means*,
-/// and the decoder is built knowing it: [`Wire::decoder`](crate::wire::Wire::decoder)
-/// is handed the [`Mode`], which is the only thing this decoder knows about
-/// how its bytes arrived.
-///
-/// Holds the per-reply state (thought lifecycle, tool-id minter, terminal
-/// metadata); frame-triage policy is the driver's.
+/// Decode unary and streamed GenerateContent replies into canonical events.
+/// Hold terminal metadata until EOF because hosted-tool rounds can report
+/// intermediate finish reasons. Unary replies without assistant content fail
+/// unless a truncating finish reason permits empty output.
 pub struct GenerateContentDecoder {
-    /// Owns the constant-key thought lifecycle — the ends this wire never
-    /// announces are derived by the shared lifecycle, not hand-rolled here.
-    /// All accumulation lives in the shared accumulator.
+    /// Thought boundaries inferred from content transitions and signatures.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool-call keys — a fresh key per call,
-    /// so two id-less calls in one turn never collide on one identity.
+    /// Distinct local block keys for calls without provider identifiers.
     tool_ids: crate::streaming::SyntheticIds,
     /// Per-reply minter for the raw-content blocks a part the stream
     /// vocabulary cannot express rides on (see `GEMINI_RAW_CONTENT_KEY`).
@@ -140,37 +111,13 @@ pub struct GenerateContentDecoder {
     final_finish_message: Option<String>,
     final_model_version: Option<String>,
     final_response_id: Option<String>,
-    /// The provider sent a `finishReason` on some chunk.
-    ///
-    /// Gemini's `streamGenerateContent` sends an *intermediate* `finishReason`
-    /// when a built-in tool runs a round — a recorded code-execution stream
-    /// reads `[executableCode] [codeExecutionResult] [executableCode +
-    /// finishReason:STOP] [codeExecutionResult] [text] [text +
-    /// finishReason:STOP]` — so a `finishReason` chunk is not, on this wire, the
-    /// provider completing the turn. The terminal record is therefore deferred
-    /// to EOF (see [`Decoder::finish`], which names exactly this case);
-    /// pushing it on the first such chunk made the driver stop reading there
-    /// and silently drop the model's whole answer while still reporting a
-    /// successful `STOP`.
+    /// A provider finish reason was received, possibly before a hosted-tool round ended.
     saw_finish_reason: bool,
-    /// Whether any part of the turn mapped to assistant content.
-    ///
-    /// A *whole* reply that produced none is not a blank successful answer:
-    /// the unary mapper this decoder replaced ended with
-    /// `require_non_empty_response`, and a caller reading `choice: []` as an
-    /// answer is the outcome that rule exists to prevent. Checked in
-    /// `finish` against [`Self::whole`], so a reply whose only parts were
-    /// `executableCode` / `codeExecutionResult` is rejected exactly where
-    /// the deleted mapper rejected it, while a stream that ends undelivered
-    /// keeps reporting truncation the way it always has — by carrying no
-    /// terminal record.
+    /// At least one part mapped to assistant content.
     delivered: bool,
-    /// This reply arrived whole, so its EOF ends an answer rather than a
-    /// stream — the [`Mode`] this decoder was built for.
+    /// Unary mode, where EOF completes the whole response document.
     whole: bool,
-    /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
-    /// the provider aborted, and interpreting more output (or a terminal)
-    /// would dress the failure up as a completed turn.
+    /// A terminal error was emitted; subsequent frames must not produce output.
     failed: bool,
 }
 
@@ -200,9 +147,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
     type Event = GenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<GenerateContentResponse> {
-        // ID-only frames update terminal metadata without manufacturing an
-        // Unknown content item (and therefore a semantic truncation tail).
-        // This applies equally with observation enabled or disabled.
+        // ID-only metadata must not create an unknown-content truncation tail.
         if <Self as Decoder<Completion>>::is_analysis_only(self, &frame) {
             return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
         }
@@ -245,15 +190,10 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
 
         if let Some(error) = data.error {
-            // The service aborted the turn in-band: the envelope is the
-            // whole answer and the stream closes after it. Surface it as
-            // the provider error it is, with the envelope as the body (as
-            // the unary wire and the other families' streams do), rather
-            // than skipping an unknown frame and reporting a truncation.
+            // Preserve in-band failures as provider errors, not unknown-frame truncation.
             self.failed = true;
-            // GenerateContent's numeric error code is an HTTP status, unlike
-            // other providers' opaque codes or gRPC's small integer codes.
-            // Only error statuses participate in the unary retry policy.
+            // GenerateContent codes are HTTP statuses; only error statuses
+            // participate in the unary retry policy.
             let status = error
                 .get("code")
                 .and_then(serde_json::Value::as_u64)
@@ -270,10 +210,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
 
         if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
-            // The provider refused the prompt: this chunk is its whole
-            // answer and the stream closes after it. Without this the turn
-            // would end with no terminal record and be reported as a
-            // truncated stream, the block reason lost.
+            // Preserve the refusal reason rather than reporting an unexplained truncation.
             self.failed = true;
             out.push(Err(blocked));
             return;
@@ -317,30 +254,8 @@ impl Decoder<Completion> for GenerateContentDecoder {
     }
 
     fn finish(&mut self, out: &mut Output<Completion>) {
-        // A whole reply is the entire turn, so reaching its end having
-        // mapped no assistant content is the provider answering with
-        // nothing — the rejection `require_non_empty_response` gave the
-        // deleted unary mapper, stated here because this decoder replaced
-        // it. It runs before the `finishReason` gate below: a reply with no
-        // candidates at all names no reason to finish, and that is the
-        // shape the mapper rejected most often.
-        //
-        // Except where the reply named a terminal that cut the turn short
-        // (see `crate::message::EMPTY_RESPONSE_ERROR` for the rule and
-        // `FinishReason::truncated_output` for the set): `MAX_TOKENS`
-        // normalizes to `Length`, and Gemini's filter reasons to
-        // `ContentFilter`. A turn the cap or the filter emptied is a real
-        // answer carrying a real usage report, not a defect, so it falls
-        // through to the terminal below and yields an empty choice with
-        // that reason. The predicate is shared rather than re-derived, so
-        // this wire cannot disagree with the rest about which reasons
-        // legalize emptiness.
-        //
-        // A streamed reply reaching EOF undelivered stopped early instead,
-        // and truncation is reported by the absent terminal record (see
-        // below), never by an error — so this guard is the whole reply's
-        // alone, and widening it to the stream would turn every truncated
-        // turn into an empty-answer error.
+        // Empty unary replies require a truncating finish reason; stream truncation
+        // is represented by an absent terminal record instead.
         let cut_short = self
             .final_finish_reason
             .as_ref()
@@ -353,20 +268,13 @@ impl Decoder<Completion> for GenerateContentDecoder {
             return;
         }
 
-        // EOF without a `finishReason` chunk is truncation: no terminal
-        // record may be synthesized — it would report a successful completion
-        // for a turn the provider aborted.
+        // Without a provider finish reason, a terminal would falsely report completion.
         if !self.saw_finish_reason {
             return;
         }
 
-        // Deferral, not synthesis: the provider *did* signal the finish, on a
-        // chunk that is not reliably its last (see `saw_finish_reason`).
-        // Holding the record until EOF is what lets the driver read the rest
-        // of the turn, and it means the terminal carries the last reason,
-        // usage, and metadata the stream actually reported.
-        // A terminal that never carried `usageMetadata` reports no usage; the
-        // defaulted metadata below only fills the raw record's shape.
+        // Deferred completion retains the final hosted-tool round and its metadata.
+        // Defaulting the raw usage shape does not imply reported usage.
         let usage = self
             .final_usage
             .as_ref()
@@ -396,16 +304,11 @@ impl Decoder<Completion> for GenerateContentDecoder {
     }
 
     fn is_finished(&self) -> bool {
-        // A tool-protocol terminal failure or a blocked prompt is the wire's
-        // own in-band terminal: `interpret` already pushed the `Err` and gates itself on
-        // `failed`, so the driver must stop reading rather than drain the
-        // rest of the transport (and pass through post-error unknown frames).
+        // Stop after terminal errors so later unknown frames cannot escape the failure gate.
         self.failed
     }
 
-    /// GenerateContent metadata projected before normalization discards it:
-    /// the verdict, the usage report, the response id and the error
-    /// envelope — the facts the normalized response does not keep.
+    /// Project provider verdicts, usage, response identity, and errors before normalization.
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
         // The observation projection must not inherit native response
         // defaults: omitted prompt/total counts in UsageMetadata otherwise
@@ -502,9 +405,7 @@ struct ObservedFeedback {
 
 impl GenerateContentDecoder {
     fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
-        // Every arm below but the two skipping arms produces assistant
-        // content; the skips leave `delivered` alone, which is what lets
-        // `finish` tell a completed-but-contentless turn from a real answer.
+        // Hosted code-execution parts alone do not constitute an assistant answer.
         if !matches!(
             part.part,
             PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)
@@ -518,10 +419,7 @@ impl GenerateContentDecoder {
                 thought_signature,
                 ..
             } => {
-                // Declare what the part carried; the shared lifecycle
-                // derives the sequence (a signature closes the block; the
-                // shared accumulator signs the accumulated deltas or records
-                // a signature-only part when nothing streamed).
+                // A signature closes accumulated reasoning or forms a signature-only block.
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: Some(text),
@@ -537,30 +435,8 @@ impl GenerateContentDecoder {
                 thought_signature,
                 ..
             } => {
-                // The wire attaches `thoughtSignature` to a trailing part
-                // that carries no `thought` flag at all — recorded traffic
-                // shows `{"text":"","thoughtSignature":"..."}` — so the
-                // signature must be recognized here as well as in the
-                // `thought: true` arm above, which real streams never reach
-                // for the signature. Dropping it costs the replay-required
-                // provider state Gemini validates
-                // (`MISSING_THOUGHT_SIGNATURE`). One lifecycle end covers
-                // every case — open block (sign the deltas), already-closed
-                // block (sign the block that holds the chain-of-thought,
-                // #2258 B4), nothing streamed (signature-only part).
-                //
-                // Declared as two chunks, text first, because the signature
-                // signs what came *before* it and a chunk emits its
-                // reasoning end before its text. A streamed turn states the
-                // two in separate frames (`"289"`, then
-                // `{"text":"","thoughtSignature":…}`); a unary reply states
-                // them in ONE part, and folding that as one chunk put the
-                // signature's block ahead of the text — the same turn with
-                // its blocks in a different order depending on the
-                // transport
-                // (`completion/tests.rs::both_transports_place_a_trailing_thought_signature_the_same_way`).
-                // An empty text (the streamed shape) declares nothing, so
-                // that path is unchanged.
+                // Signatures can accompany text without a thought flag and are required
+                // for replay. Emit text first so its trailing signature keeps wire order.
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: None,
@@ -610,17 +486,8 @@ impl GenerateContentDecoder {
                 thought_signature,
                 ..
             } => {
-                // `inlineData` is model output rig's *message* vocabulary
-                // models (`AssistantContent::Image`) and its *stream*
-                // vocabulary does not: `BlockKind`, `BlockClose` and
-                // `BlockAccumulator` carry text, reasoning and tool calls
-                // only. Since both modes now decode through here, dropping
-                // it would turn the streaming path's existing loss into a
-                // unary regression for the models that answer a completion
-                // with an image (`gemini-2.5-flash-image`), so the part
-                // rides a text block's metadata verbatim instead and stays
-                // recoverable. A first-class image block in the streaming
-                // vocabulary is the real fix and is a separate change.
+                // Preserve inline media in metadata because canonical stream blocks
+                // cannot represent image content.
                 let raw = Part {
                     thought: None,
                     thought_signature,
@@ -649,9 +516,7 @@ impl GenerateContentDecoder {
                     }
                     None => Vec::new(),
                 };
-                // Declared through the lifecycle, not pushed directly, so a
-                // raw part interleaving an open thought block closes it the
-                // way every other content kind does.
+                // Raw media closes any open thought block before its own events.
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: None,
@@ -666,20 +531,11 @@ impl GenerateContentDecoder {
                 part: part @ (PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)),
                 ..
             } => {
-                // The `codeExecution` tool's own output: real Gemini output
-                // with no slot in `AssistantContent`, skipped by both
-                // transports since #2258. Structural metadata only in the
-                // log — an unmodeled part can carry model output, which must
-                // not leak into WARN logs.
+                // Log only the unmodeled part's kind; hosted-tool payloads may be sensitive.
                 crate::driver::warn_unmodeled("gemini_part", &part_kind_name(&part));
             }
             Part { part, .. } => {
-                // A part kind rig cannot account for at all. `functionResponse`
-                // and `fileData` are request-side shapes `generateContent`
-                // never answers with, so one arriving means the reply is not
-                // what this wire models — the blocking mapper this decoder
-                // replaced failed the response rather than dropping content
-                // with a WARN, and that is the contract.
+                // Unexpected response parts must fail rather than silently discard content.
                 out.error(CompletionError::ResponseError(format!(
                     "Gemini response part kind {} carries no assistant content rig can account for",
                     part_kind_name(&part)

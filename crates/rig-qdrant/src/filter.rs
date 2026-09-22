@@ -6,7 +6,8 @@ use rig_core::vector_store::request::{FilterError, SearchFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-/// Qdrant-compatible metadata filter for vector search requests.
+/// Qdrant metadata filter built as a JSON condition tree and translated into a
+/// Qdrant `Filter` by [`QdrantFilter::interpret`].
 ///
 /// Use this as the filter type for [`rig_core::vector_store::request::VectorSearchRequest`]
 /// when querying [`crate::QdrantVectorStore`].
@@ -78,7 +79,7 @@ impl QdrantFilter {
         Self(json!({ "is_empty": { "key": key } }))
     }
 
-    /// Construct a range filter `(lo .. hi)`
+    /// Range filter matching `lo < value < hi`.
     pub fn range_exclusive(key: &str, lo: &serde_json::Value, hi: &serde_json::Value) -> Self {
         Self(json!({
             "key": key,
@@ -89,7 +90,7 @@ impl QdrantFilter {
         }))
     }
 
-    /// Construct a range filter `[lo .. hi)`
+    /// Range filter matching `lo < value <= hi`.
     pub fn range_lower_inclusive(
         key: &str,
         lo: &serde_json::Value,
@@ -104,7 +105,7 @@ impl QdrantFilter {
         }))
     }
 
-    /// Construct a range filter `(lo .. hi]`
+    /// Range filter matching `lo <= value < hi`.
     pub fn range_higher_inclusive(
         key: &str,
         lo: &serde_json::Value,
@@ -119,7 +120,7 @@ impl QdrantFilter {
         }))
     }
 
-    /// Construct a range filter `[lo .. hi]`
+    /// Range filter matching `lo <= value <= hi`.
     pub fn range_inclusive(key: &str, lo: &serde_json::Value, hi: &serde_json::Value) -> Self {
         Self(json!({
             "key": key,
@@ -130,6 +131,9 @@ impl QdrantFilter {
         }))
     }
 
+    /// Translates the condition tree into a Qdrant filter, returning `None` when
+    /// the filter is null, empty, or contains no conditions. Range bounds are
+    /// compared as `f64`, and match values accept strings, booleans, and integers.
     pub fn interpret(self) -> Result<Option<Filter>, FilterError> {
         use serde_json::Value::*;
 
@@ -159,7 +163,6 @@ impl QdrantFilter {
             }
 
             fn to_condition(value: serde_json::Value) -> Result<Condition, FilterError> {
-                // Handle is_empty condition
                 if let Some(is_empty) = value.get("is_empty") {
                     let key = is_empty
                         .get("key")
@@ -182,7 +185,6 @@ impl QdrantFilter {
                         FilterError::Must("is_null".into(), "have a 'value' field".into())
                     })?;
 
-                    // Get the key from the parent object
                     let key = value
                         .get("key")
                         .and_then(|k| k.as_str())
@@ -229,7 +231,6 @@ impl QdrantFilter {
                         ..Default::default()
                     };
 
-                    // Handle match condition
                     if let Some(match_obj) = value.get("match")
                         && let Some(val) = match_obj.get("value")
                     {
@@ -238,7 +239,6 @@ impl QdrantFilter {
                         });
                     }
 
-                    // Handle range condition
                     if let Some(range_obj) = value.get("range") {
                         let mut range = Range::default();
 

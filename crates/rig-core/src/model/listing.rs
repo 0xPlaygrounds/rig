@@ -1,52 +1,17 @@
-//! Model listing types and error handling.
+//! Provider model metadata, listing interfaces, and errors.
 //!
-//! This module provides types for representing available models from providers.
-//! All models are returned in a single list; providers with pagination
-//! handle fetching all pages internally.
+//! ```
+//! use rig_core::model::{Model, ModelList};
+//!
+//! let models = ModelList::new(vec![Model::new("example", "Example model")]);
+//! assert_eq!(models.len(), 1);
+//! ```
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Represents a single model available from a provider.
-///
-/// This struct is designed to be flexible enough to accommodate the varying
-/// responses from different LLM providers while providing a common interface.
-///
-/// # Fields
-///
-/// - `id`: The unique identifier for the model (required)
-/// - `name`: A human-readable name for the model
-/// - `description`: A detailed description of the model's capabilities
-/// - `r#type`: The type of model (e.g., "chat", "completion", "embedding")
-/// - `created_at`: Timestamp when the model was created
-/// - `owned_by`: The organization or entity that owns the model
-/// - `context_length`: The maximum context window size for the model
-/// - `max_output_tokens`: The maximum tokens the model may generate per response
-///
-/// # Example
-///
-/// ```rust
-/// use rig_core::model::Model;
-///
-/// // Create a model with just an ID
-/// let model = Model::from_id("gpt-4");
-///
-/// // Create a model with ID and name
-/// let model = Model::new("gpt-4", "GPT-4");
-///
-/// // Create a model with all fields
-/// let model = Model {
-///     id: "gpt-4".to_string(),
-///     name: Some("GPT-4".to_string()),
-///     description: Some("A large language model...".to_string()),
-///     r#type: Some("chat".to_string()),
-///     created_at: Some(1677610600),
-///     owned_by: Some("openai".to_string()),
-///     context_length: Some(8192),
-///     max_output_tokens: Some(4096),
-/// };
-/// ```
+/// Provider-advertised model identifier and optional metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Model {
     /// The unique identifier for the model (required)
@@ -77,38 +42,14 @@ pub struct Model {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_length: Option<u32>,
 
-    /// The maximum number of tokens the model may generate in one response.
-    ///
-    /// Distinct from [`Self::context_length`]: that is the input window, this
-    /// is the output ceiling, and for most models the output ceiling is far
-    /// smaller (Gemini 2.5 Flash: 1,048,576 in, 65,536 out).
-    ///
-    /// `None` means the provider's listing does not report one — never a
-    /// default rig invented. Rig does **not** send this value on requests:
-    /// omitting an output limit lets the provider apply its own per-model
-    /// default, and populating it from here would reintroduce a rig-chosen cap
-    /// by another route (rig#2322). It is for callers and diagnostics.
+    /// Provider-reported output-token ceiling, or `None` when unreported.
+    /// Distinct from context length and not automatically applied to requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
 }
 
 impl Model {
-    /// Creates a new Model with the given ID and name.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The unique identifier for the model
-    /// * `name` - A human-readable name for the model
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::Model;
-    ///
-    /// let model = Model::new("gpt-4", "GPT-4");
-    /// assert_eq!(model.id, "gpt-4");
-    /// assert_eq!(model.name, Some("GPT-4".to_string()));
-    /// ```
+    /// Creates a model with an ID and display name; other metadata is absent.
     pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -122,21 +63,7 @@ impl Model {
         }
     }
 
-    /// Creates a new Model with only the required ID field.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The unique identifier for the model
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::Model;
-    ///
-    /// let model = Model::from_id("gpt-4");
-    /// assert_eq!(model.id, "gpt-4");
-    /// assert_eq!(model.name, None);
-    /// ```
+    /// Creates a model with an ID and no optional metadata.
     pub fn from_id(id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -150,22 +77,7 @@ impl Model {
         }
     }
 
-    /// Returns a reference to the model's name, or the ID if no name is set.
-    ///
-    /// This is useful for display purposes when you want to show the most
-    /// human-readable identifier available.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::Model;
-    ///
-    /// let model_with_name = Model::new("gpt-4", "GPT-4");
-    /// assert_eq!(model_with_name.display_name(), "GPT-4");
-    ///
-    /// let model_without_name = Model::from_id("gpt-4");
-    /// assert_eq!(model_without_name.display_name(), "gpt-4");
-    /// ```
+    /// Returns the name when present, otherwise the ID.
     pub fn display_name(&self) -> &str {
         self.name.as_ref().unwrap_or(&self.id)
     }
@@ -177,108 +89,30 @@ impl fmt::Display for Model {
     }
 }
 
-/// Represents a complete list of models from a provider.
-///
-/// This struct contains all available models from a provider. Providers that
-/// support pagination internally handle fetching all pages before returning results.
-///
-/// # Fields
-///
-/// - `data`: The complete list of available models
-///
-/// # Example
-///
-/// ```rust
-/// use rig_core::model::{Model, ModelList};
-///
-/// let list = ModelList::new(vec![
-///     Model::from_id("gpt-4"),
-///     Model::from_id("gpt-3.5-turbo"),
-/// ]);
-///
-/// println!("Found {} models", list.len());
-/// for model in list.iter() {
-///     println!("- {}", model.display_name());
-/// }
-/// ```
+/// Ordered provider model entries. May represent one page or an aggregated listing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelList {
-    /// The complete list of available models
+    /// Model entries in returned order.
     pub data: Vec<Model>,
 }
 
 impl ModelList {
-    /// Creates a new ModelList with the given models.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - The list of models
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::{Model, ModelList};
-    ///
-    /// let list = ModelList::new(vec![
-    ///     Model::from_id("gpt-4"),
-    ///     Model::from_id("gpt-3.5-turbo"),
-    /// ]);
-    /// assert_eq!(list.len(), 2);
-    /// ```
+    /// Wraps model entries without sorting or deduplicating them.
     pub fn new(data: Vec<Model>) -> Self {
         Self { data }
     }
 
-    /// Returns true if the list is empty.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::ModelList;
-    ///
-    /// let empty = ModelList::new(vec![]);
-    /// assert!(empty.is_empty());
-    ///
-    /// let non_empty = ModelList::new(vec![rig_core::model::Model::from_id("gpt-4")]);
-    /// assert!(!non_empty.is_empty());
-    /// ```
+    /// Returns whether the list has no entries.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
-    /// Returns the number of models in this list.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::{Model, ModelList};
-    ///
-    /// let list = ModelList::new(vec![
-    ///     Model::from_id("gpt-4"),
-    ///     Model::from_id("gpt-3.5-turbo"),
-    /// ]);
-    /// assert_eq!(list.len(), 2);
-    /// ```
+    /// Returns the number of entries.
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
-    /// Returns an iterator over the models in this list.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use rig_core::model::{Model, ModelList};
-    ///
-    /// let list = ModelList::new(vec![
-    ///     Model::from_id("gpt-4"),
-    ///     Model::from_id("gpt-3.5-turbo"),
-    /// ]);
-    ///
-    /// for model in list.iter() {
-    ///     println!("Model: {}", model.display_name());
-    /// }
-    /// ```
+    /// Borrows entries in list order.
     pub fn iter(&self) -> std::slice::Iter<'_, Model> {
         self.data.iter()
     }
@@ -302,11 +136,8 @@ impl<'a> IntoIterator for &'a ModelList {
     }
 }
 
-/// A model listing: what a bound model-listing wire answers.
-///
-/// Providers with pagination fetch every page before returning, which the
-/// driver does for them by looping on
-/// [`Decoder::continuation`](crate::wire::Decoder::continuation).
+/// Retrieves provider model metadata. Wire-backed implementations follow
+/// pagination within the driver's repeated-cursor and page-count limits.
 pub trait ModelLister: WasmCompatSend + WasmCompatSync {
     /// Every model the provider offers.
     fn list_all(
@@ -314,10 +145,7 @@ pub trait ModelLister: WasmCompatSend + WasmCompatSync {
     ) -> impl Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
 }
 
-/// Errors that can occur when listing models from a provider.
-///
-/// This enum represents the various error conditions that may arise when
-/// attempting to retrieve the list of available models from an LLM provider.
+/// Model-listing request, authentication, provider, or parsing failure.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 pub enum ModelListingError {
     /// The provider returned an error response with a status code
@@ -480,9 +308,7 @@ impl crate::wire::WireError for ModelListingError {
         self
     }
 
-    /// The listing error enum has no slot for transport metadata; it is a
-    /// serializable value the ECS records, and adding one would put a
-    /// `HeaderMap` on the wire.
+    /// Returns the error unchanged; transport request IDs are not retained.
     fn with_provider_request_id(self, _request_id: Option<String>) -> Self {
         self
     }
@@ -498,9 +324,8 @@ impl crate::wire::WireError for ModelListingError {
         }
     }
 
-    /// A failed catalog fetch names no response a caller can inspect, so the
-    /// diagnostic has to carry what it was: which provider, which path, and
-    /// the reply's status and body (rig#2079).
+    /// Adds provider and path context plus a bounded body preview to API and
+    /// parse errors. Other variants remain unchanged.
     fn with_route(self, provider: &str, path: &str) -> Self {
         match self {
             Self::ApiError {

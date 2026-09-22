@@ -1,40 +1,15 @@
-//! Shared lifecycle derivation for boundary-less constant-key wires.
+//! Reasoning lifecycle derivation for wires without explicit block boundaries.
+//! Companion decoders can declare chunk contents and receive ordered reasoning,
+//! text, and tool events. This module is not a stable public API.
 //!
-//! Wires with no reasoning boundary of their own (ollama's `thinking`,
-//! cohere's `thinking` content, gemini REST's `thought` parts, gemini
-//! Interactions' thought summaries) used to hand-roll the same algorithm
-//! per adapter: track `reasoning_open`, emit
-//! the delta under the per-stream constant minted key, and synthesize a
-//! silent `ReasoningEnd` before any other content class. Every review round
-//! found one adapter that missed a piece of it ("close the open reasoning
-//! block before any other part class" took two rounds across six adapters;
-//! "emit a chunk's parts in canonical order" took another).
-//!
-//! Here the adapter *declares* what one wire chunk carried — a
-//! [`ChunkParts`] — and [`MintedReasoningLifecycle::emit_chunk`] derives the
-//! canonical event sequence: reasoning first, a wire-signed close when the
-//! chunk carried one, the synthesized boundary end when other content
-//! interleaves, then text, then tool events. "Forgot the boundary" and
-//! "wrong intra-chunk order" are not expressible through this interface
-//! (langchain's declarative-chunk + core-side merge factoring;
-//! semantic-kernel converged on the same shape independently). The driver's
-//! debug-mode sequence laws (`sequence_law`) still watch the emitted stream,
-//! so an adapter bypassing this helper fails its own tests.
-//!
-//! `pub` (not `pub(crate)`) for the same reason as
-//! [`tool_call_bridge`](super::tool_call_bridge): companion provider
-//! crates implementing [`Decoder`](crate::wire::Decoder) over a
-//! boundary-less wire (rig-gemini-grpc) must inherit this derivation rather
-//! than hand-roll it; it is not part of rig-core's stable public API.
-//!
-//! Wires that announce their own boundaries (anthropic `content_block_stop`,
-//! OpenAI Responses `output_item.done`) do not use this — their lifecycle is
-//! the wire's, not a derivation. The chat-completions compat family keeps its
-//! `CompatibleStreamProfile` system (in the crate-private
-//! `openai_chat_completions_compatible` module, hence named rather than
-//! linked): that IS the shared derivation for its ~15 gateway providers, with
-//! wire quirks (slot eviction, encrypted reasoning details, tool-call
-//! decorations) this declarative shape does not model.
+//! ```
+//! use rig_core::operation::AdapterOutput;
+//! use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
+//! use rig_core::streaming::MintKind;
+//! let mut lifecycle = MintedReasoningLifecycle::new(MintKind::Reasoning);
+//! let mut output = AdapterOutput::new();
+//! lifecycle.emit_chunk(ChunkParts { reasoning: Some("Thinking".into()), ..Default::default() }, &mut output);
+//! ```
 
 use crate::operation::AdapterOutput;
 use crate::streaming::{BlockId, MintKind, StreamEvent, SyntheticIds};
@@ -45,35 +20,25 @@ use crate::streaming::{BlockId, MintKind, StreamEvent, SyntheticIds};
 pub struct ChunkParts {
     /// Reasoning content accumulating under the wire's constant minted key.
     pub reasoning: Option<String>,
-    /// A wire-carried signature closing the reasoning block (gemini's
-    /// `thoughtSignature`) — the one authoritative close these wires spell.
+    /// Wire-carried signature closing the reasoning block.
     pub reasoning_signature: Option<String>,
     /// Visible text content.
     pub text: Option<String>,
-    /// Tool-call events in wire order — whole calls, fragments, or input
-    /// ends, prebuilt by the adapter (keys and ids are wire policy, not
-    /// lifecycle). Emitted after the boundary close, in the canonical slot.
+    /// Tool-call events in wire order, with adapter-assigned keys and IDs.
+    /// Emitted after reasoning closes and text is emitted.
     pub tool_events: Vec<StreamEvent>,
 }
 
 impl ChunkParts {
-    /// Whether the chunk carries content that interleaves — and therefore
-    /// closes — an open reasoning block.
+    /// Whether this chunk's text or tool events close an open reasoning block.
     fn has_boundary_content(&self) -> bool {
         self.text.as_ref().is_some_and(|text| !text.is_empty()) || !self.tool_events.is_empty()
     }
 }
 
-/// The lifecycle state for one stream's minted-key reasoning blocks.
-///
-/// Owns the open/close bookkeeping the adapters used to hand-roll; an
-/// adapter never touches a `reasoning_open` flag or emits a lifecycle event
-/// directly. Every block gets its own minted key: the key is the block's
-/// public identity for the life of the stream, so a wire that reasons,
-/// interleaves other content, then reasons again yields two blocks with two
-/// distinct ids. A trailing close (a late `thoughtSignature` after a
-/// synthesized boundary) still addresses the block that streamed, because
-/// the next key is minted only when reasoning resumes.
+/// Tracks reasoning blocks under distinct stream-local minted keys.
+/// A late signature after a synthesized close addresses the preceding block.
+/// Resumed reasoning or a signature after a signed close receives a new key.
 pub struct MintedReasoningLifecycle {
     ids: SyntheticIds,
     key: BlockId,
@@ -105,15 +70,9 @@ impl MintedReasoningLifecycle {
         &self.key
     }
 
-    /// Emit one declared chunk as the canonical event sequence.
-    ///
-    /// Order and boundary are derived, not stated per adapter:
-    /// 1. reasoning delta (opens the block);
-    /// 2. a wire-carried signature closes the block authoritatively;
-    /// 3. other content in the chunk closes a still-open block with a
-    ///    synthesized silent end (`wire_sent: false` — the wire never spelled
-    ///    the boundary, so downstream must not observe a fabricated event);
-    /// 4. text, then tool events.
+    /// Emit reasoning, its signature or synthesized close, text, then tool events.
+    /// Interleaving text or tools closes an open block. Ends use `wire_sent: false`
+    /// so downstream observers do not receive fabricated boundary events.
     pub fn emit_chunk(&mut self, parts: ChunkParts, out: &mut AdapterOutput) {
         if let Some(reasoning) = parts
             .reasoning
@@ -130,15 +89,8 @@ impl MintedReasoningLifecycle {
         }
 
         if let Some(signature) = parts.reasoning_signature.clone() {
-            // The wire's own authoritative close: signs the accumulated
-            // deltas, the already-finished block that holds the
-            // chain-of-thought, or a signature-only part when nothing
-            // streamed — the shared accumulator owns the per-case behavior.
-            // A signature after a synthesized close signs that finished
-            // block (the late signature). A signature after a *signed*
-            // close is a block of its own (a signature-only part), under a
-            // fresh key: one signed end per key, so a consumer keeping its
-            // own block lifecycle sees a balanced stream.
+            // Late signatures reuse an unsigned block; consecutive signed closes
+            // need distinct keys to preserve one signed end per block.
             if self.signed && !self.open {
                 self.key = self.ids.mint();
             }
@@ -149,9 +101,7 @@ impl MintedReasoningLifecycle {
         }
 
         if parts.has_boundary_content() && self.open {
-            // Interleaving output ends an open reasoning block — the
-            // boundary these wires never announce, synthesized once here
-            // instead of once per adapter.
+            // These wires omit the boundary before interleaving output.
             self.open = false;
             self.closed = true;
             out.reasoning_end(self.key.clone(), None, None, false);

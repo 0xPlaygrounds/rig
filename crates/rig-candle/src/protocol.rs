@@ -358,8 +358,6 @@ fn render_plain_chat(
         ));
     }
     let messages = messages_with_documents(request);
-    // Byte-exact turn framing per family: turn_start, role, role_suffix
-    // pieces, content, then turn_end pieces.
     type Pieces = &'static [&'static str];
     let (turn_start, role_suffix, turn_end, mut rendered): (&str, Pieces, Pieces, String) =
         match family {
@@ -544,9 +542,8 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
 
     rendered.push_str(IM_START);
     rendered.push_str("assistant\n");
-    // Qwen's official template uses this prefix for no-thinking mode. Keeping
-    // reasoning disabled makes tool parsing deterministic and avoids persisting
-    // hidden chain-of-thought in caller-owned history.
+    // This template prefix requests no-thinking mode; the parser still accepts
+    // a leading reasoning block if the model emits one.
     rendered.push_str("<think>\n\n</think>\n\n");
     Ok(rendered)
 }
@@ -805,9 +802,7 @@ fn parse_qwen3_assistant(
             "the model returned no tool call for a required/specific choice".to_string(),
         ));
     }
-    // A turn that produced nothing is left empty. This used to push a
-    // fabricated empty-text part, purely because the assistant content type
-    // could not be empty; the part was never something the model emitted.
+    // Preserve empty turns without inventing model output.
     rig_core::message::normalize_missing_tool_call_ids(&mut items);
     let visible_text = canonicalize_visible_text(&mut items);
     Ok(ParsedAssistant {

@@ -1,5 +1,13 @@
-//! Google Gemini Interactions API integration.
-//! From <https://ai.google.dev/api/interactions-api>
+//! Wires and payload types for the [Gemini Interactions API](https://ai.google.dev/api/interactions-api).
+//!
+//! ```no_run
+//! use rig_core::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let wire = Gemini::from_env()?.interactions(GEMINI_2_5_FLASH);
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::message::{self, MimeType};
@@ -13,27 +21,11 @@ use url::form_urlencoded;
 pub mod streaming;
 pub use interactions_api_types::*;
 
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-/// Stable descriptor name for the Gemini Interactions API.
-///
-/// The Interactions API is a second surface over the same provider, so it
-/// reports the same descriptor as GenerateContent — matching the telemetry
-/// spans, which have always shared it.
+/// Gemini provider name used in normalized records and telemetry.
 pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
-/// The Gemini Interactions wire: `POST /v1beta/interactions`, with
-/// `?alt=sse` and `stream: true` when the caller wants the reply as it is
-/// produced.
-///
-/// Unlike GenerateContent, this family's two replies really are two
-/// documents — a whole [`Interaction`] resource, or the SSE events that
-/// build one — so [`streaming::InteractionsDecoder`] names the whole
-/// resource as one more event of its wire and synthesizes the step events
-/// the stream would have sent. There is exactly one mapping from steps to
-/// assistant content, and it is the streamed one.
+/// Create interactions with `POST /v1beta/interactions`.
+/// Streaming mode sets `alt=sse` and `stream: true`; unary mode reads a whole resource.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Interactions {
     /// The key and the API root.
@@ -109,8 +101,7 @@ impl crate::wire::Wire for Interactions {
             )
             .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
-        // Gemini reports no transport request-id response header (verified
-        // against the live API); the normalized id is None by design.
+        // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }
 
@@ -119,16 +110,9 @@ impl crate::wire::Wire for Interactions {
     }
 }
 
-/// One existing interaction's own endpoint: poll it, or resume its stream.
-///
-/// A `background: true` interaction outlives the request that created it, and
-/// a dropped stream can be picked up from the last event it delivered. Both
-/// are the same interaction read again, so both are *requests* on this wire
-/// rather than a session: the id is data on the wire, `Mode::Unary` GETs the
-/// resource (whose reply is the whole [`Interaction`] the unary path already
-/// decodes) and `Mode::Streaming` GETs the event stream from
-/// `last_event_id` onward. [`streaming::InteractionsDecoder`] reads both, so
-/// this wire adds no second way to read the Interactions API.
+/// Read an existing interaction resource or resume its event stream.
+/// Unary mode retrieves the resource once. Streaming mode resumes after
+/// `last_event_id`, or from the beginning if no event id is supplied.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InteractionResume {
     /// The key and the API root.
@@ -194,9 +178,6 @@ impl crate::wire::Wire for InteractionResume {
                 format!("/v1beta/interactions/{}", self.interaction_id),
                 crate::http_client::framing::Framing::Whole,
             ),
-            // Byte-for-byte the resume request the client layer sent:
-            // `?stream=true[&last_event_id=…]` from the shared path builder,
-            // then `alt=sse`.
             Mode::Streaming => (
                 format!(
                     "{}&alt=sse",
@@ -389,7 +370,13 @@ fn split_data_uri(
     }
 }
 
-/// Raw request/response types and convenience helpers for the Gemini Interactions API.
+/// Request and response types for the Gemini Interactions API.
+///
+/// ```
+/// use rig_core::providers::gemini::interactions_api::InteractionStatus;
+///
+/// assert!(InteractionStatus::RequiresAction.is_terminal());
+/// ```
 pub mod interactions_api_types {
     use super::{media_parts, split_data_uri};
     use crate::completion::{CompletionError, Usage};
@@ -397,10 +384,6 @@ pub mod interactions_api_types {
     use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
-
-    // =================================================================
-    // Request / Response Types
-    // =================================================================
 
     /// Optional parameters for creating an interaction.
     #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -847,27 +830,15 @@ pub mod interactions_api_types {
         Completed,
         Failed,
         Cancelled,
-        /// A status this crate does not know yet. Google adds wire values
-        /// without notice; carrying the spelling verbatim keeps the whole
-        /// payload deserializable instead of failing on the new value.
+        /// An unrecognized status, preserved verbatim without rejecting the response.
         #[serde(untagged)]
         Unknown(String),
     }
 
     impl InteractionStatus {
-        /// Returns true when polling can stop: the status will not advance
-        /// on its own.
-        ///
-        /// The known *in-flight* statuses are the allowlist, so a status this
-        /// crate does not know yet reads as terminal: a poll loop that treated
-        /// an unknown status as in-flight would wait on it forever, whereas
-        /// surfacing it lets the caller act on the provider's own spelling.
-        ///
-        /// [`InteractionStatus::RequiresAction`] is terminal *for the poll*
-        /// even though the interaction itself is resumable: it only advances
-        /// when the caller submits tool results, so waiting on it can never
-        /// succeed. Callers must branch on it as a distinct, resumable
-        /// outcome rather than a completion.
+        /// Return false only for [`Self::InProgress`].
+        /// Stop polling on unknown statuses and handle them explicitly.
+        /// [`Self::RequiresAction`] needs caller-supplied tool results, not further polling.
         pub fn is_terminal(&self) -> bool {
             !matches!(self, InteractionStatus::InProgress)
         }
@@ -892,13 +863,8 @@ pub mod interactions_api_types {
         }
     }
 
-    /// Map an interaction's lifecycle status onto rig's normalized finish
-    /// reasons.
-    ///
-    /// The Interactions API has no `finishReason` field — the interaction's
-    /// terminal state is the closest equivalent. Only the three statuses with a
-    /// normalized counterpart are folded in; the rest (including the
-    /// non-terminal `in_progress`) are carried verbatim rather than guessed at.
+    /// Normalize completed, requires-action, and budget-exceeded statuses.
+    /// Preserve every other status verbatim as `Other`.
     pub(crate) fn map_interaction_status(
         status: &InteractionStatus,
     ) -> crate::completion::FinishReason {
@@ -921,35 +887,20 @@ pub mod interactions_api_types {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub total_tokens: Option<u64>,
         /// Input tokens served from Gemini's cache.
-        ///
-        /// The Interactions wire has always reported this; rig had no field for
-        /// it, so `Usage::cached_input_tokens` was structurally zero on this
-        /// surface no matter what the provider said.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub total_cached_tokens: Option<u64>,
-        /// Tokens spent on internal thinking.
-        ///
-        /// Reported *outside* `total_output_tokens` on this surface, and it is
-        /// routinely the largest component: a recorded interaction reporting
-        /// `input=14, output=34, total=270` spent 222 of those tokens thinking.
-        /// Dropping it left the normalized triple unable to explain its own
-        /// total.
+        /// Thinking tokens, reported separately from `total_output_tokens`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub total_thought_tokens: Option<u64>,
-        /// Prompt tokens attributed to built-in tool use (search grounding and
-        /// friends).
+        /// Prompt tokens attributed to built-in tool use.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub total_tool_use_tokens: Option<u64>,
     }
 
     impl From<&InteractionUsage> for Usage {
         fn from(value: &InteractionUsage) -> Usage {
-            // The provider's own total is authoritative. The fallback sums every
-            // component rather than just input+output, because on this surface
-            // thinking and tool-use tokens are reported *beside* those two, not
-            // inside them — summing only the first pair understated the total by
-            // the whole thinking spend. Without both input and output there is
-            // nothing to derive a total from.
+            // Thinking and tool-use tokens are separate from input and output.
+            // Derive a fallback only when both base counts exist; reported totals take precedence.
             let derived_total =
                 value
                     .total_input_tokens
@@ -992,9 +943,7 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Step {
-        // `content` is defaulted: a streaming `step.start` announces the step
-        // with the content omitted (it follows in `step.delta` events), e.g.
-        // `{"type":"model_output"}` on the recorded wire.
+        // Streaming announcements may omit content until later step.delta events.
         UserInput {
             #[serde(default)]
             content: Vec<Content>,
@@ -1055,13 +1004,9 @@ pub mod interactions_api_types {
     }
 
     impl Step {
-        /// The steps a history message is on the wire, in the message's
-        /// order. A function call, its result and a thought are steps of
-        /// their own — the shape the API emits them in and the only shape it
-        /// accepts them back in (nested in a `model_output` or `user_input`
-        /// step, a call-and-result round trip is "an invalid argument");
-        /// text and media stay grouped in a `user_input` / `model_output`
-        /// step, one per run of them.
+        /// Convert a history message into ordered interaction steps.
+        /// Calls, results, and thoughts become separate steps; adjacent text and
+        /// media remain grouped. Return conversion errors for unsupported content.
         pub(crate) fn from_message(
             message: crate::completion::Message,
         ) -> Result<Vec<Self>, message::MessageError> {
@@ -1132,10 +1077,6 @@ pub mod interactions_api_types {
             steps
         }
     }
-
-    // =================================================================
-    // Content
-    // =================================================================
 
     /// Text annotation metadata for citations.
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1311,9 +1252,7 @@ pub mod interactions_api_types {
         pub summary: Option<Vec<ThoughtSummaryContent>>,
     }
 
-    /// Thought summary item: a content item like any other on this wire,
-    /// tagged by `type` (the API refuses an untagged one on the way back:
-    /// "The 'type' parameter is required at `input[n].content[0].summary[0]`").
+    /// Thought summary item with the `type` tag required for replay.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ThoughtSummaryContent {
@@ -1569,10 +1508,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::UserContent::ToolResult(tool_result) => {
-                    // The wire requires a call id: the provider-issued one
-                    // when it exists, else rig's minted handle — always
-                    // present, so the old "results require call_id" error
-                    // is unrepresentable.
+                    // The wire requires a call id even when the original provider issued none.
                     let call_id = tool_result.wire_call_id().into_owned();
                     let name = tool_result.name;
 
@@ -1611,7 +1547,6 @@ pub mod interactions_api_types {
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
-                        // The executed tool's name travels as required data.
                         name: Some(name),
                         is_error: None,
                         result: Some(result),
@@ -1733,11 +1668,8 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
-                    // The thought's signature is the first text part's, text
-                    // or no text: a signature-only thought (the wire's
-                    // `thought_signature` with no summary) goes back as
-                    // signature-only, since an empty summary item is an
-                    // invalid argument to the API.
+                    // Preserve signature-only thoughts without empty summary items,
+                    // which the API rejects.
                     let signature = content.iter().find_map(|part| match part {
                         message::ReasoningContent::Text { signature, .. } => signature.clone(),
                         message::ReasoningContent::Summary(_)
@@ -1786,10 +1718,6 @@ pub mod interactions_api_types {
             }
         }
     }
-
-    // =================================================================
-    // Tools / Config
-    // =================================================================
 
     /// Response modalities supported by the model.
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2012,10 +1940,6 @@ pub mod interactions_api_types {
         UltraHigh,
     }
 
-    // =================================================================
-    // Streaming Events
-    // =================================================================
-
     /// Server-sent event payloads for streaming interactions.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "event_type")]
@@ -2074,14 +1998,7 @@ pub mod interactions_api_types {
         pub message: String,
     }
 
-    /// Content delta item in streaming events.
-    ///
-    /// Most deltas repeat a whole [`Content`] payload rather than a fragment of
-    /// one, so they reuse the `*Content` types directly; the wire tags come
-    /// from this enum's own `type` tagging. Only the variants whose payloads
-    /// genuinely differ from their `Content` counterpart — a partial text run,
-    /// a raw arguments fragment, and the identity-less thought deltas — carry
-    /// their own struct.
+    /// A tagged content delta containing a whole item or a text, argument, or thought fragment.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ContentDelta {
@@ -2106,12 +2023,7 @@ pub mod interactions_api_types {
         FileSearchResult(FileSearchResultContent),
     }
 
-    /// Streaming function-call arguments fragment: the wire fragments a
-    /// `function_call` step's arguments as raw JSON text across
-    /// `arguments_delta` events at the step's index (recorded live in
-    /// `streaming_grammar/interactions_same_tool_twice`; the `step.start`
-    /// announces the call with `"arguments": {}` and the real payload
-    /// arrives here).
+    /// Raw JSON argument fragment for the function call at the enclosing step index.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ArgumentsDelta {
         #[serde(skip_serializing_if = "Option::is_none")]

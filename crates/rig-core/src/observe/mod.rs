@@ -1,32 +1,14 @@
-//! Observations: what a runtime, a policy or a host *decided* or *saw* at a
-//! boundary, as typed data beside — never inside — the exchange record.
+//! Typed runtime and policy observations, separate from effect replay records.
+//! [`Witness`] receives facts and [`ObservationLog`] retains a bounded trace.
+//! Optional timestamps come from a host-supplied [`Clock`], not replay identity.
 //!
-//! An [`EffectRecord`](crate::effect::EffectRecord) is the replay oracle: the
-//! request a handler served and what it answered. Everything else worth
-//! knowing after a failure is program, not record — a gate held a call
-//! and later denied it, a judge replaced an
-//! answer, a stream ended before its terminal record, a run was cancelled
-//! with a tool in flight — and today it is either gone by the time a
-//! component is inspected, or scattered over log lines. An [`Observation`]
-//! is one such fact at the moment it happened: its [`Subject`] (which
-//! effect, in which program scope, at which dispatch order), the
-//! [`Stage`] of the pipeline that saw it, the [`Emitter`] that owns the
-//! decision, and the typed [`Action`] with its outcome data or a
-//! structured [`Reason`].
+//! ```
+//! use rig_core::observe::ObservationLog;
 //!
-//! The contract is runtime-neutral. rig-core names the vocabulary and the
-//! [`Witness`] seam a sink implements; a driver (the ECS bus, an agent
-//! loop) feeds it at its own decision sites; a host feeds it from its own
-//! policies through [`Action::Host`] and the [`HostAction`] trait, so a
-//! domain-specific fact travels typed and named, not as an anonymous blob.
-//! [`ObservationLog`] is the bounded in-memory sink; its
-//! [`ObservationTrace`] is the serializable analysis artifact, distinct
-//! from an effect log and never part of replay identity.
-//!
-//! Measurements are separate from semantics: an observation may carry
-//! [`Observation::at`], an elapsed duration from a host-owned [`Clock`],
-//! and consumers decide how to compare it. Nothing here reads a clock or a random
-//! source on its own.
+//! let log = ObservationLog::with_capacity(128);
+//! log.finalize();
+//! assert!(log.trace().finalized);
+//! ```
 
 use std::{
     sync::{Arc, Mutex, PoisonError},
@@ -56,8 +38,7 @@ mod tests;
 /// One observed fact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
-    /// The position in its trace: assigned by the sink, in observation
-    /// order. Meaningful order — two traces that disagree on it diverged.
+    /// Sink-assigned sequence position in observation order.
     pub seq: u64,
     /// What the fact is about.
     pub subject: Subject,
@@ -134,9 +115,7 @@ pub enum Stage {
     Gate,
     /// The driver took or refused an intent.
     Dispatch,
-    /// Inside the handler side: a layer's decision on the way in or out.
-    /// (`Handler`, not `Serve`: a variant named `Serve` would make the
-    /// trait's name ambiguous in compiler diagnostics.)
+    /// Handler-side layer decision on entry or exit.
     Handler,
     /// The driver landed what a handler produced.
     Collect,
@@ -148,10 +127,8 @@ pub enum Stage {
     Host,
 }
 
-/// Who owns a decision or an observation: a stable name and, when the
-/// emitter versions itself, a version. [`Emitter::unknown`] is the explicit
-/// value for a fact the runtime saw land without knowing which policy made
-/// it — it is never inferred from the outcome.
+/// Stable emitter name and optional version. [`Self::unknown`] explicitly
+/// represents unavailable attribution; it is not inferred from the outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Emitter {
     /// The emitter's stable name (`rig-ecs/bus`, a layer's name, a host
@@ -341,9 +318,7 @@ pub enum Action {
     },
 }
 
-/// The most bytes a truncation tail may hold in its serialized form. A larger value is elided to a
-/// marker naming its size: the sink is bounded by count, this bounds each
-/// entry, and the exchange record still holds the full value.
+/// Maximum serialized truncation-tail size enforced by [`Action::stream_truncated`].
 pub const LARGEST_PAYLOAD_BYTES: usize = 64 * 1024;
 
 impl Action {
@@ -418,8 +393,8 @@ pub struct ObservationTrace {
     pub session: Option<String>,
     /// The facts, in sequence.
     pub observations: Vec<Observation>,
-    /// Facts the sink could not keep: its capacity was reached. A trace
-    /// with dropped facts is incomplete and never compares equal.
+    /// Facts discarded because sink capacity was reached. Nonzero means the
+    /// trace is incomplete.
     #[serde(default)]
     pub dropped: u64,
     /// Whether the sink was told the session finished normally.
@@ -495,9 +470,8 @@ impl ObservationLog {
         }
     }
 
-    /// A ring keeping the last `capacity` facts; each one it lets go of
-    /// is counted as dropped, so a trace from a ring that ever overflowed
-    /// says so (and never compares equal).
+    /// Keeps the last `capacity` facts and counts evictions as dropped.
+    /// Capacity zero is raised to one.
     pub fn ring(capacity: usize) -> Self {
         Self {
             ring: true,
@@ -561,7 +535,7 @@ impl ObservationLog {
         self.lock().observations.len()
     }
 
-    /// Whether nothing was observed.
+    /// Whether no observations are currently retained.
     pub fn is_empty(&self) -> bool {
         self.lock().observations.is_empty()
     }

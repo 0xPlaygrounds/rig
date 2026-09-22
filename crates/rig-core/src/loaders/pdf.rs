@@ -1,3 +1,14 @@
+//! Lazy PDF loading and text extraction from paths or bytes.
+//!
+//! ```no_run
+//! use rig_core::loaders::PdfFileLoader;
+//!
+//! let documents = PdfFileLoader::with_glob("documents/*.pdf")?
+//!     .read().into_iter().collect::<Result<Vec<_>, _>>()?;
+//! # let _ = documents;
+//! # Ok::<(), rig_core::loaders::pdf::PdfLoaderError>(())
+//! ```
+
 use std::path::PathBuf;
 
 use lopdf::{Document, Error as LopdfError};
@@ -16,10 +27,6 @@ pub enum PdfLoaderError {
     #[error("IO error: {0}")]
     PdfError(#[from] LopdfError),
 }
-
-// ================================================================
-// Implementing Loadable trait for loading pdfs
-// ================================================================
 
 loadable_trait!(Loadable, PdfLoaderError, Document, load, load_with_path);
 
@@ -44,60 +51,15 @@ impl Loadable for Vec<u8> {
     }
 }
 
-// ================================================================
-// PdfFileLoader definitions and implementations
-// ================================================================
-
-/// [PdfFileLoader] is a utility for loading pdf files from the filesystem using glob patterns or
-///  directory paths. It provides methods to read file contents and handle errors gracefully.
-///
-/// # Errors
-///
-/// This module defines a custom error type [PdfLoaderError] which can represent various errors
-///  that might occur during file loading operations, such as any [FileLoaderError] alongside
-///  specific PDF-related errors.
-///
-/// # Example Usage
-///
-/// ```no_run
-/// use rig_core::loaders::PdfFileLoader;
-///
-/// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // Create a FileLoader using a glob pattern
-///     let loader = PdfFileLoader::with_glob("tests/data/*.pdf")?;
-///
-///     // Load pdf file contents by page, ignoring any errors
-///     let contents: Vec<String> = loader
-///         .load()
-///         .ignore_errors()
-///         .by_page()
-///         .ignore_errors()
-///         .into_iter()
-///         .collect();
-///
-///     for content in contents {
-///         println!("{content}");
-///     }
-///
-///     Ok(())
-/// }
-/// ```
-///
-/// [PdfFileLoader] uses strict typing between the iterator methods to ensure that transitions
-///  between different implementations of the loaders and it's methods are handled properly by
-///  the compiler.
+/// Iterator pipeline for loading PDF documents and extracting text synchronously.
+/// Loading and extraction errors are yielded per item unless filtered.
 pub struct PdfFileLoader<'a, T> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
 
 #[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
 impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
-    /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
-    ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances that can be
-    ///  further processed (by page, etc).
-    ///
-    /// # Example
-    /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
+    /// Parses each input as a PDF during iteration, yielding document-loading errors.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
@@ -118,12 +80,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
         }
     }
 
-    /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
-    ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances with their path
-    ///  that can be further processed.
-    ///
-    /// # Example
-    /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
+    /// Parses each PDF and pairs it with its path, yielding loading errors.
+    /// In-memory inputs use the path `<memory>`.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
@@ -166,11 +124,8 @@ fn all_text(doc: &Document) -> Result<String, PdfLoaderError> {
 
 #[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
 impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
-    /// Directly reads the contents of the pdfs within the iterator returned by
-    ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir].
-    ///
-    /// # Example
-    /// Read pdfs in directory "tests/data/*.pdf" and return the contents of the documents.
+    /// Loads each PDF and concatenates its page text without separators.
+    /// Yields a loading error or the first page-extraction error for each document.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
@@ -191,12 +146,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
         }
     }
 
-    /// Directly reads the contents of the pdfs within the iterator returned by
-    ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir] and returns the path along with
-    ///  the content.
-    ///
-    /// # Example
-    /// Read pdfs in directory "tests/data/*.pdf" and return the content and paths of the documents.
+    /// Loads each PDF and pairs its path with concatenated page text.
+    /// Yields loading or extraction errors; in-memory inputs use `<memory>`.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
@@ -223,10 +174,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
 }
 
 impl<'a> PdfFileLoader<'a, Document> {
-    /// Chunks the pages of a loaded document by page, flattened as a single vector.
-    ///
-    /// # Example
-    /// Load pdfs in directory "tests/data/*.pdf" and chunk all document into it's pages.
+    /// Yields page text in document order, flattening all documents into one
+    /// sequence of per-page extraction results.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
@@ -257,11 +206,7 @@ impl<'a> PdfFileLoader<'a, Document> {
 
 type ByPage = (PathBuf, Vec<(usize, Result<String, PdfLoaderError>)>);
 impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
-    /// Chunks the pages of a loaded document by page, processed as a vector of documents by path
-    ///  which each document container an inner vector of pages by page number.
-    ///
-    /// # Example
-    /// Read pdfs in directory "tests/data/*.pdf" and chunk all documents by path by it's pages.
+    /// Pairs each source path with zero-based page numbers and extraction results.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
@@ -292,11 +237,8 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
 }
 
 impl<'a> PdfFileLoader<'a, ByPage> {
-    /// Ignores errors in the iterator, returning only successful results. This can be used on any
-    ///  [PdfFileLoader] state of iterator whose items are results.
-    ///
-    /// # Example
-    /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
+    /// Drops failed pages while retaining each document's path and original
+    /// zero-based page numbers. Documents with no successful pages remain.
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;

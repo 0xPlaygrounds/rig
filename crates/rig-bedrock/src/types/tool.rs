@@ -22,10 +22,8 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
                 Ok(aws_bedrock::ToolResultContentBlock::Image(image))
             }
             ToolResultContent::Json { value } => {
-                // Bedrock's Converse API accepts only an object in the JSON
-                // tool-result field for models such as Nova. Preserve object
-                // outputs unchanged and keep every other JSON type structured
-                // under a stable wrapper instead of falling back to text.
+                // Object-only tool-result schemas require a wrapper for other
+                // JSON shapes without converting structured data to text.
                 let value = match value {
                     Value::Object(_) => value,
                     value => serde_json::json!({ "result": value }),

@@ -1,6 +1,16 @@
-//! This module provides functionality for working with audio transcription models.
-//! It provides traits, structs, and enums for generating audio transcription requests,
-//! handling transcription responses, and defining transcription models.
+//! Audio transcription requests, normalized responses, and model interfaces.
+//!
+//! ```no_run
+//! use rig_core::transcription::{TranscriptionModel, TranscriptionRequestBuilder};
+//!
+//! # async fn example(model: impl TranscriptionModel) -> Result<(), Box<dyn std::error::Error>> {
+//! let response = TranscriptionRequestBuilder::new(model)
+//!     .load_file("audio.wav")?
+//!     .send().await?;
+//! # let _ = response;
+//! # Ok(())
+//! # }
+//! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::json_utils;
 use crate::markers::{Missing, Provided};
@@ -24,22 +34,14 @@ crate::provider_response::provider_error_enum!(
     }
 );
 
-/// The normalized transcription response: the transcript plus the metadata
-/// every provider can report, attributed to the provider that produced it.
-///
-/// This type is concrete — it carries no provider type parameter — so the
-/// provider does not leak into [`TranscriptionRequestBuilder`] or into any
-/// caller holding a [`TranscriptionModel`]. The provider's own payload stays
-/// reachable two ways: a model's inherent `raw_transcription` method performs
-/// the same request and returns the provider's native type, and
-/// [`TranscriptionResponse::raw`] carries that value serialized.
+/// Transcript and normalized provider metadata, with provider-specific data
+/// available through [`Self::raw`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     /// The transcribed text.
     pub text: String,
-    /// Token or duration usage as the provider reported it; every counter is
-    /// `None` when the provider reported none (see [`Usage`]). Duration-billed
-    /// endpoints report no token counts.
+    /// Provider-reported token usage. Unreported counters remain `None`;
+    /// this field does not contain audio duration.
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -52,18 +54,10 @@ pub struct TranscriptionResponse {
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
-    /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers (OpenAI `x-request-id`, Mistral
-    /// `mistral-correlation-id`) — the id provider support asks for. `None`
-    /// means the provider reported none; that is a documented outcome, never
-    /// an error.
+    /// Transport request ID from HTTP headers, or `None` when unreported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
-    /// The provider's own response for this call: the value the model's
-    /// inherent `raw_transcription` would have returned, serialized. Every
-    /// provider seam populates it. `Value::Null` means the value was built
-    /// without a provider behind it ([`TranscriptionResponse::new`] in a test
-    /// double), never that the provider sent nothing.
+    /// Provider response document. Defaults to null until populated.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
@@ -97,41 +91,24 @@ impl TranscriptionResponse {
 
 crate::provider_response::modality_response_metadata_setters!(TranscriptionResponse);
 
-/// Convert a provider's own transcription payload into the normalized
-/// [`TranscriptionResponse`].
-///
-/// The provider descriptor name is an *input*, never something the conversion
-/// knows: the OpenAI transcription wire shape is shared by several providers,
-/// and a conversion that hardcoded a name would mislabel every provider but
-/// one. This is a trait rather than `TryFrom<(&str, T)>` so that a provider
-/// extension outside `rig-core` can implement it on its own response type —
-/// a tuple is not a local type, and the orphan rule would reject the `TryFrom`
-/// form anywhere but here.
+/// Converts provider payloads into normalized transcription responses.
+/// Implementations must attribute the response to the supplied provider name.
 pub trait NormalizeTranscriptionResponse {
     /// Normalize this payload, attributing it to `provider`.
     fn normalize(self, provider: &str) -> Result<TranscriptionResponse, TranscriptionError>;
 }
 
-/// Trait defining a transcription model that can be used to generate transcription requests.
-/// This trait is meant to be implemented by the user to define a custom transcription model,
-/// either from a third-party provider (e.g: OpenAI) or a local model.
-///
-/// The trait describes only what a model *does*: it has no associated types.
-/// A model is a provider's transcription wire bound to a transport — bind a
-/// provider that declares one and call `transcription(model)` on the resulting
-/// [`Bound`](crate::driver::Bound) — and `Clone` is required only by
-/// [`TranscriptionModel::transcription_request`], which needs to hand the
-/// builder its own copy. A model behind an `Arc` is a model: the trait is
-/// implemented for `Arc<M>` by forwarding.
+/// Transcribes audio into normalized responses. Only
+/// [`Self::transcription_request`] requires cloning; `Arc<M>` forwards operations.
 pub trait TranscriptionModel: WasmCompatSend + WasmCompatSync {
-    /// Generates a completion response for the given transcription model
+    /// Transcribes the supplied audio request or returns a provider or transport error.
     fn transcription(
         &self,
         request: TranscriptionRequest,
     ) -> impl std::future::Future<Output = Result<TranscriptionResponse, TranscriptionError>>
     + WasmCompatSend;
 
-    /// Generates a transcription request builder for the given `file`
+    /// Creates a request builder without audio data.
     fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing>
     where
         Self: Sized + Clone,
@@ -169,60 +146,13 @@ pub struct TranscriptionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Builder struct for a transcription request
-///
-/// Example usage:
-/// ```ignore
-/// use rig_core::{
-///     providers::openai::{self, wire::OpenAI},
-///     transcription::{TranscriptionModel, TranscriptionRequestBuilder},
-/// };
-/// use rig_reqwest::prelude::*;
-///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = OpenAI::new("your-openai-api-key").bound()?;
-/// let model = openai.transcription(openai::WHISPER_1);
-///
-/// // Create the transcription request and execute it separately.
-/// let request = TranscriptionRequestBuilder::new(model.clone())
-///     .data(vec![0; 16])
-///     .filename(Some("audio.mp3".to_string()))
-///     .temperature(0.5)
-///     .build();
-///
-/// let response = model.transcription(request).await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// Alternatively, you can execute the transcription request directly from the builder:
-/// ```ignore
-/// use rig_core::{
-///     providers::openai::{self, wire::OpenAI},
-///     transcription::TranscriptionRequestBuilder,
-/// };
-/// use rig_reqwest::prelude::*;
-///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = OpenAI::new("your-openai-api-key").bound()?;
-/// let model = openai.transcription(openai::WHISPER_1);
-///
-/// // Create the transcription request and execute it directly.
-/// let response = TranscriptionRequestBuilder::new(model)
-///     .data(vec![0; 16])
-///     .filename(Some("audio.mp3".to_string()))
-///     .temperature(0.5)
-///     .send()
-///     .await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// Note: It is usually unnecessary to create a completion request builder directly.
-/// Instead, use the [TranscriptionModel::transcription_request] method.
+/// Builds a transcription request after audio data is supplied.
+/// The model is moved into the builder and consumed when sending; building
+/// without sending drops it. Data presence is tracked by type, not validated
+/// for audio format or nonemptiness.
 pub struct TranscriptionRequestBuilder<M, D> {
     model: M,
-    data: D, // starts Missing, becomes Provided<Vec<u8>> after data is set or load_file is called
+    data: D,
     filename: Option<String>,
     language: Option<String>,
     prompt: Option<String>,
@@ -256,7 +186,7 @@ where
         self
     }
 
-    /// Sets the data for the request and transitions the builder to the next state where data is provided.
+    /// Supplies audio bytes and enables building or sending the request.
     pub fn data(self, data: Vec<u8>) -> TranscriptionRequestBuilder<M, Provided<Vec<u8>>> {
         TranscriptionRequestBuilder {
             model: self.model,
@@ -269,7 +199,8 @@ where
         }
     }
 
-    /// Load the specified file into data and transitions the builder to the next state where data is provided.
+    /// Reads a file synchronously, returning I/O errors unchanged. Uses its base
+    /// filename when available and enables building or sending the request.
     pub fn load_file<P>(
         self,
         path: P,
@@ -311,7 +242,7 @@ where
         self
     }
 
-    /// Adds additional parameters to the transcription request.
+    /// Merges provider-specific parameters with existing parameters.
     pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
         match self.additional_params {
             Some(params) => {
@@ -324,14 +255,14 @@ where
         self
     }
 
-    /// Sets the additional parameters for the transcription request.
+    /// Replaces provider-specific parameters, or clears them with `None`.
     pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
         self.additional_params = additional_params;
         self
     }
 }
 
-/// The build and send methods are only available when data is provided, ensuring that the request cannot be sent without the required data.
+/// Request construction and dispatch after audio data has been supplied.
 impl<M> TranscriptionRequestBuilder<M, Provided<Vec<u8>>>
 where
     M: TranscriptionModel,

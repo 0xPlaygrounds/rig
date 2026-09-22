@@ -1,4 +1,10 @@
-//! Anthropic completion api implementation
+//! Anthropic Messages payloads, conversion, citations, and prompt-cache configuration.
+//!
+//! ```
+//! use rig_core::providers::anthropic::completion::CacheControl;
+//!
+//! let cache = CacheControl::ephemeral_1h();
+//! ```
 
 use crate::completion::CompletionRequest;
 use crate::json_utils::string_or_vec;
@@ -8,10 +14,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-
-// ================================================================
-// Anthropic Completion API
-// ================================================================
 
 /// `claude-fable-5-1` completion model
 pub const CLAUDE_FABLE_5_1: &str = "claude-fable-5-1";
@@ -46,20 +48,13 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
-    /// The transport request id from the `request-id` response header — not
-    /// part of the response body; stamped by the request driver. This is the
-    /// id Anthropic support asks for. `None` when the provider (or a
-    /// compatible gateway) did not report one.
+    /// Transport request id from the `request-id` response header, attached by
+    /// the request driver. Absent when the provider reports no header.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
 }
 
-/// Map an Anthropic Messages `stop_reason` onto the normalized vocabulary,
-/// preserving anything unrecognized verbatim.
-///
-/// Shared by the unary and streaming paths so both agree, and so a stop reason
-/// Anthropic adds later surfaces in its own spelling rather than reading as a
-/// natural stop.
+/// Normalize a Messages `stop_reason`, preserving unrecognized values verbatim.
 pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
     match stop_reason {
         // `stop_sequence` is a natural termination too: the model completed its
@@ -90,13 +85,8 @@ pub struct Usage {
     pub output_tokens_details: Option<OutputTokensDetails>,
 }
 
-/// Breakdown of `usage.output_tokens`.
-///
-/// The tokens Claude spent on extended thinking are reported here, *inside*
-/// `output_tokens` rather than beside it — the name says `details`, and every
-/// recorded turn has `thinking_tokens <= output_tokens`. Adding them to a total
-/// would double-count. Unknown buckets a provider may add later are ignored on
-/// deserialization.
+/// Breakdown of `usage.output_tokens`, including thinking tokens already counted
+/// in that total. Deserialization ignores unrecognized fields.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct OutputTokensDetails {
     /// Output tokens spent on extended thinking this turn.
@@ -104,13 +94,8 @@ pub struct OutputTokensDetails {
     pub thinking_tokens: u64,
 }
 
-/// Per-TTL breakdown of cache-write tokens (`usage.cache_creation`).
-///
-/// Distinguishes 1-hour cache writes (~2x base input token price) from
-/// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
-/// (see [`Messages::with_static_prefix_cache_ttl`](super::wire::Messages::with_static_prefix_cache_ttl))
-/// observable.
-/// Unknown buckets a provider may add later are ignored on deserialization.
+/// Cache-write tokens by TTL (`usage.cache_creation`).
+/// Deserialization ignores unrecognized fields.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct CacheCreation {
     /// Tokens written to the 5-minute cache on this turn.
@@ -136,16 +121,9 @@ impl std::fmt::Display for Usage {
     }
 }
 
-/// Aggregate an Anthropic token report into rig's usage shape.
-///
-/// Anthropic reports cache reads and cache writes *alongside* `input_tokens`
-/// rather than inside it, so the total is the sum of all four counters.
-/// `thinking_tokens` is the exception: it is a *breakdown* of `output_tokens`,
-/// already counted there, so it populates `reasoning_tokens` without entering
-/// the total. Shared with the streaming path, whose `PartialUsage` carries the
-/// same counters — the parameter is required rather than defaulted so a new
-/// caller cannot silently drop it. `input_tokens` is optional because a
-/// streaming `message_delta` frame omits it; without it there is no total.
+/// Normalize usage, summing input, output, cache-read, and cache-write tokens.
+/// Thinking tokens are already included in output and are not added again.
+/// Without an input count, leave the total absent.
 pub(super) fn anthropic_usage_totals(
     input_tokens: Option<u64>,
     output_tokens: u64,
@@ -199,11 +177,7 @@ pub struct ToolDefinition {
     pub cache_control: Option<CacheControl>,
 }
 
-/// TTL for a cache control breakpoint.
-///
-/// The Anthropic API supports two TTL values:
-/// - `"5m"` — 5 minutes (default when `ttl` is omitted)
-/// - `"1h"` — 1 hour
+/// Cache-breakpoint lifetime: five minutes by default, or one hour.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
@@ -355,43 +329,18 @@ impl FromStr for Content {
     }
 }
 
-/// Configuration for enabling citations on a document content block.
-///
-/// When enabled, Claude returns citation metadata on response text blocks,
-/// allowing applications to track where each piece of information in the
-/// response came from. See the [Anthropic citations documentation][docs] for
-/// details on the request/response shapes.
-///
-/// Citations must be enabled on **all or none** of the documents in a request —
-/// the API returns an error if the setting is mixed.
-///
-/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+/// Enable [citation metadata](https://docs.anthropic.com/en/docs/build-with-claude/citations)
+/// on response text referencing this document.
+/// Enable citations on all or none of a request's documents; mixed settings fail.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CitationsConfig {
     /// Whether citation tracking is enabled for this document.
     pub enabled: bool,
 }
 
-/// A citation returned by Claude pointing back to source text.
-///
-/// The variant determines the locator shape, which depends on the source type:
-///
-/// - [`Citation::CharLocation`] — for plain text documents; character indices
-///   are 0-indexed with an exclusive end.
-/// - [`Citation::PageLocation`] — for PDF documents; page numbers are 1-indexed
-///   with an exclusive end.
-/// - [`Citation::ContentBlockLocation`] — for custom-content documents; block
-///   indices are 0-indexed with an exclusive end.
-/// - [`Citation::SearchResultLocation`] — for user-provided search-result
-///   content blocks.
-/// - [`Citation::WebSearchResultLocation`] — for Anthropic's server-side web
-///   search tool results.
-/// - [`Citation::Unknown`] — a forward-compatible fallback preserving raw
-///   citation JSON for citation types this crate does not yet model.
-///
-/// See the [Anthropic citations documentation][docs] for the exact wire format.
-///
-/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+/// A citation pointing to source text using a source-specific locator.
+/// Known tags require valid payloads. Unknown tags retain their raw JSON.
+/// See the [wire format](https://docs.anthropic.com/en/docs/build-with-claude/citations).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Citation {
     /// A citation locating a character span in a plain text document.
@@ -483,9 +432,7 @@ pub struct WebSearchResultLocationCitation {
     pub cited_text: String,
     /// URL of the cited source.
     pub url: String,
-    /// Title of the cited source. Unlike the document-citation titles this
-    /// carries no `skip_serializing_if`: the wire writes it even when absent,
-    /// as an explicit `"title": null`.
+    /// Source title, serialized as `null` when absent.
     pub title: Option<String>,
     /// Encrypted reference that must be preserved for multi-turn
     /// conversations.
@@ -543,10 +490,7 @@ impl<'de> Deserialize<'de> for Citation {
             serde_json::from_value(value).map_err(E::custom)
         }
 
-        // Hand-written tag dispatch rather than `#[serde(untagged)]`: an
-        // untagged fallback would swallow a *modeled* citation type carrying a
-        // defective payload as `Unknown`, hiding provider drift. Only an
-        // absent, non-string or unmodeled tag reaches `Unknown` here.
+        // Explicit dispatch prevents malformed known citations from falling back to Unknown.
         let value = serde_json::Value::deserialize(deserializer)?;
         let Some(citation_type) = value.get("type").and_then(serde_json::Value::as_str) else {
             return Ok(Citation::Unknown(value));
@@ -563,12 +507,8 @@ impl<'de> Deserialize<'de> for Citation {
     }
 }
 
-/// Deserialize a `Vec<T>`, treating an explicit JSON `null` as an empty vec.
-///
-/// `#[serde(default)]` only fills in a *missing* field, but the Anthropic
-/// Messages API emits an explicit `"citations": null` on text
-/// `content_block_start` events. Without this, `Vec` deserialization rejects the
-/// null and the whole stream fails before any text arrives.
+/// Deserialize a vector, treating explicit JSON `null` as empty.
+/// Anthropic can send null citations on text-block start events.
 fn null_as_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -580,10 +520,8 @@ where
 /// Extract Anthropic-specific document fields (`title`, `context`, `citations`)
 /// from the generic [`message::Document::additional_params`] JSON blob.
 ///
-/// Returns `Ok((None, None, None))` if `additional_params` is empty. Returns
-/// an error only if the `citations` field is present but is not a valid
-/// [`CitationsConfig`] — invalid shapes are reported instead of being silently
-/// dropped, so users notice typos.
+/// Return absent fields when parameters are missing. Ignore non-string title
+/// and context values; reject a present, invalid [`CitationsConfig`].
 fn extract_anthropic_doc_params(
     additional_params: Option<message::AdditionalParams>,
 ) -> Result<(Option<String>, Option<String>, Option<CitationsConfig>), MessageError> {
@@ -621,8 +559,6 @@ fn extract_anthropic_doc_params(
 /// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
 /// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
 /// field is malformed or if a known citation type has an invalid shape.
-///
-/// # Example
 ///
 /// ```no_run
 /// use rig_core::completion::message::{self, AssistantContent};
@@ -832,16 +768,8 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
     }
 }
 
-/// The Anthropic Messages API requires `tool_use.input` to be a JSON OBJECT.
-/// `ToolCall.function.arguments` can arrive as a JSON-encoded STRING (some
-/// providers / replayed conversation history) or as `null`/empty (a tool called
-/// with no arguments); sending any of those verbatim is rejected with
-/// `messages.N.content.M.tool_use.input: Input should be a valid dictionary` (a
-/// deterministic 400 that breaks every multi-turn tool conversation, e.g. on the
-/// managed / MiniMax anthropic-shaped endpoint). Coerce to an object at the send
-/// boundary so the contract holds regardless of how `arguments` was built. This
-/// re-adds the fork's tool_use.input invariant that a rig version bump dropped;
-/// the server-tool path already guards empty input in streaming.rs.
+/// Preserve object arguments or decode an object from a JSON string.
+/// Replace other values with `{}` because Messages requires object tool input.
 fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
     match input {
         v @ serde_json::Value::Object(_) => v,
@@ -849,7 +777,6 @@ fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
             Ok(serde_json::Value::Object(m)) => serde_json::Value::Object(m),
             _ => serde_json::json!({}),
         },
-        // null / array / number / bool: no valid object form -> empty args.
         _ => serde_json::json!({}),
     }
 }
@@ -859,14 +786,8 @@ fn anthropic_content_from_assistant_content(
 ) -> Result<Vec<Content>, MessageError> {
     match content {
         message::AssistantContent::Text(text) => {
-            // The same empty-block rule the Responses serializer applies:
-            // the API rejects empty text blocks, so an empty text block
-            // with no anthropic-deliverable content (raw server-tool
-            // content is the one extras shape this wire replays; foreign
-            // extras — e.g. a block annotated by the OpenAI Responses
-            // ingest — cannot reach this wire) produces no block at all.
-            // A message left with no blocks fails loudly and locally at
-            // the non-empty check below, never as a wire 400.
+            // Anthropic rejects empty text; only supported raw hosted-tool metadata
+            // can give an otherwise empty block replayable content.
             if text.text.is_empty() && extract_anthropic_raw_content(&text)?.is_none() {
                 return Ok(Vec::new());
             }
@@ -1105,9 +1026,8 @@ impl TryFrom<message::Message> for Message {
     }
 }
 
-/// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
-/// set or if set too high, the request will fail. The following values are based on Anthropic's
-/// published synchronous Messages API output limits for current models.
+/// Return the published synchronous output limit for a recognized model prefix.
+/// Unknown models require an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-fable-5")
         || model.starts_with("claude-opus-5")
@@ -1176,11 +1096,8 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
-/// Recursively ensures all object schemas respect Anthropic structured output restrictions:
-/// - `additionalProperties` must be explicitly set to `false` on every object
-/// - All properties must be listed in `required`
-///
-/// Source: <https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs#json-schema-limitations>
+/// Require all object properties, disallow additional properties, and remove
+/// numeric constraints for Anthropic structured output.
 fn sanitize_schema(schema: &mut serde_json::Value) {
     crate::providers::internal::schema::sanitize_schema(
         schema,
@@ -1201,10 +1118,7 @@ pub(super) fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
     flatten_root_all_of(&mut original);
-    // Anthropic requires a tool's top-level input schema to declare an object
-    // type even when standard JSON Schema would infer it from `properties` or
-    // a resolved root reference. Nested schemas do not have this tool-input
-    // restriction.
+    // Tool-input roots require an explicit object type even when properties imply it.
     if let serde_json::Value::Object(source) = &mut original
         && !source.contains_key("type")
         && (source.contains_key("properties") || source.contains_key("$ref"))
@@ -1317,10 +1231,7 @@ fn merge_root_reference_siblings(
             "properties" => merge_schema_properties(referenced, sibling),
             "required" => merge_required_properties(referenced, sibling),
             "allOf" => merge_root_all_of(referenced, sibling, &mut conflicting_constraints),
-            // Anthropic rejects union combinators at the tool-input root. A
-            // conjunction between a referenced object and a union cannot be
-            // flattened without duplicating the whole base schema, so retain
-            // it as guidance instead of producing a guaranteed 400.
+            // Root unions are unsupported; retain their constraints as model guidance.
             "anyOf" | "oneOf" => {
                 conflicting_constraints.insert(keyword, sibling);
             }
@@ -1343,9 +1254,7 @@ fn merge_root_reference_siblings(
     }
 
     if !conflicting_constraints.is_empty() {
-        // Anthropic rejects allOf at the top level of a tool input. Preserve
-        // constraints that cannot be structurally merged as model guidance,
-        // consistent with the rest of the strict-schema transformer.
+        // Root allOf is unsupported, so unmerged constraints remain model guidance.
         referenced.insert(
             "rootRefSiblingConstraints".to_string(),
             Value::Object(conflicting_constraints),
@@ -1927,11 +1836,7 @@ pub(super) fn apply_prompt_cache_control(
 
     let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
 
-    // The static prefix (tools + system) must not carry a shorter TTL than the
-    // tail that follows it — Anthropic requires 1h markers before 5-minute
-    // ones. Catch the typed-knob inversion here with an error that names the
-    // knobs; the generic marker-order validator below would otherwise report
-    // it in terms of raw markers.
+    // Diagnose conflicting builder settings before generic TTL-order validation.
     let top_level_ttl = top_level_cache_control_ttl(top_level_cache_control);
     if static_prefix_cache_ttl == Some(&CacheTtl::FiveMinutes)
         && top_level_ttl == Some(CacheTtl::OneHour)
@@ -2108,11 +2013,8 @@ pub struct AnthropicRequestParams<'a> {
 }
 
 impl AnthropicCompletionRequest {
-    /// The typed request, with `strict` naming the provider's strict-tool
-    /// transform when it implements one. A function pointer rather than a
-    /// type parameter: whether a provider constrains tool schemas is data
-    /// (`Dialect::strict_tool_schemas`), and the transform itself is one
-    /// function either way.
+    /// Build the typed request, optionally transforming generated tools with `strict`.
+    /// Reject missing token limits, invalid message conversions, and cache conflicts.
     pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict: Option<fn(&mut ToolDefinition)>,
@@ -2127,7 +2029,6 @@ impl AnthropicCompletionRequest {
         } = params;
         let chat_history = req.chat_history_with_documents();
 
-        // Check if max_tokens is set, required for Anthropic
         let Some(max_tokens) = req.max_tokens else {
             return Err(CompletionError::RequestError(
                 "`max_tokens` must be set for Anthropic".into(),
@@ -2186,7 +2087,6 @@ impl AnthropicCompletionRequest {
         )?;
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
 
-        // System prompt in array format for cache_control support
         let mut system = history_system;
 
         apply_prompt_cache_control(
@@ -2219,7 +2119,6 @@ impl AnthropicCompletionRequest {
             tool_choice: req.tool_choice.map(ToolChoice::try_from).transpose()?,
             tools,
             output_config,
-            // Automatic caching: one top-level field; the API moves the breakpoint automatically.
             cache_control: top_level_cache_control,
             additional_params: if additional_params_payload.is_null() {
                 None

@@ -17,13 +17,8 @@ use crate::wire::WireFrame;
 use crate::wire::{Decoder, Output};
 use serde_json::{Map, Value};
 
-/// The `event_type` values this client models on the Interactions SSE wire.
-///
-/// [`wire::classify_tagged_frame`] dispatches on this list: a frame whose
-/// `event_type` is outside it classifies `Unknown` (driver policy: warn +
-/// skip), while a listed value must pass the full [`InteractionSseEvent`]
-/// decode or classify `Corrupt`. There is no untagged serde fallback — policy
-/// lives in the classify layer, never in serde.
+/// Recognized Interactions SSE tags. Listed events must decode fully;
+/// unlisted tags classify as unknown.
 const KNOWN_EVENT_TYPES: &[&str] = &[
     "interaction.created",
     "interaction.completed",
@@ -34,31 +29,18 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "error",
 ];
 
-/// Classify one Interactions SSE frame: the tagged half of this wire.
-/// [`classify_interactions_frame`] composes it with the whole-resource
-/// classifier, so the `event_type` table is read in exactly one place.
+/// Classify an Interactions SSE frame by its `event_type` tag.
 fn classify_interaction_frame(data: &str) -> WireEvent<InteractionSseEvent> {
     wire::classify_tagged_frame(data, "event_type", |event_type| {
         KNOWN_EVENT_TYPES.contains(&event_type)
     })
 }
 
-/// The top-level keys only a whole [`Interaction`] resource carries.
-///
-/// Every field of `Interaction` is optional or defaulted, so a marker key is
-/// what separates the unary document from a stream frame that happens to be
-/// a JSON object: without one, a defective `step.delta` frame would decode
-/// as a default `Interaction` and a data defect would read as a completed
-/// turn.
+/// Whole-resource markers that prevent malformed SSE frames from decoding
+/// as default interactions.
 const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object", "id"];
 
-/// One decoded frame of the Interactions wire, in either mode.
-///
-/// Unlike GenerateContent, this family's unary reply is a genuinely
-/// different document from its stream events — a whole `Interaction`
-/// resource rather than an `event_type`-tagged event — so it is named here
-/// as one more event of the wire, and `interpret` synthesizes the step
-/// events a stream would have sent for it.
+/// A decoded SSE event or whole unary interaction resource.
 pub enum InteractionsEvent {
     /// One `event_type`-tagged streaming event.
     Sse(InteractionSseEvent),
@@ -66,15 +48,8 @@ pub enum InteractionsEvent {
     Whole(Interaction),
 }
 
-/// Classify one frame of either mode.
-///
-/// The tagged classifier runs first: it is the hot path, and it is the one
-/// that knows which `event_type` values are modeled (an unlisted one is a
-/// skippable `Unknown`, not a defect). An untagged document makes it report
-/// `Corrupt` — no modeled event omits `event_type` — which is exactly when
-/// the unary resource is worth trying. The composition and its
-/// which-error-wins rule are [`wire::classify_or`]'s, so no verdict is read
-/// here.
+/// Classify a tagged SSE event, falling back to whole-resource classification
+/// through [`wire::classify_or`].
 fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
     wire::classify_or(
         data,
@@ -119,31 +94,12 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 /// Holds the per-reply state (thought lifecycle, open function-call step
 /// assemblies); frame-triage policy is the driver's, not this decoder's.
 pub struct InteractionsDecoder {
-    /// Owns the constant-key thought lifecycle — the ends this wire never
-    /// announces are derived by the shared lifecycle, not hand-rolled here.
-    /// All accumulation lives in the shared accumulator.
+    /// Thought boundaries inferred from content transitions and signatures.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// A provider `error` event ended the turn; later frames are dead — the
-    /// provider aborted, and interpreting more output (or a terminal) would
-    /// dress the failure up as a completed turn.
+    /// A provider error ended the turn; later frames must not produce output.
     failed: bool,
-    /// Function-call steps whose arguments may still stream as
-    /// `arguments_delta` fragments: the shared index → grammar-identity
-    /// bridge, keyed by the wire's step index. The wire announces the call
-    /// in `step.start` (usually with `"arguments": {}`, kept as the slot's
-    /// replace-if-no-deltas fallback), fragments the real payload across
-    /// `step.delta` `arguments_delta` events, and closes it with
-    /// `step.stop` — a genuine start/delta/end lifecycle. Recorded live in
-    /// `streaming_grammar/interactions_same_tool_twice`; the pre-fix code
-    /// emitted the empty-args call at `step.start` and dropped every
-    /// fragment.
-    ///
-    /// The bridge's minter is also the whole-call minter
-    /// ([`ToolCallBridge::minted_ids`]): both id-less paths draw from ONE
-    /// counter, so a step assembly and a whole call can never collide on
-    /// one minted key (the step-0 assembly used to share
-    /// `Minted(Tool, 0)` with every id-less whole call, and the whole call
-    /// silently swallowed the open assembly).
+    /// Open function calls keyed by step index, retaining argument deltas.
+    /// Its id minter is shared with whole calls to prevent local identity collisions.
     open_function_steps: ToolCallBridge<u32>,
 }
 
@@ -173,10 +129,7 @@ impl Decoder<Completion> for InteractionsDecoder {
 
         let event = match event {
             InteractionsEvent::Sse(event) => event,
-            // The unary reply: replay the interaction's own output as the
-            // step events a stream would have sent, then let its completion
-            // event push the terminal. One mapping from content to blocks,
-            // and it is the streamed one.
+            // Unary content uses the same lifecycle so block ordering matches streaming.
             InteractionsEvent::Whole(interaction) => {
                 for content in interaction.output_contents() {
                     if let Some(parts) =
@@ -223,11 +176,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     }
                 }
                 ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
-                    // One lifecycle end covers every shape (open block,
-                    // already-closed block, signature-only stream); the
-                    // shared accumulator signs the right part — the missing
-                    // empty-buffer branch class (84a43e9e #2) cannot recur
-                    // because there is no branch.
+                    // Signatures must survive even when no reasoning text streamed.
                     self.reasoning.emit_chunk(
                         ChunkParts {
                             reasoning: None,
@@ -242,8 +191,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     if let Some(parts) = delta_content(delta).and_then(|content| {
                         content_to_parts(content, self.open_function_steps.minted_ids())
                     }) {
-                        // Interleaving content ends an open thought block —
-                        // the shared lifecycle synthesizes the boundary end.
+                        // Interleaving content must close any open thought block.
                         self.reasoning.emit_chunk(parts, out);
                     }
                 }
@@ -255,22 +203,12 @@ impl Decoder<Completion> for InteractionsDecoder {
                     id,
                 }) = step
                 {
-                    // A function-call step opens an ASSEMBLY: the wire may
-                    // fragment the arguments as later `arguments_delta`
-                    // events at this index, so emitting a whole call here
-                    // would freeze the (usually empty) start-event payload
-                    // and drop every fragment. The bridge keys by the
-                    // wire's own id when present (never the tool name),
-                    // minting from the shared counter otherwise.
+                    // Keep the call open because its arguments may arrive in later deltas.
                     let slot = self
                         .open_function_steps
                         .open(index, id.as_deref(), Some(&name));
-                    // The announce payload is NOT a fragment: fragments
-                    // append, and an announce that carries a partial (or
-                    // full) payload alongside later `arguments_delta`
-                    // events would concatenate into `{..}{..}`. It is kept
-                    // as the slot's fallback, used only when no fragment
-                    // ever arrives (replace-if-no-deltas).
+                    // Announcement arguments are a fallback, not an appendable fragment;
+                    // combining them with later deltas could concatenate JSON objects.
                     slot.announce_arguments = arguments.filter(|arguments| {
                         arguments
                             .as_object()
@@ -299,21 +237,14 @@ impl Decoder<Completion> for InteractionsDecoder {
                         out,
                     );
                 } else {
-                    // Every convertible item in wire order, each declared as
-                    // its own chunk: the first one interleaving an open
-                    // thought block ends it (the shared lifecycle synthesizes
-                    // the boundary end once), and text lands in the active
-                    // text block between the calls exactly where the wire
-                    // put it.
+                    // Separate chunks preserve text/tool ordering and thought boundaries.
                     for parts in step_start_to_parts(step, self.open_function_steps.minted_ids()) {
                         self.reasoning.emit_chunk(parts, out);
                     }
                 }
             }
             InteractionSseEvent::StepStop { index, .. } => {
-                // The wire promised a complete function-call step: close its
-                // assembly. Malformed accumulated input surfaces in-band
-                // (`Error` policy), matching the other complete-block wires.
+                // A completed call with malformed arguments must fail in-band.
                 if let Some(slot) = self.open_function_steps.remove(index) {
                     out.push(Ok(function_step_end(&slot)));
                 }
@@ -324,15 +255,8 @@ impl Decoder<Completion> for InteractionsDecoder {
                 if let Some(model) = interaction.model.clone() {
                     span.record("gen_ai.response.model", model);
                 }
-                // A function-call step still open here was announced by
-                // `step.start` and — per this very event — belongs to a turn
-                // the provider COMPLETED: its `step.stop` was lost or
-                // reordered, not truncated away. Close each assembly with a
-                // synthesized end so the announced call finalizes from its
-                // accumulated fragments instead of vanishing in the
-                // accumulator's end-of-stream clear (which is reserved for
-                // genuine truncation, where the turn never finished). Wire
-                // (announcement) order keeps parallel calls deterministic.
+                // Provider completion finalizes calls even without step.stop.
+                // Announcement order keeps parallel call output deterministic.
                 for (index, slot) in self.open_function_steps.drain_ordered_indexed() {
                     tracing::debug!(
                         index,
@@ -341,14 +265,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     out.push(Ok(function_step_end(&slot)));
                 }
 
-                // Only a genuine `interaction.completed` event counts as the
-                // provider completing the turn; the driver stops consuming
-                // after the terminal record. EOF without one is truncation and
-                // synthesizes nothing (see `finish`).
-                //
-                // The finish reason comes from the completed interaction's
-                // lifecycle status — the API has no `finishReason` field —
-                // and is absent when the interaction carries none.
+                // Lifecycle status supplies the finish reason; absent status stays unknown.
                 let model_version = interaction.model.clone();
                 let native = StreamingCompletionResponse {
                     usage: interaction.usage,
@@ -378,12 +295,8 @@ impl Decoder<Completion> for InteractionsDecoder {
                 );
             }
             event @ InteractionSseEvent::Error { .. } => {
-                // Preserve the provider error payload (code + message) as the
-                // error body, matching the blocking path's
-                // `completion_error_from_body`. The event is re-serialized
-                // from its decoded form — the modeled fields survive. The
-                // error arrives over an established stream, so there is no
-                // HTTP status to attach (status: None).
+                // Preserve modeled error fields without inventing an HTTP status
+                // for an in-band failure.
                 self.failed = true;
                 let body = serde_json::to_string(&event).unwrap_or_default();
                 out.push(Err(crate::provider_response::completion_error_from_body(
@@ -396,33 +309,18 @@ impl Decoder<Completion> for InteractionsDecoder {
     }
 
     fn finish(&mut self, _out: &mut Output<Completion>) {
-        // EOF without `interaction.completed` is truncation: no terminal
-        // record may be synthesized — it would report a successful completion
-        // for a turn the provider aborted.
+        // EOF without interaction.completed is truncation, not successful completion.
     }
 
     fn is_finished(&self) -> bool {
-        // A provider `error` event is the wire's own in-band terminal:
-        // `interpret` already pushed the `Err` and gates itself on `failed`,
-        // so the driver must stop reading rather than drain the rest of the
-        // transport (and pass through post-error unknown frames).
+        // Stop after terminal errors so later unknown frames cannot escape the failure gate.
         self.failed
     }
 }
 
-/// Close an announced function-call step. The shared accumulator finalizes
-/// the call from its accumulated fragments; a step that fragmented nothing
-/// falls back to the payload it announced at `step.start` (and to a
-/// parameterless `{}` when it announced none) — the slot's
-/// replace-if-no-deltas fallback.
-///
-/// Interactions is a single-identifier wire: its id travels as `tool_id`
-/// only (`ToolCallSlot::end_event`'s shape). Filling `call_id` too made
-/// the accumulator take the dual-wire arm and store
-/// ProviderCallId{item_id: Some(fc_…)} — a fabricated Responses-shaped
-/// identity that slips past the foreign-id guard on cross-provider replay.
-/// Malformed accumulated input surfaces in-band (`Error` policy), matching
-/// the other complete-block wires.
+/// Close a function call using accumulated arguments, announcement fallback,
+/// or `{}` if neither exists. Malformed arguments fail in-band.
+/// Preserve the provider id as `tool_id` only.
 fn function_step_end(
     slot: &crate::providers::internal::tool_call_bridge::ToolCallSlot,
 ) -> streaming::StreamEvent {
@@ -450,8 +348,7 @@ fn function_call_parts(
     id: Option<String>,
     tool_ids: &mut streaming::SyntheticIds,
 ) -> ChunkParts {
-    // The wire's id when present; never the tool name — a name-as-id
-    // fallback collides two same-tool calls in one turn.
+    // Tool names cannot identify calls because a turn may call the same tool twice.
     ChunkParts {
         reasoning: None,
         reasoning_signature: None,
@@ -478,9 +375,7 @@ fn text_parts(text: String) -> ChunkParts {
 
 fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Vec<ChunkParts> {
     match step {
-        // Every convertible item, in wire order: a `model_output` step can
-        // interleave text and function calls in one `content` list, and
-        // keeping only the first silently dropped the rest.
+        // Model output can interleave multiple text and function-call items.
         Step::ModelOutput { content } => content
             .into_iter()
             .filter_map(|content| content_to_parts(content, tool_ids))
@@ -492,11 +387,7 @@ fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Ve
     }
 }
 
-/// One output content as one declared chunk.
-///
-/// The wire's single content → block mapping, used by the streamed
-/// `step.start` path and by the unary reply's replay of its own steps, so
-/// the two cannot disagree about what a content item becomes.
+/// Convert supported output content into a canonical chunk; skip other content.
 fn content_to_parts(
     content: Content,
     tool_ids: &mut streaming::SyntheticIds,
@@ -533,10 +424,7 @@ fn content_to_parts(
                 tool_events: Vec::new(),
             })
         }
-        // An image the stream vocabulary cannot express rides a text
-        // block's metadata verbatim rather than being dropped — the same
-        // treatment, and the same reason, as GenerateContent's `inlineData`
-        // (`GEMINI_RAW_CONTENT_KEY`).
+        // Preserve images in metadata because canonical stream blocks cannot represent them.
         image @ Content::Image(_) => raw_content_parts(image, tool_ids),
         _ => None,
     }

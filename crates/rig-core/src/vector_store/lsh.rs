@@ -1,3 +1,13 @@
+//! Random-projection hashing for approximate vector-search candidates.
+//!
+//! ```
+//! use rig_core::vector_store::lsh::LSHIndex;
+//!
+//! let mut index = LSHIndex::new(2, 4, 8);
+//! index.insert("document", &[1.0, 0.0]);
+//! assert_eq!(index.query(&[1.0, 0.0]), vec!["document"]);
+//! ```
+
 use fastrand::Rng;
 use std::collections::HashMap;
 
@@ -23,7 +33,8 @@ pub struct LSH {
 }
 
 impl LSH {
-    /// Create a new LSH instance.
+    /// Creates random normalized projection vectors. Use at most 64 hyperplanes
+    /// per table and ensure `num_tables * num_hyperplanes` fits in `usize`.
     pub fn new(dim: usize, num_tables: usize, num_hyperplanes: usize) -> Self {
         let mut rng = lsh_rng();
         let mut hyperplanes = Vec::new();
@@ -31,16 +42,10 @@ impl LSH {
         for _ in 0..(num_tables * num_hyperplanes) {
             let mut plane = vec![0.0; dim];
 
-            // Generate random values in [-1, 1] to ensure uniform distribution across all directions
-            // before normalization. This guarantees that after normalization to unit vectors, the
-            // hyperplanes are uniformly distributed across the unit sphere, which is essential for
-            // LSH to maintain good locality-sensitive hashing properties.
             for val in plane.iter_mut() {
                 *val = rng.f32() * 2.0 - 1.0;
             }
 
-            // Normalize to unit vector so the dot product reflects only direction, ensuring
-            // the hash correctly identifies which side of the hyperplane each point lies on.
             let norm: f32 = plane.iter().map(|x| x * x).sum::<f32>().sqrt();
             if norm > 0.0 {
                 for val in plane.iter_mut() {
@@ -58,7 +63,8 @@ impl LSH {
         }
     }
 
-    /// Compute hash for a vector in a specific table
+    /// Computes sign bits using f32 projections. Supply a valid table index
+    /// and a vector matching the configured dimension; lengths are not checked.
     pub fn hash(&self, vector: &[f64], table_idx: usize) -> u64 {
         let mut hash = 0u64;
         let start = table_idx * self.num_hyperplanes;
@@ -70,14 +76,12 @@ impl LSH {
             .iter()
             .enumerate()
         {
-            // Dot product (convert f64 to f32)
             let dot: f32 = vector
                 .iter()
                 .zip(hyperplane.iter())
                 .map(|(v, h)| (*v as f32) * h)
                 .sum();
 
-            // Set bit if positive
             if dot >= 0.0 {
                 hash |= 1u64 << i;
             }
@@ -115,13 +119,12 @@ impl LSHIndex {
         }
     }
 
-    /// Query for candidate document IDs
+    /// Returns unique IDs sharing a bucket in any table, in unspecified order.
     pub fn query(&self, embedding: &[f64]) -> Vec<String> {
         use std::collections::HashSet;
 
         let mut candidates = HashSet::new();
 
-        // Collect candidates from all tables
         for table_idx in 0..self.lsh.num_tables {
             let hash = self.lsh.hash(embedding, table_idx);
 

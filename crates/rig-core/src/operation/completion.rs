@@ -1,10 +1,14 @@
-//! The completion operation: the one operation whose replies stream.
+//! Completion event output and response folding. [`AdapterOutput`] manages
+//! block boundaries for provider decoders, including typed transports.
 //!
-//! [`AdapterOutput`] is this operation's [`Sink`]: the text/reasoning block
-//! bookkeeping every completion decoder needs, so the grammar is stated
-//! once. It is public so out-of-tree providers and the SDK-transport
-//! companion crates implement [`Decoder<Completion, TheirFrame>`](crate::wire::Decoder)
-//! and inherit the shared fold instead of hand-rolling assemblers.
+//! ```
+//! use rig_core::operation::AdapterOutput;
+//!
+//! let mut output = AdapterOutput::self_closing();
+//! output.text("Hello");
+//! output.close_active_blocks();
+//! assert_eq!(output.len(), 3);
+//! ```
 
 use crate::completion::{CompletionError, CompletionRequest, CompletionResponse};
 use crate::streaming::{
@@ -45,12 +49,7 @@ impl Operation for Completion {
         }
     }
 
-    /// A stream of assistant content is the one operation with somewhere to
-    /// put a frame nothing models: the consumer sees it verbatim and the
-    /// aggregator never folds it into the answer. Every provider's
-    /// conformance suite asserts exactly one passthrough item per unknown
-    /// frame, which is what makes a gateway's new event type visible to a
-    /// caller instead of silently dropped.
+    /// Forwards unmodeled payloads without adding them to aggregated content.
     fn unknown(payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
         Some(StreamEvent::Unknown(payload))
     }
@@ -85,10 +84,7 @@ impl Operation for Completion {
         if span.is_disabled() {
             return;
         }
-        // Recorded off the normalized response, so no provider has to
-        // implement a telemetry projection of its wire type. An
-        // Anthropic-style wire puts its message id in `message_id`; an
-        // OpenAI-style one puts its `chatcmpl-` id in `response_id`.
+        // Prefer response identity, falling back to message identity.
         if let Some(id) = response
             .response_id
             .as_deref()
@@ -196,16 +192,10 @@ impl Fold<Completion> for CompletionFold {
     }
 }
 
-/// What one `interpret` step emitted: the canonical events, with in-band
-/// errors, plus the text-block bookkeeping every adapter needs.
-///
-/// Adapters push through the helpers so the grammar is stated once: a bare
-/// text delta lands in the active text block (minted on demand, and a new
-/// one after any non-text block — a completed tool call or a reasoning
-/// block is a boundary for anonymous text), a tool/reasoning delta for an
-/// unseen id is preceded by its `BlockStart`, and a whole call or whole
-/// reasoning block is its start and its end. Frame-level defects never reach
-/// `interpret` — the driver surfaces those from `classify` directly.
+/// Buffers completion events and in-band errors with block bookkeeping.
+/// Helpers open unseen tool and reasoning keys before deltas. Bare text uses
+/// an active key, minting a new one after non-text block events other than
+/// message starts. Frame-classification errors are handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
     items: Vec<Result<StreamEvent, CompletionError>>,
@@ -219,17 +209,12 @@ pub struct AdapterOutput {
     /// The block receiving bare reasoning deltas, until a boundary or an
     /// explicit reasoning end switches it.
     active_reasoning: Option<BlockId>,
-    /// The blocks this output opened itself (minted on demand for a bare
-    /// delta) and therefore closes itself — at the boundary that ends
-    /// them, or at [`close_active_blocks`](Self::close_active_blocks). A
-    /// block a provider opened explicitly is the provider's to close.
+    /// Automatically opened text block eligible for synthesized closure.
+    /// Explicitly opened blocks remain the provider's responsibility.
     auto_text: Option<BlockId>,
     auto_reasoning: Option<BlockId>,
-    /// Whether a block this output opened itself is closed at its boundary
-    /// (the bus's `StreamWriter`: a handler that says `text` then
-    /// `tool_call` means the text block ended). Off for provider adapters,
-    /// whose wires say where their blocks end — their event sequences are
-    /// unchanged.
+    /// Whether nonmatching block events close automatically opened blocks.
+    /// Disabled by default so provider adapters control explicit boundaries.
     self_closing: bool,
     /// Blocks a start was emitted for (or that a delta opened leniently),
     /// so a delta never precedes its block's start on the wire we emit.
@@ -415,10 +400,8 @@ impl AdapterOutput {
         }));
     }
 
-    /// A bare reasoning delta: lands in the active reasoning block, opening
-    /// a minted one if none is active (the reasoning counterpart of
-    /// [`text`](Self::text); any text or tool block is a boundary, and a
-    /// block opened this way is closed at its boundary).
+    /// Appends to active reasoning, minting a block when needed.
+    /// Automatic boundary closure requires [`Self::self_closing`].
     pub fn reasoning(&mut self, text: impl Into<String>) {
         let id = match &self.active_reasoning {
             Some(id) => id.clone(),
@@ -595,11 +578,8 @@ impl AdapterOutput {
         signature: Option<String>,
         wire_sent: bool,
     ) {
-        // A restatement is a whole block: open it under its provider id so
-        // every published block has a start. A payload-less or
-        // signature-only end for an unseen id gets none — the accumulator
-        // creates no part for the former, and a start would publish an
-        // empty block ahead of the latter's signature-only part.
+        // Restatements need a start; bare or signature-only ends must not
+        // introduce a separate empty reasoning part.
         if let Some(reasoning) = &reasoning {
             self.open_if_unseen(
                 &id,

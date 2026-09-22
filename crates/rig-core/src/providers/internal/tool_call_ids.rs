@@ -3,6 +3,13 @@
 //! The sidecar is indexed by message and content position, not durable local
 //! identity: a later completed turn can legitimately reuse a generated ID.
 //! Planning never changes the transcript or claims synthetic provider provenance.
+//!
+//! ```
+//! use rig_core::providers::internal::tool_call_ids::ToolCallIds;
+//! let ids = ToolCallIds::new(&[])?;
+//! assert_eq!(ids.get(0, 0), None);
+//! # Ok::<(), rig_core::providers::internal::tool_call_ids::ToolCallIdError>(())
+//! ```
 
 use std::collections::{BTreeMap, HashSet};
 

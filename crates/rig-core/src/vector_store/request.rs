@@ -1,8 +1,13 @@
-//! Types for constructing vector search queries.
+//! Vector-search requests and composable metadata filters.
 //!
-//! - [`VectorSearchRequest`]: Query parameters (text, result count, threshold, filters).
-//! - [`SearchFilter`]: Trait for backend-agnostic filter expressions.
-//! - [`Filter`]: Canonical, serializable filter representation.
+//! ```
+//! use rig_core::vector_store::request::{VectorSearchRequest, Filter, SearchFilter};
+//!
+//! let request: VectorSearchRequest = VectorSearchRequest::builder()
+//!     .query("guide").samples(5)
+//!     .filter(Filter::eq("category", serde_json::json!("manual"))).build();
+//! assert_eq!(request.samples(), 5);
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -126,13 +131,9 @@ pub trait SearchFilter {
 
 /// A rendered SQL-style condition together with its positional bind parameters.
 ///
-/// Shared by the SQL-flavoured vector stores, whose filter algebra differs only
-/// in the parameter type `P` and in the placeholder token their driver expects
-/// (`$` for Postgres, `?` for CQL). The placeholder is therefore supplied by the
-/// caller on every leaf constructor rather than baked into this type.
-///
-/// Parameters are collected left to right in the order their placeholders appear
-/// in [`SqlCondition::condition`], which is the order drivers bind them in.
+/// Parameters retain left-to-right placeholder order. Keys, operators, and
+/// placeholders are interpolated verbatim; callers must validate or quote them
+/// for the target backend. Only values are separated as bind parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SqlCondition<P> {
     condition: String,
@@ -233,9 +234,9 @@ pub trait DynamicSearchFilter: SearchFilter + Sized {
 
     /// Normalizes a document returned through the type-erased search surface.
     ///
-    /// Native backend filters retain their documents exactly. JSON-valued
-    /// filters override this to preserve the dynamic surface's historical
-    /// payload pruning.
+    /// The default retains documents unchanged. The JSON-valued blanket
+    /// implementation recursively removes arrays longer than 400 elements;
+    /// a removed root array becomes null.
     fn normalize_dynamic_document(document: serde_json::Value) -> serde_json::Value {
         document
     }
@@ -366,10 +367,10 @@ where
 impl Filter<serde_json::Value> {
     /// Tests whether a JSON document satisfies this filter.
     ///
-    /// Leaf filters (`Eq`/`Gt`/`Lt`) look their key up in `value` (expected to be
-    /// a JSON object) and compare the resulting field against the filter operand.
-    /// A missing field, or an operand that is not order-comparable with the field,
-    /// never satisfies the leaf. `And`/`Or` combine leaf results.
+    /// Looks up top-level object fields. Missing fields fail all leaves.
+    /// Equality accepts numeric comparison or structural JSON equality; ordering
+    /// compares only number, string, boolean, or null pairs of the same kind.
+    /// `And` and `Or` short-circuit.
     pub fn satisfies(&self, value: &serde_json::Value) -> bool {
         use Filter::*;
         use serde_json::{Value, Value::*};
@@ -377,9 +378,8 @@ impl Filter<serde_json::Value> {
 
         fn compare_pair(l: &Value, r: &Value) -> Option<Ordering> {
             match (l, r) {
-                // Compare integers exactly; fall back to f64 only for floats or
-                // mixed int/float operands. Trying `as_f64` first (as the old
-                // code did) would lose precision for integers beyond 2^53.
+                // Prefer shared integer representations to avoid losing precision
+                // beyond 2^53; other numeric pairs fall back to f64.
                 (Number(l), Number(r)) => {
                     if let (Some(l), Some(r)) = (l.as_i64(), r.as_i64()) {
                         Some(l.cmp(&r))
@@ -476,7 +476,7 @@ where
         self
     }
 
-    /// Sets backend-specific parameters.
+    /// Replaces backend-specific parameters. Accepts any JSON value without validation.
     pub fn additional_params(
         mut self,
         params: serde_json::Value,
@@ -492,9 +492,8 @@ where
     }
 }
 
-/// Only implement `build()` when both `query` and `samples` have been provided.
 impl<F> VectorSearchRequestBuilder<F, Provided<String>, Provided<u64>> {
-    /// Builds the request
+    /// Builds without validating query emptiness, sample count, or threshold.
     pub fn build(self) -> VectorSearchRequest<F> {
         VectorSearchRequest {
             query: self.query.0,

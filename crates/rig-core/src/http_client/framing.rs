@@ -1,21 +1,13 @@
-//! Push framers: response bytes in, wire frames out.
+//! Incremental SSE and newline-delimited framing of response bytes.
+//! SSE dispatch requires a blank line; incomplete events are not flushed at EOF.
+//! NDJSON permits a final unterminated line through [`NdjsonFramer::finish`].
 //!
-//! A framer owns byte splitting and nothing else — no classification, no
-//! policy, no transport. It is fed whatever chunks the transport produced
-//! (`push`) and yields the frames those chunks completed, holding any
-//! partial trailing frame until the bytes that finish it arrive.
+//! ```
+//! use rig_core::http_client::framing::NdjsonFramer;
 //!
-//! [`SseFramer`] implements the WHATWG `text/event-stream` grammar. It has
-//! deliberately **no** `finish`: the grammar dispatches an event only on a
-//! blank line, so an unterminated trailing event is not a frame. Recorded
-//! provider bodies exist whose last event has no trailing blank line
-//! (YAML block-chomping on record), and a lenient flush would hand the
-//! decoder one frame more than the wire delivered.
-//! [`SseFramer::pending`] reports those bytes for truncation diagnostics
-//! instead.
-//!
-//! [`NdjsonFramer`] does have [`NdjsonFramer::finish`]: a JSON document
-//! terminated by EOF rather than a newline is a complete document.
+//! let mut framer = NdjsonFramer::new();
+//! assert_eq!(framer.push(b"{}\n").collect::<Vec<_>>(), vec![b"{}".to_vec()]);
+//! ```
 
 /// How a reply's bytes are split into wire frames.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,8 +29,8 @@ pub struct SseEvent {
     pub data: String,
     /// The stream's last event id, empty when none was ever set.
     pub id: String,
-    /// The `retry:` field of this event only — reconnection time is not a
-    /// per-event property that persists, and rig never reconnects.
+    /// Most recent parsed `retry:` value since the previous emitted event.
+    /// This value does not trigger automatic reconnection.
     pub retry: Option<u64>,
 }
 
@@ -59,7 +51,7 @@ pub struct SseFramer {
     /// How many BOM bytes have matched so far, while the prefix is undecided.
     bom_prefix: usize,
     bom_done: bool,
-    /// Bytes of complete lines consumed since the last dispatched event.
+    /// Bytes of complete lines consumed since the last blank line.
     since_dispatch: usize,
 }
 
@@ -83,8 +75,8 @@ impl SseFramer {
         self.ready.drain(..)
     }
 
-    /// Bytes received since the last dispatched event: an unterminated
-    /// trailing event, for truncation diagnostics. Never frame data.
+    /// Saturating count of buffered bytes and complete lines since the last
+    /// blank line. Excludes any undecided leading BOM prefix; exposes no frame data.
     pub fn pending(&self) -> usize {
         self.since_dispatch.saturating_add(self.buffer.len())
     }
@@ -176,8 +168,8 @@ impl SseFramer {
     }
 }
 
-/// A push parser for newline-delimited payloads: every terminated line is a
-/// frame, and so is an unterminated last line at EOF.
+/// Splits nonempty newline-delimited payloads without validating JSON.
+/// A nonempty unterminated last line is available through [`Self::finish`].
 #[derive(Debug, Default)]
 pub struct NdjsonFramer {
     buffer: Vec<u8>,
@@ -221,9 +213,8 @@ impl NdjsonFramer {
 
 /// The first complete line in `buffer` as `(line length, bytes consumed)`.
 ///
-/// A trailing `\r` at the very end of the buffer is **not** a terminator: the
-/// `\n` of a `\r\n` pair may arrive in the next chunk, and consuming the `\r`
-/// alone would dispatch one line where the wire has one.
+/// Defers a trailing CR until another byte arrives so a split CRLF is consumed
+/// as one terminator.
 fn terminated_line(buffer: &[u8]) -> Option<(usize, usize)> {
     let pos = buffer
         .iter()

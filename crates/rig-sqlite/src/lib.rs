@@ -69,7 +69,8 @@ impl Column {
     }
 }
 
-/// Example of a document type that can be used with SqliteVectorStore
+/// Document type backed by a SQLite table.
+///
 /// ```rust
 /// use rig_core::Embed;
 /// use serde::{Deserialize, Serialize};
@@ -338,12 +339,11 @@ fn sqlite_metadata_value(
     }
 }
 
-/// A SQLite-backed vector store for documents of type `T`.
+/// SQLite-backed storage for documents of type `T` and their embeddings.
 ///
-/// The store does not name an embedding model in its type; the model is only
-/// consulted (for `ndims`) at construction, and the index built from it via
-/// [`SqliteVectorStore::index`] holds the model behind an erased
-/// the embedding model `M`.
+/// The store itself names no embedding model: construction only reads the
+/// model's dimensions, and searching requires an index created by
+/// [`SqliteVectorStore::index`].
 #[derive(Clone)]
 pub struct SqliteVectorStore<T> {
     conn: Connection,
@@ -446,10 +446,8 @@ where
             ));
         }
 
-        // Build the table schema
         let mut create_table = format!("CREATE TABLE IF NOT EXISTS {table_name} (");
 
-        // Add columns
         let mut first = true;
         for column in &schema {
             if !first {
@@ -461,13 +459,11 @@ where
 
         create_table.push_str("\n)");
 
-        // Build index creation statements
         let mut create_indexes = vec![format!(
             "CREATE INDEX IF NOT EXISTS idx_{}_id ON {}(id)",
             table_name, table_name
         )];
 
-        // Add indexes for marked columns
         for column in schema {
             if column.indexed {
                 create_indexes.push(format!(
@@ -481,15 +477,12 @@ where
             .call(move |conn| {
                 conn.execute_batch("BEGIN")?;
 
-                // Create document table
                 conn.execute_batch(&create_table)?;
 
-                // Create indexes
                 for index_stmt in create_indexes {
                     conn.execute_batch(&index_stmt)?;
                 }
 
-                // Create embeddings table
                 conn.execute_batch(&format!(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0({embeddings_columns})"
                 ))?;
@@ -955,12 +948,13 @@ impl SqliteSearchFilter {
         }
     }
 
-    // Null checks
+    /// Matches documents whose value at `key` is null.
     pub fn is_null(key: impl Into<String>) -> Self {
         let key = key.into();
         Self::null_check(key, false)
     }
 
+    /// Matches documents whose value at `key` is not null.
     pub fn is_not_null(key: impl Into<String>) -> Self {
         let key = key.into();
         Self::null_check(key, true)
@@ -1442,10 +1436,8 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
     has_digit.then_some(end)
 }
 
-/// SQLite vector store implementation for Rig.
-///
-/// This crate provides a SQLite-based vector store implementation that can be used with Rig.
-/// It uses the `sqlite-vec` extension to enable vector similarity search capabilities.
+/// Searchable index pairing a [`SqliteVectorStore`] with the embedding model
+/// used to embed queries.
 ///
 /// # Example
 /// ```no_run
@@ -1541,9 +1533,8 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # let _ = example();
 /// ```
 ///
-/// The store is generic over its embedding model `M`, which is fixed for the
-/// store's lifetime: an index populated under one model is only meaningful under
-/// that same model.
+/// `M` must be the model whose embeddings populated the store; results are
+/// meaningless under another model.
 pub struct SqliteVectorIndex<T, M> {
     store: SqliteVectorStore<T>,
     embedding_model: M,
@@ -1957,7 +1948,6 @@ impl<T: SqliteVectorStoreTable, M: EmbeddingModel> VectorStoreIndex for SqliteVe
 
         let rows = self
             .search_rows(&req, outer_select_cols, move |row| {
-                // Create a map of column names to values
                 let mut map = serde_json::Map::new();
                 for (i, column) in columns.iter().enumerate() {
                     let value = sqlite_column_value_to_json(i, column, row.get_ref(i)?)?;

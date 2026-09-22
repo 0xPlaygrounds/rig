@@ -1,4 +1,11 @@
-//! Common marker traits and structs for type-safe builders.
+//! Missing and provided states for type-safe builders.
+//!
+//! ```
+//! use rig_core::markers::Provided;
+//!
+//! let value = Provided("ready");
+//! assert_eq!(value.0, "ready");
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -6,8 +13,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Missing;
 
-/// Marker struct representing provided data in a request builder.
-///
-/// The generic type `T` represents the type of the provided data.
+/// Builder state containing a supplied value of type `T`.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Provided<T>(pub T);

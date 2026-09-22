@@ -1,37 +1,15 @@
-//! GitHub Copilot: the credential exchange, the request envelope, and the
-//! model identifiers.
+//! GitHub Copilot authentication, endpoint wires, and model identifiers.
 //!
-//! Copilot serves Chat Completions, Responses and Embeddings behind
-//! `https://api.githubcopilot.com`, and [`wire`] is all three:
-//! [`wire::Copilot`] is the configuration, [`wire::CopilotWire`] is the
-//! completion wire that picks the route ([`wire::routes_through_responses`]
-//! is the only home of that predicate — Codex-class models are answered by
-//! `/responses`, everything else by `/chat/completions`), and
-//! [`wire::Embeddings`] is the shared embeddings wire under Copilot's
-//! envelope, while [`wire::Models`] is the one endpoint whose reply really is
-//! Copilot's own — it names the vendor behind each model and nests the
-//! modality under `capabilities.type`.
+//! [`wire::Copilot`] accepts an exchanged session token. Use [`auth`] for device
+//! login and refresh, then [`wire::Copilot::from_auth`] to build the configuration.
+//! Completion routes are selected by model; all routes include editor-identity headers.
 //!
-//! Two things Copilot cannot express as a wire stay here. The credential is
-//! *exchanged* over the network before the API can be called at all — a
-//! device-code poll, a refresh, a shared token cache — and a synchronous
-//! encode has no seat for a round trip, so the exchange is [`auth`] and
-//! [`wire::Copilot::from_auth`] is the bridge. And the editor identity every
-//! request carries (`copilot-integration-id`, `editor-version`,
-//! `openai-intent`, `X-Initiator`, …) is stamped onto the request whichever
-//! wire built it, so the header set has one definition — a crate-internal
-//! `default_headers` beside the model identifiers — rather than one per route.
-//!
-//! # Example
 //! ```no_run
 //! use rig_core::providers::copilot;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // An already-exchanged session token, from the environment; the wires,
-//! // which `.bind(transport)` joins to a socket.
 //! let github = copilot::wire::Copilot::from_env()?;
 //!
-//! // The model picks the route; the caller does not.
 //! let chat = github.completion(copilot::GPT_4O);
 //! let codex = github.completion(copilot::GPT_5_3_CODEX);
 //! let embeddings = github.embeddings(copilot::TEXT_EMBEDDING_3_SMALL, None);
@@ -40,30 +18,14 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! Signing in, rather than reading an exchanged token, runs [`auth`] first:
-//! ```no_run
-//! use rig_core::providers::copilot::{auth, wire};
-//!
-//! # async fn run<H: rig_core::http_client::HttpClientExt>(http: H) -> Result<(), Box<dyn std::error::Error>> {
-//! let authenticator = auth::Authenticator::new(
-//!     auth::AuthSource::OAuth,
-//!     auth::default_token_dir().map(|dir| dir.join("access-token")),
-//!     auth::default_token_dir().map(|dir| dir.join("api-key.json")),
-//!     auth::DeviceCodeHandler::default(),
-//!     true,
-//! );
-//! let context = authenticator.auth_context(&http).await?;
-//! let github = wire::Copilot::from_auth(&context);
-//! # let _ = github;
-//! # Ok(())
-//! # }
-//! ```
 
-/// The credential exchange. Public because the wire configuration holds an
-/// *exchanged* session token ([`wire::Copilot::from_auth`]) and the exchange
-/// — a device-code poll, a refresh, a shared token cache — is a
-/// conversation, so it cannot happen inside a wire's synchronous `encode`.
+/// Device login, session-token exchange, refresh, and shared credential caching.
+///
+/// ```no_run
+/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+///
+/// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
+/// ```
 pub mod auth;
 pub mod wire;
 
@@ -78,17 +40,13 @@ pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
 pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
 
-/// Copilot's catalogue endpoint. `GET /models` answers with the whole
-/// catalogue — there is no cursor — so [`wire::Models`] needs no query.
+/// Catalogue endpoint returning all models without pagination.
 pub(crate) const MODEL_LISTING_PATH: &str = "/models";
 
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
 
-/// Copilot conversation intent sent in the `openai-intent` request header.
-///
-/// Serialized because it is a field of [`wire::CopilotWire`], which is data
-/// a host may store.
+/// Conversation intent sent in the `openai-intent` request header.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CopilotIntent {
@@ -155,11 +113,7 @@ pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 /// relays OpenAI's embeddings wire, so it is OpenAI's own type.
 pub use openai::EncodingFormat;
 
-/// Copilot's editor envelope: the headers every request on every route
-/// carries. Without them the API answers 400 regardless of the body.
-///
-/// One definition, applied by [`wire`] during completion encoding or to the
-/// finished request for the other routes.
+/// Build required editor-identity headers, including credentials and request identity.
 pub(crate) fn default_headers(
     api_key: &str,
     initiator: &'static str,

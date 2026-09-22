@@ -1,13 +1,4 @@
-//! Conversation memory: Rig-managed persistent conversation history for agents.
-//!
-//! Memory differs from existing agent context features:
-//! - classic runtime context: static documents always included in prompts;
-//! - classic runtime request patches: per-turn documents supplied by application hooks;
-//! - caller-managed message history supplied directly on completion requests;
-//! - **Memory** (this module): Rig-managed history loaded and saved automatically per
-//!   conversation id.
-//!
-//! # Example
+//! Conversation history storage, filtering, and compaction interfaces.
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,13 +79,10 @@ impl MemoryError {
 /// runtimes invoke [`ConversationMemory::load`] before sending a prompt and
 /// [`ConversationMemory::append`] after a successful run.
 ///
-/// Implementations should keep `append` cheap; it runs inline before the agent
-/// returns its response. A load failure fails the run before any model call;
-/// an append failure does not fail the run — the answer stands, the runtime
-/// reports the refused append beside it (rig-agent's `PromptResponse::memory_append`,
-/// the effect log's record) and nothing is retried. Rig promises no
-/// transactional or exactly-once write: a backend that fails after writing
-/// has written.
+/// Appends run inline before the agent returns its response. Load failures
+/// prevent model calls; append failures are reported alongside the successful
+/// answer without retry. Writes are not transactional or exactly-once: an
+/// error may occur after the backend has persisted messages.
 pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
     /// Load the full conversation history for `conversation_id`.
     ///
@@ -121,10 +109,6 @@ pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
 }
 
-// Forwarding impls so callers can pass smart pointers (`Arc<M>`, `Box<M>`,
-// including unsized trait objects) wherever a memory trait is expected. Each
-// arm forwards every method of one trait through `(**self)` for the listed
-// pointer types.
 macro_rules! forward_memory_trait {
     (ConversationMemory: $($ptr:ident)+) => {$(
         impl<M> ConversationMemory for $ptr<M>
@@ -204,38 +188,13 @@ impl<F> MessageFilter for F where
 {
 }
 
-/// A side-channel for messages that a memory policy or adapter removes from
-/// active history during [`ConversationMemory::load`].
+/// Receives messages removed from active history during [`ConversationMemory::load`].
+/// Hooks are awaited inline, so their latency delays the next turn.
 ///
-/// Truncating policies (sliding window, token budget, …) drop older turns
-/// once their limit is exceeded. Without a hook those messages are silently
-/// lost. A [`DemotionHook`] receives the demoted messages and can persist
-/// them into a long-tail store (semantic memory, episodic recall, archival
-/// storage, …), turning truncation into demotion.
-///
-/// The trait is defined here in `rig-core` so that *any* memory backend
-/// (in-memory, vector store, file archive, …) can implement it without
-/// taking on a `rig-memory` dependency. The composing adapter that actually
-/// wires a [`ConversationMemory`] backend, a policy, and a hook together
-/// lives in the `rig-memory` companion crate.
-///
-/// Hooks should be inexpensive: their future is awaited inline on every
-/// `load` that produces demoted messages, so a slow hook delays the agent's
-/// next turn. Offload heavy I/O (network writes, disk fsyncs, …) to a
-/// background task or a buffered channel inside the implementation.
-///
-/// # Idempotency contract
-///
-/// Implementations **must** be idempotent on the
-/// `(conversation_id, messages)` pair. Composing adapters such as the
-/// `DemotingPolicyMemory` in `rig-memory` track in-process delivery
-/// watermarks to avoid replaying the same demotion within a single
-/// process lifetime, but those watermarks are not persisted: across
-/// process restarts (or when a new adapter is constructed over an
-/// existing backend) the hook will receive previously-delivered
-/// messages again. Hooks that append to durable storage should
-/// deduplicate by content hash, by `(conversation_id, message_id)`,
-/// or by an equivalent stable key.
+/// Implementations must be idempotent on `(conversation_id, messages)`.
+/// Adapter delivery watermarks are not persisted; restarts or newly constructed
+/// adapters may redeliver messages. Durable hooks should deduplicate with a
+/// stable key such as a conversation ID and content hash.
 pub trait DemotionHook: WasmCompatSend + WasmCompatSync {
     /// Receive `messages` that were demoted out of the active window for
     /// `conversation_id`.
@@ -264,50 +223,20 @@ impl DemotionHook for NoopDemotionHook {
     }
 }
 
-// Forwarding impl so callers can pass `Arc<H>` wherever a `DemotionHook`
-// is expected (e.g. when sharing a single hook between multiple memory
-// adapters).
 forward_memory_trait!(DemotionHook: Arc);
 
-/// Derives a single [`Message`]-shaped artifact from a slice of messages
-/// that a memory policy has evicted from the active window.
+/// Derives an artifact from evicted messages for insertion before recent history.
+/// Compaction runs inline during loading and delays the next turn.
 ///
-/// Where a [`DemotionHook`] is a one-way drain — observe what fell out and
-/// return `()` — a `Compactor` is the inverse: it takes the evicted prefix
-/// (and optionally the previous summary) and produces a derived artifact
-/// that the composing adapter splices *back into* the active history. The
-/// resulting prompt is no longer a verbatim suffix of the conversation; it
-/// is `[summary, ...recent_window]`.
+/// `carry_over` contains the previous artifact, if any. Combine it with the
+/// evicted messages to preserve earlier context in a rolling summary, or ignore
+/// it to summarize only the newly evicted messages.
 ///
-/// Implementations typically wrap an LLM call (`LlmCompactor<M>`) or a
-/// pure template rollup. They run inline on the load path whenever the
-/// policy demotes new messages, so a slow compactor delays the agent's
-/// next turn — keep them fast or offload to a cached/background pipeline.
-///
-/// # Rolling summaries
-///
-/// `carry_over` is the artifact produced by the previous compaction for
-/// this conversation, if any. Implementations that want a *recursive*
-/// summary (the canonical pattern for long-running agents) should
-/// summarize `evicted` *together with* `carry_over` so context lost in
-/// earlier compactions is preserved transitively. Stateless implementations
-/// can ignore `carry_over` and produce a fresh summary of `evicted` alone.
-///
-/// # Idempotency contract
-///
-/// Composing adapters track per-conversation in-process delivery so the
-/// same `evicted` slice is not compacted twice within a process lifetime,
-/// but those watermarks are not persisted across restarts. Implementations
-/// that have side effects (writing summaries to a vector store, billing an
-/// LLM call) should deduplicate by conversation id and content hash, the
-/// same way [`DemotionHook`] implementations do.
+/// Delivery watermarks are not persisted across restarts. Implementations with
+/// side effects should deduplicate by conversation ID and content hash.
 pub trait Compactor: WasmCompatSend + WasmCompatSync {
-    /// The summary value produced by [`Compactor::compact`].
-    ///
-    /// `Into<Message>` is required so the composing adapter can splice the
-    /// artifact at the front of the loaded history. `Clone` is required so
-    /// the adapter can keep a private copy as `carry_over` for the next
-    /// compaction.
+    /// Summary convertible to a history message and clonable for the next
+    /// compaction's `carry_over`.
     type Artifact: Into<Message> + Clone + WasmCompatSend + WasmCompatSync + 'static;
 
     /// Produce a summary artifact for `evicted`, optionally combining it
@@ -327,8 +256,6 @@ pub trait Compactor: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>>;
 }
 
-// Forwarding impl so callers can pass `Arc<C>` wherever a `Compactor` is
-// expected (e.g. when sharing a single compactor across adapters).
 forward_memory_trait!(Compactor: Arc);
 
 /// A simple thread-safe in-memory [`ConversationMemory`] backed by a `HashMap`.
@@ -350,11 +277,8 @@ impl InMemoryConversationMemory {
         Self::default()
     }
 
-    /// Apply `filter` to the loaded message list on every `load`.
-    ///
-    /// The filter runs after raw messages are read from the store and before
-    /// they are returned to the agent. Use it for truncation, summarization, or
-    /// any other shaping. For reusable named policies, depend on `rig-memory`.
+    /// Replaces the filter applied to each loaded history after releasing the
+    /// store lock. Filtering does not modify stored messages.
     pub fn with_filter<F>(mut self, filter: F) -> Self
     where
         F: MessageFilter + 'static,

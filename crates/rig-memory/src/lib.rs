@@ -8,29 +8,9 @@
         clippy::unreachable
     )
 )]
-//! Conversation memory policies for the Rig agent framework.
-//!
-//! `rig-core` provides the [`ConversationMemory`] trait and an in-process
-//! [`InMemoryConversationMemory`] backend. This crate adds reusable, named
-//! transformations for shaping loaded history before it is sent to the model:
-//!
-//! - [`NoopMemoryPolicy`] — identity, returns input unchanged.
-//! - [`SlidingWindowMemory`] — retains the most recent `N` messages.
-//! - [`TokenWindowMemory`] — retains messages that fit within a token budget.
-//! - [`HeuristicTokenCounter`] — provider-agnostic, zero-dependency
-//!   [`TokenCounter`] that approximates token cost from character lengths.
-//! - [`DemotionHook`] + [`DemotingPolicyMemory`] — bridge truncated turns
-//!   from a [`MemoryPolicy`] into a long-tail store.
-//! - [`Compactor`] + [`CompactingMemory`] — replace truncated turns with a
-//!   derived summary artifact (rolling-summary semantics).
-//! - [`TemplateCompactor`] — zero-dependency reference [`Compactor`] that
-//!   produces a textual rollup without calling an LLM.
-//!
-//! Both window policies demote the leading prefix through any tool-result
-//! messages whose assistant calls were truncated, including mixed-content
-//! messages, since most providers reject unpaired tool results.
-//!
-//! # Example
+//! Conversation-history windows, demotion hooks, and rolling summaries.
+//! Window policies remove leading orphaned tool results along with truncated
+//! history. Stateful adapters deliver evicted prefixes to hooks or compactors.
 //!
 //! ```
 //! use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory};
@@ -63,8 +43,7 @@ use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 /// pure, fallible message transformers: implementors that cannot fail should
 /// always return `Ok`.
 pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
-    /// Transform `messages` into the history that should be returned to the
-    /// agent. This is the required method — every policy must implement it.
+    /// Transforms loaded messages into retained history or returns a policy error.
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
 
     /// Transform `messages` and report which messages were demoted (excluded
@@ -129,10 +108,7 @@ where
 pub trait IntoFilter: MemoryPolicy + Sized + 'static {
     /// Convert this policy into a filter closure.
     ///
-    /// On policy error the original input is returned unchanged and a
-    /// `tracing::warn!` is emitted, so a transient policy bug degrades
-    /// gracefully (the model still sees the unfiltered history) instead of
-    /// silently erasing context.
+    /// On policy error, returns the original input unchanged and logs a warning.
     fn into_filter(self) -> BoxedFilter {
         let policy = Arc::new(self);
         Box::new(move |msgs| {
@@ -273,40 +249,9 @@ impl TokenCounter for Box<dyn TokenCounter> {
     }
 }
 
-/// A provider-agnostic [`TokenCounter`] that approximates token counts from
-/// UTF-8 byte lengths.
-///
-/// This is intended as a zero-dependency default. It is **not** a substitute
-/// for a tokenizer and will under- or over-count by up to ~30 % on real
-/// content, but it is monotonic in message size and stable across runs, which
-/// is enough for [`TokenWindowMemory`] to enforce a budget that *trends*
-/// with provider billing.
-///
-/// # Strategy
-///
-/// For every text-bearing block (`Text`, reasoning text, tool-result text)
-/// the counter sums UTF-8 byte lengths (`str::len`, an O(1) call) and divides
-/// by `bytes_per_token`, rounded up. Bytes are used instead of Unicode
-/// scalars because the cost is O(1), modern BPE tokenizers operate on byte
-/// sequences, and per-message budgeting only needs the rough order of
-/// magnitude. For ASCII text bytes and characters coincide; for non-ASCII
-/// text the counter slightly over-estimates, which is the safe direction
-/// for a hard budget.
-///
-/// Tool calls are charged the JSON-serialised length of their `ToolFunction`
-/// payload. Each message is charged a flat `per_message_overhead` to model
-/// the per-turn role/separator tokens that providers add internally. Non-text
-/// blocks (images, audio, video, documents) are charged
-/// `per_attachment_tokens` each because their real cost is provider-specific
-/// and rarely text-derived.
-///
-/// # Presets
-///
-/// The defaults match OpenAI's published rule of thumb (~4 bytes per token,
-/// ~4 tokens of per-message overhead). [`HeuristicTokenCounter::anthropic`]
-/// uses a slightly denser ratio that better fits Claude's tokenizer.
-///
-/// # Example
+/// Estimates token cost from UTF-8 lengths, rounded up per text-bearing part.
+/// Tool calls count name bytes plus serialized argument bytes. Attachments and
+/// message overhead have fixed costs. These estimates do not bound provider usage.
 ///
 /// ```
 /// use rig_memory::{HeuristicTokenCounter, TokenWindowMemory};
@@ -324,8 +269,8 @@ pub struct HeuristicTokenCounter {
 impl HeuristicTokenCounter {
     /// Create a counter with explicit parameters.
     ///
-    /// `bytes_per_token` is clamped to a minimum of `1.0` so the counter
-    /// never panics or produces zero-cost messages on degenerate input.
+    /// Non-finite ratios and ratios below `1.0` become `1.0`.
+    /// Overhead and attachment costs may be zero.
     pub fn new(
         bytes_per_token: f32,
         per_message_overhead: usize,
@@ -343,9 +288,7 @@ impl HeuristicTokenCounter {
         }
     }
 
-    /// Preset tuned for Anthropic Claude's tokenizer (3.5 bytes per token).
-    /// The default (4 bytes per token) is the rule of thumb for OpenAI and
-    /// Gemini alike.
+    /// Uses 3.5 bytes per token, four tokens per message, and 256 per attachment.
     pub fn anthropic() -> Self {
         Self::new(3.5, 4, 256)
     }
@@ -391,10 +334,6 @@ impl HeuristicTokenCounter {
             }
             AssistantContent::ToolCall(call) => {
                 let name_bytes = call.function.name.len();
-                // `serde_json::Value::to_string` is the canonical compact JSON
-                // encoding and never fails, so we charge tool calls by the
-                // length of their serialised arguments without pulling in a
-                // direct `serde_json` dependency.
                 let args_bytes = call.function.arguments.to_string().len();
                 self.bytes_to_tokens(name_bytes + args_bytes)
             }
@@ -404,8 +343,7 @@ impl HeuristicTokenCounter {
 }
 
 impl Default for HeuristicTokenCounter {
-    /// Four bytes per token, four tokens of per-message overhead, 256 per
-    /// attachment: the OpenAI/Gemini rule of thumb.
+    /// Uses four bytes per token, four tokens per message, and 256 per attachment.
     fn default() -> Self {
         Self::new(4.0, 4, 256)
     }
@@ -484,13 +422,8 @@ impl MemoryPolicy for TokenWindowMemory {
     }
 }
 
-/// Wrap a [`ConversationMemory`] backend with a [`MemoryPolicy`], propagating
-/// policy errors to the caller as [`MemoryError::Policy`].
-///
-/// This is the hard-fail counterpart to
-/// [`InMemoryConversationMemory::with_filter`] + [`IntoFilter::into_filter`].
-/// `with_filter` swallows policy errors and returns the unfiltered history;
-/// `PolicyMemory` surfaces them so callers can decide how to react.
+/// Applies a policy to loaded history, propagating backend and policy errors
+/// unchanged. Append and clear operations delegate to the backend.
 ///
 /// # Example
 ///
@@ -561,43 +494,17 @@ where
     }
 }
 
-/// A [`ConversationMemory`] adapter that wraps a backend with a
-/// [`MemoryPolicy`] **and** a [`DemotionHook`], so messages truncated by the
-/// policy flow into the hook before the active window is returned.
+/// Applies a policy and delivers newly demoted prefixes to a hook before returning
+/// retained history. The policy must report demotions through
+/// [`MemoryPolicy::apply_with_demoted`].
 ///
-/// `DemotingPolicyMemory` is the bridge between the recent-turn store
-/// ([`InMemoryConversationMemory`] or any other [`ConversationMemory`]) and a
-/// long-tail store (`MemvidPersistHook`, vector RAG, archival storage, …).
-/// Compose it with any [`MemoryPolicy`] that overrides
-/// [`MemoryPolicy::apply_with_demoted`]; policies that rely on the default
-/// implementation will still load correctly but will never demote anything.
+/// Only one delivery per tracked conversation runs at a time. Concurrent loads
+/// return retained history immediately without waiting for the hook, so success
+/// does not guarantee durable demotion. Hook errors reach only the delivering
+/// caller; unchanged watermarks allow later loads to retry.
 ///
-/// # Concurrency
-///
-/// Concurrent [`ConversationMemory::load`] calls on the same
-/// `conversation_id` are serialised at the demotion seam: only one call at
-/// a time delivers messages to the hook for a given conversation. Other
-/// concurrent loads for that conversation observe the in-flight delivery
-/// and return the truncated `kept` history immediately without firing the
-/// hook again. Pending demotions that were skipped this way are picked up
-/// by the next `load` after the in-flight delivery completes.
-///
-/// **Failure visibility.** A hook error is returned only to the caller
-/// whose `load` actually drove the delivery. Concurrent callers that
-/// short-circuited on `in_flight` see `Ok(kept)` even if the in-flight
-/// delivery ultimately failed; the watermark stays unchanged so the next
-/// `load` retries. Callers that rely on the hook for durability should
-/// treat a successful `load` as best-effort with respect to demotion and
-/// surface hook failures through the hook's own observability (logs,
-/// metrics, dead-letter buffer) rather than the `load` return value.
-///
-/// # Persistence
-///
-/// Delivery watermarks are kept in process memory only. Across process
-/// restarts, the hook will receive previously-delivered demotions again;
-/// see the [`DemotionHook`] idempotency contract.
-///
-/// # Example
+/// Watermarks are process-local. Hooks must tolerate redelivery after restarts,
+/// cancellation, or discarded tracking state, following [`DemotionHook`].
 ///
 /// ```no_run
 /// use rig_memory::{
@@ -650,12 +557,8 @@ macro_rules! stateful_wrapper_common {
 
             /// Drop the in-process state for `conversation_id`.
             ///
-            /// Call this when a conversation has ended to bound memory usage;
-            /// the state map is otherwise unbounded — entries persist for the
-            /// lifetime of the wrapper. If the internal state lock has been
-            /// poisoned by a panic in another thread, this is a no-op (the
-            /// state will be dropped naturally when the wrapper itself is
-            /// dropped).
+            /// Entries otherwise persist for the wrapper's lifetime. Does nothing
+            /// if the state lock is poisoned. In-flight work is not cancelled.
             pub fn forget(&self, conversation_id: &ConversationId) {
                 if let Ok(mut guard) = self.state.lock() {
                     guard.remove(conversation_id);
@@ -755,15 +658,8 @@ where
             let (kept, mut demoted) = self.policy.apply_with_demoted(messages)?;
             let demoted_count = demoted.len();
 
-            // Reserve a delivery slot atomically. Decide-and-mark must
-            // happen under one short-lived lock so concurrent loads on
-            // the same conversation_id can't both observe the same
-            // delivered watermark and double-fire the hook.
-            //
-            // Fast path: if the conversation is already tracked, mutate in
-            // place. Only allocate a new `String` key when we are about to
-            // record state for a conversation we have not seen before *and*
-            // there is actually demotion work to track.
+            // Reserve under the watermark lock to prevent duplicate concurrent
+            // deliveries for the same tracked conversation.
             let (pending, reservation) = {
                 let mut guard = self.state.lock().map_err(poisoned)?;
                 if let Some(entry) = guard.get_mut(conversation_id) {
@@ -782,8 +678,6 @@ where
                         (demoted.split_off(split), Some(reservation))
                     }
                 } else if demoted_count == 0 {
-                    // First load for this conversation and nothing was
-                    // demoted: no need to allocate a tracking entry yet.
                     (Vec::new(), None)
                 } else {
                     let reservation = Arc::new(());
@@ -812,15 +706,8 @@ where
 
             let result = self.hook.on_demote(conversation_id, pending).await;
 
-            // Reacquire briefly to advance the watermark on success and
-            // always clear the in-flight flag so a future load can retry.
-            //
-            // Only update if the entry still exists: a concurrent `clear`
-            // (and matching `forget`) for this `conversation_id` may have
-            // dropped the watermark entry while the hook was awaiting. In
-            // that case we must not resurrect it with a stale `delivered`
-            // count — the next load on a freshly-populated backend would
-            // then skip a real demotion.
+            // Only the matching reservation may advance the watermark; a clear
+            // or replacement during delivery must not revive stale state.
             release_in_flight(&self.state, conversation_id, &reservation, |entry| {
                 if result.is_ok() {
                     entry.delivered = demoted_count;
@@ -839,11 +726,9 @@ fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
     MemoryError::Internal(err.to_string())
 }
 
-/// Clear the conversation's `in_flight` reservation if the entry still exists
-/// and still holds `reservation`, running `on_match` on the entry under the
-/// lock. Returns `on_match`'s value only when the reservation matched — a
-/// missing entry (concurrent `clear`) or a newer reservation is a no-op, so
-/// stale releases can never resurrect or clobber newer state.
+/// Clears a matching reservation and runs `on_match` under the state lock.
+/// Returns its result, or `None` for absent or newer reservations. A poisoned
+/// lock returns an error; stale releases cannot restore or overwrite state.
 fn release_in_flight<S: InFlightSlot, T>(
     state: &StdMutex<HashMap<ConversationId, S>>,
     key: &ConversationId,
@@ -884,16 +769,9 @@ impl<A> InFlightSlot for ConversationCompactionState<A> {
     }
 }
 
-/// RAII guard that clears the `in_flight` flag for a conversation in the
-/// shared demotion/compaction state map when dropped, unless the consumer
-/// explicitly disarms it after a successful post-await update.
-///
-/// This prevents the in-flight gate from leaking when the awaiting
-/// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
-/// or when the hook/compactor panics: in either case `Drop` runs and
-/// releases the gate so subsequent loads can retry. A missing entry is a
-/// no-op, covering the case where a concurrent `clear` removed the
-/// conversation while delivery was awaiting.
+/// Releases its matching reservation on drop, including cancellation and unwind.
+/// Disarm after the post-await update releases it. Missing or newer reservations
+/// remain untouched; poisoned locks prevent cleanup.
 struct InFlightGuard<'a, S: InFlightSlot> {
     state: &'a StdMutex<HashMap<ConversationId, S>>,
     key: &'a ConversationId,
@@ -927,66 +805,22 @@ impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
         if !self.armed {
             return;
         }
-        // A poisoned lock is ignored, matching pre-guard behavior.
+        // Drop cannot report a poisoned state lock.
         let _ = release_in_flight(self.state, self.key, &self.reservation, |_| ());
     }
 }
 
-/// A [`ConversationMemory`] adapter that wraps a backend with a
-/// [`MemoryPolicy`] **and** a [`Compactor`], replacing truncated turns with
-/// a summary artifact spliced at the front of the loaded history.
+/// Prepends a rolling summary of demoted history to the policy's retained window.
+/// New evictions are compacted with the previous artifact as carry-over. The
+/// summary is outside the policy budget; callers needing a bounded prompt must
+/// also bound the compactor's artifact.
 ///
-/// `CompactingMemory` is the next layer above [`DemotingPolicyMemory`]: a
-/// demotion hook only *observes* what the policy evicted, while a compactor
-/// *substitutes* the evicted prefix with a derived [`Message`]. The loaded
-/// history shape is therefore `[summary_message, ...kept_window]` whenever
-/// any compaction has occurred for the conversation, and just `kept_window`
-/// otherwise. The summary itself is recomputed (rolled forward) on every
-/// load that produces newly-evicted messages, so older summaries are folded
-/// into newer ones via the compactor's `carry_over` parameter.
+/// Only one compaction per tracked conversation runs at a time. Concurrent loads
+/// return the previous summary and retained window immediately. Errors reach only
+/// the compacting caller; unchanged watermarks allow later loads to retry.
 ///
-/// # Concurrency
-///
-/// Concurrent [`ConversationMemory::load`] calls on the same
-/// `conversation_id` are serialised at the compaction seam: only one call
-/// at a time invokes the compactor for a given conversation. Other
-/// concurrent loads observe the in-flight compaction and immediately
-/// return the previously-stored summary spliced in front of `kept`,
-/// without re-running the compactor. Newly-evicted messages skipped this
-/// way are folded into the next compaction.
-///
-/// **Failure visibility.** A compactor error is returned only to the
-/// caller whose `load` actually drove the compaction. Concurrent callers
-/// that short-circuited on `in_flight` see `Ok([old_summary?, ...kept])`
-/// even if the in-flight compaction ultimately failed; the watermark
-/// stays unchanged so the next `load` retries.
-///
-/// # Persistence
-///
-/// The carry-over summary and delivery watermarks are kept in process
-/// memory only. Across process restarts, the first load on each
-/// conversation re-evicts and re-compacts the same prefix; compactors
-/// that have side effects (LLM calls, persistent writes) should
-/// deduplicate.
-///
-/// # Prompt shape and budgets
-///
-/// `CompactingMemory` is **policy-agnostic**: the wrapped
-/// [`MemoryPolicy`] decides which messages are kept versus demoted, and
-/// only the kept window is bounded by that policy. The summary artifact
-/// produced by the [`Compactor`] is spliced **outside** that budget — so
-/// the loaded prompt has shape `[summary, ...kept_window]` where
-/// `kept_window` respects the policy's bounds and `summary` adds an
-/// extra message on top of it.
-///
-/// Callers that combine `CompactingMemory` with a token-budgeted policy
-/// (e.g. [`TokenWindowMemory`]) **must use a [`Compactor`] that bounds
-/// its own artifact**, or accept that the loaded prompt may exceed the
-/// policy's budget by the size of the summary. The reference
-/// [`TemplateCompactor`] grows monotonically by default; configure it
-/// with [`TemplateCompactor::with_max_bytes`] to cap the rolled-up text.
-///
-/// # Example
+/// Summaries and watermarks are process-local. Restarts or discarded state cause
+/// recompaction; compactors with side effects must tolerate repeated input.
 ///
 /// ```no_run
 /// use rig_memory::{
@@ -1051,14 +885,8 @@ where
             let (kept, demoted) = self.policy.apply_with_demoted(messages)?;
             let demoted_count = demoted.len();
 
-            // Decide-and-mark must happen under one short-lived lock so two
-            // concurrent loads on the same conversation_id can't both
-            // observe the same `absorbed` watermark and run the compactor
-            // twice with the same input slice.
-            //
-            // Fast path: if the conversation is already tracked, mutate in
-            // place. Only allocate a new `String` key when there is real
-            // compaction work for a conversation we have not seen before.
+            // Reserve under the watermark lock to prevent concurrent compaction
+            // of the same tracked prefix.
             let plan = {
                 let mut guard = self.state.lock().map_err(poisoned)?;
                 if let Some(entry) = guard.get_mut(conversation_id) {
@@ -1069,8 +897,6 @@ where
                         return Ok(splice(entry.summary.clone(), kept));
                     }
                     if demoted_count <= entry.absorbed {
-                        // No new evictions to compact. Splice the existing
-                        // summary (if any) and we're done.
                         return Ok(splice(entry.summary.clone(), kept));
                     }
                     let reservation = Arc::new(());
@@ -1081,8 +907,6 @@ where
                         reservation,
                     }
                 } else if demoted_count == 0 {
-                    // First load for this conversation and nothing was
-                    // demoted: no tracking entry needed yet.
                     return Ok(kept);
                 } else {
                     let reservation = Arc::new(());
@@ -1102,10 +926,7 @@ where
                 }
             };
 
-            // SAFETY: split_at(plan.skip) is sound because `plan.skip` was
-            // sourced from the entry's `absorbed` watermark while we held
-            // the lock, and we only set `absorbed = demoted_count` on
-            // success — so `plan.skip <= demoted_count == demoted.len()`.
+            // The plan is created only when its watermark is below demoted_count.
             let CompactionPlan {
                 carry_over,
                 skip,
@@ -1134,17 +955,8 @@ where
                 .compact(conversation_id, new_slice, carry_over.as_ref())
                 .await;
 
-            // Reacquire briefly to advance the watermark on success and
-            // always clear the in-flight flag so a future load can retry.
-            //
-            // Only update if the entry still exists: a concurrent `clear`
-            // (and matching `forget`) for this `conversation_id` may have
-            // dropped the state entry while the compactor was awaiting. In
-            // that case we must not resurrect it with stale state — the
-            // next load on a freshly-populated backend would then start
-            // from a non-zero watermark and skip a real compaction.
-            // A conversation cleared mid-compaction has no entry anymore; the
-            // artifact is dropped rather than reviving stale state.
+            // Publish only to the matching reservation. A clear or replacement
+            // during compaction discards the artifact instead of reviving stale state.
             let summary_for_splice = match result {
                 Ok(artifact) => {
                     release_in_flight(&self.state, conversation_id, &reservation, |entry| {
@@ -1159,9 +971,7 @@ where
                 }
             };
 
-            // Post-await state update completed under the lock above and
-            // already cleared `in_flight`; disarm the RAII guard so its
-            // `Drop` does not re-acquire the lock for a redundant clear.
+            // The update already released the reservation; avoid locking again.
             in_flight_guard.disarm();
 
             Ok(splice(summary_for_splice, kept))
@@ -1192,26 +1002,13 @@ where
     }
 }
 
-/// A zero-dependency reference [`Compactor`] that produces a textual
-/// rollup of evicted messages without calling an LLM.
+/// Builds a textual rollup without calling a model.
+/// Concatenates a header, the previous summary, and rendered evicted messages
+/// into a [`TextSummary`] convertible to a system message.
 ///
-/// The artifact is a single [`Message::System`] whose body concatenates a
-/// header, the previous summary (if any), and the textual content of each
-/// newly-evicted message. It is intentionally simple: useful as a default
-/// for tests and examples, and as a placeholder before wiring a real
-/// summarising LLM through a custom [`Compactor`] implementation.
-///
-/// # Bounding the summary
-///
-/// By default the summary grows monotonically: every compaction pass
-/// embeds the previous summary verbatim and appends newly-evicted lines.
-/// Long-running conversations should call [`Self::with_max_bytes`] to
-/// cap the rolled-up text. When the cap is exceeded, the oldest portion
-/// of the body (after the header) is dropped at a UTF-8 boundary and
-/// replaced with a `"[…truncated…]"` marker, preserving the most recent
-/// context.
-///
-/// # Example
+/// Unbounded by default. [`Self::with_max_bytes`] removes oldest body bytes at
+/// UTF-8 boundaries, retaining the first header line and a truncation marker
+/// even when those exceed the cap.
 ///
 /// ```
 /// use rig_memory::TemplateCompactor;
@@ -1340,8 +1137,6 @@ impl Compactor for TemplateCompactor {
 /// header containing embedded newlines does not mis-locate the body.
 fn truncate_summary(buf: &str, cap: usize) -> String {
     const MARKER: &str = "[\u{2026}truncated\u{2026}]\n";
-    // Body starts right after the first newline in `buf`. If `buf` has
-    // no newline at all there is no body to drop, so return as-is.
     let Some(newline) = buf.find('\n') else {
         return buf.to_string();
     };
@@ -1350,14 +1145,11 @@ fn truncate_summary(buf: &str, cap: usize) -> String {
         return buf.to_string();
     }
     let preserved = header_prefix_len + MARKER.len();
-    // Number of bytes of the body we can keep after the marker.
     let keep_bytes = cap.saturating_sub(preserved);
     let body_start = header_prefix_len;
     let Some(body) = buf.get(body_start..) else {
         return buf.to_string();
     };
-    // Take the suffix of `body` whose length is at most `keep_bytes`,
-    // walking forward to a UTF-8 char boundary.
     let mut cut = body.len().saturating_sub(keep_bytes);
     while cut < body.len() && !body.is_char_boundary(cut) {
         cut += 1;
@@ -1410,13 +1202,7 @@ fn render_message_line(msg: &Message) -> String {
     }
 }
 
-/// Space-join rendered parts, suppressing the separator while the line is
-/// still empty.
-///
-/// Not `Vec::join(" ")`: that would emit a leading separator for a message
-/// whose first part renders empty, while still collapsing nothing elsewhere.
-/// The rollup text these lines feed is compared byte-for-byte by the
-/// compaction tests, so the asymmetry is behavior, not an accident.
+/// Joins parts with spaces, omitting separators until the first nonempty part.
 fn join_parts<'a>(parts: impl Iterator<Item = Cow<'a, str>>) -> String {
     let mut text = String::new();
     for part in parts {

@@ -1,11 +1,15 @@
-//! Typed per-call context passed through tool execution.
+//! Typed inbound context and explicitly published host-only tool-result metadata.
 //!
-//! A runtime hands every tool call a [`ToolContext`]: a serde map of typed
-//! inbound values (auth tokens, session ids, request metadata the model never
-//! sees) plus a serde result map a tool can publish host-only data into. rig-agent's
-//! contextual tools, context-aware [`PortableDynamicTool`](super::PortableDynamicTool)s,
-//! and companion adapters (e.g. MCP `_meta` passthrough in `rig-rmcp`) all
-//! share this one type, so the same values flow regardless of runtime.
+//! ```
+//! use rig_core::tool::{ContextValue, ToolContext};
+//! #[derive(serde::Serialize, serde::Deserialize)]
+//! struct Session(String);
+//! impl ContextValue for Session { const KEY: &'static str = "session"; }
+//! let mut context = ToolContext::new();
+//! context.insert(Session("example".into()))?;
+//! assert_eq!(context.require::<Session>()?.0, "example");
+//! # Ok::<(), rig_core::tool::ToolContextError>(())
+//! ```
 
 use std::any::{Any, TypeId};
 use std::collections::{BTreeMap, HashMap};
@@ -168,12 +172,8 @@ pub struct ToolContext {
     inbound: BTreeMap<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     result: BTreeMap<String, serde_json::Value>,
-    /// The driver's scopes for the call — not data: never on the wire, not
-    /// part of equality, dropped by the adapter before the result is
-    /// resolved. The adapter copies them from the sink it serves
-    /// (`Dispatch::scopes`) so a tool can reach its runtime by type —
-    /// rig-agent's bus hands a `Dispatcher` whose every dispatch, and every agent
-    /// built over it, descends from this call. Empty for an inline call.
+    /// Live runtime scopes, excluded from serialization and equality.
+    /// Publication clears them before the result is resolved.
     #[serde(skip)]
     scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>,
 }
@@ -208,15 +208,9 @@ impl PartialEq for ToolContext {
 
 impl Eq for ToolContext {}
 
-/// A value that may be stored in a [`ToolContext`]: serde data under a key
-/// the type declares. The key is what survives a refactor, a persisted
-/// effect log (`rig_cassette::effect_log`), or a different toolchain —
-/// unlike `std::any::type_name`, which changes with a rename or a module
-/// move and is not stable across compiler versions.
-///
-/// Derive it (`#[derive(ContextValue)]`, key defaults to the type's name;
-/// `#[context(key = "…")]` overrides) or write the one-line impl. Two
-/// value types must not share a key.
+/// Serializable context data with a stable slot key. Distinct value types must
+/// use distinct keys, and persisted keys must remain stable across schema changes.
+/// The derive macro defaults to the type name; `#[context(key = "…")]` overrides it.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` declares no `ToolContext` key",
     label = "not a `ContextValue`",
@@ -241,10 +235,8 @@ fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextEr
     })
 }
 
-/// Store `value`; the value it displaced when that decodes as `T`. A slot
-/// holding something that does not decode as `T` is simply replaced: the
-/// write succeeded, and a shape mismatch is a defect at the writer, not a
-/// reason to unwind the caller after the fact.
+/// Replaces a slot after successful encoding, returning the displaced value
+/// only if it decodes as `T`.
 fn insert_slot<T: ContextValue>(
     map: &mut BTreeMap<String, serde_json::Value>,
     value: T,
@@ -283,8 +275,7 @@ impl ToolContext {
     /// as `T`. A differently shaped displaced value is replaced successfully and
     /// returns `None`; decoding the previous value cannot undo a successful write.
     ///
-    /// Fails only when `value` cannot be represented as JSON (a map with
-    /// non-string keys, a float `NaN`).
+    /// Returns an encoding error if serialization fails, leaving the slot unchanged.
     pub fn insert<T: ContextValue>(&mut self, value: T) -> Result<Option<T>, ToolContextError> {
         insert_slot(&mut self.inbound, value)
     }
@@ -360,8 +351,7 @@ impl ToolContext {
         self
     }
 
-    /// The driver's scope of type `T` for the call, if the driver attached
-    /// one; `None` inline, or under another runtime.
+    /// Returns the first attached scope of type `T`, or `None` if absent.
     pub fn scope<T: Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
         self.scopes
             .iter()

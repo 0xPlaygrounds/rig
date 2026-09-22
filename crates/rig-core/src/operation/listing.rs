@@ -1,14 +1,17 @@
-//! The model-listing operation: unary per page, folded across pages.
+//! Model-listing operation and ordered page aggregation.
+//!
+//! ```
+//! use rig_core::{operation::ModelListing, wire::Operation};
+//!
+//! assert_eq!(ModelListing::NAME, "model_listing");
+//! ```
 
 use super::One;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::wire::{Fold, Operation, Reply};
 
-/// Listing the models a provider offers.
-///
-/// The only paged operation: a decoder that read a next-page cursor off the
-/// reply returns it from [`Decoder::continuation`](crate::wire::Decoder::continuation)
-/// and the driver sends it, folding every page into one list.
+/// Lists provider models, concatenating pages requested through
+/// [`Decoder::continuation`](crate::wire::Decoder::continuation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelListing;
 

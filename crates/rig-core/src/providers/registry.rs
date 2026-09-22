@@ -57,13 +57,9 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
     &crate::providers::copilot::wire::DIALECT,
 ];
 
-/// A protocol family: the request grammar a provider speaks, and so which of
-/// this crate's configuration types describes it.
-///
-/// A family is not a route. `openai` covers both Chat Completions and the
-/// Responses endpoint, because both are the same configuration
-/// ([`openai::wire::OpenAI`]) and the endpoint is that configuration's own
-/// `route` field.
+/// A provider's request grammar and configuration type.
+/// The OpenAI family includes Chat Completions and Responses; select the endpoint
+/// through [`openai::wire::OpenAI::with_route`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Format {
     /// OpenAI's grammar: Chat Completions and the Responses endpoint.
@@ -365,17 +361,10 @@ pub enum SelectionError {
     },
 }
 
-/// A provider's configuration, by protocol family: this crate's existing
-/// configuration types, not a copy of their fields.
-///
-/// Dialects serialize by catalog name. Unregistered or modified dialect
-/// definitions remain usable programmatically but serialization refuses them,
-/// rather than writing an unreloadable or lossy configuration. Set hosts and
-/// typed options on the configuration, not on a copied dialect, to persist them.
-///
-/// Serializes externally tagged as `{"openai": {…}}`, so the family is read
-/// before the configuration, and a misspelled option is an error naming the
-/// field rather than a failure to match any variant.
+/// A provider configuration tagged by protocol family, such as `{"openai": {…}}`.
+/// Serialization rejects unregistered or modified dialect definitions. Set
+/// persistent hosts and typed options on the configuration, not the dialect.
+/// Deserialization reports unknown configuration fields by name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ProviderConfig {
     /// An OpenAI-shaped provider, on either of its two endpoints.
@@ -476,9 +465,8 @@ pub enum Provider {
     Configured(ProviderConfig),
 }
 
-/// A model identifier paired with the provider that serves it: what a host
-/// stores when it stores "which model". Construction validates the identifier;
-/// [`model`](Self::model) exposes it without permitting invalid mutation.
+/// A nonempty model identifier paired with a credential-free provider selection.
+/// Construction validates the identifier; both fields are read-only.
 ///
 /// ```compile_fail
 /// use rig_core::providers::registry::ProviderRef;
@@ -585,11 +573,8 @@ impl std::str::FromStr for ProviderRef {
     }
 }
 
-/// The canonical identity spelling: `vendor/format:model`, for a registered
-/// selection and for a configuration alike.
-///
-/// This is a *label*, not the serialized form: an explicit configuration's
-/// host and options are not in it, and writing those is `Serialize`'s job.
+/// Display `vendor/format:model` for registered and configured references.
+/// This label omits hosts and options; use serialization to preserve them.
 impl fmt::Display for ProviderRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.provider {
@@ -622,9 +607,8 @@ pub enum RefError {
 /// reported against.
 const REF_FIELDS: &[&str] = &["config", "model"];
 
-/// A registered reference writes its canonical string; a configured one
-/// writes `{config, model}`. Nothing else: the string form cannot express a
-/// host or an option, so a configuration must never be written as one.
+/// Serialize registered references as canonical strings and configured references
+/// as `{config, model}` objects to preserve their hosts and options.
 impl Serialize for ProviderRef {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match &self.provider {

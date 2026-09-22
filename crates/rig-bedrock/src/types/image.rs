@@ -62,8 +62,6 @@ impl TryFrom<ImageBlock> for RigImage {
             ImageFormat::Jpeg => Ok(ImageMediaType::JPEG),
             ImageFormat::Png => Ok(ImageMediaType::PNG),
             ImageFormat::Webp => Ok(ImageMediaType::WEBP),
-            // The mirror carries the raw wire token for a format the SDK did
-            // not recognize, which is what the message quoted before.
             ImageFormat::Unknown(format) => Err(CompletionError::ProviderError(format!(
                 "Unsupported format {format}"
             ))),

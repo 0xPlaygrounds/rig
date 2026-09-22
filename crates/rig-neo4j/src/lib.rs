@@ -1,44 +1,12 @@
-//! A Rig vector store for Neo4j.
+//! Neo4j vector store for Rig.
 //!
-//! This crate is a companion crate to the [rig-core crate](https://github.com/0xPlaygrounds/rig).
-//! It provides a vector store implementation that uses Neo4j as the underlying datastore.
+//! [`Neo4jVectorIndex`] queries a vector index that must already exist, created
+//! externally or through [`Neo4jClient::create_vector_index`]. Neo4j builds new
+//! indexes in the background, so they are not queryable immediately. Self-managed
+//! instances need the GenAI plugin installed; Neo4j Aura enables it by default.
+//! The crate [README](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j)
+//! covers setup and further examples.
 //!
-//! See the [README](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j) for more information.
-//!
-//! ## Prerequisites
-//!
-//! ### GenAI Plugin
-//! The GenAI plugin is enabled by default in Neo4j Aura.
-//!
-//! The plugin needs to be installed on self-managed instances. This is done by moving the neo4j-genai.jar
-//! file from /products to /plugins in the Neo4j home directory, or, if you are using Docker, by starting
-//! the Docker container with the extra parameter `--env NEO4J_PLUGINS='["genai"]'`.
-//!
-//! For more information, see [Operations Manual → Configure plugins](https://neo4j.com/docs/upgrade-migration-guide/current/version-5/migration/install-and-configure/#_plugins).
-//!
-//! ### Pre-existing Vector Index
-//!
-//! The [Neo4jVectorStoreIndex](Neo4jVectorIndex) struct is designed to work with a pre-existing
-//! Neo4j vector index. You can create the index using the Neo4j browser, a raw Cypher query, or the
-//! [Neo4jClient::create_vector_index] method.
-//! See the [Neo4j documentation](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/)
-//! for more information.
-//!
-//! The index name must be unique among both indexes and constraints.
-//! ❗A newly created index is not immediately available but is created in the background.
-//!
-//! ```text
-//! CREATE VECTOR INDEX moviePlots
-//!     FOR (m:Movie)
-//!     ON m.embedding
-//!     OPTIONS {indexConfig: {
-//!         `vector.dimensions`: 1536,
-//!         `vector.similarity_function`: 'cosine'
-//!     }}
-//! ```
-//!
-//! ## Simple example:
-//! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j/examples) folder.
 //! ```no_run
 //! use neo4rs::ConfigBuilder;
 //! use rig_core::providers::openai::{self, wire::OpenAI};
@@ -99,6 +67,10 @@ pub struct Neo4jClient {
     pub graph: Graph,
 }
 
+/// Cypher predicate over the matched node `n`.
+///
+/// Property keys are spliced into the query verbatim and string values are only
+/// single-quote escaped, so neither should carry untrusted input.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Neo4jSearchFilter(String);
 
@@ -150,9 +122,7 @@ impl Neo4jSearchFilter {
         ))
     }
 
-    // String matching
-
-    /// Tests whether the value at `key` contains the pattern
+    /// Matches property values containing `pattern`.
     pub fn contains<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
@@ -163,7 +133,7 @@ impl Neo4jSearchFilter {
         ))
     }
 
-    /// Tests whether the value at `key` starts with the pattern
+    /// Matches property values starting with `pattern`.
     pub fn starts_with<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
@@ -174,7 +144,7 @@ impl Neo4jSearchFilter {
         ))
     }
 
-    /// Tests whether the value at `key` ends with the pattern
+    /// Matches property values ending with `pattern`.
     pub fn ends_with<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
@@ -185,6 +155,7 @@ impl Neo4jSearchFilter {
         ))
     }
 
+    /// Matches property values against the Cypher regular expression `pattern`.
     pub fn matches<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
@@ -196,6 +167,7 @@ impl Neo4jSearchFilter {
     }
 }
 
+/// Renders a JSON value as a Cypher literal, escaping single quotes in strings.
 fn serialize_cypher(value: serde_json::Value) -> String {
     use serde_json::Value::*;
     match value {
@@ -224,7 +196,10 @@ fn serialize_cypher(value: serde_json::Value) -> String {
     }
 }
 
+/// Conversion into a Bolt parameter value.
 pub trait ToBoltType {
+    /// Converts through JSON, yielding `BoltType::Null` for values that fail to
+    /// serialize or fall outside Bolt's numeric range.
     fn to_bolt_type(&self) -> BoltType;
 }
 
@@ -244,7 +219,7 @@ where
                         BoltType::Float(BoltFloat::new(f))
                     } else {
                         println!("Couldn't map to BoltType, will ignore.");
-                        BoltType::Null(BoltNull) // Handle unexpected number type
+                        BoltType::Null(BoltNull)
                     }
                 }
                 serde_json::Value::String(s) => BoltType::String(BoltString::new(&s)),
@@ -264,7 +239,7 @@ where
             },
             Err(_) => {
                 println!("Couldn't serialize to JSON, will ignore.");
-                BoltType::Null(BoltNull) // Handle serialization error
+                BoltType::Null(BoltNull)
             }
         }
     }
@@ -314,12 +289,12 @@ impl Neo4jClient {
             .map_err(VectorStoreError::datastore)
     }
 
-    /// Returns a `Neo4jVectorIndex` that mirrors an existing Neo4j Vector Index.
+    /// Returns an index handle mirroring the existing vector index `index_name`,
+    /// adopting its embedding property, similarity function, and node label.
     ///
-    /// An index (of type "vector") of the same name as `index_name` must already exist for the Neo4j database.
-    /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
-    ///
-    /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
+    /// `model` must be the model whose embeddings populated the index; a
+    /// dimension mismatch is only warned about. Errors when the index does not
+    /// exist or defines no property.
     pub async fn get_index<M: EmbeddingModel>(
         &self,
         model: M,
@@ -374,8 +349,7 @@ impl Neo4jClient {
                 .similarity_function(VectorSimilarityFunction::from_str(
                     &index.options.index_config.vector_similarity_function,
                 )?);
-            // Preserve the node label the index is attached to so `insert_documents`
-            // writes to the same label.
+            // Inserts must target the label the index is attached to.
             if let Some(label) = index.labels_or_types.first() {
                 config = config.node_label(label);
             }
@@ -400,24 +374,18 @@ impl Neo4jClient {
         ))
     }
 
-    /// Calls the `CREATE VECTOR INDEX` Neo4j query and waits for the index to be created.
-    /// A newly created index is not immediately fully available but is created (i.e. data is indexed) in the background.
+    /// Creates a vector index over `node_label` if one of that name does not
+    /// already exist, sized to `model`'s dimensions.
     ///
-    /// ❗ If there is already an index targeting the same node label and property, the new index creation will fail.
-    ///
-    /// ### Arguments
-    /// * `index_name` - The name of the index to create.
-    /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
-    ///   the label `:Movie`, pass "Movie" as the `node_label` parameter.
-    /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
-    ///
+    /// `node_label` and the configured embedding property are spliced into the
+    /// Cypher statement verbatim. Waiting for the index to come online is
+    /// best effort: a timeout is logged as a warning rather than returned.
     pub async fn create_vector_index(
         &self,
         index_config: IndexConfig,
         node_label: &str,
         model: &impl EmbeddingModel,
     ) -> Result<(), VectorStoreError> {
-        // Create a vector index on our vector store
         tracing::info!("Creating vector index {} ...", index_config.index_name);
 
         let create_vector_index_query = format!(
@@ -447,7 +415,6 @@ impl Neo4jClient {
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        // Check if the index exists with db.awaitIndex(), the call timeouts if the index is not ready
         let index_exists = self
             .graph
             .run(

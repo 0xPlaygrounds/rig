@@ -1,7 +1,13 @@
-// ================================================================
-//! Google Gemini Embeddings Integration
-//! From [Gemini API Reference](https://ai.google.dev/api/embeddings)
-// ================================================================
+//! Batch text embeddings through the [Gemini API](https://ai.google.dev/api/embeddings).
+//!
+//! ```no_run
+//! use rig_core::providers::gemini::{Gemini, embedding::{Embeddings, EMBEDDING_001}};
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let wire = Embeddings::new(Gemini::from_env()?, EMBEDDING_001, None);
+//! # Ok(())
+//! # }
+//! ```
 
 use serde_json::json;
 
@@ -28,10 +34,6 @@ fn model_default_ndims(model: &str) -> Option<usize> {
     }
 }
 
-// =================================================================
-// The `batchEmbedContents` wire
-// =================================================================
-
 /// Gemini's batch embedding endpoint.
 ///
 /// `POST /v1beta/models/{model}:batchEmbedContents`, authenticated by the
@@ -47,8 +49,8 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
-    /// The wire for `model`, defaulting `ndims` from the model identifier
-    /// when the caller named none.
+    /// Build a wire for `model` with the requested output dimensions.
+    /// If `ndims` is absent, use the model default or 768 for unknown models.
     pub fn new(provider: super::Gemini, model: impl Into<String>, ndims: Option<usize>) -> Self {
         let model = model.into();
         let ndims = ndims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
@@ -90,8 +92,7 @@ impl Wire for Embeddings {
 
         let body = json!({ "requests": requests  });
 
-        // Pretty-printing a whole batch costs more than the request itself,
-        // so it happens only when a subscriber is listening for it.
+        // Avoid allocating formatted batch JSON unless tracing consumes it.
         if tracing::enabled!(target: "rig::embedding", tracing::Level::TRACE)
             && let Ok(pretty_body) = serde_json::to_string_pretty(&body)
         {
@@ -124,10 +125,7 @@ impl Wire for Embeddings {
     }
 }
 
-/// Decodes one `batchEmbedContents` reply.
-///
-/// No `project` impl: the reply carries no verdict, usage or identity for
-/// observation to record — only vectors.
+/// Decode a `batchEmbedContents` reply containing vectors without usage or identity.
 #[derive(Default)]
 pub struct EmbeddingsDecoder;
 
@@ -153,8 +151,7 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
                     .collect(),
             })
             .collect();
-        // batchEmbedContents reports neither usage nor a response id, and
-        // the driver stamps the body as `raw`.
+        // Gemini supplies no usage or response id; the driver attaches the raw body.
         out.push(Ok(embeddings::EmbeddingResponse::new(
             vectors,
             super::PROVIDER_NAME,
@@ -162,10 +159,13 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
     }
 }
 
-// =================================================================
-// Gemini API Types
-// =================================================================
-/// Rust Implementation of the Gemini Types from [Gemini API Reference](https://ai.google.dev/api/embeddings)
+/// Request and response types for [Gemini embeddings](https://ai.google.dev/api/embeddings).
+///
+/// ```
+/// use rig_core::providers::gemini::embedding::gemini_api_types::EmbeddingValues;
+///
+/// let vector = EmbeddingValues { values: vec![1.into(), 2.into()] };
+/// ```
 pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
 

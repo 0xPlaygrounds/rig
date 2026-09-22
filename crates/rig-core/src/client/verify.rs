@@ -1,3 +1,12 @@
+//! Errors and wire-error classification for credential verification.
+//!
+//! ```
+//! use rig_core::client::VerifyError;
+//!
+//! let error = VerifyError::InvalidAuthentication;
+//! assert!(!error.is_retryable());
+//! ```
+
 use crate::error::{ErrorKind, ErrorReport};
 use crate::observe::AdapterErrorBoundary;
 use crate::wire::WireError;
@@ -9,7 +18,6 @@ use thiserror::Error;
 ///
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-///
 #[derive(Debug, Error)]
 pub enum VerifyError {
     #[error("invalid authentication")]
@@ -33,10 +41,8 @@ impl From<http_client::Error> for VerifyError {
     }
 }
 
-/// Verification is the one operation whose *status* is the answer, so the
-/// 401/403 classification lives here rather than in every wire: the driver
-/// funnels a rejected reply through [`WireError::http_response`] and this
-/// is where it becomes [`VerifyError::InvalidAuthentication`].
+/// Maps HTTP 401 and 403 to [`VerifyError::InvalidAuthentication`], discarding
+/// their response metadata. Other HTTP failures preserve their provider response.
 impl WireError for VerifyError {
     fn transport(error: http_client::Error) -> Self {
         match error.non_success_status() {

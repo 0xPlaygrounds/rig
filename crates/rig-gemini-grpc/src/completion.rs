@@ -1,6 +1,13 @@
-// ================================================================
-//! Google Gemini gRPC Completion Integration
-// ================================================================
+//! Gemini completion models over gRPC.
+//!
+//! ```no_run
+//! use rig_gemini_grpc::{Client, completion::{CompletionModel, GEMINI_2_5_FLASH}};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//! let model = CompletionModel::new(Client::new("API_KEY").await?, GEMINI_2_5_FLASH);
+//! # Ok(())
+//! # }
+//! ```
 
 /// `gemini-2.5-flash` completion model
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
@@ -21,10 +28,6 @@ use std::convert::TryFrom;
 
 use super::Client;
 use super::proto::{self, GenerateContentRequest, GenerateContentResponse};
-
-// =================================================================
-// Rig Implementation Types
-// =================================================================
 
 #[derive(Clone, Debug)]
 pub struct CompletionModel {
@@ -62,20 +65,9 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
     map_google_finish_reason(reason.as_str_name())
 }
 
-/// Turn a tool-protocol terminal `finishReason` into an error, mirroring the
-/// REST wire's `function_call_finish_reason_error`.
-///
-/// These reasons mean the turn ABORTED inside the tool protocol: the model
-/// emitted a call the API could not parse, called a tool that was not
-/// offered, or exceeded the per-turn call budget. The candidate that carries
-/// them has no usable tool call, so reporting the turn as merely "finished
-/// for some other reason" lets an agent loop read an aborted turn as a
-/// complete one. The REST surface has always failed here; the gRPC surface
-/// must not diverge.
-///
-/// Only the reasons this proto models are matched — REST's
-/// `MISSING_THOUGHT_SIGNATURE` / `MALFORMED_RESPONSE` have no protobuf
-/// discriminant in `v1beta`, so an unmapped value cannot masquerade as one.
+/// Returns a response error for malformed calls, unexpected calls, or exceeded
+/// tool-call limits, including the supplied finish message. Other discriminants
+/// return `None`.
 pub fn tool_protocol_finish_reason_error(
     reason: i32,
     finish_message: Option<&str>,
@@ -96,11 +88,8 @@ pub fn tool_protocol_finish_reason_error(
 }
 
 impl CompletionModel {
-    /// Execute a completion and return Gemini's own protobuf response.
-    ///
-    /// This is the escape hatch for fields rig does not normalize;
-    /// [`completion::CompletionModel::completion`] calls it and maps the
-    /// result, so there is exactly one RPC either way.
+    /// Executes one RPC and returns the native protobuf response.
+    /// Returns request-conversion, client, or RPC errors.
     pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
@@ -153,13 +142,8 @@ pub(crate) fn text_part(text: String) -> proto::Part {
     data_part(proto::part::Data::Text(text))
 }
 
-// Map a failed gRPC call into a `CompletionError` that preserves the provider's
-// error payload verbatim. gRPC is a non-HTTP transport, so there is no
-// `http::StatusCode`; the body is preserved via `from_provider_body` (status:
-// None) rather than a Rig-prefixed `ProviderError` diagnostic. Note: tonic does
-// not distinguish a server-returned gRPC error from a transport/connection
-// failure, so a pure connection error is also preserved here rather than gated
-// out as a Rig diagnostic the way Bedrock's typed service errors are.
+/// Preserves tonic status display text with RPC code and retry classification.
+/// Transport failures use the same provider-body representation.
 pub(crate) fn rpc_error(status: &tonic::Status) -> CompletionError {
     CompletionError::from_provider_body(status.to_string())
         .with_provider_code(Some(grpc_code_name(status.code())))
@@ -181,11 +165,7 @@ pub(crate) fn grpc_code_name(code: tonic::Code) -> String {
         })
 }
 
-/// Whether a gRPC status is one the same call may reasonably be retried
-/// on: the server was unreachable or overloaded, or the call was cut short
-/// (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`, `DEADLINE_EXCEEDED`, `ABORTED`).
-/// Every other code says the call itself is wrong or the resource is not
-/// there, and retrying it as-is asks the same question again.
+/// Recognizes transient gRPC codes; other codes are non-transient.
 pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
     matches!(
         code,
@@ -196,7 +176,6 @@ pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
     )
 }
 
-// Helper function to create gRPC request from Rig's CompletionRequest
 pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
@@ -220,7 +199,6 @@ pub(crate) fn create_grpc_request(
     rig_core::providers::internal::resolve_empty_tool_result_names(&mut chat_history);
     let mut contents = Vec::new();
 
-    // Convert chat history to gRPC Content messages
     for msg in chat_history {
         contents.push(rig_message_to_grpc_content(msg)?);
     }
@@ -240,7 +218,6 @@ pub(crate) fn create_grpc_request(
         })
     };
 
-    // Handle generation config
     let generation_config = if temperature.is_some() || max_tokens.is_some() {
         Some(proto::GenerationConfig {
             temperature: temperature.map(|t| t as f32),
@@ -251,7 +228,6 @@ pub(crate) fn create_grpc_request(
         None
     };
 
-    // Handle tools (functions)
     let tools = if !tools.is_empty() {
         let function_declarations = tools
             .into_iter()
@@ -285,7 +261,6 @@ pub(crate) fn create_grpc_request(
     })
 }
 
-// Convert Rig message to gRPC Content
 fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, CompletionError> {
     match msg {
         message::Message::System { .. } => Err(CompletionError::RequestError(
@@ -318,7 +293,6 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
 
 use rig_core::providers::gemini::completion::split_system_messages_from_history;
 
-// Convert Rig UserContent to gRPC Part
 fn rig_user_content_to_grpc_part(
     content: message::UserContent,
 ) -> Result<proto::Part, CompletionError> {
@@ -345,9 +319,8 @@ fn rig_user_content_to_grpc_part(
             let response_struct =
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
-            // `FunctionResponse.name` is the executed function's name —
-            // required data on the result. Only a provider-issued id may
-            // travel back on the wire (the proto field is optional-empty).
+            // Replay the function name and only provider-issued IDs; local
+            // correlation handles must not reach the wire.
             Ok(data_part(proto::part::Data::FunctionResponse(
                 proto::FunctionResponse {
                     name: result.name,
@@ -414,7 +387,6 @@ fn rig_user_content_to_grpc_part(
     }
 }
 
-// Convert Rig AssistantContent to gRPC Part
 fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
@@ -453,7 +425,6 @@ fn rig_assistant_content_to_grpc_part(
     }
 }
 
-// Convert gRPC GenerateContentResponse to Rig CompletionResponse
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
@@ -521,9 +492,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                         prost_struct_to_json,
                     );
 
-                    // An id-less call mints its correlation handle at the
-                    // call's index — never name-as-id, which collides two
-                    // same-tool calls in one turn.
+                    // Index-based handles distinguish repeated calls to one tool.
                     let index = tool_index;
                     tool_index += 1;
                     let tool_call = message::ToolCall::from_wire_indexed(
@@ -544,11 +513,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
             assistant_contents.push(assistant_content);
 
-            // The wire hangs a `thoughtSignature` on a trailing part carrying
-            // no `thought` flag, and this crate's own streaming adapter keeps
-            // it (`streaming.rs`, the non-thought text arm) while this mapper
-            // dropped it — the same blocking/streaming asymmetry the REST wire
-            // had. One shared rule places it on both transports.
+            // Non-thought text can carry the preceding reasoning signature.
             if !part.thought
                 && matches!(part.data, Some(proto::part::Data::Text(_)))
                 && let Some(signature) = encode_optional_base64(&part.thought_signature)
@@ -578,7 +543,6 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     }
 }
 
-// Implement ProviderResponseExt for telemetry
 impl ProviderResponseExt for GenerateContentResponse {
     type Usage = proto::UsageMetadata;
 
@@ -604,11 +568,7 @@ impl ProviderResponseExt for GenerateContentResponse {
                 let text: Vec<String> = content
                     .parts
                     .iter()
-                    // `thought` marks the model's chain-of-thought, which the
-                    // completion mapper above routes to `Reasoning`. A reader
-                    // that wants the response *text* must skip it, or it
-                    // reports reasoning as the answer — the same defect the
-                    // REST wire carried.
+                    // Reasoning text is not the user-facing answer.
                     .filter(|part| !part.thought)
                     .filter_map(|part| {
                         if let Some(proto::part::Data::Text(text)) = &part.data {
@@ -672,9 +632,7 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionErro
 
 /// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
 ///
-/// Known gap (unchanged here): `tool_use_prompt_token_count` and
-/// `thoughts_token_count` are not yet surfaced, so `tool_use_prompt_tokens`
-/// and `reasoning_tokens` are `None`.
+/// Tool-use, reasoning, and cache-write token counts remain `None`.
 pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
     usage
         .map(|usage| completion::Usage {
@@ -767,15 +725,8 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
     }
 }
 
-// Convert the JSON Schema carried by `ToolDefinition.parameters` into the typed
-// `proto::Schema` expected by `FunctionDeclaration.parameters`.
-//
-// Without this, every tool was sent to Gemini with `parameters = None`, which
-// caused the model to invoke tools with no argument shape (issue #1710).
-//
-// An empty object schema (`{"type": "object", "properties": {}}`, the default
-// when a tool takes no arguments) is mapped to `None` rather than a vacuous
-// schema, matching the convention used by `rig-core::providers::gemini`.
+/// Converts tool parameters to protobuf schema through the shared Gemini conversion.
+/// Empty object schemas map to `None`.
 fn tool_parameters_to_proto_schema(
     value: &serde_json::Value,
 ) -> Result<Option<proto::Schema>, CompletionError> {

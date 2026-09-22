@@ -17,16 +17,8 @@ use native as platform;
 #[cfg(target_family = "wasm")]
 use wasm as platform;
 
-/// Where Copilot's own editor integrations keep their token caches:
-/// `{config_dir}/github_copilot`, holding `access-token` and
-/// `api-key.json`.
-///
-/// [`Authenticator::new`] takes the two cache paths explicitly, because a
-/// host that wants no on-disk cache passes `None` and a test passes a
-/// temporary directory. This is the default the deleted client builder
-/// applied when the caller named neither, and it is the only place the
-/// location is written down — reading a cache Copilot's own tooling wrote
-/// means resolving it the same way.
+/// Return `{config_dir}/github_copilot`, or `None` without a platform config directory.
+/// The directory conventionally contains `access-token` and `api-key.json`.
 pub fn default_token_dir() -> Option<PathBuf> {
     crate::providers::internal::auth::config_dir().map(|dir| dir.join("github_copilot"))
 }
@@ -51,9 +43,7 @@ impl fmt::Debug for AuthSource {
 #[derive(Clone)]
 pub struct Authenticator {
     source: AuthSource,
-    /// The platform half owns the token/key caches (files plus their parsed
-    /// state); serializing access to it — rather than to a detached unit
-    /// lock — is what prevents concurrent refreshes from racing the cache.
+    /// Shared cache access, locked across refresh to prevent concurrent updates.
     platform: Arc<Mutex<platform::PlatformAuthenticator>>,
 }
 
@@ -94,8 +84,9 @@ impl Authenticator {
         }
     }
 
-    /// Resolve the API key (and optional API base), refreshing or signing in
-    /// through `http` — the client's own transport — when the cache is stale.
+    /// Resolve the API key and optional API base, refreshing through `http` as needed.
+    /// Return cache, transport, or authorization errors. OAuth device login is
+    /// unsupported on WASM; access-token exchange remains available.
     pub async fn auth_context<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,

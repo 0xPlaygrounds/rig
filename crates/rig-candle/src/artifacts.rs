@@ -1,4 +1,12 @@
-//! Caller-supplied model artifact buffers and inexpensive buffer validation.
+//! Owned and borrowed model artifact buffers.
+//!
+//! ```
+//! use rig_candle::ModelData;
+//!
+//! fn artifacts(config: Vec<u8>, tokenizer: Vec<u8>, weights: Vec<u8>) -> ModelData {
+//!     ModelData { config, tokenizer, weights }
+//! }
+//! ```
 
 use crate::CandleError;
 
@@ -13,7 +21,7 @@ pub struct ModelData {
     pub weights: Vec<u8>,
 }
 
-/// Borrowed GGUF artifacts for zero-copy loading from embedded/static bytes.
+/// Borrowed GGUF artifacts for loading without copying the input buffers.
 #[derive(Debug, Clone, Copy)]
 pub struct GgufModelData<'a> {
     /// Contents of `config.json`.
@@ -29,7 +37,7 @@ pub struct GgufModelData<'a> {
 pub enum ModelArtifacts {
     /// One unsharded Hugging Face safetensors checkpoint.
     Safetensors(ModelData),
-    /// A validated SmolLM2 or Qwen3 Q4_K_M GGUF checkpoint.
+    /// A SmolLM2 or Qwen3 Q4_K_M GGUF checkpoint, validated during model loading.
     Gguf(ModelData),
 }
 

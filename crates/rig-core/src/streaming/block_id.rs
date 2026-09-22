@@ -1,22 +1,14 @@
-//! Stream-block identity: the one key a streamed part is known by.
+//! Stream-block identifiers with provider-issued or locally minted provenance.
+//! Events for one block share a key. Minted keys are scoped to a stream and
+//! must not become provider identifiers in replayed history.
 //!
-//! One streamed part — a text block, a reasoning block, a tool call under
-//! assembly — has exactly one identity for the life of its stream, the
-//! [`BlockId`]. Every event about the part carries it: the accumulator keys
-//! its maps by it, and the public stream items carry the same value, so a
-//! consumer correlates a part's deltas with its completed block by simple
-//! equality, and a host can persist or serialize an in-flight stream event
-//! without a second correlator.
+//! ```
+//! use rig_core::streaming::{BlockId, MintKind};
 //!
-//! The id keeps its **provenance**: a [`BlockId::Wire`] is an identifier the
-//! provider actually issued; a [`BlockId::Minted`] was fabricated at the
-//! adapter boundary because the wire supplied none. Provenance is data (the
-//! id is serde) and it is load-bearing — the accumulator's adoption rule and
-//! the sequence laws ask [`BlockId::is_minted`] — but it is never a *durable*
-//! provider handle: the identifiers that travel back on a provider's wire
-//! are the plain strings on the replayable message types
-//! ([`crate::message::Reasoning::id`], [`crate::message::ToolCall::id`]),
-//! populated from a wire id only, never from a minted key.
+//! let key = BlockId::minted(MintKind::Text, 0);
+//! assert!(key.is_minted());
+//! assert_eq!(key.wire_str(), None);
+//! ```
 
 use std::fmt;
 
@@ -32,11 +24,8 @@ pub enum MintKind {
     /// Reasoning blocks on constant-id wires (gemini REST, ollama,
     /// chat-compat `reasoning_content`, candle).
     Reasoning,
-    /// Encrypted/opaque reasoning payloads on id-less wires (openrouter's
-    /// `reasoning.encrypted` detail). A distinct kind from
-    /// [`MintKind::Reasoning`] so a whole encrypted block can never restate —
-    /// and replace — the text block accumulating under the wire's constant
-    /// reasoning key.
+    /// Opaque reasoning payloads without provider IDs. A separate kind prevents
+    /// encrypted blocks from replacing accumulated reasoning text.
     EncryptedReasoning,
     /// Content blocks on index-as-id wires (anthropic, bedrock).
     Block,
@@ -88,31 +77,21 @@ impl MintKind {
 
 /// Identity of one streamed block for the life of its stream.
 ///
-/// `Eq + Hash + Clone` for keying, serde for the wire, `Display` for logs
-/// (`wire id` as-is; a minted id as `{kind}-{index}`). Construction goes
-/// through [`BlockId::wire`] and [`BlockId::minted`] /
-/// [`MintKind::for_wire_index`]; a bare string converts to a wire id.
-///
-/// The serde form is one string, so a block id can key a JSON map:
-/// `"wire:<id>"` or `"minted:<kind>:<index>"`. Decoding rejects anything
-/// else — provenance is never guessed from the shape of an id.
+/// Serializes as `"wire:<id>"` or `"minted:<kind>:<index>"`; other encodings
+/// are rejected. Display uses the provider ID or `{kind}-{index}`.
+/// String conversions create wire IDs without validation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BlockId {
     /// An identifier the provider put on the wire.
     Wire(String),
     /// A key rig minted at a stream boundary because the wire supplied none.
     ///
-    /// The `index` is **per stream**: each model turn opens its own stream
-    /// and its own mint sequence, so two turns each mint
-    /// `minted:reasoning:0`. A minted id is unique within its turn only;
-    /// anything keyed across turns must pair it with the turn (the agent's
-    /// per-dispatch state is keyed by `EffectId`, which is unique per
-    /// dispatch, for exactly this reason).
+    /// Indices restart for each stream. Cross-turn maps must pair this key
+    /// with a turn identifier.
     Minted {
         /// The subsystem that minted this key.
         kind: MintKind,
-        /// Position within the mint's own sequence (a counter or the wire's
-        /// unsigned index) — restarted for every stream.
+        /// Per-stream counter or unsigned wire index.
         index: u64,
     },
 }
@@ -130,10 +109,11 @@ impl From<&str> for BlockId {
 }
 
 impl BlockId {
-    /// A key derived from a wire-supplied identifier. The identifier is
-    /// non-empty: an absent id is not an id, and an adapter whose wire may
-    /// omit one mints ([`SyntheticIds`]) instead — an empty wire key would
-    /// make every id-less block of a stream the same block.
+    /// Creates a provider-issued key. The caller must supply a nonempty ID;
+    /// use [`SyntheticIds`] when the provider supplies none.
+    ///
+    /// # Panics
+    /// Panics on an empty ID when debug assertions are enabled.
     pub fn wire(id: impl Into<String>) -> Self {
         let id = id.into();
         debug_assert!(
@@ -149,12 +129,8 @@ impl BlockId {
         Self::Minted { kind, index }
     }
 
-    /// Whether this key was minted at a stream boundary (stream-internal
-    /// lifecycle bookkeeping: minted-key reasoning items close on
-    /// interleaving output).
-    /// The minted block a minted id names: `tool-3` is the third tool
-    /// block, the inverse of [`Display`](fmt::Display) for a minted id.
-    /// `None` for anything else — a provider's id is a wire id.
+    /// Parses a minted display name such as `tool-3`.
+    /// Returns `None` for unknown kinds or invalid unsigned indices.
     pub fn from_minted_name(id: &str) -> Option<Self> {
         let (kind, index) = id.rsplit_once('-')?;
         let kind = MintKind::parse_name(kind)?;
@@ -166,8 +142,7 @@ impl BlockId {
         matches!(self, Self::Minted { .. })
     }
 
-    /// The wire-supplied identifier this key was derived from, when it was.
-    /// A minted key has none — and never becomes a durable provider handle.
+    /// Returns the provider identifier, or `None` for a minted key.
     pub fn wire_str(&self) -> Option<&str> {
         match self {
             Self::Wire(wire) => Some(wire),
@@ -226,11 +201,8 @@ pub fn non_empty_id(id: impl Into<String>) -> Option<String> {
     if id.is_empty() { None } else { Some(id) }
 }
 
-/// Fabricated per-stream keys for wires that carry none.
-///
-/// Every id-less wire mints keys the same way — a [`MintKind`] plus a
-/// counter or the wire's own unsigned index — and the result is a
-/// [`BlockId::Minted`] that keys the stream and never reaches a request.
+/// Per-stream counter for locally minted block keys.
+/// These keys must not be sent as provider identifiers.
 #[derive(Debug)]
 pub struct SyntheticIds {
     kind: MintKind,
@@ -258,7 +230,7 @@ impl SyntheticIds {
         Self::new(MintKind::Text)
     }
 
-    /// Mint the next counter-based key (vercel's `blockCounter++` pattern).
+    /// Returns the current key and advances the counter, saturating at `u64::MAX`.
     pub fn mint(&mut self) -> BlockId {
         let id = self.kind.for_wire_index(self.next);
         self.next = self.next.saturating_add(1);

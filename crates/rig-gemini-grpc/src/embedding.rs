@@ -1,6 +1,13 @@
-// ================================================================
-//! Google Gemini gRPC Embedding Integration
-// ================================================================
+//! Text embeddings through Gemini's gRPC API.
+//!
+//! ```no_run
+//! use rig_gemini_grpc::{Client, embedding::EMBEDDING_004};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//! let model = Client::new("API_KEY").await?.embedding(EMBEDDING_004, None);
+//! # Ok(())
+//! # }
+//! ```
 
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
@@ -28,11 +35,8 @@ impl EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    /// Perform the requests and return Gemini's native gRPC answers — one
-    /// `EmbedContentResponse` per input text, in input order, because
-    /// `EmbedContent` takes one content per call — instead of the normalized
-    /// [`embeddings::EmbeddingResponse`]. Same requests, transport, and error
-    /// path as [`embeddings::EmbeddingModel::embed_texts_response`].
+    /// Embeds texts sequentially and returns native responses in input order.
+    /// Stops at the first client or RPC error without returning partial results.
     pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
@@ -122,13 +126,8 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     }
 }
 
-// Map a failed gRPC call into an `EmbeddingError` that preserves the provider's
-// error payload verbatim. gRPC is a non-HTTP transport, so there is no
-// `http::StatusCode`; the body is preserved via `from_provider_body` (status:
-// None) rather than a Rig-prefixed `ProviderError` diagnostic. Note: tonic does
-// not distinguish a server-returned gRPC error from a transport/connection
-// failure, so a pure connection error is also preserved here rather than gated
-// out as a Rig diagnostic the way Bedrock's typed service errors are.
+/// Preserves tonic status display text as an error body with RPC code and retry
+/// classification. Transport failures use the same representation.
 fn rpc_error(status: &tonic::Status) -> EmbeddingError {
     EmbeddingError::from_provider_body(status.to_string())
         .with_provider_code(Some(super::completion::grpc_code_name(status.code())))

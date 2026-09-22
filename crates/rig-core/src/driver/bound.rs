@@ -1,21 +1,23 @@
-//! A wire and its socket.
+//! Pairs provider configuration with a transport.
+//!
+//! ```no_run
+//! use rig_core::driver::Bind;
+//! use rig_core::providers::openai::{self, OpenAI};
+//!
+//! # fn example(http: impl rig_core::driver::Socket) -> Result<(), Box<dyn std::error::Error>> {
+//! let model = OpenAI::from_env()?.responses(openai::GPT_5_2).bind(http);
+//! # let _ = model;
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::http_client::{BoxedHttpClient, HttpClientExt};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::{Capabilities, Wire};
 
-/// A [`Wire`] bundled with the transport it speaks over.
-///
-/// This is the one type in rig-core that implements the consumer-facing
-/// model traits ([`CompletionModel`](crate::completion::CompletionModel),
-/// [`EmbeddingModel`](crate::embeddings::EmbeddingModel), and the rest): the
-/// wire says what to send and how to read the reply, `H` carries the bytes,
-/// and [`call`](super::call) / [`stream`](super::stream) join them.
-///
-/// `H` defaults to the erased [`BoxedHttpClient`], so `Bound<W>` means "any
-/// transport" — the shape a host that owns one transport for many providers
-/// holds. The default does not apply in expression position, so
-/// [`Bound::new`] still infers `H` from its argument.
+/// A [`Wire`] paired with a transport, implementing the corresponding consumer
+/// model traits. `H` defaults to [`BoxedHttpClient`] in type annotations;
+/// [`Self::new`] infers it from the supplied transport.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bound<W, H = BoxedHttpClient> {
     /// What to send and how to read the reply.
@@ -30,11 +32,7 @@ impl<W, H> Bound<W, H> {
         Self { wire, http }
     }
 
-    /// Replace the wire, keeping the socket.
-    ///
-    /// The one forwarder for a wire's options: `bound.map_wire(|wire|
-    /// wire.with_prompt_caching())` rather than a forwarding method per
-    /// option on every bound type.
+    /// Transforms the wire while retaining the transport.
     pub fn map_wire<V>(self, map: impl FnOnce(W) -> V) -> Bound<V, H> {
         Bound {
             wire: map(self.wire),
@@ -69,10 +67,7 @@ where
     }
 }
 
-/// Bind any wire or provider config to a transport.
-///
-/// One blanket impl rather than a `bind` method on every config: whether a
-/// provider can be bound is not a fact about the provider.
+/// Pairs any sized value with a transport. Model traits require a supported wire.
 pub trait Bind: Sized {
     /// Bundle `self` with the socket it will speak over.
     fn bind<H>(self, http: H) -> Bound<Self, H> {

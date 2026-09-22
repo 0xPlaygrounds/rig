@@ -20,16 +20,18 @@ use fastembed::InitOptions;
 #[cfg(feature = "hf-hub")]
 use rig_core::{Embed, embeddings::EmbeddingsBuilder};
 
-/// The `rig-fastembed` client.
-///
-/// Use this as your main entrypoint for any `rig-fastembed` functionality.
+/// Entry point for constructing local Fastembed embedding models.
 #[derive(Clone)]
 pub struct Client;
 
+/// Errors raised while resolving or initializing a Fastembed model.
 #[derive(Debug, Clone)]
 pub enum FastembedError {
+    /// `fastembed` has no metadata for the requested model.
     UnknownModel(FastembedModel),
+    /// The model failed to load, download, or initialize.
     Initialization(String),
+    /// Construction through the generic model factory is unavailable.
     UnsupportedMake,
 }
 
@@ -62,24 +64,18 @@ impl Default for Client {
 }
 
 impl Client {
-    /// Create a new `rig-fastembed` client.
     pub fn new() -> Self {
         Self
     }
 
-    /// Create an embedding model for `model`.
-    ///
-    /// `ndims` is the embedding width; `None` reads it from the model's own
-    /// metadata, which fails for a model `fastembed` does not know. The name
-    /// and shape match [`Bound::embedding`](rig_core::driver::Bound::embedding),
-    /// so a caller swapping a hosted provider for a local one changes only
-    /// the value it calls.
+    /// Loads `model`, downloading it when necessary, and returns an embedding
+    /// model of width `ndims`. `None` takes the width from the model metadata,
+    /// which errors for models `fastembed` does not know.
     ///
     /// # Example
     /// ```
     /// use rig_fastembed::{Client, FastembedModel};
     ///
-    /// // Initialize the `rig-fastembed` client
     /// let fastembed = Client::new();
     ///
     /// let model = fastembed.embedding(&FastembedModel::AllMiniLML6V2Q, None);
@@ -100,13 +96,12 @@ impl Client {
         EmbeddingModel::new(model, ndims)
     }
 
-    /// Create an embedding builder with the given embedding model.
+    /// Loads `model` with its documented width and returns a builder over it.
     ///
     /// # Example
     /// ```
     /// use rig_fastembed::{Client, FastembedModel};
     ///
-    /// // Initialize the Fastembed client
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let fastembed = Client::new();
     ///
@@ -132,6 +127,7 @@ impl Client {
     }
 }
 
+/// Local embedding model executing in the calling process.
 #[derive(Clone)]
 pub struct EmbeddingModel {
     embedder: Option<Arc<TextEmbedding>>,
@@ -141,6 +137,7 @@ pub struct EmbeddingModel {
 }
 
 impl EmbeddingModel {
+    /// Loads `model`, reporting download progress on standard output.
     #[cfg(feature = "hf-hub")]
     pub fn new(model: &fastembed::EmbeddingModel, ndims: usize) -> Result<Self, FastembedError> {
         let embedder = Arc::new(
@@ -158,6 +155,7 @@ impl EmbeddingModel {
         })
     }
 
+    /// Loads a caller-supplied ONNX model, taking only its name from `model_info`.
     pub fn new_from_user_defined(
         user_defined_model: UserDefinedEmbeddingModel,
         ndims: usize,
@@ -224,8 +222,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     })
                     .collect::<Vec<embeddings::Embedding>>();
 
-                // FastEmbed runs in-process: there is no provider payload, no usage,
-                // and no request id. `raw` stays `Null`.
+                // In-process execution reports no raw payload, usage, or request id.
                 Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
             },
         )

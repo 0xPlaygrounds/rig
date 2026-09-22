@@ -1,10 +1,10 @@
-//! The one chat-completions wire.
+//! Chat Completions request encoding and unary or streaming response decoding.
+//! Whole replies and streamed chunks emit events through the same lifecycle helpers.
 //!
-//! [`Chat`] encodes both replies — a unary `chat.completion` body and an SSE
-//! stream of `chat.completion.chunk` frames — and [`ChatDecoder`] folds
-//! both, because the unary body is one more [`WireEvent`] variant whose
-//! `interpret` *synthesizes the stream's events*. There is no second content
-//! mapping, so the two paths cannot disagree about a turn.
+//! ```
+//! use rig_core::providers::openai::OpenAI;
+//! let wire = OpenAI::new("key").chat("gpt-5.2");
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -99,10 +99,7 @@ impl Chat {
 
         if mode == Mode::Streaming {
             if quirks.stream_include_usage {
-                // Shallow, so `include_usage` is inserted *into* any
-                // caller-supplied `stream_options` rather than merged over
-                // it: the caller's keys survive and the usage chunk is still
-                // requested.
+                // Preserve caller stream options, including an explicit include_usage value.
                 match body.get_mut("stream_options") {
                     Some(serde_json::Value::Object(options)) => {
                         options
@@ -132,7 +129,6 @@ impl Chat {
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
 
-        // A streamed reply is SSE; the unary reply is one whole JSON body.
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
             Mode::Unary => Framing::Whole,
@@ -171,10 +167,7 @@ impl Chat {
         self
     }
 
-    /// Adjust the typed request before serialization.
-    ///
-    /// One `match` over the dialect's rewrite, in one place — the
-    /// `prepare_request` overrides that used to be one per provider.
+    /// Apply typed dialect rewrites, rejecting unsupported tool choices or parameters.
     fn prepare(&self, request: &mut unary::CompletionRequest) -> Result<(), CompletionError> {
         match self.provider.dialect.quirks.rewrite {
             BodyRewrite::GroqCompoundTools => fold_groq_native_tools(request)?,
@@ -213,8 +206,8 @@ impl Chat {
         Ok(())
     }
 
-    /// Adjust the serialized body immediately before it is sent — after the
-    /// streaming parameters are merged, so a rewrite sees them.
+    /// Apply dialect body rewrites after merging streaming parameters.
+    /// Return conversion errors for unsupported content.
     fn finalize(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
         let Some(map) = body.as_object_mut() else {
             return Ok(());
@@ -273,9 +266,6 @@ fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), 
     let Some(raw_tools) = map.remove("tools") else {
         return Ok(());
     };
-    // Taken as an array directly rather than through serde: this is the
-    // *request* being shaped, and the only thing to learn about the value is
-    // whether the caller gave an array at all.
     let serde_json::Value::Array(native_tools) = raw_tools else {
         return Err(CompletionError::RequestError(
             "Groq `additional_params.tools` must be an array of native tool objects".into(),
@@ -348,12 +338,8 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
 
             if let Some(content) = message.get_mut("content") {
                 let separator = if is_assistant { "" } else { "\n" };
-                // Text-only arrays flatten; an array carrying an image,
-                // audio, video or file part is left alone so DeepSeek's own
-                // rejection reaches the caller ("unknown variant
-                // `image_url`, expected `text`", verified live). Dropping
-                // those parts here answered the question from the text alone
-                // and never told anyone the attachment was gone.
+                // Preserve nontext parts so unsupported attachments are rejected
+                // rather than silently omitted from the prompt.
                 unary::flatten_text_content_parts(content, separator, true);
             } else if is_assistant {
                 message.insert(
@@ -406,19 +392,8 @@ fn finalize_mistral(
         *tool_choice = serde_json::Value::String("any".to_owned());
     }
 
-    // Mistral accepts a *structured* response format beside tools only under
-    // `tool_choice: auto` (or `none`): anything that forces a call is a 400,
-    // "`json_schema` response type with tools is only compatible with
-    // `tool_choice: auto`". Rig reaches that combination on its own — a
-    // structured-output agent defers `response_format` until a tool result
-    // exists, then emits it beside the caller's standing `tool_choice`, so
-    // the turn after the first tool call dies. Relaxing the choice keeps
-    // both features working; dropping the response format instead would
-    // silently discard the schema the caller asked for.
-    //
-    // Keyed on the format's *type* rather than its presence: the constraint
-    // is specific to `json_schema` and `json_object`, and `{"type": "text"}`
-    // rides beside a forced choice happily.
+    // Mistral rejects forced tool calls beside JSON response formats.
+    // Relax the choice rather than discard the requested schema; text formats are exempt.
     let forces_a_tool_call = map
         .get("tool_choice")
         .is_some_and(|choice| !matches!(choice.as_str(), Some("auto" | "none")));
@@ -479,13 +454,6 @@ fn finalize_mistral(
     Ok(())
 }
 
-// ── Mistral's message content schema ────────────────────────────────────
-//
-// Mistral validates message content as a tagged union, not as OpenAI's
-// content parts, so a part has to be rebuilt as the chunk its schema names.
-// The five below are the kinds the shared OpenAI-compatible conversion can
-// produce.
-
 /// Mistral's text chunk tag.
 const MISTRAL_TEXT: &str = "text";
 /// Mistral's image chunk tag.
@@ -510,12 +478,8 @@ fn mistral_part_text(part: &serde_json::Value) -> Option<&str> {
         })
 }
 
-/// Whether a part is purely textual, and so belongs in the plain-string form.
-///
-/// Decided on the `type` tag first, and only on the keys for a part carrying
-/// no tag. Deciding on the keys alone would let a part that names a chunk
-/// kind *and* happens to carry a `text` key be flattened away, which is the
-/// silent drop this whole path exists to prevent.
+/// Identify text and refusal parts by tag, falling back to payload keys without a tag.
+/// An explicit nontext tag prevents flattening even when a text key is present.
 fn is_mistral_text_part(part: &serde_json::Value) -> bool {
     match part.get("type").and_then(serde_json::Value::as_str) {
         Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => true,
@@ -533,16 +497,9 @@ fn mistral_unsupported(what: &str) -> CompletionError {
     .into()
 }
 
-/// OpenAI's `{"type": "file", "file": {…}}` as the Mistral chunk carrying the
-/// same document.
-///
-/// Inline bytes become `document_url`, which reads the base64 `data:` URI the
-/// shared conversion already built for `file_data` and carries the filename
-/// in its own optional `document_name`. An uploaded-file reference becomes
-/// Mistral's `file` chunk, which names the id at the top level rather than
-/// nesting it under `file` as OpenAI does — sending OpenAI's nesting is
-/// rejected twice over, for a missing `file_id` and for a forbidden extra
-/// `file`, since every Mistral chunk forbids unknown fields.
+/// Convert file data to a document URL or a file reference to a top-level file ID.
+/// Preserve optional filenames for inline documents. Return a conversion error
+/// when neither file data nor a file ID is present.
 fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
     let file = part.get(MISTRAL_FILE);
     let field = |name: &str| {
@@ -550,9 +507,7 @@ fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Com
             .and_then(serde_json::Value::as_str)
     };
 
-    // Already a Mistral file chunk (`file_id` at the top level, as this
-    // emits): pass it through, so finalizing an already-finalized body is a
-    // no-op rather than an error about content rig itself built.
+    // Accept already-converted file references to keep finalization idempotent.
     if let Some(file_id) = part.get("file_id").and_then(serde_json::Value::as_str) {
         return Ok(serde_json::json!({"type": MISTRAL_FILE, "file_id": file_id}));
     }
@@ -577,15 +532,8 @@ fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Com
     }
 }
 
-/// An `input_audio` part as Mistral's canonical audio chunk, whose payload is
-/// the base64 string itself.
-///
-/// Mistral currently also accepts the `{data, format}` object the shared
-/// conversion produces — its schema flattens the object and discards
-/// `format` — but the bare string is the form its published schema
-/// documents. Nothing is lost: a deliberately wrong `format` changes no
-/// result, and a `format` placed as a *sibling* of `input_audio` is rejected
-/// outright.
+/// Convert string or object audio payloads to Mistral's base64-string form.
+/// Return a conversion error for missing or nonstring audio data.
 fn mistral_audio_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
     let payload = part.get(MISTRAL_AUDIO).ok_or_else(|| {
         mistral_unsupported("an audio content part carrying no `input_audio` payload")
@@ -622,12 +570,7 @@ fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Completi
 
     match part.get("type").and_then(serde_json::Value::as_str) {
         Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => text_chunk(part),
-        // The payload needs no reshaping — Mistral's image chunk takes the
-        // `{url, detail}` object rig sends as readily as a bare URL string,
-        // and reads a base64 `data:` URI in either. It is still rebuilt
-        // rather than forwarded, because every Mistral chunk forbids unknown
-        // fields: a stray sibling key riding on the part would 422 the whole
-        // request.
+        // Rebuild the envelope because Mistral rejects unknown sibling fields.
         Some(MISTRAL_IMAGE) => {
             let image = part.get(MISTRAL_IMAGE).ok_or_else(|| {
                 mistral_unsupported("an image content part carrying no `image_url` payload")
@@ -636,8 +579,7 @@ fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Completi
         }
         Some(MISTRAL_AUDIO) => mistral_audio_chunk(part),
         Some(MISTRAL_FILE) => mistral_file_chunk(part),
-        // Already a Mistral document chunk — see `mistral_file_chunk` on why
-        // an already-converted part passes through.
+        // Accept already-converted document parts to keep finalization idempotent.
         Some(MISTRAL_DOCUMENT) => {
             let url = part.get(MISTRAL_DOCUMENT).ok_or_else(|| {
                 mistral_unsupported("a document content part carrying no `document_url`")
@@ -657,42 +599,20 @@ fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, Completi
     }
 }
 
-/// Rewrite one serialized message `content` into Mistral's content schema.
-///
-/// Mistral accepts content as either a plain string or an array of typed
-/// chunks. Text-only content keeps the plain-string form it has always taken.
-/// Content carrying anything else keeps the array, with each part rendered
-/// the way Mistral's schema names it, instead of being flattened away: a
-/// text-only flattening keeps only parts with a `text`/`refusal` key, so an
-/// attached image, document or audio clip was dropped from the request and
-/// the caller got an ordinary completion answering a prompt it never sent
-/// (rig#2290).
-///
-/// Content Mistral has no chunk for — video, and any part type a future
-/// conversion adds — fails here rather than being silently removed. The one
-/// exception is content whose parts are *all* tagged `text`/`refusal`: that
-/// takes the flattening path, which drops a part carrying no string payload
-/// exactly as it always has, rather than inventing a new failure for a shape
-/// rig's own conversion cannot produce.
+/// Flatten text-only arrays and convert mixed arrays to Mistral content chunks.
+/// Nonarrays remain unchanged. Unsupported mixed content returns a conversion
+/// error; text-only parts without string payloads are omitted.
 fn mistral_content(content: &mut serde_json::Value) -> Result<(), CompletionError> {
     let Some(parts) = content.as_array() else {
         return Ok(());
     };
 
     if parts.iter().all(is_mistral_text_part) {
-        // Flattened unconditionally rather than under `only_if_all_text`, so
-        // the helper does not re-decide: it judges per key while the guard
-        // above judges on the type tag, and the two disagree for a malformed
-        // part such as `{"type": "text"}` carrying no `text`. Letting the
-        // helper decline would leave that content as an array of chunks
-        // Mistral cannot read.
+        // The tag-based guard is authoritative even for text parts missing their payload.
         unary::flatten_text_content_parts(content, "", false);
         return Ok(());
     }
 
-    // Re-borrowed rather than held across the branch above, which needs
-    // `content` itself. The array-ness was just established, so the `else` is
-    // unreachable — expressed as a no-op instead of an unwrap.
     if let Some(parts) = content.as_array_mut() {
         for part in parts {
             *part = mistral_chunk(part)?;
@@ -728,12 +648,7 @@ fn finalize_openrouter(map: &mut serde_json::Map<String, serde_json::Value>, pro
             message.insert("reasoning".to_owned(), reasoning);
         }
 
-        // OpenRouter's image part is `{"image_url": {"url": …}}` and nothing
-        // else. The shared part carries OpenAI's `detail` hint, which rig
-        // defaults to `"auto"` — i.e. "no preference" — so sending it states
-        // a fidelity choice the caller never made to a gateway whose own
-        // conversion never had the field. The recorded requests carry no
-        // `detail`.
+        // OpenRouter image parts omit the shared fidelity hint.
         for part in message
             .get_mut("content")
             .and_then(as_array_mut)
@@ -774,8 +689,7 @@ fn apply_openrouter_prompt_caching(map: &mut serde_json::Map<String, serde_json:
             }
         }
         Some(serde_json::Value::Array(mut parts)) => {
-            // Mark the last block as the cache boundary; every other block —
-            // images included — is preserved unchanged.
+            // The last block marks the cache boundary without altering earlier content.
             if let Some(last) = parts.last_mut()
                 && let Some(object) = last.as_object_mut()
             {
@@ -792,12 +706,7 @@ fn apply_openrouter_prompt_caching(map: &mut serde_json::Map<String, serde_json:
     }
 }
 
-/// Refuse a document or file part that carries only a provider file id.
-///
-/// The message is the one `openrouter::completion`'s conversion returned, so
-/// a caller who hit this before hits the same wording now. Checked on the
-/// normalized request rather than during conversion because that is where the
-/// dialect is known.
+/// Return a request error for document or image inputs using provider file IDs.
 fn refuse_file_ids(request: &CompletionRequest) -> Result<(), CompletionError> {
     use crate::message::{DocumentSourceKind, Message, UserContent};
 
@@ -817,10 +726,6 @@ fn refuse_file_ids(request: &CompletionRequest) -> Result<(), CompletionError> {
                         return Err(refusal());
                     }
                 }
-                // An OpenAI `file` part converts into a rig document, and
-                // that conversion prefers `file_data` over `file_id` — so a
-                // part reaching here with a bare id genuinely carries only
-                // the id.
                 UserContent::Image(image) => {
                     if matches!(image.data, DocumentSourceKind::FileId(_)) {
                         return Err(refusal());
@@ -862,32 +767,21 @@ impl Wire for Chat {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        // Chat Completions *defers* `response_format` while tools are present
-        // and no tool result exists yet, then applies it once a tool result
-        // is in the history — so the native constraint does not suppress tool
-        // calls; they compose. A dialect measured to honour both at once
-        // (`Quirks::response_format_with_tools`) composes them from the first
-        // turn. A dialect that drops `output_schema` cannot compose them at
-        // all, and the agent falls back to tool-mode enforcement.
+        // Format deferral permits tool composition; dialects without schema support
+        // require the agent's tool-mode enforcement instead.
         ProviderCapabilities::default().with_native_output_tool_composition(
             self.provider.dialect.quirks.supports_response_format,
         )
     }
 }
 
-/// One classified frame of the chat-completions wire.
-///
-/// `Whole` is the unary reply's shape. It is a *modeled event*, not a second
-/// decode path: its `interpret` synthesizes the message id, one block per
-/// content part and tool call, and the terminal record — exactly what a
-/// stream would have pushed — and the shared accumulator does the rest.
+/// Classified Chat Completions frame, including whole replies and terminal signals.
 pub enum ChatEvent {
     /// A `chat.completion.chunk`: one step of a streamed turn.
     Chunk(ChatFrame),
     /// A `chat.completion`: the whole turn in one frame.
     Whole(ChatFrame),
-    /// The wire's `[DONE]` sentinel — the deferred terminal, modeled rather
-    /// than filtered out by the transport.
+    /// The `[DONE]` sentinel authorizing deferred terminal emission.
     Done,
     /// The wire's in-band error envelope, delivered with a 200 status.
     Failure(CompletionError),
@@ -917,8 +811,7 @@ pub struct ChatDecoder {
     logprobs: Option<crate::message::AdditionalParams>,
     /// Accumulated provider-specific top-level chunk metadata.
     additional_params: Option<crate::message::AdditionalParams>,
-    /// Whether `[DONE]` or a frame carrying a finish reason arrived — the
-    /// only signals that count as the provider completing the turn.
+    /// Whether a whole reply, `[DONE]`, or a finish reason established completion.
     saw_terminal: bool,
     /// Whether any frame decoded successfully. A bare `[DONE]` after only
     /// parse failures must not dress the failure up as a default-usage
@@ -926,9 +819,7 @@ pub struct ChatDecoder {
     saw_any_valid_frame: bool,
     /// Whether the wire's own in-band failure was consumed.
     failed: bool,
-    /// Whether this reply arrives whole rather than as a stream — the
-    /// [`Mode`] this decoder was built for: a buffered reply's EOF is the
-    /// end of the answer, a stream's may be truncation.
+    /// Whether this decoder was constructed for unary mode.
     whole: bool,
 }
 
@@ -1031,10 +922,7 @@ impl ChatDecoder {
             }
         }
 
-        // Reasoning details are the turn's own output, so they are emitted
-        // before this chunk's tool-call events: on the wire the detail that
-        // carries a reasoning block arrives before (or with) the tool call it
-        // precedes, and a reasoning block never depends on an open slot.
+        // Replayable reasoning must precede the tool calls it accompanies.
         if self.quirks.reasoning_details {
             for detail in &details {
                 if let Some((id, provider_id, content)) = detail_reasoning(detail) {
@@ -1043,11 +931,7 @@ impl ChatDecoder {
             }
         }
 
-        // The tool-call events are built before they are emitted: the shared
-        // lifecycle emits this chunk's classes in canonical order (reasoning,
-        // its derived boundary end, text, then tool calls), so a chunk
-        // carrying several at once keeps the wire's logical order — the model
-        // reasons, speaks, then acts.
+        // Buffer tool events so reasoning closes and text emits before them.
         let mut tool_events = Vec::new();
         for incoming in tool_calls {
             if let Some(evicted) = self
@@ -1059,9 +943,7 @@ impl ChatDecoder {
                 tool_events.push(evicted.end_event(UnparseableToolInput::EmptyObject));
             }
 
-            // The bridge fixes the assembly key at open — the wire id, or a
-            // provenance-gated mint when the wire omits one — and updates the
-            // established id/name from later fragments.
+            // Later provider metadata must not change an open call's assembly key.
             let slot = self.open_tool_calls.open(
                 incoming.index,
                 incoming.id.as_deref(),
@@ -1122,23 +1004,16 @@ impl ChatDecoder {
 
         if matches!(finish_reason, Some(FinishReason::ToolCalls)) {
             for slot in self.open_tool_calls.drain_ordered() {
-                // `tool_calls` says the provider completed the call. Invalid
-                // JSON in that state is a provider defect, not evidence that
-                // the output-token cap cut the payload short, and must remain
-                // loud. Empty arguments still normalize to `{}` for genuine
-                // zero-argument tools.
+                // Completed calls with malformed arguments must fail, not disappear.
+                // Empty arguments remain valid for zero-argument tools.
                 out.push(Ok(slot.end_event(UnparseableToolInput::Error)));
             }
         }
     }
 
-    /// Whether a decoded unary body is an output-length-truncated turn that
-    /// still carries tool calls — the one state whose verbatim `arguments`
-    /// strings are worth re-reading off the body.
-    ///
-    /// An over-approximation on purpose: a cut that landed before the first
-    /// argument token decodes as `{}`, indistinguishable at this level from a
-    /// genuine zero-argument call, so the raw-body pass decides.
+    /// Whether a length-truncated unary choice contains tool calls needing raw inspection.
+    /// Empty argument strings normalize to `{}`, so typed arguments alone cannot
+    /// distinguish truncation before the first token from a zero-argument call.
     fn is_budget_cut_tool_turn(&self, frame: &ChatFrame) -> bool {
         let Some(choice) = frame.primary() else {
             return false;
@@ -1170,41 +1045,9 @@ impl ChatDecoder {
             })
     }
 
-    /// The unary body with every tool call the output-token budget cut out of
-    /// it dropped, or `None` when nothing was dropped and the ordinary
-    /// classification stands.
-    ///
-    /// # The scenario
-    ///
-    /// A turn that runs out of output budget mid-arguments comes back with
-    /// `finish_reason: "length"` and `tool_calls[].function.arguments` cut
-    /// partway through the JSON object — `{"note": "The` on llama.cpp at a
-    /// 20-token cap. The strict argument decode then fails, and failing it
-    /// takes the *whole frame* down: this is the defect rig#2359 fixed, and
-    /// the shared policy DeepSeek, Mistral and OpenRouter all carry.
-    ///
-    /// # Why the call is dropped rather than raised
-    ///
-    /// The turn happened. It has usage the caller is billed for, an id, a
-    /// finish reason saying precisely what went wrong, and often text beside
-    /// the call — erroring throws all of that away to report one unusable
-    /// fragment. And a mid-arguments cut is not a protocol violation: the
-    /// provider did what it was told and stopped at the cap the caller set,
-    /// so the honest normalization is a `Length` turn minus the call that
-    /// never finished. A half-parsed call must not reach the caller either,
-    /// because invoking a tool on truncated input is worse than not invoking
-    /// it — hence dropped, not repaired.
-    ///
-    /// # What stays loud
-    ///
-    /// Only an output-length choice is eligible, so an ordinary completed
-    /// `tool_calls` turn carrying malformed JSON is still a decode error —
-    /// there the provider claims it finished, and malformed arguments are its
-    /// own defect. Valid-JSON arguments are never touched, whatever they
-    /// contain: unexpected *content* is a schema problem, not a cut. The
-    /// compound-defect guard is the shared policy's
-    /// (`drop_tool_calls_cut_by_budget`), so the raw-body pass here and the
-    /// typed reply views drop exactly the same calls.
+    /// Decode a unary body after dropping incomplete calls from length-truncated choices.
+    /// Preserve valid arguments and require the shared compound-defect check before
+    /// dropping calls. Return `None` if nothing is dropped or decoding still fails.
     fn body_without_calls_cut_by_the_budget(&self, data: &str) -> Option<ChatFrame> {
         let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?;
         let mut dropped = 0;
@@ -1258,18 +1101,7 @@ impl ChatDecoder {
         self.final_finish_reason = finish_reason;
         self.saw_terminal = true;
 
-        // No message-id block: `chatcmpl-…` is a *response*-scoped id, not
-        // an id this wire would recognize on a replayed assistant message,
-        // so it rides on the terminal record's `response_id` — which is also
-        // the only place the streamed reply could put it.
-
-        // The whole turn is declared as one chunk and emitted through the
-        // SAME lifecycle the streamed path uses. Open-coding the emission
-        // here is what made a `reasoning_content` turn panic the sequence
-        // law: `out.reasoning` mints a reasoning part and `out.text` then
-        // interleaved text into it without the derived boundary end. It is
-        // also exactly the unary/stream drift this model exists to remove,
-        // so there is one emitter and not two.
+        // Response IDs are not replayable message IDs; retain them only as terminal metadata.
         let text = {
             // The streamed path concatenates a turn's text deltas into one
             // block, so the unary body's parts join the same way rather than
@@ -1293,11 +1125,7 @@ impl ChatDecoder {
 
         let mut tool_events = Vec::with_capacity(tool_calls.len());
         for call in &tool_calls {
-            // Every id-less call needs its OWN key. A shared constant made
-            // each one restate the block the previous one closed, so a turn
-            // calling the same tool three times without ids folded to one
-            // call — the streamed path mints per call through the same
-            // namespace, so the unary body does too.
+            // Distinct minted keys prevent separate id-less calls from replacing each other.
             let key = crate::streaming::non_empty_id(call.id.clone())
                 .map_or_else(|| self.open_tool_calls.minted_ids().mint(), BlockId::wire);
             tool_events.push(StreamEvent::BlockEnd {
@@ -1311,12 +1139,7 @@ impl ChatDecoder {
         }
 
         let reasoning = reasoning.filter(|reasoning| !reasoning.is_empty());
-        // The unary body carries the same `reasoning_details` array the
-        // streamed path reads off its deltas — an OpenRouter tool-call turn
-        // answers with the plaintext in `message.reasoning` and its
-        // replay-required signature in `message.reasoning_details`. Reading
-        // only `reasoning` dropped the signature, and a reasoning block
-        // replayed unsigned is one the upstream rejects on the next turn.
+        // Structured details retain signatures needed to replay reasoning.
         let details: Vec<&unary::ReasoningDetails> = if self.quirks.reasoning_details {
             reasoning_details.iter().collect()
         } else {
@@ -1328,14 +1151,8 @@ impl ChatDecoder {
             .enumerate()
             .filter_map(|(position, detail)| whole_detail_reasoning(position as u64, detail))
             .collect();
-        // `message.reasoning` is the DISPLAY of the same chain of thought
-        // those entries state structurally (an OpenRouter OpenAI route
-        // answers with the summary in both), so publishing it beside them
-        // would carry one chain twice and replay it twice — the precedence
-        // `replay_whole_response` already gives a Responses body's
-        // structured reasoning items over its top-level `reasoning` string.
-        // Entries that state nothing replayable leave the plaintext as the
-        // turn's only statement, and a signature-only entry rides onto it.
+        // Prefer replayable structured blocks to avoid duplicating their plaintext display.
+        // Without those blocks, preserve plaintext and any signature-only detail.
         let (reasoning, reasoning_signature) = if blocks.is_empty() {
             (
                 reasoning,
@@ -1344,18 +1161,8 @@ impl ChatDecoder {
         } else {
             (None, None)
         };
-        // An empty turn is legal exactly where the reply named a terminal
-        // that CUT IT SHORT — `FinishReason::truncated_output`, the one
-        // statement of that set (`completion::request`). A cap consumed
-        // entirely by hidden reasoning, or a filter that removed
-        // everything, leaves nothing to deliver and the reason is then the
-        // caller's only diagnostic; rejecting it would also discard the
-        // usage the caller is billed for (the recorded contract in
-        // `deepseek_long_loop_output_cap_midway`, record 4: an empty
-        // choice, `Length`, and 900 in / 32 out / 766 cached). `stop` and
-        // `tool_calls` describe a turn that RAN TO COMPLETION, so an empty
-        // one is the provider defect `EMPTY_RESPONSE_ERROR` names, and so
-        // is a body that named no terminal at all.
+        // Truncation or filtering can leave no visible content; retain its reason and usage.
+        // Empty replies without such a reason are response errors.
         let cut_short = self
             .final_finish_reason
             .as_ref()
@@ -1407,8 +1214,6 @@ impl ChatDecoder {
             logprobs: self.logprobs.take().map(Into::into),
             additional_params: self.additional_params.take(),
         };
-        // The provider's own terminal record rides along serialized — the
-        // same capture the unary path performed before normalizing.
         match serde_json::to_value(&native) {
             Ok(raw) => out.final_record(native.into_stream_final(self.provider, raw)),
             Err(error) => out.error(CompletionError::from(error)),
@@ -1434,13 +1239,7 @@ impl Decoder<Completion> for ChatDecoder {
         if let Some(error) = provider_error_envelope(&data) {
             return WireEvent::Known(ChatEvent::Failure(error));
         }
-        // A gateway that answers with a bare JSON string rather than an
-        // envelope. Modeled as its own event for the dialects measured to do
-        // it, because the shared classifier reads a non-object frame as
-        // `Unknown` and the turn would then produce no answer at all. This
-        // pre-empts the classifier exactly as `[DONE]` and the error
-        // envelope above do: a frame that is not the wire's object shape is
-        // not the classifier's business.
+        // Supported bare-string replies must be recognized before object classification.
         if self.quirks.accepts_bare_string_reply
             && let Ok(serde_json::Value::String(text)) =
                 serde_json::from_str::<serde_json::Value>(&data)
@@ -1448,10 +1247,7 @@ impl Decoder<Completion> for ChatDecoder {
             return WireEvent::Known(ChatEvent::BareText(text));
         }
         let classified = classify_chat_completions_frame::<ChatFrame>(&data);
-        // A tool call the output-token budget cut mid-arguments is not a
-        // corrupt frame. It reaches here two ways — the strict argument
-        // decode fails outright, or the cut landed before the first argument
-        // token and decoded as `{}` — and both are settled on the raw body.
+        // Inspect raw arguments for length cuts, including empty strings normalized to {}.
         let may_be_budget_cut = match &classified {
             WireEvent::Corrupt(_) => true,
             WireEvent::Known(frame) => self.is_budget_cut_tool_turn(frame),
@@ -1475,9 +1271,6 @@ impl Decoder<Completion> for ChatDecoder {
             ChatEvent::Whole(frame) => self.interpret_whole(frame, out),
             ChatEvent::Done => self.saw_terminal = true,
             ChatEvent::BareText(text) => {
-                // The whole reply: no id, no model, no usage and no finish
-                // reason, which is what the gateway sent and what the
-                // deleted `Simple(String)` branch normalized to.
                 self.saw_any_valid_frame = true;
                 self.saw_terminal = true;
                 if !text.is_empty() {
@@ -1511,11 +1304,7 @@ impl Decoder<Completion> for ChatDecoder {
                 );
                 continue;
             }
-            // Only a provider-declared output-length truncation authorizes
-            // discarding malformed partial arguments. `stop`, an unknown
-            // reason, and a bare `[DONE]` all claim completion; treating
-            // their malformed calls as truncation would silently erase
-            // provider output and could hide compound wire defects.
+            // Only an explicit length finish permits dropping malformed arguments.
             let on_unparseable = if output_length_truncation {
                 UnparseableToolInput::Drop
             } else {
@@ -1524,18 +1313,8 @@ impl Decoder<Completion> for ChatDecoder {
             out.push(Ok(slot.end_event(on_unparseable)));
         }
 
-        // A WHOLE reply in which this wire recognized nothing — no chunk,
-        // no completion body, no `[DONE]`, no error envelope — delivered
-        // no turn and reported no defect either: the classifier
-        // warn-skips an unmodeled frame (a gateway answering with a bare
-        // JSON string on a dialect without that quirk) so nothing else
-        // will speak. That is the nothing-delivered state
-        // `EMPTY_RESPONSE_ERROR` names, and reporting it keeps such a
-        // reply a failed call rather than a silent, contentless success.
-        // Scoped to a whole reply because the same EOF on a *stream* is
-        // truncation, reported by the missing terminal record. A corrupt
-        // frame never reaches here as silence: its parse error was
-        // already yielded and is what the caller sees.
+        // Unrecognized unary replies must fail rather than appear empty and successful.
+        // Streams express this condition through a missing terminal record.
         if self.whole && !self.saw_any_valid_frame && !self.saw_terminal {
             out.error(CompletionError::ResponseError(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
@@ -1543,12 +1322,7 @@ impl Decoder<Completion> for ChatDecoder {
             return;
         }
 
-        // Only `[DONE]` or a frame carrying a finish reason counts as the
-        // provider completing the turn. A reply that reached EOF without
-        // either signal (truncation) gets no terminal record — synthesizing
-        // one would present the partial turn as a successful, default-usage
-        // completion. A bare `[DONE]` with no successfully decoded frame at
-        // all is treated the same way: the parse errors were already yielded.
+        // EOF alone or a bare terminator without valid content cannot establish success.
         if !self.saw_terminal || !self.saw_any_valid_frame {
             return;
         }
@@ -1665,12 +1439,7 @@ fn detail_reasoning(
     let unary::ReasoningDetails::Encrypted { id, data, .. } = detail else {
         return None;
     };
-    // The durable handle exists only when the wire issued one; an id-less
-    // detail keys accumulation by a minted key and replays with the id
-    // absent — no fabricated empty "wire" id. The mint kind is
-    // `EncryptedReasoning`, NOT `Reasoning`: plaintext `reasoning` text
-    // accumulates under `Minted { Reasoning, 0 }`, and a whole block under
-    // that same key would restate — i.e. replace — the open text part.
+    // Id-less details must not claim provider identity or share plaintext assembly keys.
     let provider_id = id.clone().and_then(crate::streaming::non_empty_id);
     let key = provider_id
         .as_ref()
@@ -1684,18 +1453,9 @@ fn detail_reasoning(
     ))
 }
 
-/// A unary body's reasoning detail as a whole reasoning block.
-///
-/// The streamed path sees this array as fragments — one `summary`/`text`
-/// token per chunk — so it can lift only a self-contained entry out of one
-/// ([`detail_reasoning`]). A unary body states every entry COMPLETE, and the
-/// gateway requires the array back entry for entry on the next turn:
-/// `crates/rig-cassette/fixtures/cassettes/openrouter/reasoning_roundtrip/nonstreaming.yaml`
-/// record 2 replays the summary AND the encrypted blob, in the order the
-/// reply sent them and nothing besides.
-///
-/// One block per entry, because each carries its own id — the summary none,
-/// the blob its `rs_*` — and a block replays under a single id.
+/// Convert a nonempty unary reasoning detail into one replayable block.
+/// Preserve wire IDs or mint a position-based key. Empty and signature-only
+/// entries return `None`.
 fn whole_detail_reasoning(
     position: u64,
     detail: &unary::ReasoningDetails,
@@ -1721,18 +1481,11 @@ fn whole_detail_reasoning(
                 signature: signature.clone().filter(|signature| !signature.is_empty()),
             },
         ),
-        // Everything else states nothing replayable: an empty entry, or the
-        // signature-only `reasoning.text` an Anthropic route sends to sign
-        // the plaintext it states separately — which is what
-        // [`reasoning_signature`] reads it for.
+        // Signature-only details attach to separately supplied plaintext.
         _ => return None,
     };
     let provider_id = id.clone().and_then(crate::streaming::non_empty_id);
-    // Keyed by the wire id when the entry has one, else by the entry's
-    // POSITION under the structured-detail mint kind: two id-less entries
-    // are then two blocks rather than one restating — replacing — the
-    // other, and neither can restate the plaintext reasoning accumulating
-    // under `Minted { Reasoning, 0 }`.
+    // Positional keys keep id-less entries distinct and separate from plaintext reasoning.
     let key = provider_id.as_ref().map_or_else(
         || BlockId::minted(MintKind::EncryptedReasoning, position),
         |id| BlockId::wire(id.as_str()),
@@ -1740,13 +1493,7 @@ fn whole_detail_reasoning(
     Some((key, provider_id, content))
 }
 
-/// A gateway's signature-only reasoning detail.
-///
-/// Anthropic routes stream the plaintext in `delta.reasoning`, then send its
-/// replay-required signature as a final signature-only `reasoning.text`
-/// detail immediately before the tool call. The unary body carries the same
-/// detail on its assistant message. Feeding that authoritative close into the
-/// shared lifecycle signs the normalized reasoning block on either path.
+/// Return a nonempty signature from a text reasoning detail.
 fn reasoning_signature(detail: &unary::ReasoningDetails) -> Option<String> {
     let unary::ReasoningDetails::Text {
         signature: Some(signature),
@@ -1758,11 +1505,7 @@ fn reasoning_signature(detail: &unary::ReasoningDetails) -> Option<String> {
     (!signature.is_empty()).then(|| signature.clone())
 }
 
-/// One reasoning detail, typed.
-///
-/// A detail type this wire does not model is not an error: the gateways
-/// extend the vocabulary independently, and an unknown entry simply carries
-/// nothing this decoder acts on.
+/// Decode a modeled reasoning detail, returning `None` for unrecognized or invalid shapes.
 fn typed_detail(detail: &serde_json::Value) -> Option<unary::ReasoningDetails> {
     serde_json::from_value(detail.clone()).ok()
 }

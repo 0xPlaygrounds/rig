@@ -1,4 +1,10 @@
 //! Generation configuration, sampling, incremental decoding, and inference sessions.
+//!
+//! ```
+//! use rig_candle::GenerationConfig;
+//!
+//! let config = GenerationConfig { temperature: 0.0, ..Default::default() };
+//! ```
 
 use candle_transformers::generation::Sampling;
 use rig_core::completion::CompletionRequest;
@@ -559,26 +565,15 @@ pub(crate) fn infer(
         loaded.profile.definition.protocol,
     )?;
     raw_response.text = parsed.visible_text;
-    // No emptiness guard here on purpose. One existed, but it was unreachable:
-    // the parser fabricated an empty-text part whenever it had nothing, so
-    // `items` was never empty. Made reachable, it would reject a real outcome —
-    // a model that emits EOS immediately, or only whitespace, which `push_text`
-    // trims away — and turn a degenerate-but-successful local generation into a
-    // hard error. An empty assistant turn is legal everywhere else now; it is
-    // legal here too.
+    // Immediate EOS or trimmed whitespace may produce a valid empty assistant turn.
     Ok(InferredCompletion {
         response: raw_response,
         choice: parsed.items,
     })
 }
 
-/// One local generation, kept in both the shapes callers need.
-///
-/// The assistant protocol is parsed exactly once: `response.text` is the
-/// visible text with protocol markup stripped, and `choice` holds the items
-/// that parse produced. Re-parsing `response.text` would find no tool calls,
-/// since stripping already removed them — so both the raw and the normalized
-/// path read from this single result.
+/// Local response metadata and assistant content from one protocol parse.
+/// `response.text` has markup removed; use `choice` to retain parsed tool calls.
 pub(crate) struct InferredCompletion {
     /// The local model's own response record.
     pub(crate) response: CandleCompletionResponse,
@@ -587,8 +582,8 @@ pub(crate) struct InferredCompletion {
 }
 
 impl InferredCompletion {
-    /// Normalize into rig's completion response, carrying the local
-    /// model's own record — what `raw_completion` returns — as `raw`.
+    /// Normalizes content and metadata, serializing the local response as `raw`.
+    /// Returns serialization errors.
     pub(crate) fn into_normalized(self) -> Result<CompletionResponse, serde_json::Error> {
         let usage = (&self.response).into();
         let finish_reason = self.response.finish_reason.into();
@@ -685,10 +680,8 @@ fn emit_parsed_items(
                 emit(GenerationEvent::ToolCall { id, end })?;
             }
             AssistantContent::Reasoning(reasoning) => {
-                // Same constant-id full-block shape as the gemini adapter's
-                // signed-thinking chunk (#2258 F1), but benign here: candle
-                // never emits reasoning deltas, so a full block under the
-                // shared id has no delta buffer to replace-and-discard.
+                // Whole reasoning blocks share an identity without replacing
+                // accumulated deltas because local generation emits no reasoning deltas.
                 for content in reasoning.content {
                     emit(GenerationEvent::Reasoning {
                         // Local generation has no wire id; fall back to a

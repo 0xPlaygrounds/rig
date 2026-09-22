@@ -1,14 +1,14 @@
-//! Anthropic as data: one config struct, three wires, N dialects.
+//! Configuration and wires for Messages-format completion, model listing,
+//! and credential verification. [`Dialect`] describes endpoint defaults and capabilities.
 //!
-//! Wires: [`Messages`] (`Completion`), [`Models`] (`ModelListing`),
-//! [`Verify`] (`Verify`).
+//! ```no_run
+//! use rig_core::providers::anthropic::{Anthropic, completion::CLAUDE_SONNET_4_6};
 //!
-//! Dialects: [`ANTHROPIC`], plus [`compatible`] for every gateway that
-//! speaks the Messages format (zai, minimax, moonshot, xiaomimimo). A
-//! gateway differs from Anthropic by *data* — its name, its base URL, its
-//! environment variables, whether it defaults `max_tokens` by model or to a
-//! fixed ceiling, and whether it implements Anthropic's constrained tool
-//! schemas — so it is a `const`, not a type.
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let wire = Anthropic::from_env()?.messages(CLAUDE_SONNET_4_6);
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
@@ -28,13 +28,9 @@ use super::completion::{
 };
 use super::streaming::MessagesDecoder;
 
-/// How a Messages-format provider differs from Anthropic: data only.
-///
-/// Serialized by `name` and deserialized by looking that name up in
-/// [`Dialect::by_name`]: a dialect is an *identity*, not a payload, and a
-/// host storing a wire must not be able to reconstitute one with, say,
-/// somebody else's base URL. An unknown name is an error rather than a
-/// silent default.
+/// Endpoint defaults and capabilities for a Messages-format provider.
+/// Serializes by registered name. Serialization rejects modified or unregistered
+/// dialects; deserialization rejects unknown names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Dialect {
     /// The provider descriptor name, as records and telemetry spell it.
@@ -52,10 +48,7 @@ pub struct Dialect {
     pub quirks: Quirks,
 }
 
-/// Everything about a dialect that is not its identity.
-///
-/// `#[non_exhaustive]` because the constants live in this crate and a new
-/// quirk must not be a breaking change for a host that stored a wire.
+/// Token defaults and schema capabilities for a Messages-format dialect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Quirks {
@@ -77,8 +70,7 @@ impl Quirks {
         }
     }
 
-    /// What a gateway documents: one 4096-token ceiling rather than
-    /// per-model limits, and no promise of constrained tool schemas.
+    /// Default to 4096 output tokens without constrained tool schemas.
     pub const fn gateway() -> Self {
         Self {
             max_tokens: MaxTokens::Fixed(4096),
@@ -106,10 +98,7 @@ pub const ANTHROPIC: Dialect = Dialect {
     quirks: Quirks::anthropic(),
 };
 
-/// Every Messages-format dialect this build knows, in declaration order.
-///
-/// One table, so [`Dialect::by_name`], [`all`] and the provider registry
-/// cannot disagree about which dialects exist.
+/// Registered Messages-format dialects in declaration order.
 const ALL: &[&Dialect] = &[&ANTHROPIC, &ZAI, &MINIMAX, &MOONSHOT, &XIAOMIMIMO];
 
 /// Every Messages-format dialect this build knows, in declaration order.
@@ -137,11 +126,8 @@ impl<'de> Deserialize<'de> for Dialect {
     }
 }
 
-/// A gateway speaking the Messages format.
-///
-/// The compatible providers share every field but their name, URL and
-/// environment variables: they mirror Anthropic's `request-id` header and
-/// take the [`Quirks::gateway`] contract.
+/// Build a Messages-format dialect with `request-id` response headers and
+/// [`Quirks::gateway`] defaults. Only registered dialects support serialization.
 pub const fn compatible(
     name: &'static str,
     base_url: &'static str,
@@ -361,29 +347,17 @@ impl Messages {
         self
     }
 
-    /// Enable manual prompt caching.
-    ///
-    /// `cache_control` breakpoints are added to the system prompt, the final
-    /// tool definition when tools are present, and the last content block of
-    /// the last message, so Anthropic can cache the system prompt, the tools
-    /// layer and the conversation history. Use
-    /// [`Self::with_automatic_caching`] to let Anthropic choose and advance a
-    /// single breakpoint instead. Combined, the automatic breakpoint owns the
-    /// moving message cache point while Rig still marks tools and system
-    /// prompt when the four-breakpoint budget permits. Existing
-    /// `cache_control` markers in provider-specific tool definitions are
-    /// preserved and count toward that budget.
+    /// Enable cache breakpoints on the system prompt, final tool, and final message block.
+    /// With automatic caching, the provider owns the moving message breakpoint.
+    /// Existing tool markers are preserved and count toward the four-breakpoint budget.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
     }
 
-    /// Enable Anthropic's automatic prompt caching: a top-level
-    /// `cache_control` the API applies to the last cacheable block and moves
-    /// forward as the conversation grows. No beta header, no manual
-    /// breakpoint management. This is the recommended mode for multi-turn
-    /// conversations; use [`Self::with_prompt_caching`] when you need
-    /// per-block control.
+    /// Enable top-level `cache_control`, advancing the last cacheable block
+    /// as the conversation grows. No beta header is required.
+    /// Caching is skipped below the model-specific minimum prompt length.
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
@@ -399,19 +373,6 @@ impl Messages {
     ///
     /// On a [`Bound`](crate::driver::Bound) the same option is forwarded
     /// with `bound.map_wire(|wire| wire.with_automatic_caching())`.
-    ///
-    /// ## Minimum cacheable prompt length
-    ///
-    /// The combined prompt (tools + system + messages up to the
-    /// automatically chosen breakpoint) must meet the model-specific
-    /// minimum or caching is silently skipped by the API:
-    ///
-    /// | Model | Minimum tokens |
-    /// |-------|---------------|
-    /// | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
-    /// | `claude-sonnet-4-6` | 2 048 |
-    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
-    /// | `claude-haiku-4-5` | 4 096 |
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -441,13 +402,8 @@ impl Messages {
     /// Cache the static prefix (tool definitions and system prompt) at its
     /// own TTL, independent of the conversation tail's.
     ///
-    /// An agent's prompt has two parts with very different volatility: the
-    /// system prompt and tool definitions are byte-identical across
-    /// sessions, while the conversation tail changes every turn and is
-    /// worthless an hour later. A 1-hour cache write costs ~2x base input
-    /// tokens where a 5-minute write costs ~1.25x, so the optimal
-    /// configuration is usually mixed — `1h` on the prefix, the 5-minute
-    /// default on the tail:
+    /// Mark the final tool definition and system prompt at `ttl` without
+    /// changing the conversation tail's TTL.
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
@@ -462,20 +418,9 @@ impl Messages {
     /// # }
     /// ```
     ///
-    /// Rig places explicit `cache_control` markers on the final tool
-    /// definition and the system prompt at this TTL. The conversation tail
-    /// is unaffected: it follows the automatic/top-level TTL (Anthropic's
-    /// moving breakpoint in automatic mode, Rig's last-message marker in
-    /// manual [`Self::with_prompt_caching`] mode).
-    ///
-    /// Anthropic requires 1-hour markers to precede 5-minute ones. The
-    /// static prefix precedes the tail, so `OneHour` here composes with a
-    /// 5-minute tail — but setting `FiveMinutes` here alongside
-    /// [`Self::with_automatic_caching_1h`] is the illegal inversion and
-    /// fails before any request is sent. The model-specific minimum
-    /// cacheable prompt lengths tabulated on
-    /// [`Self::with_automatic_caching`] apply to each marker; below the
-    /// minimum, Anthropic silently skips caching.
+    /// One-hour markers must precede five-minute markers. A five-minute
+    /// prefix with [`Self::with_automatic_caching_1h`] fails during encoding.
+    /// Each marker must meet the model's minimum cacheable prompt length.
     pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
         self.static_prefix_cache_ttl = Some(ttl);
         self
@@ -531,9 +476,7 @@ impl Messages {
         if mode == Mode::Unary {
             return Ok(body);
         }
-        // The streaming endpoint takes `stream` and has always carried an
-        // explicit `tool_choice` iff a non-empty tool set was advertised
-        // (Anthropic rejects `tool_choice` without `tools`).
+        // Anthropic rejects tool_choice without tools.
         if let Some(map) = body.as_object_mut() {
             map.insert("stream".to_owned(), serde_json::Value::Bool(true));
             if map.contains_key("tools") {
@@ -590,9 +533,7 @@ impl Wire for Messages {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        // Anthropic's constrained decoding is designed to compose with
-        // strict tool use, so the schema constraint does not suppress tool
-        // calls (issue #1928).
+        // Constrained output decoding does not suppress strict tool calls.
         ProviderCapabilities::default().with_native_output_tool_composition(true)
     }
 }
@@ -683,10 +624,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, page: Self::Event, out: &mut Output<ModelListing>) {
-        // Anthropic pairs `has_more` with `last_id`, so "more pages, no
-        // cursor" is expressible on this wire and means stop: following an
-        // absent cursor would refetch page one forever. An empty cursor is
-        // the same shape written differently.
+        // Missing or empty cursors would repeatedly fetch page one, even with has_more.
         self.next = page
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());

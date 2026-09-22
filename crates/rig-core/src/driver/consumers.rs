@@ -1,12 +1,17 @@
-//! The consumer-facing traits, implemented once each for [`Bound`].
+//! Consumer model implementations for [`Bound`] and traits for constructing
+//! operation wires from provider configurations.
 //!
-//! Seven impls, total: one per trait. A provider contributes none of them —
-//! it contributes a [`Wire`], and `Bound<W, H>` is the model.
+//! ```no_run
+//! use rig_core::driver::Bind;
+//! use rig_core::providers::openai::{self, OpenAI};
 //!
-//! The `Has*` traits below are the other half: a provider *config* names the
-//! wire it builds for an operation, so one `impl<P: Has…, H>` gives every
-//! provider config the same construction methods on `Bound<P, H>` (and lets
-//! rig-agent offer `agent(model)` without naming a provider).
+//! # fn example(http: impl rig_core::driver::Socket) -> Result<(), Box<dyn std::error::Error>> {
+//! let provider = OpenAI::from_env()?.bind(http);
+//! let model = provider.completion(openai::GPT_5_2);
+//! # let _ = model;
+//! # Ok(())
+//! # }
+//! ```
 
 use super::{Bound, call, stream};
 use crate::completion::{
@@ -105,9 +110,7 @@ where
     ) -> Result<EmbeddingResponse, EmbeddingError> {
         let texts: Vec<String> = texts.into_iter().collect();
         let response = call(&self.wire, &self.http, texts, None).await?;
-        // This impl publishes `ndims()`, so this impl owes the caller
-        // vectors of that width: the declaration is the wire's, the
-        // vectors are the reply's, and nothing else holds both.
+        // Reject vectors whose width violates the model's declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
             response
@@ -138,7 +141,7 @@ where
     ) -> Result<ImageEmbeddingResponse, EmbeddingError> {
         let images: Vec<Vec<u8>> = images.into_iter().collect();
         let response = call(&self.wire, &self.http, images, None).await?;
-        // Same promise as the text wires, on the same value.
+        // Image vectors must also honor the declared dimensions.
         self.wire.capabilities().honour_declaration(
             self.wire.name(),
             response
@@ -243,16 +246,7 @@ where
 /// A provider config that has a completion wire.
 pub use crate::wire::HasCompletion;
 
-/// Anything that builds a completion model for a named model.
-///
-/// This is what the six deleted `*Client` traits were really for, reduced to
-/// the one thing a caller wanted from them, and it is the seam the agent
-/// sugar (`provider.agent(model)`) hangs on. `Bound<P, H>` satisfies it for
-/// every wire-backed provider; the typed-transport providers — Bedrock's
-/// Converse event stream, Vertex AI, gemini-grpc, in-process inference —
-/// implement it directly, because their frames are an SDK's types rather
-/// than bytes and they are not wires. Same spelling either way, which is the
-/// point: a caller does not need to know which kind it has.
+/// Constructs a completion model from a model name.
 pub trait CompletionProvider {
     /// The model this provider builds.
     type Model: CompletionModel;
@@ -348,10 +342,8 @@ pub trait HasVerify: WasmCompatSend + WasmCompatSync {
     fn verify(&self) -> Self::Wire;
 }
 
-/// Build an operation's wire from a bound provider config, keeping the
-/// socket. One impl per operation, never one per provider. The `Bound`
-/// method is named after the wire (`models`), the trait method after the
-/// operation (`model_listing`); they coincide for every other operation.
+/// Generates a bound wire constructor that clones the existing transport.
+/// The bound method name can differ from the provider trait method.
 macro_rules! bound_constructor {
     ($has:ident, $method:ident $(, $arg:ident : $ty:ty)*) => {
         bound_constructor!($has, $method => $method $(, $arg: $ty)*);
@@ -389,9 +381,7 @@ bound_constructor!(HasImageGeneration, image_generation, model: impl Into<String
 #[cfg(feature = "audio")]
 bound_constructor!(HasAudioGeneration, audio_generation, model: impl Into<String>);
 
-/// An embedding builder over a bound embedding wire: it batches many documents
-/// into one provider request, which is what a caller wants instead of an
-/// `embed_text` call apiece.
+/// Document embedding builders using a bound provider's embedding wire.
 impl<P, H> Bound<P, H>
 where
     P: HasEmbedding,
@@ -417,19 +407,13 @@ where
     }
 }
 
-/// The calls on Gemini's explicit context cache: one verb each through
-/// [`call`]. The ones that address an existing handle read a 403 or 404 as
-/// [`CachedContentError::Expired`] — see
-/// `CachedContentError::on_handle` for why `create` does not.
+/// Explicit context-cache operations. Requests targeting an existing handle
+/// map HTTP 403 and 404 to [`CachedContentError::Expired`].
 impl<H> Bound<CachedContents, H>
 where
     H: Socket,
 {
-    /// Upload content and get a handle back.
-    ///
-    /// The returned [`CachedContent::usage_metadata`] reports how many tokens
-    /// are now being stored — and therefore billed — so log it if cost
-    /// matters.
+    /// Creates cached content and returns its handle and storage usage metadata.
     pub async fn create(
         &self,
         request: NewCachedContent,
@@ -457,8 +441,7 @@ where
             .entries()
     }
 
-    /// [`Self::list`] at an explicit page size — see
-    /// [`CachedContents::page_size`] for when one is wanted.
+    /// Lists cached content using an explicit page size.
     pub async fn list_with_page_size(
         &self,
         page_size: usize,
@@ -469,11 +452,8 @@ where
             .entries()
     }
 
-    /// Extend (or shorten) a cache's life.
-    ///
-    /// Expiry is the only mutable part of the resource — the content itself
-    /// is immutable, so refreshing a corpus means creating a new cache and
-    /// deleting the old one.
+    /// Changes cache expiry without modifying its immutable content.
+    /// Returns the updated resource or an error, including `Expired` for HTTP 403/404.
     pub async fn update_expiry(
         &self,
         name: &str,
@@ -489,13 +469,10 @@ where
             .resource()
     }
 
-    /// Delete a cached content.
-    ///
-    /// Storage bills until this is called, so a cache created for the
-    /// duration of a task should be deleted on the failure path too. A
-    /// handle that is not a plain `cachedContents/<id>` (or a bare `<id>`)
-    /// is refused with [`CachedContentError::Invalid`] before anything is
-    /// sent.
+    /// Deletes cached content before its expiry. Callers should also clean up
+    /// task-scoped caches on failure to avoid continued storage charges.
+    /// Handles other than `cachedContents/<id>` or bare `<id>` return
+    /// [`CachedContentError::Invalid`] before dispatch.
     pub async fn delete(&self, name: &str) -> Result<(), CachedContentError> {
         let request = CachedContentRequest::Delete(name.to_owned());
         call(&self.wire, &self.http, request, None)

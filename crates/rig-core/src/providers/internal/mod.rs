@@ -1,14 +1,12 @@
-//! Shared provider infrastructure: the decode-then-validate classify layer
-//! and the assembly helpers every completion decoder shares.
+//! Shared frame classification, tool-call identity, and reasoning lifecycle helpers.
+//! Companion providers use these helpers from [`Decoder`](crate::wire::Decoder)
+//! implementations that emit into [`AdapterOutput`](crate::operation::AdapterOutput).
 //!
-//! [`wire`], [`tool_call_bridge`], and [`chunk_lifecycle`] are public so
-//! out-of-tree providers implement [`Decoder`](crate::wire::Decoder) and
-//! inherit the shared fold ([`WireDriver`](crate::driver::WireDriver)),
-//! frame-triage policy, index→identity tool-call bridging, and the
-//! boundary-less reasoning lifecycle derivation instead of hand-rolling
-//! per-provider assemblers; the remaining helpers are crate-private. The
-//! output buffer those decoders write through is the completion operation's
-//! own ([`AdapterOutput`](crate::operation::AdapterOutput)).
+//! ```
+//! use rig_core::providers::internal::resolve_empty_tool_result_names;
+//! let mut history = Vec::new();
+//! resolve_empty_tool_result_names(&mut history);
+//! ```
 
 pub(crate) mod auth;
 pub mod chunk_lifecycle;
@@ -24,23 +22,10 @@ pub mod tool_call_bridge;
 pub mod tool_call_ids;
 pub mod wire;
 
-/// Fill empty [`ToolResult::name`](crate::message::ToolResult::name)s from
-/// the calls they answer, for wires that key the replay on the tool name
-/// (Gemini `functionResponse.name`, Ollama tool messages, Vertex AI,
-/// gemini-grpc, Interactions).
-///
-/// `ToolResult::name` is required data, but rig's own inbound converters
-/// cannot supply it: Anthropic, OpenAI-chat, Cohere, and Bedrock tool
-/// messages carry no name on their wires, so a cross-provider ingested
-/// transcript arrives with `name: ""`. The name lives on the paired
-/// assistant call in the same history — match by rig's correlation handle
-/// first, then by provider identifiers. A result matching no call keeps
-/// its empty name: the transcript genuinely lacks the data, and the wire's
-/// own rejection is the honest failure.
-///
-/// `pub` (not `pub(crate)`) because sibling serializer crates that speak a
-/// name-keyed tool-result wire (rig-vertexai, rig-gemini-grpc) carry the
-/// same contract; it is not part of rig-core's stable public API.
+/// Fill empty tool-result names from preceding unmatched calls.
+/// Match local correlation handles before provider identifiers. Existing names
+/// disambiguate multiple matches; ambiguous or missing matches remain unchanged.
+/// This helper is available to companion serializers but is not a stable public API.
 pub fn resolve_empty_tool_result_names(history: &mut [crate::message::Message]) {
     use crate::message::{AssistantContent, Message, ToolCall, UserContent};
 
@@ -199,12 +184,8 @@ pub(crate) fn request_id_from_headers(
     })
 }
 
-/// `path` with `pairs` appended as a percent-encoded query string.
-///
-/// Shared by the wires that put a provider-reported cursor or page size in a
-/// URI (Anthropic's `Models`, Gemini's `models` and `cachedContents`):
-/// concatenating a cursor raw would let a `+`, `&`, `=` or `/` inside it
-/// truncate the cursor or inject a query parameter, silently dropping pages.
+/// Append `pairs` to `path` as a percent-encoded query string.
+/// Encoding preserves cursor delimiters and prevents query-parameter injection.
 pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     for (name, value) in pairs {

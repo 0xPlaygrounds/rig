@@ -1,21 +1,18 @@
-//! The string identity a runtime names a model by.
+//! Serializable model labels resolved to live handles by a runtime.
 //!
-//! Live model behaviour is reached through the effect bus: a
-//! `ModelHandle` (`rig_agent::bus`) is a typed view bound to the key
-//! a [`CompletionAdapter`](crate::serve::adapters::CompletionAdapter) was
-//! registered under. `ModelRef` is the serializable half — the label under
-//! which a runtime resolves that key.
+//! ```
+//! use rig_core::completion::ModelRef;
+//!
+//! let model = ModelRef::new("assistant");
+//! assert_eq!(model.as_str(), "assistant");
+//! ```
 
 use std::{fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-/// The string identity a specification, asset, or registry names a model by.
-///
-/// A handle is live process state and is never serialized; a `ModelRef` is
-/// the serializable half — the label under which a runtime resolves a
-/// handle (`ModelRef → HandlerKey → ModelHandle`). It carries no provider
-/// semantics: two refs are equal when their strings are equal.
+/// Model label serialized as a string. Equality compares labels without
+/// provider interpretation; resolving a label to a live handle is the runtime's responsibility.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ModelRef(Arc<str>);
 

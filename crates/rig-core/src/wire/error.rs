@@ -1,23 +1,25 @@
-//! What the driver needs from an operation's error enum.
+//! Error construction and classification for operation drivers.
+//!
+//! ```
+//! use rig_core::{completion::CompletionError, wire::WireError};
+//!
+//! let error = CompletionError::decode("missing response content".to_owned());
+//! assert!(error.provider_response_status().is_none());
+//! ```
 
 use crate::error::ErrorReport;
 use crate::observe::AdapterErrorBoundary;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-/// The error construction and classification the one driver needs, so every
-/// operation's failures funnel the same way: a transport failure, a
-/// non-success reply, a 2xx error envelope, an undecodable body.
-///
-/// Implemented by every operation error enum in the crate through the
-/// crate-internal `impl_wire_error!` macro; the enums are structurally
-/// identical by construction, because `provider_error_enum!` declares them.
+/// Constructs and classifies transport, provider-response, and decode errors
+/// while preserving available response metadata.
 pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized + 'static {
     /// Route a transport error: a non-success reply the transport reported
     /// as an error is the provider's reply; a response-less failure is not.
     fn transport(error: crate::http_client::Error) -> Self;
 
-    /// The provider's reply, preserved verbatim with its status — a
-    /// non-success response or a 2xx error envelope.
+    /// Preserves a provider error body and status, including error envelopes
+    /// returned with successful HTTP statuses.
     fn http_response(status: http::StatusCode, body: &str) -> Self;
 
     /// An undecodable body.
@@ -34,11 +36,10 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     /// Attach the status a preserved reply arrived with, when it has none.
     fn with_provider_status(self, status: Option<http::StatusCode>) -> Self;
 
-    /// Attach the provider's transport request id (rig#2314).
+    /// Attaches the provider's transport request ID when supported.
     fn with_provider_request_id(self, request_id: Option<String>) -> Self;
 
-    /// Attach the reply's headers, so rate-limit metadata survives
-    /// (rig#2210).
+    /// Attaches response headers, including rate-limit metadata.
     fn with_response_headers(self, headers: Option<http::HeaderMap>) -> Self;
 
     /// The HTTP status of a preserved provider reply, when this error has
@@ -49,13 +50,8 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     /// payload the decoder's projection still reads facts off.
     fn provider_response_body(&self) -> Option<&str>;
 
-    /// Attach which provider and path produced the failure.
-    ///
-    /// The driver knows both at the seam, and an operation whose error is a
-    /// *diagnostic* rather than a preserved reply (model listing: a catalog
-    /// fetch that fails names no response the caller can inspect) wants them
-    /// in the message. The default keeps the provider's own body verbatim,
-    /// which is what every other operation preserves.
+    /// Adds provider and path context when supported. The default returns the
+    /// error unchanged, preserving provider bodies.
     fn with_route(self, _provider: &str, _path: &str) -> Self {
         self
     }
@@ -67,10 +63,8 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     fn boundary(&self) -> AdapterErrorBoundary;
 }
 
-/// Implement [`WireError`] for an operation error enum declared by
-/// [`provider_error_enum!`](crate::provider_response::provider_error_enum)
-/// (or structurally equal to one: the five core variants plus whatever the
-/// operation adds, all of which are request faults).
+/// Implements [`WireError`] for enums with the standard provider-error variants
+/// and constructors. Additional variants are classified as request faults.
 macro_rules! impl_wire_error {
     ($error:ty) => {
         impl $crate::wire::WireError for $error {

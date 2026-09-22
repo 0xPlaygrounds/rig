@@ -1,6 +1,13 @@
 //! A family-typed handler key: vocabulary, not runtime. A `Key<F>` is a
 //! [`HandlerKey`] plus a proof, at the type level, of the family the
 //! handler under it serves; it holds no reference to a dispatcher.
+//!
+//! ```
+//! use rig_core::effect::{Key, family};
+//!
+//! let key = Key::<family::Completion>::new_unchecked("model".into());
+//! assert_eq!(key.as_str(), "model");
+//! ```
 
 use std::{fmt, hash::Hash, marker::PhantomData};
 
@@ -8,17 +15,10 @@ use serde::{Deserialize, Serialize};
 
 use super::{Family, HandlerKey};
 
-/// A [`HandlerKey`] that carries the family it serves in its type: what rig
-/// mints for the registrations it makes (an agent's model, memory and
-/// retrieval keys, a registry's tool generations) and what a typed
-/// registration on the bus returns. A dispatcher binds one with an existence
-/// check only — the family was proven when the key was minted.
-///
-/// On the wire a `Key<F>` is the bare string (`serde(transparent)`), so a
-/// log, a scene and a cassette hold exactly what they held before; an
-/// explicit or replayed key stays a [`HandlerKey`] and binds through the
-/// dispatcher's checked path, which verifies the family. `Send + Sync` for
-/// every `F`.
+/// A handler key tagged with its effect family. Serializes as the underlying
+/// string without the family tag. Deserialization and [`Self::new_unchecked`]
+/// do not validate a registration; hosts must ensure the key serves `F`.
+/// Implements `Send + Sync` independently of `F`.
 #[derive(Serialize, Deserialize)]
 #[serde(transparent, bound = "")]
 pub struct Key<F: Family> {

@@ -1,7 +1,9 @@
 //! Image model identifiers for OpenAI's `/images/generations` endpoint.
 //!
-//! The endpoint itself is [`Images`](super::wire::Images); what is left here
-//! is the model vocabulary the wire is pointed at.
+//! ```
+//! use rig_core::providers::openai::{OpenAI, image_generation::GPT_IMAGE_2};
+//! let wire = OpenAI::new("key").images(GPT_IMAGE_2);
+//! ```
 
 pub const DALL_E_2: &str = "dall-e-2";
 pub const DALL_E_3: &str = "dall-e-3";

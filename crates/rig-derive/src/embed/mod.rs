@@ -30,8 +30,6 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
             let (basic_targets, basic_target_size) = data_struct.basic(generics, &embed_trait);
             let (custom_targets, custom_target_size) = data_struct.custom()?;
 
-            // If there are no fields tagged with `#[embed]` or `#[embed(embed_with = "...")]`, return an empty TokenStream.
-            // ie. do not implement `Embed` trait for the struct.
             if basic_target_size + custom_target_size == 0 {
                 return Err(syn::Error::new_spanned(
                     name,
@@ -67,9 +65,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
     Ok(r#gen)
 }
 
-/// A field carrying both `#[embed]` and `#[embed(embed_with = "...")]` would be
-/// embedded twice, and of two `#[embed(embed_with = "...")]` attributes only
-/// the first would be honored; make both conflicts errors instead.
+/// Rejects mixed basic/custom annotations and repeated custom annotations.
 fn reject_conflicting_embed_attributes(data_struct: &DataStruct) -> syn::Result<()> {
     for field in &data_struct.fields {
         let basic = field
@@ -106,14 +102,14 @@ fn field_member(index: usize, field: &syn::Field) -> syn::Member {
 }
 
 trait StructParser {
-    // Handles fields tagged with `#[embed]`
+    /// Generates basic embedding calls and adds field-type bounds.
     fn basic(
         &self,
         generics: &mut syn::Generics,
         embed_trait: &TokenStream,
     ) -> (TokenStream, usize);
 
-    // Handles fields tagged with `#[embed(embed_with = "...")]`
+    /// Generates custom embedding calls or returns attribute errors.
     fn custom(&self) -> syn::Result<(TokenStream, usize)>;
 }
 
@@ -124,7 +120,6 @@ impl StructParser for DataStruct {
         embed_trait: &TokenStream,
     ) -> (TokenStream, usize) {
         let embed_targets = basic_embed_fields(self)
-            // Iterate over every field tagged with `#[embed]`
             .map(|(field_name, field)| {
                 add_struct_bounds(generics, &field.ty, embed_trait);
 
@@ -144,7 +139,6 @@ impl StructParser for DataStruct {
 
     fn custom(&self) -> syn::Result<(TokenStream, usize)> {
         let embed_targets = custom_embed_fields(self)?
-            // Iterate over every field tagged with `#[embed(embed_with = "...")]`
             .into_iter()
             .map(|(field_name, custom_func_path)| {
                 quote! {
