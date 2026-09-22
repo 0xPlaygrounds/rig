@@ -1,4 +1,4 @@
-//! The long tool loop's native column on Gemini: gemini-2.5-flash.
+//! Native long loops on Gemini 2.5 Flash and long tasks on Gemini 3.8 Flash.
 //! Every live cell reuses the producer's recording with strict matching; the
 //! row-1 unary recording is also cut at tool turns 1, 2, 3 and last and
 //! resumed live in a fresh world. The scripted row-4 cells serve that same
@@ -27,6 +27,45 @@ fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clo
         temperature: Some(0.0),
         additional_params: None,
     }
+}
+
+fn task_wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        model: client.completion("gemini-3.8-flash"),
+        thinking: THINKING,
+        route: None,
+        temperature: Some(0.0),
+        additional_params: Some(
+            || serde_json::json!({"generationConfig":{"thinkingConfig":{"thinkingLevel":"low"}}}),
+        ),
+    }
+}
+
+async fn with_task_cassette<F, Fut>(scenario: &'static str, body: F)
+where
+    F: FnOnce(super::super::support::BoundGemini) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    with_gemini_cassette(scenario, body).await;
+    crate::ecs_matrix::long_tasks::assert_requests("gemini", scenario);
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    #[tokio::test]
+    task_repair: ("long_task_matrix/repair", crate::ecs_matrix::long_tasks::REPAIR, None, "gemini_long_task_repair");
+    #[tokio::test]
+    task_repair_streamed: ("long_task_matrix/repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "gemini_long_task_repair_streamed");
+    #[tokio::test]
+    task_reconcile: ("long_task_matrix/reconcile", crate::ecs_matrix::long_tasks::RECONCILE, None, "gemini_long_task_reconcile");
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    #[tokio::test]
+    task_inventory: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, None, "gemini_long_task_inventory");
+    #[tokio::test]
+    task_inventory_restore: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, Some(5), "gemini_long_task_inventory_restore");
 }
 
 /// A key the scripted cells send: it must never reach a recording or a

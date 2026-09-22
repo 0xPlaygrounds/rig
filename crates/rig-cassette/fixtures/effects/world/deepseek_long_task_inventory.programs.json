@@ -1,0 +1,4411 @@
+{
+  "golden/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/tool:task_operation#0",
+            "descriptor": {
+              "key": "golden/tool:task_operation#0",
+              "family": {
+                "family": "tool",
+                "name": "task_operation",
+                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "apply",
+                        "check",
+                        "revise"
+                      ]
+                    },
+                    "key": {
+                      "type": "string",
+                      "enum": [
+                        "index",
+                        "all",
+                        "depot/1",
+                        "depot/2",
+                        "depot/3",
+                        "depot/4",
+                        "depot/5",
+                        "depot/6"
+                      ]
+                    },
+                    "value": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "key",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": 2048,
+          "rig_ecs::agent::MaxTurns": 30,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "rig_ecs::agent::ProviderRetries": 0,
+          "rig_ecs::agent::Temperature": 0.0,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Grant": 1
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 30,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::ToolPolicy": {
+            "concurrency": 3
+          },
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 5,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Build the six-depot inventory. Apply under the exact keys depot/1 through depot/6; never append /available or /reserved. Read index. Read each depot in a separate turn. Apply available = stock + inbound - damaged in THREE turns with TWO parallel applies each. Check all and answer done. Do not request a revision until the user asks. Set value to null except when applying an integer."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ],
+  "golden/run#1": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/tool:task_operation#0",
+            "descriptor": {
+              "key": "golden/tool:task_operation#0",
+              "family": {
+                "family": "tool",
+                "name": "task_operation",
+                "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "apply",
+                        "check",
+                        "revise"
+                      ]
+                    },
+                    "key": {
+                      "type": "string",
+                      "enum": [
+                        "index",
+                        "all",
+                        "depot/1",
+                        "depot/2",
+                        "depot/3",
+                        "depot/4",
+                        "depot/5",
+                        "depot/6"
+                      ]
+                    },
+                    "value": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "key",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": 2048,
+          "rig_ecs::agent::MaxTurns": 30,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
+          "rig_ecs::agent::ProviderRetries": 0,
+          "rig_ecs::agent::Temperature": 0.0,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Grant": 1
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 12
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 30,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunResult": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6.",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::Settled": {},
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::ToolPolicy": {
+            "concurrency": 3
+          },
+          "rig_ecs::agent::Usage": {
+            "input_tokens": 15692,
+            "output_tokens": 1304,
+            "total_tokens": 16996,
+            "cached_input_tokens": 13184
+          },
+          "rig_ecs::agent::UsesModel": 0,
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 5,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Build the six-depot inventory. Apply under the exact keys depot/1 through depot/6; never append /available or /reserved. Read index. Read each depot in a separate turn. Apply available = stock + inbound - damaged in THREE turns with TWO parallel applies each. Check all and answer done. Do not request a revision until the user asks. Set value to null except when applying an integer."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "I'll start by reading the index to understand the task structure."
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_1"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_1"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "index",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 1
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 11,
+          "rig_ecs::agent::checkpoint::TurnResults": 14,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "I'll start by reading the index to understand the task structure."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "index",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 562,
+                "output_tokens": 82,
+                "total_tokens": 644,
+                "cached_input_tokens": 128
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_1",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "I'll start by reading the index to understand the task structure.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_1",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_1",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 82,
+                  "prompt_cache_hit_tokens": 128,
+                  "prompt_cache_miss_tokens": 434,
+                  "prompt_tokens": 562,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 128
+                  },
+                  "total_tokens": 644
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_1"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_1"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "keys": [
+                        "depot/1",
+                        "depot/2",
+                        "depot/3",
+                        "depot/4",
+                        "depot/5",
+                        "depot/6"
+                      ],
+                      "task": "Inventory"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 11,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "I'll start by reading the index to understand the task structure."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 11,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "index",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 14,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 15,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "keys": [
+                "depot/1",
+                "depot/2",
+                "depot/3",
+                "depot/4",
+                "depot/5",
+                "depot/6"
+              ],
+              "task": "Inventory"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Now I'll read each depot in a separate turn, starting with depot/1."
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_2"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_2"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "depot/1",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 2
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 21,
+          "rig_ecs::agent::checkpoint::TurnResults": 24,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 17,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 17,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "Now I'll read each depot in a separate turn, starting with depot/1."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "depot/1",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 695,
+                "output_tokens": 89,
+                "total_tokens": 784,
+                "cached_input_tokens": 512
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_2",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Now I'll read each depot in a separate turn, starting with depot/1.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_2",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_2",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 89,
+                  "prompt_cache_hit_tokens": 512,
+                  "prompt_cache_miss_tokens": 183,
+                  "prompt_tokens": 695,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 512
+                  },
+                  "total_tokens": 784
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 2
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 17,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_2"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_2"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "stock": 10,
+                      "inbound": 2,
+                      "damaged": 1,
+                      "reserved": 0,
+                      "instruction": "available = stock + inbound - damaged - reserved"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 3,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 3,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 21,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Now I'll read each depot in a separate turn, starting with depot/1."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 21,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/1",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 24,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 25,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 10,
+              "inbound": 2,
+              "damaged": 1,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_3"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_3"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "depot/2",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 3
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 31,
+          "rig_ecs::agent::checkpoint::TurnResults": 33,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 27,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 27,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "depot/2",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 828,
+                "output_tokens": 73,
+                "total_tokens": 901,
+                "cached_input_tokens": 640
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_3",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_3",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_3",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 73,
+                  "prompt_cache_hit_tokens": 640,
+                  "prompt_cache_miss_tokens": 188,
+                  "prompt_tokens": 828,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 640
+                  },
+                  "total_tokens": 901
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 4,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 4
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 27,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_3"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_3"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "stock": 20,
+                      "inbound": 4,
+                      "damaged": 2,
+                      "reserved": 0,
+                      "instruction": "available = stock + inbound - damaged - reserved"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 5,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 5,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 31,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/2",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 33,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 34,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 20,
+              "inbound": 4,
+              "damaged": 2,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_4"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_4"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "depot/3",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 4
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 40,
+          "rig_ecs::agent::checkpoint::TurnResults": 42,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 36,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 36,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "depot/3",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 945,
+                "output_tokens": 73,
+                "total_tokens": 1018,
+                "cached_input_tokens": 768
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_4",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_4",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_4",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 73,
+                  "prompt_cache_hit_tokens": 768,
+                  "prompt_cache_miss_tokens": 177,
+                  "prompt_tokens": 945,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 768
+                  },
+                  "total_tokens": 1018
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 6,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 6
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 36,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_4"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_4"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "stock": 30,
+                      "inbound": 6,
+                      "damaged": 3,
+                      "reserved": 0,
+                      "instruction": "available = stock + inbound - damaged - reserved"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 7,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 7,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 40,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/3",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 42,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 43,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 30,
+              "inbound": 6,
+              "damaged": 3,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_5"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_5"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "depot/4",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 5
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 49,
+          "rig_ecs::agent::checkpoint::TurnResults": 51,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 45,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 45,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "depot/4",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 1062,
+                "output_tokens": 73,
+                "total_tokens": 1135,
+                "cached_input_tokens": 896
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_5",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_5",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_5",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 73,
+                  "prompt_cache_hit_tokens": 896,
+                  "prompt_cache_miss_tokens": 166,
+                  "prompt_tokens": 1062,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 896
+                  },
+                  "total_tokens": 1135
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 8,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 8
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 45,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_5"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_5"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "stock": 40,
+                      "inbound": 8,
+                      "damaged": 4,
+                      "reserved": 0,
+                      "instruction": "available = stock + inbound - damaged - reserved"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 9,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 9,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 49,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_5"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_5"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/4",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 51,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_5"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_5"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 52,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 40,
+              "inbound": 8,
+              "damaged": 4,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_6"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_6"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "depot/5",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 6
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 58,
+          "rig_ecs::agent::checkpoint::TurnResults": 60,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 54,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 54,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "depot/5",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 1179,
+                "output_tokens": 73,
+                "total_tokens": 1252,
+                "cached_input_tokens": 1024
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_6",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_6",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_6",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 73,
+                  "prompt_cache_hit_tokens": 1024,
+                  "prompt_cache_miss_tokens": 155,
+                  "prompt_tokens": 1179,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1024
+                  },
+                  "total_tokens": 1252
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 10,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 10
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 54,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_6"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_6"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "stock": 50,
+                      "inbound": 10,
+                      "damaged": 5,
+                      "reserved": 0,
+                      "instruction": "available = stock + inbound - damaged - reserved"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 11,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 11,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 58,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_6"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_6"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/5",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 60,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_6"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_6"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 61,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 50,
+              "inbound": 10,
+              "damaged": 5,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_7"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_7"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "read",
+                    "key": "depot/6",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 7
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 67,
+          "rig_ecs::agent::checkpoint::TurnResults": 69,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 63,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 63,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "read",
+                      "key": "depot/6",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 1296,
+                "output_tokens": 73,
+                "total_tokens": 1369,
+                "cached_input_tokens": 1152
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_7",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_7",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_7",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 73,
+                  "prompt_cache_hit_tokens": 1152,
+                  "prompt_cache_miss_tokens": 144,
+                  "prompt_tokens": 1296,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1152
+                  },
+                  "total_tokens": 1369
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 12,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 12
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 63,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_7"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_7"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "stock": 60,
+                      "inbound": 12,
+                      "damaged": 6,
+                      "reserved": 0,
+                      "instruction": "available = stock + inbound - damaged - reserved"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 13,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 13,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 67,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_7"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_7"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/6",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 69,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_7"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_7"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 70,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 60,
+              "inbound": 12,
+              "damaged": 6,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22)."
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_8"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_8"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "apply",
+                    "key": "depot/1",
+                    "value": 11
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_9"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_9"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "apply",
+                    "key": "depot/2",
+                    "value": 22
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 8
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 77,
+          "rig_ecs::agent::checkpoint::TurnResults": 81,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 72,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 72,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22)."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "apply",
+                      "key": "depot/1",
+                      "value": 11
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "apply",
+                      "key": "depot/2",
+                      "value": 22
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 1413,
+                "output_tokens": 184,
+                "total_tokens": 1597,
+                "cached_input_tokens": 1152
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_8",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22).",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_8",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_9",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_8",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 184,
+                  "prompt_cache_hit_tokens": 1152,
+                  "prompt_cache_miss_tokens": 261,
+                  "prompt_tokens": 1413,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1152
+                  },
+                  "total_tokens": 1597
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 14,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 14
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 72,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_8"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_8"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "saved": "depot/1",
+                      "value": 11
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 15,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 15,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 72,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 1,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_9"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_9"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "saved": "depot/2",
+                      "value": 22
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 16,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 16,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 77,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22)."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 77,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_8"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_8"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/1",
+                  "value": 11
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 77,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_9"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_9"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/2",
+                  "value": 22
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 81,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_8"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_8"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 82,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/1",
+              "value": 11
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 81,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_9"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_9"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 84,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/2",
+              "value": 22
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44)."
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_10"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_10"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "apply",
+                    "key": "depot/3",
+                    "value": 33
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_11"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_11"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "apply",
+                    "key": "depot/4",
+                    "value": 44
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 9
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 91,
+          "rig_ecs::agent::checkpoint::TurnResults": 95,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 86,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 86,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44)."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_10"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_10"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "apply",
+                      "key": "depot/3",
+                      "value": 33
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_11"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_11"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "apply",
+                      "key": "depot/4",
+                      "value": 44
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 1641,
+                "output_tokens": 165,
+                "total_tokens": 1806,
+                "cached_input_tokens": 1408
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_9",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44).",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_10",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_11",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_9",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 165,
+                  "prompt_cache_hit_tokens": 1408,
+                  "prompt_cache_miss_tokens": 233,
+                  "prompt_tokens": 1641,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1408
+                  },
+                  "total_tokens": 1806
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 17,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 17
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 86,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_10"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_10"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "saved": "depot/3",
+                      "value": 33
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 18,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 18,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 86,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 1,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_11"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_11"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "saved": "depot/4",
+                      "value": 44
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 19,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 19,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 91,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44)."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 91,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_10"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_10"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/3",
+                  "value": 33
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 91,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_11"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_11"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/4",
+                  "value": 44
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 95,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_10"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_10"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 96,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/3",
+              "value": 33
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 95,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_11"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_11"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 98,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/4",
+              "value": 44
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66)."
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_12"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_12"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "apply",
+                    "key": "depot/5",
+                    "value": 55
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_13"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_13"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "apply",
+                    "key": "depot/6",
+                    "value": 66
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 10
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 105,
+          "rig_ecs::agent::checkpoint::TurnResults": 109,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 100,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 100,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66)."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_12"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_12"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "apply",
+                      "key": "depot/5",
+                      "value": 55
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_13"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_13"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "apply",
+                      "key": "depot/6",
+                      "value": 66
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 1850,
+                "output_tokens": 165,
+                "total_tokens": 2015,
+                "cached_input_tokens": 1664
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_10",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66).",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_12",
+                          "index": 0,
+                          "type": "function"
+                        },
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_13",
+                          "index": 1,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_10",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 165,
+                  "prompt_cache_hit_tokens": 1664,
+                  "prompt_cache_miss_tokens": 186,
+                  "prompt_tokens": 1850,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1664
+                  },
+                  "total_tokens": 2015
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 20,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 20
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 100,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_12"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_12"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "saved": "depot/5",
+                      "value": 55
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 21,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 21,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 100,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 1,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_13"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_13"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "saved": "depot/6",
+                      "value": 66
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 22,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 22,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 105,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66)."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 105,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_12"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_12"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/5",
+                  "value": 55
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 105,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_13"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_13"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/6",
+                  "value": 66
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 109,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_12"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_12"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 110,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/5",
+              "value": 55
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 109,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_13"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_13"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 112,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/6",
+              "value": 66
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "All six applied. Now checking all."
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_14"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_14"
+                },
+                "function": {
+                  "name": "task_operation",
+                  "arguments": {
+                    "action": "check",
+                    "key": "all",
+                    "value": null
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
+            "turn": 11
+          },
+          "rig_ecs::agent::checkpoint::TurnAssistant": 118,
+          "rig_ecs::agent::checkpoint::TurnResults": 121,
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 114,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 114,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "All six applied. Now checking all."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_14"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_14"
+                  },
+                  "function": {
+                    "name": "task_operation",
+                    "arguments": {
+                      "action": "check",
+                      "key": "all",
+                      "value": null
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 2059,
+                "output_tokens": 77,
+                "total_tokens": 2136,
+                "cached_input_tokens": 1920
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_11",
+              "finish_reason": "tool_calls",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "All six applied. Now checking all.",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
+                            "name": "task_operation"
+                          },
+                          "id": "call_REDACTED_14",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_11",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 77,
+                  "prompt_cache_hit_tokens": 1920,
+                  "prompt_cache_miss_tokens": 139,
+                  "prompt_tokens": 2059,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1920
+                  },
+                  "total_tokens": 2136
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 23,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 23
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 114,
+          "rig_ecs::agent::ToolCallSlot": {
+            "index": 0,
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_14"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_14"
+            },
+            "name": "task_operation"
+          },
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "tool_result",
+              "result": {
+                "status": "success",
+                "value": [
+                  {
+                    "type": "json",
+                    "value": {
+                      "passed": true,
+                      "failures": [],
+                      "revision": 6
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 24,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 24,
+          "rig_ecs::bus::effect::ToolInputs": {},
+          "rig_ecs::bus::effect::ToolOutputs": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 118,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "All six applied. Now checking all."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 118,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_14"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_14"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "check",
+                  "key": "all",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 121,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_14"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_14"
+              },
+              "name": "task_operation"
+            }
+          },
+          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 122,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "passed": true,
+              "failures": [],
+              "revision": 6
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6."
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {
+              "task_operation": "golden/tool:task_operation#0"
+            },
+            "allowed": [
+              "task_operation"
+            ]
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 124,
+          "rig_ecs::agent::Advert": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 124,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6."
+                }
+              ],
+              "usage": {
+                "input_tokens": 2162,
+                "output_tokens": 177,
+                "total_tokens": 2339,
+                "cached_input_tokens": 1920
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_12",
+              "finish_reason": "stop",
+              "provider": "deepseek",
+              "model": "deepseek-flash",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null,
+                    "message": {
+                      "content": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6.",
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_12",
+                "model": "deepseek-flash",
+                "object": "chat.completion",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+                "usage": {
+                  "completion_tokens": 177,
+                  "prompt_cache_hit_tokens": 1920,
+                  "prompt_cache_miss_tokens": 242,
+                  "prompt_tokens": 2162,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 1920
+                  },
+                  "total_tokens": 2339
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 25,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 25
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 127,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6."
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 18,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 1,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::ToolPolicy": {
+            "concurrency": 3
+          },
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 130,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Build the six-depot inventory. Apply under the exact keys depot/1 through depot/6; never append /available or /reserved. Read index. Read each depot in a separate turn. Apply available = stock + inbound - damaged in THREE turns with TWO parallel applies each. Check all and answer done. Do not request a revision until the user asks. Set value to null except when applying an integer."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 132,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "I'll start by reading the index to understand the task structure."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 132,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "index",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 135,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 136,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "keys": [
+                "depot/1",
+                "depot/2",
+                "depot/3",
+                "depot/4",
+                "depot/5",
+                "depot/6"
+              ],
+              "task": "Inventory"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 138,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Now I'll read each depot in a separate turn, starting with depot/1."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 138,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/1",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 141,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 142,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 10,
+              "inbound": 2,
+              "damaged": 1,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 144,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/2",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 146,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 147,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 20,
+              "inbound": 4,
+              "damaged": 2,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 149,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/3",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 151,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 152,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 30,
+              "inbound": 6,
+              "damaged": 3,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 154,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_5"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_5"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/4",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 156,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_5"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_5"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 157,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 40,
+              "inbound": 8,
+              "damaged": 4,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 159,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_6"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_6"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/5",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 161,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_6"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_6"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 162,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 50,
+              "inbound": 10,
+              "damaged": 5,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 164,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_7"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_7"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "read",
+                  "key": "depot/6",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 166,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_7"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_7"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 167,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "stock": 60,
+              "inbound": 12,
+              "damaged": 6,
+              "reserved": 0,
+              "instruction": "available = stock + inbound - damaged - reserved"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 169,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "All six depots read. Now I'll apply in three turns with two parallel applies each.\n\nTurn 1: depot/1 (10+2-1=11) and depot/2 (20+4-2=22)."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 169,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_8"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_8"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/1",
+                  "value": 11
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 169,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_9"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_9"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/2",
+                  "value": 22
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 173,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_8"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_8"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 174,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/1",
+              "value": 11
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 173,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_9"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_9"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 176,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/2",
+              "value": 22
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 178,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Turn 2: depot/3 (30+6-3=33) and depot/4 (40+8-4=44)."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 178,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_10"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_10"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/3",
+                  "value": 33
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 178,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_11"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_11"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/4",
+                  "value": 44
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 182,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_10"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_10"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 183,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/3",
+              "value": 33
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 182,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_11"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_11"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 185,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/4",
+              "value": 44
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 187,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Turn 3: depot/5 (50+10-5=55) and depot/6 (60+12-6=66)."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 187,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_12"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_12"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/5",
+                  "value": 55
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 187,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_13"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_13"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "apply",
+                  "key": "depot/6",
+                  "value": 66
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 191,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_12"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_12"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 192,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/5",
+              "value": 55
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 191,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_13"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_13"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 194,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "saved": "depot/6",
+              "value": 66
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 196,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "All six applied. Now checking all."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 196,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolCall": {
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_14"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_14"
+              },
+              "function": {
+                "name": "task_operation",
+                "arguments": {
+                  "action": "check",
+                  "key": "all",
+                  "value": null
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 199,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "ToolResult": {
+              "call": {
+                "origin": "explicit",
+                "id": "call_REDACTED_14"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_14"
+              },
+              "name": "task_operation"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 200,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Json": {
+              "passed": true,
+              "failures": [],
+              "revision": 6
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 202,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Done. All six depots built and validated:\n\n| Key | stock | inbound | damaged | available |\n|-----|-------|---------|---------|-----------|\n| depot/1 | 10 | 2 | 1 | 11 |\n| depot/2 | 20 | 4 | 2 | 22 |\n| depot/3 | 30 | 6 | 3 | 33 |\n| depot/4 | 40 | 8 | 4 | 44 |\n| depot/5 | 50 | 10 | 5 | 55 |\n| depot/6 | 60 | 12 | 6 | 66 |\n\nApplied under exact keys depot/1–depot/6 (no /available or /reserved suffixes), in three turns of two parallel applies each. check(all) passed with no failures at revision 6."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 129,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 204,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Revise the inventory: reserve five units at each depot. First call revise(all) to apply the new constraint. Update available quantities under the exact keys depot/1 through depot/6; do not create subkeys. Read each depot again in a separate turn, then apply the updated available amounts in THREE turns with TWO parallel applies each. Check all and answer done. Preserve the original stock and inbound facts from our earlier work."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 2,
+        "next_id": 26
+      },
+      "binaries": []
+    }
+  ]
+}

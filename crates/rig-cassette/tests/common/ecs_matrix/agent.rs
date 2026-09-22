@@ -228,6 +228,7 @@ fn typed_tool(
         ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
         ToolKind::CheckpointBatch => builder.tool(super::checkpoint::CheckpointBatch),
         ToolKind::CheckpointLarge => builder.tool(super::checkpoint::CheckpointLarge),
+        ToolKind::LongTask => builder.tool(super::long_tasks::tool(cell)),
         ToolKind::RepoListFiles => builder.tool(ListFiles(repo(cell))),
         ToolKind::RepoReadFile => builder.tool(ReadFile(repo(cell))),
         ToolKind::RepoWriteFile => builder.tool(WriteFile(repo(cell))),
@@ -276,6 +277,7 @@ fn grant<M: CompletionModel + Clone + 'static>(
                 ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
                 ToolKind::CheckpointBatch => builder.tool(super::checkpoint::CheckpointBatch),
                 ToolKind::CheckpointLarge => builder.tool(super::checkpoint::CheckpointLarge),
+                ToolKind::LongTask => builder.tool(super::long_tasks::tool(cell)),
                 ToolKind::RepoListFiles => {
                     builder.tool(super::long_loop::ListFiles(super::long_loop::repo(cell)))
                 }

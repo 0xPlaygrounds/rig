@@ -729,7 +729,7 @@ pub(crate) fn turns(log: &EffectLog) -> Vec<Turn<'_>> {
 }
 
 /// The calls a completion record's response asked for, in order.
-fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json::Value)> {
+pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json::Value)> {
     match &record.outcome {
         Ok(Outcome::Completion(response)) => response
             .choice
@@ -749,7 +749,7 @@ fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json::Value)> {
 /// The ids of the calls a completion record's response asked for, in
 /// call order: the `i`-th id belongs to the `i`-th record of `turn.tools`
 /// (`assert_log` step 1 pins the two orders together).
-fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::ToolCallId> {
+pub(crate) fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::ToolCallId> {
     match &record.outcome {
         Ok(Outcome::Completion(response)) => response
             .choice
@@ -764,7 +764,7 @@ fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::ToolCall
     }
 }
 
-fn dispatched_call(record: &EffectRecord) -> (String, serde_json::Value) {
+pub(crate) fn dispatched_call(record: &EffectRecord) -> (String, serde_json::Value) {
     match &record.kind {
         EffectKind::ToolCall { name, args } => (
             name.clone(),
@@ -774,14 +774,14 @@ fn dispatched_call(record: &EffectRecord) -> (String, serde_json::Value) {
     }
 }
 
-fn dispatched_result(record: &EffectRecord) -> &rig_core::tool::ToolResult {
+pub(crate) fn dispatched_result(record: &EffectRecord) -> &rig_core::tool::ToolResult {
     match &record.outcome {
         Ok(Outcome::ToolResult { result }) => result,
         other => panic!("the tool outcome is published: {other:?}"),
     }
 }
 
-fn request_history(record: &EffectRecord) -> &[Message] {
+pub(crate) fn request_history(record: &EffectRecord) -> &[Message] {
     match &record.kind {
         EffectKind::Completion { request, .. } => &request.chat_history,
         other => panic!("a completion record, not {other:?}"),
@@ -800,7 +800,7 @@ fn usage(record: &EffectRecord) -> Option<&Usage> {
 /// dialect's own fields, `None` where the dialect has no such field or the
 /// wire omitted it. Usage is what the adapter parsed *from* this payload,
 /// so the two must agree on every record.
-fn raw_usage(
+pub(crate) fn raw_usage(
     thinking: ThinkingWire,
     record: &EffectRecord,
 ) -> (Option<u64>, Option<u64>, Option<u64>) {

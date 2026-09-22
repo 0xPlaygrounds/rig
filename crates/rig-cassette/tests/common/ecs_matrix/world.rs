@@ -389,7 +389,9 @@ fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
 /// (`hold_after_tool_turn`, owner `matrix/checkpoint`): the checkpoint
 /// rows and the long tool loop.
 fn holds_tool_turn(cell: &Cell) -> bool {
-    cell.name.starts_with("checkpoint_") || super::long_loop::is_long_loop(cell)
+    cell.name.starts_with("checkpoint_")
+        || super::long_loop::is_long_loop(cell)
+        || super::long_tasks::applicable(cell)
 }
 
 /// A tool adapter as an erased handler over the harness IO runtime.
@@ -457,6 +459,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     app.add_plugins(rig_ecs::RigPlugin::with_policy(policy));
     app.finish();
     app.cleanup();
+    super::long_tasks::install_budget(&mut app, cell);
     let gates = Gates {
         tool: Arc::new(Semaphore::new(0)),
         stream: Arc::new(Semaphore::new(0)),
@@ -664,6 +667,10 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             ),
             // The repository tree is host state, leased per cell and rebound
             // unchanged to a restored world (`super::long_loop`).
+            ToolKind::LongTask => (
+                "task_operation",
+                tool_handler(ToolAdapter::new(super::long_tasks::tool(cell)), &runtime),
+            ),
             ToolKind::RepoListFiles => (
                 "list_files",
                 tool_handler(
@@ -1751,7 +1758,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 .before(RigSet::Settle),
         );
     }
-    let history: Vec<MessageParts> = program
+    let mut history: Vec<MessageParts> = program
         .history
         .map(|history| {
             history()
@@ -1779,8 +1786,21 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     let mut delivery_head = None;
     for (n, prompt) in prompts.into_iter().enumerate() {
         before.push(live_entities(app.world_mut()));
+        let max_turns = if super::long_tasks::applicable(cell) {
+            let current = recorder.log();
+            let used = saved_head
+                .as_ref()
+                .into_iter()
+                .flat_map(|head: &EffectLog| &head.records)
+                .chain(&current.records)
+                .filter(|record| matches!(record.kind, EffectKind::Completion { .. }))
+                .count();
+            Some(super::long_tasks::remaining_turns(used))
+        } else {
+            program.max_turns
+        };
         let world = app.world_mut();
-        let mut run = world.spawn_run(agent, &history, prompt, program.streamed, program.max_turns);
+        let mut run = world.spawn_run(agent, &history, prompt, program.streamed, max_turns);
         if cell.name == "checkpoint_parallel_batch" {
             super::checkpoint_world::bind_parallel_run(world, run);
         }
@@ -1795,7 +1815,12 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 serde_json::to_string(&rig_cassette::ecs::identity::spec_json(world, run)).unwrap()
             );
         }
-        let cut_after = (n == last).then_some(cell.resume_after).flatten();
+        let cut_run = if super::long_tasks::applicable(cell) {
+            0
+        } else {
+            last
+        };
+        let cut_after = (n == cut_run).then_some(cell.resume_after).flatten();
         if holds_tool_turn(cell)
             && let Some(cut_after) = cut_after
         {
@@ -1845,7 +1870,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             assert_mid_stream_scene_refused(&mut app, cell, &program, &recorder.log());
             gates.stream.add_permits(1);
             drive_run(&mut app, run, None, &mut cut, &recorder).await;
-        } else if cell.live_resume {
+        } else if cell.live_resume && cut_after.is_some() {
             // The live resume consumes the cell's recording once: the first
             // world sends its head, and only the restored world can send
             // the tail. The cassette's strict HTTP match therefore checks
@@ -1857,7 +1882,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 cell.name
             );
             assert_eq!(n, 0);
-            assert_eq!(last, 0);
+            assert!(last == 0 || super::long_tasks::applicable(cell));
             drive_until(&mut app, run, cut_after, &mut cut, &recorder, true).await;
             let (scene, _, _) = cut.take().expect("the tool-result cut");
             let encoded_scene = serde_json::to_string(&scene).expect("scene JSON");
@@ -1943,6 +1968,13 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 app.world().get::<Failed>(run)
             );
         }
+        if n < last && super::long_tasks::applicable(cell) {
+            super::long_tasks::assert_intermediate(cell);
+            history = super::reasoning::assistant_history(app.world_mut(), run)
+                .iter()
+                .map(|message| MessageParts::from_message(message).expect("committed task history"))
+                .collect();
+        }
         runs.push(run);
     }
     let run = *runs.last().expect("a run");
@@ -1973,6 +2005,9 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     golden(&log);
     assert_ending(app.world(), &program, run, &log);
     assert_graph(&mut app, &runs, &program, &log);
+    if super::long_tasks::applicable(cell) {
+        super::long_tasks::assert_world(app.world_mut(), &runs, &log);
+    }
     if cell.reasoning.is_some() {
         super::reasoning::assert_log(cell, wire.thinking, &log);
         let history = super::reasoning::assistant_history(app.world_mut(), run);

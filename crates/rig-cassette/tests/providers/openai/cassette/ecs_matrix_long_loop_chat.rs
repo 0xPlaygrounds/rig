@@ -25,6 +25,38 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
     }
 }
 
+fn task_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        additional_params: Some(
+            || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks"}),
+        ),
+        ..wire(client)
+    }
+}
+
+async fn with_task_cassette<F, Fut>(scenario: &'static str, body: F)
+where
+    F: FnOnce(OpenAiCassette) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    with_openai_cassette(scenario, body).await;
+    crate::ecs_matrix::long_tasks::assert_requests("openai", scenario);
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    #[tokio::test]
+    task_repair: ("long_task_matrix/chat_repair", crate::ecs_matrix::long_tasks::REPAIR, None, "openai_chat_long_task_repair");
+    #[tokio::test]
+    task_repair_streamed: ("long_task_matrix/chat_repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "openai_chat_long_task_repair_streamed");
+    #[tokio::test]
+    task_reconcile: ("long_task_matrix/chat_reconcile", crate::ecs_matrix::long_tasks::RECONCILE, None, "openai_chat_long_task_reconcile");
+    #[tokio::test]
+    task_inventory: ("long_task_matrix/chat_inventory", crate::ecs_matrix::long_tasks::INVENTORY, None, "openai_chat_long_task_inventory");
+    #[tokio::test]
+    task_inventory_restore: ("long_task_matrix/chat_inventory", crate::ecs_matrix::long_tasks::INVENTORY, Some(5), "openai_chat_long_task_inventory_restore");
+}
+
 /// A key the scripted cells send: it must never reach a recording or a
 /// trace.
 const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";

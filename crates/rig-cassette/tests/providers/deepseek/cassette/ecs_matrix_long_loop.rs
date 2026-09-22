@@ -25,6 +25,29 @@ fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> 
     }
 }
 
+async fn with_task_cassette<F, Fut>(scenario: &'static str, body: F)
+where
+    F: FnOnce(BoundDeepSeek) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    with_deepseek_cassette(scenario, body).await;
+    crate::ecs_matrix::long_tasks::assert_requests("deepseek", scenario);
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_task_cassette, wire: wire, run: crate::ecs_matrix::long_tasks::run_world;
+    #[tokio::test]
+    task_repair: ("long_task_matrix/repair", crate::ecs_matrix::long_tasks::REPAIR, None, "deepseek_long_task_repair");
+    #[tokio::test]
+    task_repair_streamed: ("long_task_matrix/repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "deepseek_long_task_repair_streamed");
+    #[tokio::test]
+    task_reconcile: ("long_task_matrix/reconcile", crate::ecs_matrix::long_tasks::RECONCILE, None, "deepseek_long_task_reconcile");
+    #[tokio::test]
+    task_inventory: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, None, "deepseek_long_task_inventory");
+    #[tokio::test]
+    task_inventory_restore: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, Some(5), "deepseek_long_task_inventory_restore");
+}
+
 /// A key the scripted cells send: it must never reach a recording or a
 /// trace.
 const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";

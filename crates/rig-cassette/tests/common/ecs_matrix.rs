@@ -50,6 +50,8 @@ pub(crate) mod image;
 pub(crate) mod long_loop;
 #[path = "ecs_matrix/long_loop_world.rs"]
 pub(crate) mod long_loop_world;
+#[path = "ecs_matrix/long_tasks.rs"]
+pub(crate) mod long_tasks;
 #[path = "ecs_matrix/reasoning.rs"]
 pub(crate) mod reasoning;
 #[path = "ecs_matrix/stream_delivery.rs"]
@@ -128,24 +130,10 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         self.route.clone().expect("the wire names a route model")
     }
 
-    /// The default model as configuration data (CONTRACT §12): the recipe a
-    /// *host* rebuilds `golden/model:default` from, instead of the harness
-    /// hand-registering the wire's own adapter — the head wire's
-    /// configuration without its credential, its model id, and, held beside
-    /// the recipe and never in a world, the head wire's own key and socket.
-    /// A client the host builds from this is the head model rebuilt: same
-    /// model id, same configuration, same credential, same cassette. `None`
-    /// for a model the harness cannot describe (a wrapped transport, a
-    /// mock): that wire stays hand-registered.
-    ///
-    /// A bound wire already holds the provider's configuration, so the
-    /// recipe carries *that* — dialect, host and every typed option
-    /// included — rather than a re-description of it. No dialect is
-    /// undescribable: what used to need an enum variant per vendor is now
-    /// the configuration itself. The one thing the arms add is the route,
-    /// because a concrete wire says which endpoint it is and a
-    /// configuration whose dialect flagships the other one would otherwise
-    /// rebuild the wrong grammar.
+    /// Return a credential-free provider recipe only when it reproduces the
+    /// complete model wire. The host retains the credential and transport.
+    /// Return `None` for custom transports or model options absent from
+    /// `ProviderConfig`; callers must rebind the supplied adapter instead.
     pub(crate) fn binding(&self) -> Option<WireBinding> {
         let model: &dyn std::any::Any = &self.model;
         let describe = |config: ProviderConfig,
@@ -163,6 +151,11 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             })
         };
         if let Some(bound) = model.downcast_ref::<Bound<anthropic::Messages, BoxedHttpClient>>() {
+            // ProviderConfig does not retain model-level cache and tool options.
+            // Keep the original adapter when rebuilding would discard them.
+            if bound.wire != bound.wire.provider.messages(bound.wire.model.clone()) {
+                return None;
+            }
             return describe(
                 ProviderConfig::Anthropic(bound.wire.provider.clone()),
                 &bound.wire.model,
@@ -171,6 +164,9 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             );
         }
         let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
+            if *wire != wire.provider.chat(wire.model.clone()) {
+                return None;
+            }
             describe(
                 ProviderConfig::OpenAi(wire.provider.clone().with_route(openai::Route::Chat)),
                 &wire.model,
@@ -179,6 +175,9 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             )
         };
         let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
+            if *wire != wire.provider.responses(wire.model.clone()) {
+                return None;
+            }
             describe(
                 ProviderConfig::OpenAi(wire.provider.clone().with_route(openai::Route::Responses)),
                 &wire.model,
@@ -200,6 +199,14 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         }
         if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
         {
+            if bound.wire
+                != bound
+                    .wire
+                    .provider
+                    .generate_content(bound.wire.model.clone())
+            {
+                return None;
+            }
             return describe(
                 ProviderConfig::Gemini(bound.wire.provider.clone()),
                 &bound.wire.model,

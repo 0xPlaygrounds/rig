@@ -176,6 +176,7 @@ pub(crate) fn bypass_history() -> Vec<rig_core::message::Message> {
 /// The tools a cell grants, in registration order (`golden/tool:<name>#<n>`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ToolKind {
+    LongTask,
     CheckpointStep,
     CheckpointBatch,
     CheckpointLarge,
