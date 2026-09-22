@@ -51,6 +51,7 @@ mod cassette {
     mod empty_stop_sequence_matrix;
     mod error_envelope;
     mod error_identity_edge;
+    mod history_survival_matrix;
     mod image;
     mod lifecycle_matrix;
     mod malformed_tool_args_matrix;

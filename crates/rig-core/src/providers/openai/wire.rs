@@ -278,7 +278,8 @@ pub enum BodyRewrite {
     None,
     /// Groq: fold `additional_params.tools` (its compound-system native
     /// tools) into `compound_custom.enabled_tools` so they do not clobber
-    /// the function-tool array on serialization.
+    /// the function-tool array on serialization, and replay assistant turns
+    /// without `reasoning_content`, which Groq rejects.
     GroqCompoundTools,
     /// Hugging Face's router: qualify the model identifier for sub-providers
     /// that demand one (Fireworks).

@@ -29,4 +29,5 @@ mod ecs_session;
 #[path = "common/ecs_cache.rs"]
 mod ecs_cache;
 
+use rig_test_support::history_survival;
 use rig_test_support::matrix;

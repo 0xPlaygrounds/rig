@@ -20,6 +20,7 @@ mod cassette {
     mod error_matrix;
     mod extractor;
     mod finish_reason_matrix;
+    mod history_survival_matrix;
     mod model_family_matrix;
     mod prompt_caching;
     mod raw_capture_matrix;

@@ -1,0 +1,370 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The user wants me to:\n1","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"The user wants me to:\n1","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":". Look up the alpha record and get","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":". Look up the alpha record and get","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" its","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" its","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" code","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" code","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n2. Look up the beta record","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n2. Look up the beta record","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" and get its code\n3.","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" and get its code\n3.","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" Verify each code","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" Verify each code","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n4. Report both codes with their verification","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n4. Report both codes with their verification","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" status\n\nI'll","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" status\n\nI'll","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" start","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" start","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" by looking up both records.","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" by looking up both records.","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" Since these","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" Since these","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" are independent lookups, I can make","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" are independent lookups, I can make","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" both","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" both","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" calls at","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" calls at","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" the same time.","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" the same time.","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"signature":"signature_REDACTED_1","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"lookup_record"},"id":"toolu_REDACTED_1","index":0,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\": \"alpha"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"lookup_record"},"id":"toolu_REDACTED_2","index":1,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":1}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\": \"beta"},"index":1}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":1}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":null,"role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":171,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":79},"cost":0.001591,"cost_details":{"upstream_inference_completions_cost":0.000855,"upstream_inference_cost":0.001591,"upstream_inference_prompt_cost":0.000736},"is_byok":false,"prompt_tokens":736,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":907}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Look up the alpha record and get its code\n2. Look up the beta record and get its code\n3. Verify each code\n4. Report both codes with their verification status\n\nI''ll start by looking up both records. Since these are independent lookups, I can make both calls at the same time.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"toolu_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"toolu_REDACTED_2","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_1"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_2"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"Now I","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"'ll verify both","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" codes:","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"verify_code"},"id":"toolu_REDACTED_3","index":0,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\": \"alpha-code-7431"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"verify_code"},"id":"toolu_REDACTED_4","index":1,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":1}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\": \"beta-code-2286"},"index":1}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":1}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":107,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.001525,"cost_details":{"upstream_inference_completions_cost":0.000535,"upstream_inference_cost":0.001525,"upstream_inference_prompt_cost":0.00099},"is_byok":false,"prompt_tokens":990,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1097}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Look up the alpha record and get its code\n2. Look up the beta record and get its code\n3. Verify each code\n4. Report both codes with their verification status\n\nI''ll start by looking up both records. Since these are independent lookups, I can make both calls at the same time.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"toolu_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"toolu_REDACTED_2","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_1"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_2"},{"content":[{"text":"Now I''ll verify both codes:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_4","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_3"},{"content":"the tool failed","role":"tool","tool_call_id":"toolu_REDACTED_4"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"The","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" beta","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" verification","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" failed tran","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"siently. Let me retry","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" it","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":":","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"verify_code"},"id":"toolu_REDACTED_5","index":0,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\": \"beta-"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"code-2286"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_3","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":72,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00153,"cost_details":{"upstream_inference_completions_cost":0.00036,"upstream_inference_cost":0.00153,"upstream_inference_prompt_cost":0.00117},"is_byok":false,"prompt_tokens":1170,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1242}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Look up the alpha record and get its code\n2. Look up the beta record and get its code\n3. Verify each code\n4. Report both codes with their verification status\n\nI''ll start by looking up both records. Since these are independent lookups, I can make both calls at the same time.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"toolu_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"toolu_REDACTED_2","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_1"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_2"},{"content":[{"text":"Now I''ll verify both codes:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_4","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_3"},{"content":"the tool failed","role":"tool","tool_call_id":"toolu_REDACTED_4"},{"content":[{"text":"The beta verification failed transiently. Let me retry it:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_5","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_5"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"**","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"Results","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":":**\n\n-","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" **Alpha","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" record","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" code","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":":**","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" `alpha-code-7431`","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" -","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" ✓","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" Verified\n- **Beta record code:**","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" `beta-code-2286`","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" - ✓","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" Verified","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_4","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":50,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.001511,"cost_details":{"upstream_inference_completions_cost":0.00025,"upstream_inference_cost":0.001511,"upstream_inference_prompt_cost":0.001261},"is_byok":false,"prompt_tokens":1261,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1311}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Look up the alpha record and get its code\n2. Look up the beta record and get its code\n3. Verify each code\n4. Report both codes with their verification status\n\nI''ll start by looking up both records. Since these are independent lookups, I can make both calls at the same time.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"toolu_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"toolu_REDACTED_2","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_1"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_2"},{"content":[{"text":"Now I''ll verify both codes:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_4","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_3"},{"content":"the tool failed","role":"tool","tool_call_id":"toolu_REDACTED_4"},{"content":[{"text":"The beta verification failed transiently. Let me retry it:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_5","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_5"},{"content":[{"text":"**Results:**\n\n- **Alpha record code:** `alpha-code-7431` - ✓ Verified\n- **Beta record code:** `beta-code-2286` - ✓ Verified","type":"text"}],"role":"assistant"},{"content":"Verify the alpha code once more and confirm whether it is unchanged.","role":"user"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The user wants me to verify the alpha","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"The user wants me to verify the alpha","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" code again","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" code again","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" and confirm whether it's unchanged from","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" and confirm whether it's unchanged from","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" the previous","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" the previous","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" verification. I need to verify","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" verification. I need to verify","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" \"","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" \"","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"alpha-code-7431\" again","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"alpha-code-7431\" again","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":".","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":".","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"signature":"signature_REDACTED_2","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"verify_code"},"id":"toolu_REDACTED_6","index":0,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\": \"alpha-"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"code-7431"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":null,"role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_5","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":101,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":40},"cost":0.001752,"cost_details":{"upstream_inference_completions_cost":0.000505,"upstream_inference_cost":0.001752,"upstream_inference_prompt_cost":0.001247},"is_byok":false,"prompt_tokens":1247,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1348}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Look up the alpha record and get its code\n2. Look up the beta record and get its code\n3. Verify each code\n4. Report both codes with their verification status\n\nI''ll start by looking up both records. Since these are independent lookups, I can make both calls at the same time.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"toolu_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"toolu_REDACTED_2","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_1"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_2"},{"content":[{"text":"Now I''ll verify both codes:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_4","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_3"},{"content":"the tool failed","role":"tool","tool_call_id":"toolu_REDACTED_4"},{"content":[{"text":"The beta verification failed transiently. Let me retry it:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_5","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_5"},{"content":[{"text":"**Results:**\n\n- **Alpha record code:** `alpha-code-7431` - ✓ Verified\n- **Beta record code:** `beta-code-2286` - ✓ Verified","type":"text"}],"role":"assistant"},{"content":"Verify the alpha code once more and confirm whether it is unchanged.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_2","text":"The user wants me to verify the alpha code again and confirm whether it''s unchanged from the previous verification. I need to verify \"alpha-code-7431\" again.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_6","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_6"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"**","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"Confirmed","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":":**","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" The alpha code `","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"alpha-code-7431` is","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" **","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"unchanged** and","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" continues","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" to verify","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":" successfully","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":".","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_6","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":28,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.001507,"cost_details":{"upstream_inference_completions_cost":0.00014,"upstream_inference_cost":0.001507,"upstream_inference_prompt_cost":0.001367},"is_byok":false,"prompt_tokens":1367,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1395}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","type":"text"}],"role":"system"},{"content":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Look up the alpha record and get its code\n2. Look up the beta record and get its code\n3. Verify each code\n4. Report both codes with their verification status\n\nI''ll start by looking up both records. Since these are independent lookups, I can make both calls at the same time.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"toolu_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"toolu_REDACTED_2","type":"function"}]},{"content":"record alpha: code alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_1"},{"content":"record beta: code beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_2"},{"content":[{"text":"Now I''ll verify both codes:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_4","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_3"},{"content":"the tool failed","role":"tool","tool_call_id":"toolu_REDACTED_4"},{"content":[{"text":"The beta verification failed transiently. Let me retry it:","type":"text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"toolu_REDACTED_5","type":"function"}]},{"content":"verified beta-code-2286","role":"tool","tool_call_id":"toolu_REDACTED_5"},{"content":[{"text":"**Results:**\n\n- **Alpha record code:** `alpha-code-7431` - ✓ Verified\n- **Beta record code:** `beta-code-2286` - ✓ Verified","type":"text"}],"role":"assistant"},{"content":"Verify the alpha code once more and confirm whether it is unchanged.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_2","text":"The user wants me to verify the alpha code again and confirm whether it''s unchanged from the previous verification. I need to verify \"alpha-code-7431\" again.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"toolu_REDACTED_6","type":"function"}]},{"content":"verified alpha-code-7431","role":"tool","tool_call_id":"toolu_REDACTED_6"},{"content":[{"text":"**Confirmed:** The alpha code `alpha-code-7431` is **unchanged** and continues to verify successfully.","type":"text"}],"role":"assistant"},{"content":"Repeat both codes exactly as reported earlier, separated by a comma, and nothing else.","role":"user"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The user wants me to repeat both codes","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"The user wants me to repeat both codes","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" exactly as reported earlier, separated by a","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" exactly as reported earlier, separated by a","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" comma, and nothing else.","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" comma, and nothing else.","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n\nFrom my","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n\nFrom my","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" earlier findings","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" earlier findings","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":":\n- Alpha code","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":":\n- Alpha code","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":": alpha-code-7431","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":": alpha-code-7431","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n- Beta code: beta-code-","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n- Beta code: beta-code-","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"2286\n\nI","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"2286\n\nI","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" need to output","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" need to output","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" them","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" them","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" separated by a","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" separated by a","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" comma with","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" comma with","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" nothing else.","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" nothing else.","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"signature":"signature_REDACTED_3","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"alpha","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"-code-7431, beta-","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"code-2286","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":null,"role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_7","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Amazon Bedrock","service_tier":"default","usage":{"completion_tokens":88,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":69},"cost":0.001814,"cost_details":{"upstream_inference_completions_cost":0.00044,"upstream_inference_cost":0.001814,"upstream_inference_prompt_cost":0.001374},"is_byok":false,"prompt_tokens":1374,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1462}}
+
+    data: [DONE]
+

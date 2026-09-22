@@ -26,4 +26,5 @@ mod ecs_observation;
 #[path = "common/ecs_session.rs"]
 mod ecs_session;
 
+use rig_test_support::history_survival;
 use rig_test_support::matrix;

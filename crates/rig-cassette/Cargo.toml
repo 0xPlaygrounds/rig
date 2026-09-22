@@ -212,3 +212,7 @@ required-features = ["http", "agent", "ecs"]
 [[test]]
 name = "cassette_cache_prefix"
 required-features = ["http"]
+
+[[test]]
+name = "cassette_history_survival"
+required-features = ["http"]

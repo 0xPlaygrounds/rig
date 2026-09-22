@@ -63,6 +63,7 @@ mod cassette {
     mod generate_sessions;
     mod generate_tool_args;
     mod generate_tool_modes;
+    mod history_survival_matrix;
     mod hook_stress;
     mod hook_stress_context;
     mod hook_stress_patch;
@@ -75,6 +76,7 @@ mod cassette {
     mod lifecycle_matrix;
     mod models;
     mod multi_turn_streaming;
+    mod portability_matrix;
     mod prompt_caching;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;

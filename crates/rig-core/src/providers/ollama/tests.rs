@@ -246,7 +246,7 @@ fn mixed_user_content_preserves_message_order() {
     ));
     assert!(matches!(
         &messages[1],
-        Message::ToolResult { name, content }
+        Message::ToolResult { name, content, .. }
             if name == "lookup" && content == r#"{"ok":true}"#
     ));
     assert!(matches!(
@@ -1461,4 +1461,53 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
     assert!(calls[0].provider.is_none());
     assert_eq!(calls[1].id.explicit(), Some("tool-0"));
     assert!(calls[2].provider.is_none());
+}
+
+/// A provider-issued call id is replayed on both legs; a locally minted
+/// handle stays off the wire because the slot is optional and results
+/// correlate by `tool_name`.
+#[test]
+fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
+    use crate::message::{
+        AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId,
+        ToolFunction, ToolResult, ToolResultContent, UserContent,
+    };
+
+    let call = |provider: Option<ProviderCallId>| RigMessage::Assistant {
+        id: None,
+        content: vec![AssistantContent::ToolCall(ToolCall {
+            id: ToolCallId::new("handle").expect("non-empty"),
+            provider,
+            function: ToolFunction {
+                name: "add".to_owned(),
+                arguments: serde_json::json!({"x": 1}),
+            },
+            signature: None,
+            additional_params: None,
+        })],
+    };
+    let result = |provider: Option<ProviderCallId>| RigMessage::User {
+        content: vec![UserContent::ToolResult(ToolResult {
+            call: ToolCallId::new("handle").expect("non-empty"),
+            provider,
+            name: "add".to_owned(),
+            content: vec![ToolResultContent::text("2")],
+        })],
+    };
+
+    let issued = ProviderCallId::new("call_daemon_1");
+    let assistant = Vec::<Message>::try_from(call(issued.clone())).expect("converts");
+    let tool = Vec::<Message>::try_from(result(issued)).expect("converts");
+    let assistant = serde_json::to_value(&assistant[0]).expect("serializes");
+    let tool = serde_json::to_value(&tool[0]).expect("serializes");
+    assert_eq!(assistant["tool_calls"][0]["id"], "call_daemon_1");
+    assert_eq!(tool["tool_call_id"], "call_daemon_1");
+    assert_eq!(tool["tool_name"], "add");
+
+    let assistant = Vec::<Message>::try_from(call(None)).expect("converts");
+    let tool = Vec::<Message>::try_from(result(None)).expect("converts");
+    let assistant = serde_json::to_value(&assistant[0]).expect("serializes");
+    let tool = serde_json::to_value(&tool[0]).expect("serializes");
+    assert!(assistant["tool_calls"][0].get("id").is_none());
+    assert!(tool.get("tool_call_id").is_none());
 }

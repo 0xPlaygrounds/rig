@@ -36,8 +36,10 @@ where
     F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, client) = doubleword_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "doubleword", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
 

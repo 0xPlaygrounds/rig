@@ -11,7 +11,9 @@ mod cassette {
     mod agent;
     mod agentic;
     mod ecs_completion;
+    mod history_survival_matrix;
     mod models;
+    mod portability_matrix;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;
     mod raw_stream_capture_matrix;

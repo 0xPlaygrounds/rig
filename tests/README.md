@@ -200,6 +200,32 @@ normal test runs. Still review every cassette diff for:
 - expected provider responses for the scenario;
 - no unrelated cassette churn.
 
+### History survival and portability
+
+A provider hands Rig opaque fields only it can interpret (thinking signatures,
+encrypted reasoning, redacted reasoning, reasoning item ids, tool-call ids)
+and expects them back on the next turn. The rule lives in
+`test-support/rig-test-support/src/history_survival.rs` and is applied twice:
+
+- `crates/rig-cassette/tests/cassette_history_survival.rs` sweeps every
+  committed cassette and effect golden at zero provider cost: delivered fields
+  must reach every continuation request, every recorded request must pair its
+  tool calls with results, every native `chat_history` must pair too (this
+  includes the requests after cancellations, invalid arguments and provider
+  faults), and a census proves each provider and content kind was examined.
+  Exemptions need a cited provider behavior and are reported when stale.
+- `history_survival_matrix` cells per provider run three prompts over
+  deterministic lookup/verify tools with one transient tool failure, assert
+  the same delivered content on unary and streaming transports, then apply
+  the rule to the recording they just made. `portability_matrix` cells decode
+  another wire's committed reply through Rig's real decoder and continue it on
+  the target wire.
+
+Record a cell with the ordinary record mode and an exact test name. Set
+`RIG_LONG_TASK_ATTEMPT_DIR` to keep the exchanges of a failed attempt outside
+the tree, and `RIG_HISTORY_SURVIVAL_CENSUS` or `RIG_PORTABILITY_REPORT` to
+write the census and the forwarded-field report to a file.
+
 ## Prompt Cache Testing
 
 Provider prompt caching is a **prefix match**: the cache key is derived from the exact request

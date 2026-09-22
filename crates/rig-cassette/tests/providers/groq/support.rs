@@ -37,8 +37,10 @@ where
     F: FnOnce(BoundGroq) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
+    let spec = spec.into();
     let (cassette, groq) = groq_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(groq)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "groq", spec.scenario()).await;
     cassette.finish_after_test_result(result).await
 }
 

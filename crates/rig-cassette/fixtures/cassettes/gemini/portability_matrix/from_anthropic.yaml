@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"},{"parts":[{"text":"The user wants to know the current weather in Tokyo, Japan. I''ll call the get_weather tool with \"Tokyo\" as the city.","thought":true,"thoughtSignature":"signature_REDACTED_1"},{"text":"Sure! Let me check the current weather in Tokyo right away!","thought":false},{"functionCall":{"args":{"city":"Tokyo"},"id":"toolu_REDACTED_1","name":"get_weather"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"toolu_REDACTED_1","name":"get_weather","response":{"result":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}},"thought":false}],"role":"user"},{"parts":[{"text":"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"You should pack sunscreen for your trip to Tokyo, as it is sunny with light clouds."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":271,"promptTokensDetails":[{"modality":"TEXT","tokenCount":271}],"serviceTier":"standard","totalTokenCount":289}}'

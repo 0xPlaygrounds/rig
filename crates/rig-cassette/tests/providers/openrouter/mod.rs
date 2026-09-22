@@ -14,11 +14,13 @@ mod cassette {
     mod extractor;
     mod extractor_usage;
     mod history_roundtrip_matrix;
+    mod history_survival_matrix;
     mod models;
     mod multi_extract;
     mod multimodal;
     mod openai_responses_compat;
     mod permission_control;
+    mod portability_matrix;
     mod prompt_caching;
     mod provider_selection;
     mod raw_capture_matrix;

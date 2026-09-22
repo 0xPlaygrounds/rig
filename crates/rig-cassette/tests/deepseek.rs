@@ -42,4 +42,5 @@ use rig_test_support::stream_faults;
 #[path = "common/ecs_matrix.rs"]
 mod ecs_matrix;
 
+use rig_test_support::history_survival;
 use rig_test_support::matrix;

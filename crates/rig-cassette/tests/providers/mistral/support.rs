@@ -59,8 +59,10 @@ where
     F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
+    let spec = spec.into();
     let (cassette, client) = mistral_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "mistral", spec.scenario()).await;
     cassette.finish_after_test_result(result).await
 }
 

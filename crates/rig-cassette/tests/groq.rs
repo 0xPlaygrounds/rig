@@ -10,4 +10,5 @@ use rig_test_support::support;
 #[path = "providers/groq/mod.rs"]
 mod groq;
 
+use rig_test_support::history_survival;
 use rig_test_support::matrix;
