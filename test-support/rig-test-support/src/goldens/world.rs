@@ -78,7 +78,7 @@ pub fn capture_world_program(world: &mut World, run: Entity, log: &EffectLog) {
         if let Some(previous) = programs.get(&scope) {
             assert_eq!(
                 serde_json::to_value(previous).expect("previous program scene"),
-                serde_json::to_value(&(policy, &scene)).expect("program scene"),
+                serde_json::to_value((policy, &scene)).expect("program scene"),
                 "reused scopes must describe the same pre-dispatch configuration"
             );
         } else {
