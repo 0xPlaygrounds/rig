@@ -6,18 +6,18 @@ a listed or ignored registration does not establish execution or parity.
 Models, prompts, budgets, tool definitions and expected values belong in the
 tests, not a second handwritten inventory.
 
-## Each runtime owns its record
+## Each runtime pins its own record
 
-A native cell's effect log is the world's own: its records carry a run
-`scope`, and its header carries the run's required row and policy hash under
-that scope (`rig_cassette::ecs::identity::stamp_run`). An agent producer's
-log is the agent's own, with its builder spec, hook list and required row.
-The two are not compared, normalized into each other, or pinned against a
-second fixture. A native cell asserts what its program contracts: the run's
-ending, the committed history against the last request and the answer, the
-tool invocations and their results, the usage the wire reported, and the
-family-specific facts named below. The agent producer asserts the same
-contract on its side and writes the golden that replay consumes.
+Agent producers write `crates/rig-cassette/fixtures/effects/<name>.effects.json`.
+Native ECS cells write `crates/rig-cassette/fixtures/effects/world/<name>.effects.json`.
+Each runtime compares its log only to its own committed golden. Neither corpus
+is compared to the other or normalized toward it.
+
+A native log carries run scopes and each scope's required row and policy hash
+from `rig_cassette::ecs::identity::stamp_run`. An agent log carries its builder
+spec, hook list and required row. Golden assertions supplement each cell's
+semantic checks: ending, committed history, tool invocations and results,
+reported usage, and the family-specific facts below.
 
 The world interpreters under `crates/rig-cassette/tests/corpus/` and
 `tests/world_replay.rs` are replay, not comparison: they answer every effect
@@ -50,8 +50,20 @@ The helpers in [shared test drivers](../../test-support/rig-test-support/src) de
   fresh-world persistence framework. Host notes and nested calls must complete
   before teardown; gated controls establish those waits independently of quick
   cassette responses.
-- `goldens.rs` compares an agent producer's log to its committed golden as
-  data, header included. No helper compares a native log to that golden.
+- `goldens::golden_effects` compares an agent producer's log to the agent
+  corpus. `goldens::world_golden_effects` compares a native log to the world
+  corpus. Both include program identity in their assertions. World comparisons
+  exclude only `header.deliveries`: asynchronous readiness changes collection
+  batches and stream groupings. Fixtures retain the raw deliveries, and the
+  world-corpus replay validates those recorded boundaries. The pairing guard
+  rejects cross-corpus helpers, missing fixtures and duplicate producers.
+- `native_matrix!` and `resume_matrix!` declare literal world golden names.
+  Ignored rows keep their registration but have no committed world fixture.
+- Each world fixture has a `.programs.json` sidecar containing its pre-dispatch
+  configuration scenes. Native producers capture each scope before dispatch.
+  `world_replay_world` restores those configurations, checks each scope with
+  `check_replayable`, then replays every recorded exchange by id in a separate
+  bus-only world. Configuration evidence does not serialize application systems.
 - Per-run settings remain separate from agent defaults, including undeclared
   default budgets. Host bus policy can be undeclared in a comparison header
   without changing actual serving policy. Declared policy names do not hash

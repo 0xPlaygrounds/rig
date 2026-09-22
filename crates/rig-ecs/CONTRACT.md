@@ -193,7 +193,7 @@ on to the next run in the same pass
 
 ## 6. The header
 
-A rig-agent golden's header carries the builder configuration as its `run_spec` hash (`rig_cassette::effect_log::stable_hash`, keys canonicalised). A world writes no builder header: its log names each run's program under its scope (§10), and the two headers are never compared. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity.
+A rig-agent golden's header carries the builder configuration as its `run_spec` hash (`rig_cassette::effect_log::stable_hash`, keys canonicalised). A world writes no builder header: its log names each run's program under its scope (§10), and the two headers are never compared. The world corpus at `crates/rig-cassette/fixtures/effects/world/` pins the world's own header and scoped program identities. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity.
 
 ```json
 {"preamble": <Preamble>, "static_context": [{"id","text",…props}], "additional_params": <AdditionalParams>,
@@ -387,6 +387,8 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | the suspended tool cancelled | `[C, T✗]`: the run despawned while the layer waits | `mock_layers_suspend_cancelled` |
 
 ## 10. Identity as data
+
+The world corpus at `crates/rig-cassette/fixtures/effects/world/` pins native headers, including every run's `programs[scope]`, independently of the agent corpus.
 
 | what | where | pinned by |
 |---|---|---|
