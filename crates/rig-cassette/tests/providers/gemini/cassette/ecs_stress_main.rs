@@ -418,7 +418,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
 /// assembled the call, so the record is the same on every run — the proof
 /// that nothing the engine mints is random.
 #[tokio::test]
-async fn tool_call_turns_effect_log_is_the_golden_fixture() {
+async fn tool_call_turns_effect_log() {
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     with_gemini_cassette(
@@ -452,7 +452,6 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 tool_ids.iter().all(|id| id.is_generated()),
                 "every id-less wire call is named by its block: {tool_ids:?}"
             );
-            crate::ecs_goldens::golden_effects("gemini_tool_call_turns", &log);
         },
     )
     .await;

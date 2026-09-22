@@ -321,23 +321,6 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     row
 }
 
-/// Stamp the builder-spec hash, declared hooks, required row, and serving policy
-/// for corpus interoperability. A serialization failure leaves the hash unchanged.
-/// This header alone does not establish run compatibility; use [`stamp_run`].
-pub fn stamp_legacy_builder_header(
-    world: &mut World,
-    agent: Entity,
-    recorder: &EffectLogRecorder,
-    bus: Option<rig_core::serve::ServingPolicy>,
-    hooks: Vec<String>,
-) {
-    if let Ok(hash) = stable_hash(&builder_spec_json(world, agent)) {
-        recorder.set_run_spec(hash);
-    }
-    let required = required_row(world, agent);
-    recorder.set_program(hooks, required, bus);
-}
-
 /// Stamp the effective required row and policy hash under the run's `Scope` in
 /// [`crate::effect_log::LogHeader::programs`]. Returns an error if `run` lacks
 /// `RunOf` or `Scope`, or its policy cannot be hashed.

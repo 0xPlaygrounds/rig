@@ -13,7 +13,7 @@ use rig_core::{
     serve::adapters::MemoryAdapter,
 };
 use rig_ecs::{
-    agent::{Conversation, Cursor, PolicyVersion, Remembers, Run, Settled, Temperature},
+    agent::{Conversation, Cursor, Remembers, Run, Settled, Temperature},
     bus::{Bound, EffectOutcome, Handlers, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
@@ -214,21 +214,10 @@ pub(super) async fn remembers(
             ecs.app
                 .add_observer(clear_after_load)
                 .configure_sets(RigSchedule, RigSet::Advance.run_if(startup_cleared));
-            ecs.declared_policies = vec!["ClearAtStart".into()];
         }
         Clears::AtSettled => {
             ecs.app.add_observer(clear_after_append);
-            ecs.declared_policies = vec!["ClearAtSettled".into()];
         }
-    }
-    if !ecs.declared_policies.is_empty() {
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(PolicyVersion(format!(
-                "ecs-memory/v1:{}",
-                ecs.declared_policies.join("+")
-            )));
     }
     let outputs = run_prompts(&mut ecs, prompts, streamed, clears).await;
     for output in &outputs {

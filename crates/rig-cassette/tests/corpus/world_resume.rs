@@ -14,17 +14,17 @@ use std::time::Instant;
 
 use bevy_ecs::prelude::*;
 use rig_cassette::ecs::EffectLogResource;
-use rig_cassette::ecs::identity::{stamp_legacy_builder_header, stamp_run};
+use rig_cassette::ecs::identity::stamp_run;
 use rig_cassette::effect_log::{Checkpoint, EffectLog, RequestCheck};
 use rig_ecs::{
-    agent::{Cursor, Failed, MessageParts, Run, RunOf, RunPhase, Settled},
+    agent::{Cursor, Failed, MessageParts, Run, RunPhase, Settled},
     bus::{EffectOutcome, IdCounter, RigSchedule},
     checkpoint::{RestoreMode, load_world, save_world},
     systems::{Fresh, RunCommands},
 };
 
 use super::{
-    Against, Program, assert_same_records, golden, program_hooks,
+    Against, Program, assert_same_records, golden,
     world::{GUARD, Opened, assert_ending, drive, open, spawn_agent},
 };
 
@@ -55,13 +55,6 @@ pub fn world_resume_reproduces(
     let world = app.world_mut();
     super::world_hooks::install(world, program);
     let agent = spawn_agent(world, program, &handlers);
-    stamp_legacy_builder_header(
-        world,
-        agent,
-        &world.resource::<EffectLogResource>().0.clone(),
-        log.header.bus,
-        program_hooks(program, program.owner),
-    );
     let history: Vec<MessageParts> = program
         .history
         .map(|history| {
@@ -167,7 +160,6 @@ pub fn world_resume_reproduces(
     let mut prefix = log.clone();
     prefix.records.truncate(at);
     assert_same_records(&head, &prefix, "world resume (head)");
-    assert_partial_header(&head, &log, program, "head");
 
     // The tail: a fresh world over the continuation's replayers, the scene
     // loaded, the hooks installed after it (no run-start fires), the run
@@ -211,15 +203,7 @@ pub fn world_resume_reproduces(
         .first()
         .copied()
         .expect("the scene holds the run");
-    let agent = world.get::<RunOf>(run).expect("the run's agent").0;
     super::world_hooks::install(world, program);
-    stamp_legacy_builder_header(
-        world,
-        agent,
-        &world.resource::<EffectLogResource>().0.clone(),
-        log.header.bus,
-        program_hooks(program, program.owner),
-    );
     stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone())
         .expect("the run stamps its program identity");
     assert!(
@@ -230,39 +214,8 @@ pub fn world_resume_reproduces(
     assert_ending(&app, program, run, &log);
     let tail = app.world().resource::<EffectLogResource>().log();
     assert_same_records(&tail, &continuation, "world resume (tail)");
-    assert_partial_header(&tail, &log, program, "tail");
     // One record sequence: head then tail is the golden.
     let mut whole = head;
     whole.records.extend(tail.records);
     assert_same_records(&whole, &log, "world resume");
-}
-
-/// A part's header is the golden's but for the signature, which is read
-/// off the records: the part's keys are among the golden's (a route the
-/// tail selects, a note the head's outcome hook dispatched, are one
-/// side's).
-fn assert_partial_header(part: &EffectLog, log: &EffectLog, program: &Program, which: &str) {
-    assert_eq!(
-        part.header.run_spec, log.header.run_spec,
-        "{}: the {which}'s spec hash",
-        program.fixture
-    );
-    assert_eq!(
-        part.header.hooks, log.header.hooks,
-        "{}: the {which}'s hook list",
-        program.fixture
-    );
-    assert_eq!(
-        part.header.required, log.header.required,
-        "{}: the {which}'s required row",
-        program.fixture
-    );
-    for (key, family) in part.header.signature.iter() {
-        assert_eq!(
-            log.header.signature.get(key),
-            Some(family),
-            "{}: the {which} performed `{key}`, which the golden did not",
-            program.fixture
-        );
-    }
 }

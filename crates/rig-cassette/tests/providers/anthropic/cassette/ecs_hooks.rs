@@ -22,7 +22,7 @@ mod policies;
 use policies::*;
 
 #[tokio::test]
-async fn observe_everything_effect_log_is_the_golden_fixture() {
+async fn observe_everything_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/observe_everything", |client| async move {
         let mut ecs = EcsAgent::for_golden_with_setup(
             client.completion(CLAUDE_SONNET_4_6),
@@ -67,7 +67,6 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
             RigSchedule,
             observe_all.after(BusSet::Dispatch).before(BusSet::Collect),
         );
-        ecs.declared_policies = vec!["ObserveEverything".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -86,9 +85,7 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
                 EffectFamily::Memory,
             ]
         );
-        assert_eq!(log.header.hooks, ["ObserveEverything"]);
         assert_eq!(ecs.app.world().resource::<Observed>().0, families(&log));
-        crate::ecs_goldens::golden_effects("anthropic_hooks_observe_everything", &log);
     })
     .await;
 }
@@ -97,7 +94,7 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
 /// the model's history keeps the call it made.
 
 #[tokio::test]
-async fn patch_tool_args_effect_log_is_the_golden_fixture() {
+async fn patch_tool_args_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -108,7 +105,6 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
         ecs.tool(Adder);
         ecs.app
             .add_systems(RigSchedule, patch_args.in_set(BusSet::Gate));
-        ecs.declared_policies = vec!["PatchAddArgs".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -139,7 +135,6 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
             })
             .expect("the model's call is in history");
         assert_eq!(called, serde_json::json!({"x": 17, "y": 25}));
-        crate::ecs_goldens::golden_effects("anthropic_hooks_patch_tool_args", &log);
     })
     .await;
 }
@@ -147,7 +142,7 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events kept.
 
 #[tokio::test]
-async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
+async fn patch_tool_args_streamed_effect_log() {
     with_anthropic_corpus_hooks_cassette(
         "corpus_hooks/patch_tool_args_streamed",
         |client| async move {
@@ -160,7 +155,6 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
             ecs.tool(Adder);
             ecs.app
                 .add_systems(RigSchedule, patch_args.in_set(BusSet::Gate));
-            ecs.declared_policies = vec!["PatchAddArgs".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -179,7 +173,6 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
             );
             assert!(log.records[0].events.is_some(), "events are kept");
             assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
-            crate::ecs_goldens::golden_effects("anthropic_hooks_patch_tool_args_streamed", &log);
         },
     )
     .await;
@@ -189,7 +182,7 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
 /// the tool's result and answers without it.
 
 #[tokio::test]
-async fn deny_tool_effect_log_is_the_golden_fixture() {
+async fn deny_tool_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -200,7 +193,6 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
         ecs.tool(Adder);
         ecs.app
             .add_systems(RigSchedule, deny_tools.in_set(BusSet::Gate));
-        ecs.declared_policies = vec!["DenyAdd".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -214,7 +206,6 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
             [EffectFamily::Completion, EffectFamily::Completion]
         );
         assert_eq!(tool_result_texts(request_at(&log, 1)), [DENY_REASON]);
-        crate::ecs_goldens::golden_effects("anthropic_hooks_deny_tool", &log);
     })
     .await;
 }
@@ -222,7 +213,7 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events kept.
 
 #[tokio::test]
-async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
+async fn deny_tool_streamed_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool_streamed", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, true);
@@ -233,7 +224,6 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
         ecs.tool(Adder);
         ecs.app
             .add_systems(RigSchedule, deny_tools.in_set(BusSet::Gate));
-        ecs.declared_policies = vec!["DenyAdd".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -248,7 +238,6 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
         );
         assert!(log.records[0].events.is_some(), "events are kept");
         assert_eq!(tool_result_texts(request_at(&log, 1)), [DENY_REASON]);
-        crate::ecs_goldens::golden_effects("anthropic_hooks_deny_tool_streamed", &log);
     })
     .await;
 }
@@ -257,7 +246,7 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
 /// the transcript the replacement, and the model answers from the latter.
 
 #[tokio::test]
-async fn replace_tool_result_effect_log_is_the_golden_fixture() {
+async fn replace_tool_result_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -268,7 +257,6 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
         ecs.tool(Adder);
         ecs.app
             .add_systems(RigSchedule, replace_results.in_set(BusSet::Judge));
-        ecs.declared_policies = vec!["ReplaceAddResult".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -287,7 +275,6 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
         );
         assert_eq!(tool_record_outputs(&log), ["42"]);
         assert_eq!(tool_result_texts(request_at(&log, 2)), [REPLACED_RESULT]);
-        crate::ecs_goldens::golden_effects("anthropic_hooks_replace_tool_result", &log);
     })
     .await;
 }
@@ -296,7 +283,7 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
 /// replacement, the record the model's text.
 
 #[tokio::test]
-async fn replace_answer_effect_log_is_the_golden_fixture() {
+async fn replace_answer_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_answer", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -306,7 +293,6 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
             .insert(Temperature(Some(0.0)));
         ecs.app
             .add_systems(RigSchedule, replace_answer.in_set(BusSet::Judge));
-        ecs.declared_policies = vec!["ReplaceAnswer".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -327,7 +313,6 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
                 .any(|c| matches!(c, AssistantContent::Text(t) if t.text == REPLACED_ANSWER)),
             "the record holds the model's answer, not the replacement"
         );
-        crate::ecs_goldens::golden_effects("anthropic_hooks_replace_answer", &log);
     })
     .await;
 }
@@ -336,7 +321,7 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
 /// the hook's, the spec's preamble is the builder's.
 
 #[tokio::test]
-async fn preamble_override_effect_log_is_the_golden_fixture() {
+async fn preamble_override_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/preamble_override", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -348,7 +333,6 @@ async fn preamble_override_effect_log_is_the_golden_fixture() {
             RigSchedule,
             preamble.after(RigSet::Select).before(RigSet::Assemble),
         );
-        ecs.declared_policies = vec!["PreambleOverride".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -371,7 +355,6 @@ async fn preamble_override_effect_log_is_the_golden_fixture() {
                 .as_deref(),
             Some(BASIC_PREAMBLE)
         );
-        crate::ecs_goldens::golden_effects("anthropic_hooks_preamble_override", &log);
     })
     .await;
 }
@@ -380,7 +363,7 @@ async fn preamble_override_effect_log_is_the_golden_fixture() {
 /// `DONE`, the hook asks again, the second has it. Two completions.
 
 #[tokio::test]
-async fn demand_done_effect_log_is_the_golden_fixture() {
+async fn demand_done_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/demand_done", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -392,7 +375,6 @@ async fn demand_done_effect_log_is_the_golden_fixture() {
             RigSchedule,
             demand_done.after(RigSet::Fold).before(RigSet::Judge),
         );
-        ecs.declared_policies = vec!["DemandDone".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -407,7 +389,6 @@ async fn demand_done_effect_log_is_the_golden_fixture() {
             families(&log),
             [EffectFamily::Completion, EffectFamily::Completion]
         );
-        crate::ecs_goldens::golden_effects("anthropic_hooks_demand_done", &log);
     })
     .await;
 }
@@ -416,7 +397,7 @@ async fn demand_done_effect_log_is_the_golden_fixture() {
 /// hook's own tool call is the first record, under the tool's key.
 
 #[tokio::test]
-async fn lookup_before_run_effect_log_is_the_golden_fixture() {
+async fn lookup_before_run_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/lookup_before_run", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -428,7 +409,6 @@ async fn lookup_before_run_effect_log_is_the_golden_fixture() {
         ecs.app
             .add_observer(lookup_at_start)
             .configure_sets(RigSchedule, RigSet::Advance.run_if(lookup_finished));
-        ecs.declared_policies = vec!["LookupBeforeRun".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -448,7 +428,6 @@ async fn lookup_before_run_effect_log_is_the_golden_fixture() {
         );
         assert_eq!(tool_record_args(&log)[0], LOOKUP_ARGS);
         assert_eq!(log.records[0].key.as_str(), crate::goldens::LOOKUP_KEY);
-        crate::ecs_goldens::golden_effects("anthropic_hooks_lookup_before_run", &log);
     })
     .await;
 }
@@ -458,7 +437,7 @@ async fn lookup_before_run_effect_log_is_the_golden_fixture() {
 /// result in the transcript).
 
 #[tokio::test]
-async fn two_hooks_effect_log_is_the_golden_fixture() {
+async fn two_hooks_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -471,7 +450,6 @@ async fn two_hooks_effect_log_is_the_golden_fixture() {
             .add_systems(RigSchedule, patch_args.in_set(BusSet::Gate));
         ecs.app
             .add_systems(RigSchedule, replace_results.in_set(BusSet::Judge));
-        ecs.declared_policies = vec!["PatchAddArgs".into(), "ReplaceAddResult".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -482,11 +460,9 @@ async fn two_hooks_effect_log_is_the_golden_fixture() {
         let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
         assert!(output.contains(REPLACED_RESULT), "{}", output);
         let log = ecs.effect_log();
-        assert_eq!(log.header.hooks, ["PatchAddArgs", "ReplaceAddResult"]);
         assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
         assert_eq!(tool_record_outputs(&log), ["42"]);
         assert_eq!(tool_result_texts(request_at(&log, 2)), [REPLACED_RESULT]);
-        crate::ecs_goldens::golden_effects("anthropic_hooks_two_hooks", &log);
     })
     .await;
 }

@@ -10,7 +10,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::agent::*;
 
 #[tokio::test]
-async fn tool_unary_effect_log_is_the_golden_fixture() {
+async fn tool_unary_effect_log() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -41,7 +41,6 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
             request.output_schema.is_none(),
             "no native schema in Tool mode"
         );
-        crate::ecs_goldens::golden_effects("anthropic_output_tool_unary", &log);
     })
     .await;
 }
@@ -49,7 +48,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events.
 
 #[tokio::test]
-async fn tool_streamed_effect_log_is_the_golden_fixture() {
+async fn tool_streamed_effect_log() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_streamed", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, true);
@@ -70,7 +69,6 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(log.records[0].events.is_some(), "events are kept");
         assert_eq!(tool_names(request_at(&log, 0)), ["final_result"]);
-        crate::ecs_goldens::golden_effects("anthropic_output_tool_streamed", &log);
     })
     .await;
 }
@@ -79,7 +77,7 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
 /// schema and the answer is JSON text.
 
 #[tokio::test]
-async fn prompted_unary_effect_log_is_the_golden_fixture() {
+async fn prompted_unary_effect_log() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -107,7 +105,6 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
                 .is_some_and(|system| system.contains("JSON Schema")),
             "the preamble carries the schema"
         );
-        crate::ecs_goldens::golden_effects("anthropic_output_prompted_unary", &log);
     })
     .await;
 }
@@ -115,7 +112,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events.
 
 #[tokio::test]
-async fn prompted_streamed_effect_log_is_the_golden_fixture() {
+async fn prompted_streamed_effect_log() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_streamed", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, true);
@@ -135,7 +132,6 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
         let log = ecs.effect_log();
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(log.records[0].events.is_some(), "events are kept");
-        crate::ecs_goldens::golden_effects("anthropic_output_prompted_streamed", &log);
     })
     .await;
 }
@@ -144,7 +140,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
 /// dispatch), then `final_result` (settled, no dispatch).
 
 #[tokio::test]
-async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
+async fn tool_with_real_tool_effect_log() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_with_real_tool",
         |client| async move {
@@ -175,7 +171,6 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
                 ]
             );
             assert_eq!(tool_names(request_at(&log, 0)), ["add", "final_result"]);
-            crate::ecs_goldens::golden_effects("anthropic_output_tool_with_real_tool", &log);
         },
     )
     .await;
@@ -184,7 +179,7 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
 /// `Prompted` mode beside a real tool.
 
 #[tokio::test]
-async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
+async fn prompted_with_real_tool_effect_log() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/prompted_with_real_tool",
         |client| async move {
@@ -214,7 +209,6 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
                 ]
             );
             assert_eq!(tool_names(request_at(&log, 0)), ["add"]);
-            crate::ecs_goldens::golden_effects("anthropic_output_prompted_with_real_tool", &log);
         },
     )
     .await;
@@ -224,7 +218,7 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
 /// tool is the only call allowed, and it is called.
 
 #[tokio::test]
-async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
+async fn tool_choice_specific_output_effect_log() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_choice_specific_output",
         |client| async move {
@@ -252,10 +246,6 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert_eq!(tool_names(request_at(&log, 0)), ["final_result"]);
-            crate::ecs_goldens::golden_effects(
-                "anthropic_output_tool_choice_specific_output",
-                &log,
-            );
         },
     )
     .await;
@@ -266,7 +256,7 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
 /// second turn.
 
 #[tokio::test]
-async fn tool_choice_required_effect_log_is_the_golden_fixture() {
+async fn tool_choice_required_effect_log() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_choice_required",
         |client| async move {
@@ -291,7 +281,6 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
             assert_event(&output);
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
-            crate::ecs_goldens::golden_effects("anthropic_output_tool_choice_required", &log);
         },
     )
     .await;
@@ -302,7 +291,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
 /// rather than a turn that cannot finalize.
 
 #[tokio::test]
-async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
+async fn tool_under_none_degrades_effect_log() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_under_none_degrades",
         |client| async move {
@@ -333,7 +322,6 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
                 "no output tool under tool_choice none"
             );
             assert!(request.output_schema.is_some(), "the native schema instead");
-            crate::ecs_goldens::golden_effects("anthropic_output_tool_under_none_degrades", &log);
         },
     )
     .await;
@@ -343,7 +331,7 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
 /// block and the output tool's call.
 
 #[tokio::test]
-async fn tool_thinking_effect_log_is_the_golden_fixture() {
+async fn tool_thinking_effect_log() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_thinking", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -364,7 +352,6 @@ async fn tool_thinking_effect_log_is_the_golden_fixture() {
         assert_event(&output);
         let log = ecs.effect_log();
         assert_eq!(families(&log), [EffectFamily::Completion]);
-        crate::ecs_goldens::golden_effects("anthropic_output_tool_thinking", &log);
     })
     .await;
 }

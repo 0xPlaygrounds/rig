@@ -31,8 +31,6 @@ mod openai;
 #[path = "common/ecs_cache.rs"]
 mod ecs_cache;
 
-use rig_test_support::ecs_goldens;
-
 #[allow(
     dead_code,
     reason = "each provider exercises its own subset of matrix cells"

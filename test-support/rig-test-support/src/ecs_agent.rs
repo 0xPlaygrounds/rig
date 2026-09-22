@@ -108,10 +108,6 @@ pub struct EcsAgent {
     tool_count: u64,
     recorder: EffectLogRecorder,
     golden_identity: bool,
-    /// Policy names stamped into the legacy producer's recorder header.
-    pub declared_policies: Vec<String>,
-    /// Whether the producer declares the bus policy as agent-owned metadata.
-    pub declare_bus_policy: bool,
 }
 
 impl EcsAgent {
@@ -193,8 +189,6 @@ impl EcsAgent {
             tool_count: 0,
             recorder,
             golden_identity,
-            declared_policies: vec![],
-            declare_bus_policy: true,
         }
     }
 
@@ -299,14 +293,6 @@ impl EcsAgent {
     /// Drive a run until settlement or failure, panicking after the 30-second deadline.
     pub async fn wait_for_outcome(&mut self, run: Entity) -> Result<String, Failure> {
         if self.golden_identity {
-            let bus = self.app.world().resource::<rig_ecs::bus::Policy>().0;
-            rig_cassette::ecs::identity::stamp_legacy_builder_header(
-                self.app.world_mut(),
-                self.agent,
-                &self.recorder,
-                self.declare_bus_policy.then_some(bus),
-                self.declared_policies.clone(),
-            );
             rig_cassette::ecs::identity::stamp_run(self.app.world_mut(), run, &self.recorder)
                 .expect("the run stamps its program identity");
         }

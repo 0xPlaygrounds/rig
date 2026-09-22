@@ -1946,21 +1946,17 @@ pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone 
     log
 }
 
-/// A scripted cell: the rig-agent runner over one sequenced transport, the
-/// world over another built the same way, parity by the golden comparison's
-/// normalisation (`world::run_scripted`), each interpreter over its own
-/// fresh tree.
+/// A scripted cell: the rig-agent runner over one sequenced transport and
+/// the world over another built the same way, each asserted against the
+/// cell over its own fresh tree.
 pub(crate) async fn run_scripted<M: rig_agent::completion::CompletionModel + Clone + 'static>(
     cell: &Cell,
     wire: impl Fn() -> super::Wire<M>,
 ) -> EffectLog {
     let lease = lease(cell).await;
-    let original = super::agent::run_agent(&wire(), cell, |_| {}).await;
+    super::agent::run_agent(&wire(), cell, |_| {}).await;
     drop(lease);
-    super::long_loop_world::run_world(&wire(), cell, |log| {
-        crate::ecs_goldens::assert_parity(cell.name, log, &original)
-    })
-    .await
+    super::long_loop_world::run_world(&wire(), cell).await
 }
 
 // -- the scripted rows: the row-1 recording on the sequenced transport --------

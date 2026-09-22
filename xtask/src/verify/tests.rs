@@ -875,14 +875,3 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
 }
-
-#[test]
-fn native_identity_edits_select_all_parity_consumers() {
-    let plan = ids(
-        "--changed",
-        &["test-support/rig-test-support/src/ecs_goldens/identities.json"],
-    );
-    for check in ["default-tests", "ecs-parity", "bus-verification"] {
-        assert!(plan.contains(check), "{plan:?}");
-    }
-}

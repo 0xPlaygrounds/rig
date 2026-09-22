@@ -26,8 +26,6 @@ mod ecs_cache;
 
 use rig_test_support::goldens;
 
-use rig_test_support::ecs_goldens;
-
 #[allow(dead_code)]
 #[path = "common/ecs_termination.rs"]
 mod ecs_termination;

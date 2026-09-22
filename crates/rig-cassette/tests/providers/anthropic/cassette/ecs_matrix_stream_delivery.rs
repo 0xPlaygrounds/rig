@@ -21,17 +21,7 @@ async fn text() {
     with_anthropic_cassette(
         "corpus_shaping/extra_context_streamed",
         |client| async move {
-            run_world(
-                &wire(&client),
-                &cells::SHAPING_EXTRA_CONTEXT_STREAMED,
-                |log| {
-                    crate::ecs_goldens::compare_to_original(
-                        "anthropic_shaping_extra_context_streamed",
-                        log,
-                    );
-                },
-            )
-            .await;
+            run_world(&wire(&client), &cells::SHAPING_EXTRA_CONTEXT_STREAMED).await;
         },
     )
     .await;
@@ -40,8 +30,6 @@ async fn text() {
 #[tokio::test]
 async fn parallel() {
     with_anthropic_cassette("streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order", |client| async move {
-        run_world(&wire(&client), &cells::SERVING_CONCURRENT_CONCURRENCY_TWO_EVENTS, |log| {
-            crate::ecs_goldens::compare_to_original("anthropic_serving_concurrent_concurrency_two_events", log);
-        }).await;
+        run_world(&wire(&client), &cells::SERVING_CONCURRENT_CONCURRENCY_TWO_EVENTS).await;
     }).await;
 }

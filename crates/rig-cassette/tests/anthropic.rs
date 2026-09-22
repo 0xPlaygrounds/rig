@@ -11,7 +11,6 @@ use rig_test_support::cache_conformance;
 mod cassette_safety;
 use rig_test_support::cassettes;
 use rig_test_support::ecs_agent;
-use rig_test_support::ecs_goldens;
 #[path = "common/ecs_lifecycle.rs"]
 mod ecs_lifecycle;
 #[path = "common/ecs_observation.rs"]

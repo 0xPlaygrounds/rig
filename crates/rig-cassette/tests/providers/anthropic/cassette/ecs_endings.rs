@@ -64,7 +64,6 @@ fn agent(client: &Bound<Anthropic>, ending: Ending, preamble: &str, streamed: bo
         Temperature(Some(0.0)),
         PolicyVersion(format!("ecs-endings/v1:{ending:?},RecordSettled")),
     ));
-    ecs.declared_policies = vec![format!("{ending:?}"), "RecordSettled".into()];
     ecs.app
         .init_resource::<Terminal>()
         .add_observer(failed)
@@ -198,11 +197,11 @@ async fn streamed_run(
 }
 
 #[tokio::test]
-async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
+async fn tool_dispatch_cancelled_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/tool_dispatch_cancelled",
         |client| async move {
-            let log = unary_tool_run(
+            unary_tool_run(
                 client,
                 CancelAddDispatch,
                 CANCEL_ADD_DISPATCH,
@@ -210,7 +209,6 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
                 false,
             )
             .await;
-            crate::ecs_goldens::golden_effects("anthropic_endings_tool_dispatch_cancelled", &log);
         },
     )
     .await;
@@ -219,7 +217,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool's result: the tool
 /// ran and its record holds the real result; the run stops after it.
 #[tokio::test]
-async fn tool_outcome_cancelled_effect_log_is_the_golden_fixture() {
+async fn tool_outcome_cancelled_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/tool_outcome_cancelled",
         |client| async move {
@@ -235,7 +233,6 @@ async fn tool_outcome_cancelled_effect_log_is_the_golden_fixture() {
                 log.records[1].outcome.is_ok(),
                 "the record holds the tool's answer"
             );
-            crate::ecs_goldens::golden_effects("anthropic_endings_tool_outcome_cancelled", &log);
         },
     )
     .await;
@@ -243,7 +240,7 @@ async fn tool_outcome_cancelled_effect_log_is_the_golden_fixture() {
 
 /// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
 #[tokio::test]
-async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
+async fn answer_outcome_cancelled_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/answer_outcome_cancelled",
         |client| async move {
@@ -259,7 +256,6 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
                 log.records[0].outcome.is_ok(),
                 "the record holds the answer"
             );
-            crate::ecs_goldens::golden_effects("anthropic_endings_answer_outcome_cancelled", &log);
         },
     )
     .await;
@@ -267,11 +263,11 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
 
 /// `on_model_turn_finished` → `Stop` on the first turn.
 #[tokio::test]
-async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
+async fn turn_finished_stop_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/turn_finished_stop",
         |client| async move {
-            let log = unary_tool_run(
+            unary_tool_run(
                 client,
                 StopAfterTurn,
                 STOP_AFTER_TURN,
@@ -279,7 +275,6 @@ async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
                 false,
             )
             .await;
-            crate::ecs_goldens::golden_effects("anthropic_endings_turn_finished_stop", &log);
         },
     )
     .await;
@@ -288,11 +283,11 @@ async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
 /// `on_model_turn_finished` → `Stop` at the answer turn of a tool program:
 /// the tool turn's records precede the stop.
 #[tokio::test]
-async fn answer_turn_stop_effect_log_is_the_golden_fixture() {
+async fn answer_turn_stop_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/answer_turn_stop",
         |client| async move {
-            let log = unary_tool_run(
+            unary_tool_run(
                 client,
                 StopAtAnswer,
                 STOP_AT_ANSWER,
@@ -304,7 +299,6 @@ async fn answer_turn_stop_effect_log_is_the_golden_fixture() {
                 false,
             )
             .await;
-            crate::ecs_goldens::golden_effects("anthropic_endings_answer_turn_stop", &log);
         },
     )
     .await;
@@ -316,7 +310,7 @@ async fn answer_turn_stop_effect_log_is_the_golden_fixture() {
 /// first delta, so the completion is recorded as the cancel it was, on
 /// every transport.
 #[tokio::test]
-async fn text_delta_stop_effect_log_is_the_golden_fixture() {
+async fn text_delta_stop_effect_log() {
     // The consumer-cancel cell's cassette (Matrix D): the same program,
     // asked for the same essay; a hook changes nothing on the wire.
     with_anthropic_cassette("effect_corpus/cancelled_stream", |client| async move {
@@ -328,14 +322,13 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
             "{:?}",
             log.records[0].outcome
         );
-        crate::ecs_goldens::golden_effects("anthropic_endings_text_delta_stop", &log);
     })
     .await;
 }
 
 /// `on_tool_call_delta` → `Stop`.
 #[tokio::test]
-async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
+async fn tool_call_delta_stop_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/tool_call_delta_stop",
         |client| async move {
@@ -353,7 +346,6 @@ async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
                 "{:?}",
                 log.records[0].outcome
             );
-            crate::ecs_goldens::golden_effects("anthropic_endings_tool_call_delta_stop", &log);
         },
     )
     .await;
@@ -362,7 +354,7 @@ async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
 /// `on_dispatch` → `Deny(Cancelled)`, streamed with events: the completion
 /// completed and is recorded whole; the tool never reaches the bus.
 #[tokio::test]
-async fn tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture() {
+async fn tool_dispatch_cancelled_streamed_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/tool_dispatch_cancelled_streamed",
         |client| async move {
@@ -379,10 +371,6 @@ async fn tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture() {
                 "the stream completed: {:?}",
                 log.records[0].outcome
             );
-            crate::ecs_goldens::golden_effects(
-                "anthropic_endings_tool_dispatch_cancelled_streamed",
-                &log,
-            );
         },
     )
     .await;
@@ -390,17 +378,13 @@ async fn tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture() {
 
 /// `on_model_turn_finished` → `Stop`, streamed with events.
 #[tokio::test]
-async fn turn_finished_stop_streamed_effect_log_is_the_golden_fixture() {
+async fn turn_finished_stop_streamed_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/turn_finished_stop_streamed",
         |client| async move {
             let log = streamed_run(client, StopAfterTurn, STOP_AFTER_TURN, Streamed::Tools).await;
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(log.records[0].outcome.is_ok(), "the stream completed");
-            crate::ecs_goldens::golden_effects(
-                "anthropic_endings_turn_finished_stop_streamed",
-                &log,
-            );
         },
     )
     .await;
@@ -408,7 +392,7 @@ async fn turn_finished_stop_streamed_effect_log_is_the_golden_fixture() {
 
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool, streamed.
 #[tokio::test]
-async fn tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture() {
+async fn tool_outcome_cancelled_streamed_effect_log() {
     with_anthropic_corpus_endings_cassette(
         "corpus_endings/tool_outcome_cancelled_streamed",
         |client| async move {
@@ -426,10 +410,6 @@ async fn tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture() {
             assert!(
                 log.records[1].outcome.is_ok(),
                 "the record holds the tool's answer"
-            );
-            crate::ecs_goldens::golden_effects(
-                "anthropic_endings_tool_outcome_cancelled_streamed",
-                &log,
             );
         },
     )

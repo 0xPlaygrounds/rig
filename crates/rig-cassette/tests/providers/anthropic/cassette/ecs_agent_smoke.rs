@@ -1,11 +1,16 @@
-//! Native provider-executed producers of the original completion/memory goldens.
+//! Native smoke cells over the completion and memory recordings: the world
+//! answers, its record is one completion (with memory around it where the
+//! agent remembers), and the wire reported usage.
 
 use std::sync::Arc;
 
 use rig::{
-    effect::EffectFamily, memory::InMemoryConversationMemory,
-    providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::adapters::MemoryAdapter,
+    effect::{EffectFamily, Outcome},
+    memory::InMemoryConversationMemory,
+    providers::anthropic::completion::CLAUDE_SONNET_4_6,
+    serve::adapters::MemoryAdapter,
 };
+use rig_cassette::effect_log::EffectLog;
 use rig_ecs::{
     agent::{Conversation, Remembers},
     bus::Handlers,
@@ -18,18 +23,27 @@ use crate::{
 };
 
 #[tokio::test]
-async fn completion_smoke_effect_log_is_the_golden_fixture() {
+async fn completion_smoke_effect_log() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
-        crate::ecs_goldens::golden_effects("anthropic_completion_smoke", &ecs.effect_log());
+        let log = ecs.effect_log();
+        assert_eq!(
+            log.records
+                .iter()
+                .map(|record| record.kind.family())
+                .collect::<Vec<_>>(),
+            [EffectFamily::Completion],
+            "one completion"
+        );
+        assert_reported_usage(&log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn memory_conversation_effect_log_is_the_golden_fixture() {
+async fn memory_conversation_effect_log() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let mut memory = None;
         let mut ecs = EcsAgent::for_golden_with_setup(
@@ -72,7 +86,26 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
             ],
             "load, completion, append"
         );
-        crate::ecs_goldens::golden_effects("anthropic_memory_conversation", &log);
+        assert_reported_usage(&log);
     })
     .await;
+}
+
+/// Every completion record's response carries the usage the wire reported.
+fn assert_reported_usage(log: &EffectLog) {
+    let usages = log
+        .records
+        .iter()
+        .filter_map(|record| match &record.outcome {
+            Ok(Outcome::Completion(response)) => Some(&response.usage),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(!usages.is_empty(), "a completion record");
+    for usage in usages {
+        assert!(
+            usage.input_tokens.is_some() && usage.output_tokens.is_some(),
+            "the wire reported usage: {usage:?}"
+        );
+    }
 }

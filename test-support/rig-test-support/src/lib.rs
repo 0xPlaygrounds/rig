@@ -12,7 +12,6 @@ pub mod cache_conformance;
 pub mod cache_prefix;
 pub mod cassettes;
 pub mod ecs_agent;
-pub mod ecs_goldens;
 pub mod goldens;
 pub mod matrix;
 pub mod matrix_registry;

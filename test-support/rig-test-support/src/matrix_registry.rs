@@ -114,8 +114,46 @@ impl Parse for GoldenMatrix {
     }
 }
 
-/// Resume variants share a named oracle function with the uncut cell. Its
-/// literal golden call remains the single source site inspected by pairing.
+/// Native rows: a world cell asserted against its program, no golden.
+pub struct NativeMatrix {
+    /// The wire-specific cassette wrapper called by each generated test.
+    pub wrapper: Path,
+    /// Scenario literals and whether each row is ignored.
+    pub rows: Vec<(LitStr, bool)>,
+}
+
+impl Parse for NativeMatrix {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let wrapper = field(input, "wrapper")?;
+        input.parse::<Token![,]>()?;
+        field(input, "wire")?;
+        input.parse::<Token![,]>()?;
+        field(input, "run")?;
+        input.parse::<Token![;]>()?;
+        let mut rows = Vec::new();
+        let mut names = BTreeSet::new();
+        while !input.is_empty() {
+            let ignored = registration(input, &mut names)?;
+            input.parse::<Token![:]>()?;
+            let args;
+            parenthesized!(args in input);
+            let scenario: LitStr = args.parse()?;
+            args.parse::<Token![,]>()?;
+            args.parse::<Path>()?;
+            if !args.is_empty() {
+                return Err(args.error("expected scenario and cell path"));
+            }
+            input.parse::<Token![;]>()?;
+            rows.push((scenario, ignored));
+        }
+        if rows.is_empty() {
+            return Err(input.error("matrix must register at least one test"));
+        }
+        Ok(Self { wrapper, rows })
+    }
+}
+
+/// Resume variants of native rows: the cut point beside the cell.
 pub struct ResumeMatrix {
     /// The wire-specific cassette wrapper called by each generated test.
     pub wrapper: Path,
@@ -143,10 +181,8 @@ impl Parse for ResumeMatrix {
             args.parse::<Path>()?;
             args.parse::<Token![,]>()?;
             args.parse::<syn::Expr>()?;
-            args.parse::<Token![,]>()?;
-            args.parse::<Path>()?;
             if !args.is_empty() {
-                return Err(args.error("expected scenario, cell, resume point and oracle path"));
+                return Err(args.error("expected scenario, cell and resume point"));
             }
             input.parse::<Token![;]>()?;
             rows.push((scenario, ignored));

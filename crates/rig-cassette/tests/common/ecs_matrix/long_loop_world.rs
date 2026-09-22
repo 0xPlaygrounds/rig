@@ -15,7 +15,6 @@ use rig_cassette::effect_log::EffectLog;
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
-    golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let mut cell = *cell;
     if cell.resume_after == Some(usize::MAX) {
@@ -25,7 +24,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     let lease = long_loop::lease(&cell).await;
     // `world::run_world` asserts the loop (`long_loop::assert_log`) and the
     // transcript beside the golden, while the world is still open.
-    let log = super::world::run_world(wire, &cell, golden).await;
+    let log = super::world::run_world(wire, &cell).await;
     drop(lease);
     log
 }

@@ -13,9 +13,8 @@
 //! - [`world::run_world`], the world cell: the same program as an agent
 //!   graph in a Bevy `World`, its hooks as systems (the corpus's
 //!   `world_hooks`), served by the real adapters over the same cassette,
-//!   its log compared to the producer's golden
-//!   (`crate::ecs_goldens::golden_effects`), its graph inspected, its run
-//!   despawned, and — where the cell names a cut — saved as a scene at the
+//!   its record and graph asserted against the cell, its run despawned,
+//!   and — where the cell names a cut — saved as a scene at the
 //!   cut and resumed in a fresh world over replayers of the log's tail.
 //!
 //! The failure rows ([`faults`]) are the same shape: a cell names the

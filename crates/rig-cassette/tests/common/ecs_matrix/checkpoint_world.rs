@@ -12,14 +12,13 @@ use rig_cassette::effect_log::EffectLog;
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
-    golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let mut cell = *cell;
     if cell.resume_after == Some(usize::MAX) {
         cell.resume_after = Some(super::checkpoint::tool_turns(&cell));
     }
     cell.live_resume = cell.resume_after.is_some();
-    let log = super::world::run_world(wire, &cell, golden).await;
+    let log = super::world::run_world(wire, &cell).await;
     super::checkpoint::assert_log(&cell, &log);
     log
 }

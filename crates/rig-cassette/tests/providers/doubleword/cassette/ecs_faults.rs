@@ -1,8 +1,8 @@
 //! The failure rows on the Doubleword wire (`Qwen/Qwen3.5-397B-A17B-FP8`, `reasoning_effort: none`): every cell of
 //! `tests/common/ecs_matrix/faults.rs` as an agent graph in a Bevy `World`,
 //! served by the real adapter over the wire's own recording (the recorded
-//! rows, against the producer's golden in `corpus_faults.rs`), over a
-//! recording another cell owns (rows 9 and 13, against that cell's golden),
+//! rows, the producer's rows in `corpus_faults.rs`), over a
+//! recording another cell owns (rows 9 and 13),
 //! or over the sequenced transport serving labelled frames cut or rewritten
 //! from this wire's #2501 recordings (the scripted rows, against the
 //! rig-agent runner over the same frames). This file holds the scenario
@@ -122,52 +122,43 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     }
 }
 
-crate::matrix::golden_matrix! {
-    wrapper: with_doubleword_cassette, wire: missing, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+crate::matrix::native_matrix! {
+    wrapper: with_doubleword_cassette, wire: missing, run: run_world;
     #[tokio::test]
-    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY, "doubleword_fault_setup_unary");
+    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY);
     #[tokio::test]
-    setup_streamed: ("error_matrix/unknown_model_streaming", SETUP_STREAMED, "doubleword_fault_setup_streamed");
+    setup_streamed: ("error_matrix/unknown_model_streaming", SETUP_STREAMED);
 }
 
-crate::matrix::golden_matrix! {
-    wrapper: with_doubleword_cassette, wire: wire, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+crate::matrix::native_matrix! {
+    wrapper: with_doubleword_cassette, wire: wire, run: run_world;
     #[tokio::test]
-    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR, "doubleword_fault_tool_error");
+    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR);
     #[tokio::test]
-    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED, "doubleword_fault_tool_error_streamed");
+    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED);
     #[tokio::test]
-    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS, "doubleword_fault_batch_second_fails");
+    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS);
     #[tokio::test]
-    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "doubleword_fault_batch_second_fails_concurrent");
+    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT);
 }
 
-/// Row 9 over `endings_tool_outcome_cancelled`'s recording and golden.
+/// Row 9 over `endings_tool_outcome_cancelled`'s recording.
 #[tokio::test]
 async fn stop_while_tool_runs() {
     with_doubleword_cassette(
         "corpus_matrix/endings_tool_outcome_cancelled",
         |client| async move {
-            run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS, |log| {
-                crate::ecs_goldens::compare_to_original(
-                    "doubleword_endings_tool_outcome_cancelled",
-                    log,
-                )
-            })
-            .await;
+            run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS).await;
         },
     )
     .await;
 }
 
-/// Row 13 over `resume_tool_turn`'s recording and golden.
+/// Row 13 over `resume_tool_turn`'s recording.
 #[tokio::test]
 async fn scene_tool_in_flight() {
     with_doubleword_cassette("corpus_matrix/resume_tool_turn", |client| async move {
-        run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT, |log| {
-            crate::ecs_goldens::compare_to_original("doubleword_resume_tool_turn", log)
-        })
-        .await;
+        run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT).await;
     })
     .await;
 }

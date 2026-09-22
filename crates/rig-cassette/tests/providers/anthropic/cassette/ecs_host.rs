@@ -70,7 +70,6 @@ fn agent(
         serial_per_handler: host.serial,
         ..ServingPolicy::default()
     };
-    ecs.declare_bus_policy = false;
     ecs.app
         .world_mut()
         .entity_mut(ecs.agent)
@@ -126,7 +125,6 @@ fn agent(
             &["NoteUnserved"]
         }
     };
-    ecs.declared_policies = names.iter().map(|s| (*s).into()).collect();
     ecs.app
         .world_mut()
         .entity_mut(ecs.agent)
@@ -188,12 +186,11 @@ async fn over_host(
         "host work finished before teardown"
     );
     drop(ecs);
-    assert_eq!(log.header.bus, None, "the policy is the host's");
     log
 }
 
 #[tokio::test]
-async fn custom_at_start_effect_log_is_the_golden_fixture() {
+async fn custom_at_start_effect_log() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_at_start", |client| async move {
         let log = over_host(client, PLAIN, Hooks::AtStart).await;
         assert_eq!(
@@ -201,13 +198,12 @@ async fn custom_at_start_effect_log_is_the_golden_fixture() {
             [EffectFamily::Custom, EffectFamily::Completion]
         );
         assert_eq!(note_ats(&log), ["start"]);
-        crate::ecs_goldens::golden_effects("anthropic_host_custom_at_start", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn custom_at_completion_call_effect_log_is_the_golden_fixture() {
+async fn custom_at_completion_call_effect_log() {
     with_anthropic_corpus_host_cassette(
         "corpus_host/custom_at_completion_call",
         |client| async move {
@@ -217,14 +213,13 @@ async fn custom_at_completion_call_effect_log_is_the_golden_fixture() {
                 [EffectFamily::Custom, EffectFamily::Completion]
             );
             assert_eq!(note_ats(&log), ["completion_call"]);
-            crate::ecs_goldens::golden_effects("anthropic_host_custom_at_completion_call", &log);
         },
     )
     .await;
 }
 
 #[tokio::test]
-async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
+async fn custom_at_outcome_effect_log() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_at_outcome", |client| async move {
         let host = Host {
             with_tool: true,
@@ -241,7 +236,6 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
             ]
         );
         assert_eq!(note_ats(&log), ["outcome"]);
-        crate::ecs_goldens::golden_effects("anthropic_host_custom_at_outcome", &log);
     })
     .await;
 }
@@ -250,7 +244,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
 /// still tapping the host's bus, so the record follows the completion
 /// that answered the run.
 #[tokio::test]
-async fn custom_at_settled_effect_log_is_the_golden_fixture() {
+async fn custom_at_settled_effect_log() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_at_settled", |client| async move {
         let log = over_host(client, PLAIN, Hooks::AtSettled).await;
         assert_eq!(
@@ -258,13 +252,12 @@ async fn custom_at_settled_effect_log_is_the_golden_fixture() {
             [EffectFamily::Completion, EffectFamily::Custom]
         );
         assert_eq!(note_ats(&log), ["settled"]);
-        crate::ecs_goldens::golden_effects("anthropic_host_custom_at_settled", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn custom_start_and_settled_effect_log_is_the_golden_fixture() {
+async fn custom_start_and_settled_effect_log() {
     with_anthropic_corpus_host_cassette(
         "corpus_host/custom_start_and_settled",
         |client| async move {
@@ -278,14 +271,13 @@ async fn custom_start_and_settled_effect_log_is_the_golden_fixture() {
                 ]
             );
             assert_eq!(note_ats(&log), ["start", "settled"]);
-            crate::ecs_goldens::golden_effects("anthropic_host_custom_start_and_settled", &log);
         },
     )
     .await;
 }
 
 #[tokio::test]
-async fn custom_twice_serial_effect_log_is_the_golden_fixture() {
+async fn custom_twice_serial_effect_log() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_twice_serial", |client| async move {
         let host = Host {
             serial: true,
@@ -301,13 +293,12 @@ async fn custom_twice_serial_effect_log_is_the_golden_fixture() {
             ]
         );
         assert_eq!(note_ats(&log), ["first", "second"]);
-        crate::ecs_goldens::golden_effects("anthropic_host_custom_twice_serial", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn custom_twice_concurrent_effect_log_is_the_golden_fixture() {
+async fn custom_twice_concurrent_effect_log() {
     with_anthropic_corpus_host_cassette(
         "corpus_host/custom_twice_concurrent",
         |client| async move {
@@ -321,14 +312,13 @@ async fn custom_twice_concurrent_effect_log_is_the_golden_fixture() {
                 ]
             );
             assert_eq!(note_ats(&log), ["first", "second"]);
-            crate::ecs_goldens::golden_effects("anthropic_host_custom_twice_concurrent", &log);
         },
     )
     .await;
 }
 
 #[tokio::test]
-async fn custom_at_start_streamed_effect_log_is_the_golden_fixture() {
+async fn custom_at_start_streamed_effect_log() {
     with_anthropic_corpus_host_cassette(
         "corpus_host/custom_at_start_streamed",
         |client| async move {
@@ -342,14 +332,13 @@ async fn custom_at_start_streamed_effect_log_is_the_golden_fixture() {
                 [EffectFamily::Custom, EffectFamily::Completion]
             );
             assert!(log.records[1].events.is_some(), "events are kept");
-            crate::ecs_goldens::golden_effects("anthropic_host_custom_at_start_streamed", &log);
         },
     )
     .await;
 }
 
 #[tokio::test]
-async fn custom_at_outcome_streamed_effect_log_is_the_golden_fixture() {
+async fn custom_at_outcome_streamed_effect_log() {
     with_anthropic_corpus_host_cassette(
         "corpus_host/custom_at_outcome_streamed",
         |client| async move {
@@ -369,7 +358,6 @@ async fn custom_at_outcome_streamed_effect_log_is_the_golden_fixture() {
                 ]
             );
             assert_eq!(note_ats(&log), ["outcome"]);
-            crate::ecs_goldens::golden_effects("anthropic_host_custom_at_outcome_streamed", &log);
         },
     )
     .await;
@@ -378,7 +366,7 @@ async fn custom_at_outcome_streamed_effect_log_is_the_golden_fixture() {
 /// The host registered no note taker: the hook's bind is refused, the
 /// run goes on, and nothing of the hook reaches the log but its name.
 #[tokio::test]
-async fn custom_unserved_effect_log_is_the_golden_fixture() {
+async fn custom_unserved_effect_log() {
     with_anthropic_corpus_host_cassette("corpus_host/custom_unserved", |client| async move {
         let host = Host {
             notes: false,
@@ -386,8 +374,6 @@ async fn custom_unserved_effect_log_is_the_golden_fixture() {
         };
         let log = over_host(client, host, Hooks::Unserved).await;
         assert_eq!(families(&log), [EffectFamily::Completion]);
-        assert_eq!(log.header.hooks, ["NoteUnserved"]);
-        crate::ecs_goldens::golden_effects("anthropic_host_custom_unserved", &log);
     })
     .await;
 }
