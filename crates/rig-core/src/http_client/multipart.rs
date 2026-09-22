@@ -1,3 +1,13 @@
+//! Transport-neutral multipart fields and byte encoding.
+//!
+//! ```
+//! use rig_core::http_client::multipart::MultipartForm;
+//!
+//! let (boundary, body) = MultipartForm::new().text("model", "example").encode();
+//! assert!(!boundary.is_empty());
+//! assert!(!body.is_empty());
+//! ```
+
 use bytes::Bytes;
 use mime::Mime;
 use std::borrow::Cow;
@@ -154,7 +164,10 @@ impl MultipartForm {
         }
     }
 
-    /// Encode the multipart form to bytes with the given boundary
+    /// Encodes parts in insertion order, returning the boundary and body bytes.
+    /// Uses the configured boundary or generates one for this call. Names,
+    /// filenames, and boundaries are inserted verbatim; callers must ensure they
+    /// are safe for multipart headers and that the boundary does not occur in data.
     pub fn encode(&self) -> (String, Bytes) {
         let boundary = self.get_boundary();
         let mut body = Vec::new();
@@ -164,7 +177,6 @@ impl MultipartForm {
             body.extend_from_slice(boundary.as_bytes());
             body.extend_from_slice(b"\r\n");
 
-            // Content-Disposition header
             body.extend_from_slice(b"Content-Disposition: form-data; name=\"");
             body.extend_from_slice(part.name.as_bytes());
             body.extend_from_slice(b"\"");
@@ -176,7 +188,6 @@ impl MultipartForm {
             }
             body.extend_from_slice(b"\r\n");
 
-            // Content-Type header if specified
             if let Some(content_type) = &part.content_type {
                 body.extend_from_slice(b"Content-Type: ");
                 body.extend_from_slice(content_type.as_ref().as_bytes());
@@ -185,7 +196,6 @@ impl MultipartForm {
 
             body.extend_from_slice(b"\r\n");
 
-            // Content
             match &part.content {
                 PartContent::Text(text) => body.extend_from_slice(text.as_bytes()),
                 PartContent::Binary(bytes) => body.extend_from_slice(bytes),
@@ -194,7 +204,6 @@ impl MultipartForm {
             body.extend_from_slice(b"\r\n");
         }
 
-        // Final boundary
         body.extend_from_slice(b"--");
         body.extend_from_slice(boundary.as_bytes());
         body.extend_from_slice(b"--\r\n");

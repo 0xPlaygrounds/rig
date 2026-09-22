@@ -1,11 +1,8 @@
-//! Qdrant vector store integration for Rig.
+//! Qdrant vector store for Rig.
 //!
-//! This crate provides [`QdrantVectorStore`], a Rig vector store index backed
-//! by Qdrant collections. It supports dense vector search and Qdrant filter
-//! expressions through [`QdrantFilter`].
-//!
-//! The root `rig` facade re-exports this crate as `rig::qdrant` when the
-//! `qdrant` feature is enabled.
+//! [`QdrantVectorStore`] runs dense vector search against a Qdrant collection,
+//! optionally narrowed by a [`QdrantFilter`]. The `rig` facade re-exports this
+//! crate as `rig::qdrant` under the `qdrant` feature.
 
 mod filter;
 
@@ -28,28 +25,19 @@ use rig_core::{
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
-/// Represents a vector store implementation using Qdrant - <https://qdrant.tech/> as the backend.
+/// Vector store backed by a Qdrant collection.
 ///
-/// The store is generic over its embedding model `M`, which is fixed for the
-/// store's lifetime: an index populated under one model is only meaningful under
-/// that same model.
+/// Queries are embedded with the same model `M` that populated the collection,
+/// so results are meaningless under another model.
 pub struct QdrantVectorStore<M> {
-    /// Model used to generate embeddings for the vector store
     model: M,
-    /// Client instance for Qdrant server communication
     client: Qdrant,
-    /// Default search parameters
     query_params: QueryPoints,
 }
 
 impl<M: EmbeddingModel> QdrantVectorStore<M> {
-    /// Creates a new instance of `QdrantVectorStore`.
-    ///
-    /// # Arguments
-    /// * `client` - Qdrant client instance
-    /// * `model` - Embedding model instance
-    /// * `query_params` - Search parameters for vector queries
-    ///   Reference: <https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points>
+    /// Creates a store over the collection named by `query_params`. Each search
+    /// clones `query_params` and overrides its query, limit, threshold, and filter.
     pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
         Self {
             client,
@@ -62,13 +50,12 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         &self.client
     }
 
-    /// Embed query based on `QdrantVectorStore` model and modify the vector in the required format.
+    /// Embeds the query and narrows each component to `f32` for Qdrant.
     async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
         let embedding = self.model.embed_text(query).await?;
         Ok(embedding.vec.iter().map(|&x| x as f32).collect())
     }
 
-    /// Fill in query parameters with the given query and limit.
     fn prepare_query_params(
         &self,
         query: Option<Query>,
@@ -84,8 +71,8 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
         params
     }
 
-    /// Embeds the query (unless overridden by `query_params`), applies the
-    /// request filter, and runs the Qdrant query, returning the scored points.
+    /// Runs the search and returns scored points. A query preset in
+    /// `query_params` takes precedence over embedding the request text.
     async fn run_query(
         &self,
         req: &VectorSearchRequest<QdrantFilter>,
@@ -154,7 +141,7 @@ impl<M: EmbeddingModel> InsertDocuments for QdrantVectorStore<M> {
     }
 }
 
-/// Converts a `PointId` to its string representation.
+/// Renders a point id as a string, erroring when the id is absent.
 fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     match id.point_id_options {
         Some(PointIdOptions::Num(num)) => Ok(num.to_string()),
@@ -165,7 +152,6 @@ fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     }
 }
 
-/// The backend returned a search hit without a point id.
 fn missing_point_id() -> VectorStoreError {
     VectorStoreError::MissingIdError("Qdrant search result carries no point id".to_string())
 }
@@ -173,8 +159,8 @@ fn missing_point_id() -> VectorStoreError {
 impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
     type Filter = QdrantFilter;
 
-    /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
-    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
+    /// Returns the nearest points as `(score, id, payload)`. Errors when a point
+    /// lacks an id or its payload does not deserialize into `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
@@ -191,8 +177,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
             .collect()
     }
 
-    /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
-    /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
+    /// Like `top_n` but returns `(score, id)` without deserializing payloads.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,

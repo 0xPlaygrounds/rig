@@ -74,12 +74,8 @@ impl ProviderResponseExt for AwsConverseOutput {
 /// Stable descriptor name reported on normalized Bedrock responses.
 pub const PROVIDER_NAME: &str = "aws_bedrock";
 
-/// Map Bedrock's `stopReason` onto rig's normalized vocabulary.
-///
-/// `StopSequence` is a natural stop, not a truncation — the model emitted a
-/// configured stop string and finished. Guardrail intervention is a content
-/// filter by another name. Anything the SDK surfaced as unknown is carried
-/// verbatim.
+/// Normalizes stop reasons, preserving unknown values in `Other`.
+/// Stop sequences map to `Stop`; guardrail intervention maps to `ContentFilter`.
 pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
     match stop_reason {
         StopReason::EndTurn | StopReason::StopSequence => completion::FinishReason::Stop,
@@ -115,10 +111,6 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
             .to_owned()
             .try_into()?;
 
-        // This arm rejects a *role* mismatch, not an empty choice — the
-        // empty-converted-content case is rejected upstream in the message
-        // conversion — so it carries its own diagnostic rather than the
-        // shared empty-response wording.
         let choice = match message.0 {
             completion::Message::Assistant { content, .. } => Ok(content),
             _ => Err(CompletionError::ResponseError(
@@ -163,12 +155,7 @@ impl TryFrom<ContentBlock> for RigAssistantContent {
                         reasoning_text.signature,
                     )),
                 )),
-                // Content the safety classifier encrypted. It is normal model
-                // output, not a protocol violation: erroring here failed the
-                // whole response over a block the streaming path and the
-                // direct-Anthropic adapter both carry. The blob is bytes and
-                // rig's canonical reasoning content is a string, so it travels
-                // base64-encoded and decodes on the way back out.
+                // Base64 preserves opaque redacted bytes for request replay.
                 ReasoningContentBlock::RedactedContent(blob) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(
                         rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(blob.inner)),
@@ -186,23 +173,17 @@ impl TryFrom<ContentBlock> for RigAssistantContent {
 }
 
 impl RigAssistantContent {
-    /// Convert one assistant content item for the Converse request.
-    ///
-    /// `Ok(None)` means the item degrades away entirely: opaque reasoning
-    /// Bedrock cannot carry — another provider's ciphertext, or a redacted
-    /// blob that no longer decodes — drops with a warning instead of
-    /// failing the request.
+    /// Converts assistant content for a Converse request.
+    /// Returns `Ok(None)` after dropping unsupported ciphertext or invalid base64
+    /// with a warning. Rejects images and unrepresentable signed reasoning.
     pub(crate) fn into_content_block(
         self,
     ) -> Result<Option<aws_bedrock::ContentBlock>, CompletionError> {
         match self.0 {
             AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
             AssistantContent::ToolCall(tool_call) => {
-                // Both Converse legs must agree on `toolUseId`: the result
-                // leg (user_content.rs) sends the provider-issued call id
-                // when one exists, so the assistant echo does too — a bare
-                // minted handle here would orphan the paired toolResult
-                // whenever the two diverge.
+                // Calls and results must use the same provider-issued identity,
+                // not a potentially different local assembly handle.
                 let tool_use_id = tool_call.wire_call_id().into_owned();
                 let doc: AwsDocument = tool_call.function.arguments.into();
                 Ok(Some(aws_bedrock::ContentBlock::ToolUse(
@@ -215,19 +196,8 @@ impl RigAssistantContent {
                 )))
             }
             AssistantContent::Reasoning(mut reasoning) => {
-                // Opaque payloads are ciphertext, not prose — and their
-                // provenance is in the variant. `Redacted` is
-                // Bedrock-native: this file's own inbound legs base64-encode
-                // Converse's `redactedContent` bytes, so only it may decode
-                // back onto the wire. `Encrypted` NEVER originates here — it
-                // is OpenAI Responses `encrypted_content`, OpenRouter
-                // `reasoning.encrypted`, or Anthropic ciphertext, stored
-                // verbatim (not base64) — and Bedrock can neither verify nor
-                // use another provider's ciphertext. Shipping it as
-                // Bedrock's own `redactedContent` hands Converse a body its
-                // models never wrote, and its token shapes routinely fail
-                // strict base64, which used to fail the whole request.
-                // Degrade, don't fail: drop what Converse cannot carry.
+                // Only Redacted payloads represent base64-encoded Converse bytes.
+                // Drop Encrypted payloads rather than reinterpret foreign ciphertext.
                 let foreign = reasoning
                     .content
                     .iter()
@@ -262,12 +232,8 @@ impl RigAssistantContent {
 
                 if !redacted.is_empty() {
                     if redacted.len() != reasoning.content.len() {
-                        // A mixed block cannot be represented on Converse
-                        // (one block is either `reasoningText` or
-                        // `redactedContent`). Cross-provider replay must
-                        // degrade, not fail the whole request locally: drop
-                        // the un-representable opaque part(s), keep the
-                        // representable text.
+                        // Converse cannot mix redacted bytes and text in one
+                        // block; retain only the representable text.
                         tracing::warn!(
                             dropped = redacted.len(),
                             "dropping redacted reasoning payloads Bedrock cannot carry \
@@ -281,9 +247,6 @@ impl RigAssistantContent {
                         });
                     } else {
                         if redacted.len() > 1 {
-                            // All-redacted with several payloads: keep the
-                            // first, drop the rest — same degrade-don't-fail
-                            // policy.
                             tracing::warn!(
                                 dropped = redacted.len() - 1,
                                 "dropping extra redacted reasoning payloads; Bedrock carries \
@@ -291,12 +254,8 @@ impl RigAssistantContent {
                             );
                         }
 
-                        // Round-trips the encoding the inbound legs apply:
-                        // the wire carries bytes, rig's canonical content is
-                        // a string. A blob that no longer decodes cannot be
-                        // replayed — degrade like the mixed case rather than
-                        // failing the request over history Bedrock will not
-                        // miss.
+                        // Invalid base64 cannot reconstruct wire bytes; omit it
+                        // rather than fail the whole history conversion.
                         let data = redacted.first().copied().unwrap_or_default();
                         return match BASE64_STANDARD.decode(data) {
                             Ok(bytes) => Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(
@@ -344,11 +303,8 @@ impl RigAssistantContent {
 
                 let flattened_text = reasoning.display_text();
                 let has_signature = reasoning.first_signature().is_some();
-                // Adaptive thinking on Bedrock can emit a reasoning block whose
-                // plaintext body is empty but with a real cryptographic
-                // signature attached. The signature is what Anthropic uses to
-                // verify tool_use round-trips, so we must preserve it. Only
-                // reject when there's neither text nor signature to send.
+                // Signature-only reasoning must survive tool-call replay even
+                // when its plaintext is empty.
                 if flattened_text.is_empty() && !has_signature {
                     return Err(CompletionError::ProviderError(
                         "AWS Bedrock reasoning conversion requires at least one text or summary block"

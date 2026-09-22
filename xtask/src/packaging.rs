@@ -1,43 +1,16 @@
 //! `check-packaging`: what the workspace publishes, and what it claims to need.
 //!
-//! Three properties a downstream consumer pays for and no build catches,
-//! because none of them stops the workspace compiling:
-//!
-//! 1. **The facade ships its source, not the repository** (#2349). `rig`'s
-//!    library is one file, but the package directory is the whole workspace
-//!    root, so without an allowlist its tarball also carried CI workflows,
-//!    README artwork, the Nix flake, `examples/` data and a `tests/` tree that
-//!    cannot compile from the package at all - its `rig-test-support` dev
-//!    dependency is path-only, so Cargo strips it when publishing.
-//! 2. **A manifest asks for what the crate uses.** A `[dependencies]` entry no
-//!    source ever names is still resolved, still built and still part of every
-//!    consumer's supply chain. `rig-bedrock` pulled the `rig-derive`
-//!    proc-macro into every consumer for the sake of two examples.
-//! 3. **The facade feature guard covers every facade feature.** The additivity
-//!    fixture's `all_root` is the only place every `rig` feature is compiled
-//!    together; a feature missing from that list is a feature nothing guards.
+//! Checks three properties no build catches: that the facade tarball ships only
+//! its own source and registry documents rather than the workspace root, that
+//! every declared dependency is actually used, and that the facade feature guard
+//! lists every facade feature.
 //!
 //! Manifest data comes from `cargo metadata` and the file list from
-//! `cargo package --list`, so this checks what Cargo will actually do rather
-//! than re-implementing its manifest parsing.
-//!
-//! # Why this only ever runs `cargo package --list`
-//!
-//! `cargo package`, *even with `--no-verify`*, builds the tarball's lockfile
-//! from the published manifest, where path dependencies become registry
-//! dependencies - so it resolves every sibling `rig-* = { path = …, version =
-//! "X" }` against crates.io. On a release PR, `X` is the version being released
-//! and is by definition not published yet, so it fails to select a version.
-//! That would be worse than the bug this check exists to prevent: CI is what
-//! gates the release, so the check could not go green until the version was
-//! published and the version could not publish until the check went green.
-//! `--list` does not build that lockfile, so it is immune.
-//!
-//! The consequence is that sizes here are the uncompressed sum of the listed
-//! files rather than a `.crate` size. Compressed is never larger, so a crate
-//! under this ceiling is guaranteed under the registry cap: a sufficient
-//! condition rather than an estimate, which is what lets it be trusted without
-//! ever building a tarball.
+//! `cargo package --list`, which reports what Cargo will do without building a
+//! tarball. A full `cargo package` would resolve sibling path dependencies
+//! against the registry, which fails on a release PR for versions that are not
+//! published yet. Sizes are therefore the uncompressed sum of listed files,
+//! which bounds the compressed size from above.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -45,24 +18,18 @@ use std::process::Command;
 
 use serde_json::Value;
 
-/// `serde_json`'s indexing operator panics on a type mismatch, which the
-/// workspace lints forbid; this reads a field as "absent" instead.
+/// Reads a field, treating a missing one as null, since indexing would panic.
 fn field<'a>(value: &'a Value, key: &str) -> &'a Value {
     static NULL: Value = Value::Null;
     value.get(key).unwrap_or(&NULL)
 }
 
 /// Everything the published `rig` tarball may contain besides `src/` and the
-/// images its README displays. The facade is a re-export crate: its payload is
-/// its source, its manifest, and the documents a registry renders.
+/// images its README displays.
 ///
-/// Deliberately a second, independent statement of the manifest's
-/// `[package].include` rather than something derived from it: a guard that
-/// reads the value it is guarding proves only that the value parses. Adding a
-/// published file takes two edits, and that friction is the point.
-///
-/// `Cargo.toml.orig`, `Cargo.lock` and `.cargo_vcs_info.json` are synthesised
-/// by Cargo and are not in the manifest's list.
+/// Stated independently of the manifest's `[package].include` so the guard does
+/// not read the value it checks. Cargo synthesizes `Cargo.toml.orig`,
+/// `Cargo.lock`, and `.cargo_vcs_info.json`, which the manifest does not list.
 const FACADE_ALLOWED_FILES: &[&str] = &[
     ".cargo_vcs_info.json",
     "CHANGELOG.md",

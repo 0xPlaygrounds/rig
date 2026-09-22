@@ -1,40 +1,26 @@
-//! The unary modality operations: embeddings, reranking, transcription,
-//! image generation, audio generation.
+//! Buffered embedding, reranking, transcription, image, and audio operations.
 //!
-//! Each is the same shape — one request, one reply document, one normalized
-//! response carrying usage and identity — so they are declared once by
-//! [`modality_operation!`] rather than five times by hand. The only
-//! per-operation data is the request, the response, the error enum and the
-//! canonical telemetry name.
+//! ```
+//! use rig_core::operation::EmbeddingCapabilities;
+//!
+//! let capabilities = EmbeddingCapabilities::new(32, 768).declaring(Some(768));
+//! assert_eq!(capabilities.declared, Some(768));
+//! ```
 
 use super::{One, Take};
 use crate::embeddings::{Embedding as Vector, EmbeddingError};
 use crate::telemetry::{ModalityOperation, ModalityResponseTelemetry, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply};
 
-/// What a runtime accounts for on an embedding wire: the batch limit the
-/// provider accepts, the dimensionality it returns, and the width the
-/// caller declared when they named one.
-///
-/// These are facts about the wire that the consumer trait asks for
-/// (`max_documents`, `ndims`), so they ride on the operation's capability
-/// value rather than on extra trait methods no other operation would want.
+/// Embedding batch limit, resolved dimensions, and optional caller-declared width.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EmbeddingCapabilities {
     /// The most documents the provider embeds in one request.
     pub max_documents: usize,
     /// The dimensionality of the returned vectors.
     pub ndims: usize,
-    /// The width the caller *declared*, as opposed to the one
-    /// [`Self::ndims`] resolved to.
-    ///
-    /// A distinct fact because the two answer different questions.
-    /// `ndims` is what the model reports and a vector store sizes its index
-    /// from: the caller's width when they named one, the provider's own
-    /// table when they did not. This is only ever the caller's own claim,
-    /// and `None` when they made none — which is why an unstated width can
-    /// never mismatch, and a provider that disagrees with its own width
-    /// table is not the caller's fault.
+    /// Width explicitly requested by the caller, not inferred from model metadata.
+    /// `None` and zero disable declared-width validation.
     pub declared: Option<usize>,
 }
 
@@ -58,22 +44,8 @@ impl EmbeddingCapabilities {
         self
     }
 
-    /// Refuse a reply whose vectors are not the width the caller declared.
-    ///
-    /// This is the invariant behind [`EmbeddingError::MismatchedDimensions`],
-    /// and it lives beside the capability rather than in [`Embedded`], the
-    /// embeddings fold: the fold is seeded from the *request*, which for
-    /// this operation is `Vec<String>`, so the declared width — a property
-    /// of the wire, reached through [`Wire::capabilities`] — is not in
-    /// scope there. The consumer impl that publishes `ndims()` off this
-    /// same value is where both halves meet, so that is where it is called.
-    ///
-    /// The failure it catches is silent: the providers that ignore a
-    /// `dimensions` field rather than rejecting it answer 200 with their
-    /// native width, and `ndims()` goes on reporting the declared one until
-    /// a vector store builds an index that cannot hold its own vectors.
-    ///
-    /// [`Wire::capabilities`]: crate::wire::Wire::capabilities
+    /// Returns [`EmbeddingError::MismatchedDimensions`] for the first width
+    /// differing from a positive caller declaration. Otherwise succeeds.
     pub(crate) fn honour_declaration(
         &self,
         provider: &str,
@@ -237,7 +209,7 @@ modality_operation!(
 );
 
 modality_operation!(
-    /// Transcribing audio. The only operation whose request is multipart.
+    /// Transcribes audio using provider-specific request encoding.
     Transcription {
         request: crate::transcription::TranscriptionRequest,
         response: crate::transcription::TranscriptionResponse,
@@ -280,18 +252,9 @@ modality_operation!(
     }
 );
 
-/// The fold of an embedding reply: the provider's vectors joined back onto
-/// the request's own input.
-///
-/// [`Embedding::document`](crate::embeddings::Embedding) is the input the
-/// vector belongs to, and it is *not* on the wire — Cohere echoes the texts,
-/// Ollama and Voyage AI do not — so the fold carries the request's inputs
-/// and zips them positionally, which is also the only place the
-/// batch-length invariant every provider used to restate is now checked.
-///
-/// Replies accumulate: a provider that takes one item per request (Cohere
-/// embeds one image per call) answers a batch with one reply each, in
-/// request order.
+/// Accumulates vectors in reply order and pairs them positionally with request
+/// documents. Finishing rejects missing replies or unequal vector/document counts.
+/// Usage is summed; other metadata comes from the first reply.
 #[derive(Default)]
 pub struct Embedded {
     documents: Vec<String>,

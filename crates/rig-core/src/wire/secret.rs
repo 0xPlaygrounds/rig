@@ -1,22 +1,20 @@
-//! A credential inside provider data.
+//! Redacted credentials for serializable provider configuration.
+//!
+//! ```
+//! use rig_core::wire::Secret;
+//!
+//! let secret = Secret::from("api-key");
+//! assert_eq!(format!("{secret:?}"), "[redacted]");
+//! ```
 
-/// A credential held inside a [`Wire`](super::Wire)'s data.
-///
-/// A wire is plain data a host may serialize into a scene, a component or a
-/// config file, so the credential must not travel with it: `Debug` prints
-/// `[redacted]`, `Serialize` writes `"[redacted]"`, and only
-/// [`Self::expose`] returns the value. Equality is by value, so two wires
-/// built from the same key compare equal.
-///
-/// The round trip is lossy by contract: deserializing the `"[redacted]"`
-/// sentinel yields the *empty* `Secret`, so a reloaded wire reports
-/// [`Self::is_empty`] and gets its credential from the environment again
-/// rather than sending the sentinel as a key.
+/// Credential whose `Debug` and serialized form contain only `[redacted]`.
+/// Equality compares the stored value; [`Self::expose`] returns it unredacted.
+/// Deserializing `[redacted]` produces an empty credential. Callers must supply
+/// credentials again after reloading serialized configuration.
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Secret(String);
 
-/// What a redacted secret renders and serializes as — and the one string
-/// that deserializes to no credential.
+/// Redaction sentinel, deserialized as an empty credential.
 const REDACTED: &str = "[redacted]";
 
 impl Secret {

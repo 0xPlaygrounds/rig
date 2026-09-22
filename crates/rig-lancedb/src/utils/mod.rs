@@ -10,8 +10,7 @@ use lancedb::{
 };
 use rig_core::vector_store::VectorStoreError;
 
-/// Trait that facilitates the conversion of columnar data returned by a lanceDb query to serde_json::Value.
-/// Used whenever a lanceDb table is queried.
+/// Runs a LanceDB query and converts its columnar result into JSON rows.
 pub(crate) trait QueryToJson {
     async fn execute_query(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
@@ -30,7 +29,8 @@ impl QueryToJson for lancedb::query::VectorQuery {
     }
 }
 
-/// Filter out the columns from a table that do not include embeddings. Return the vector of column names.
+/// Selects the column names to project, dropping fixed-size lists of `f64`,
+/// which is how embeddings are stored.
 pub(crate) trait FilterTableColumns {
     fn filter_embeddings(self) -> Vec<String>;
 }

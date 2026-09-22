@@ -1,4 +1,10 @@
-//! Execution-local correlation and facts from a provider's request boundary.
+//! Execution-local correlation and facts from provider request boundaries.
+//!
+//! ```
+//! use rig_core::observe::scrub_diagnostic;
+//!
+//! assert_eq!(scrub_diagnostic("Bearer secret", &[]), "[redacted]");
+//! ```
 
 use std::sync::{Arc, Mutex};
 
@@ -6,14 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{Action, Emitter, Observation, Stage, Subject, Witness};
 
-/// Bound and scrub diagnostic text before persisting it, with the same
-/// rules the adapter applies to its own facts: known credential values and
-/// common credential markers redact the whole message, and an oversized
-/// message is replaced rather than kept with a secret prefix.
-///
-/// For a host that persists diagnostics of its own (rigcoder's failure
-/// records and checkpoint artifacts do); the adapter's scrubbing is not
-/// reachable any other way.
+/// Bounds diagnostic text and removes control characters. Known credentials
+/// or credential markers redact the whole message; oversized messages are
+/// replaced rather than truncated to a potentially sensitive prefix.
 pub fn scrub_diagnostic(value: &str, secrets: &[String]) -> String {
     scrub::text(value, secrets)
 }
@@ -131,13 +132,8 @@ pub struct AdapterErrorEnvelope {
     pub message: Option<String>,
 }
 
-/// A provider's error envelope as the observation projection reads it off
-/// a raw payload: `{"code", "message", "type" | "status"}`.
-///
-/// One shape for every JSON wire in this crate, because they all spell the
-/// envelope this way apart from the key naming the error class (`type` on
-/// the OpenAI and Anthropic wires, `status` on Gemini's). The code is kept
-/// as a raw value: providers send it as a string or a number.
+/// Error-envelope projection with optional code, message, and `type`/`status`.
+/// Codes remain JSON values until emission validates their scalar shape.
 #[derive(Default, Deserialize)]
 pub struct ObservedError {
     pub code: Option<serde_json::Value>,
@@ -330,13 +326,9 @@ impl AdapterContext {
         }
     }
 
-    /// Begin one send of this operation: the attempt guard that carries its
-    /// facts, with the request's credential values captured for scrubbing.
-    ///
-    /// `route` is the provider-declared route template
-    /// ([`Wire::route`](crate::wire::Wire::route)), never a resolved URI: no
-    /// base-URL prefix and no query data, which is where a provider may carry
-    /// its credential (Gemini puts its API key there).
+    /// Begins a send and captures request credentials for diagnostic scrubbing.
+    /// `route` must be a credential-free provider template without base-URL
+    /// prefixes or query data. Returns `None` when attempt IDs are exhausted.
     pub(crate) fn attempt_for<B>(
         &self,
         request: &http::Request<B>,
@@ -373,13 +365,9 @@ impl AdapterContext {
         ));
     }
 
-    /// Begin an actual send, under the provider-declared route template
-    /// rather than the resolved URL. The template excludes the base URL's own
-    /// path — so grouping attempts by route does not fragment when a caller
-    /// repoints the endpoint — and excludes query data, which is where a
-    /// provider may carry its credential (Gemini puts its API key there).
-    /// Exhaustion is observed and disables further sends' correlation without
-    /// changing the provider operation or reusing an attempt identity.
+    /// Allocates a send ordinal and emits its start under a credential-free
+    /// route template. Emits exhaustion at the last ordinal; later calls return
+    /// `None` without reusing identities or affecting provider execution.
     pub(crate) fn begin(&self, method: &http::Method, route: &str) -> Option<AdapterAttempt> {
         let number = {
             let mut next = self

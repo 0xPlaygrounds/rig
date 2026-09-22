@@ -84,8 +84,7 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
             }
             UserContent::Document(document) => {
                 let doc = RigDocument(document).try_into()?;
-                // AWS documentations: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-call.html
-                // In the content field of the Message object, you must also include a text field with a prompt related to the document.
+                // Converse requires accompanying prompt text for document blocks.
                 Ok(vec![
                     aws_bedrock::ContentBlock::Text("Use provided document".to_string()),
                     aws_bedrock::ContentBlock::Document(doc),

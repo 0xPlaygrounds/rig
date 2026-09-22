@@ -13,28 +13,8 @@ pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 
-/// Serialize a `HashMap` in sorted key order.
-///
-/// `HashMap` seeds its iteration order per instance, so a map serialized into a
-/// request body emits its keys in a *different order on every request*. Provider
-/// prompt caches are prefix matches over the exact request bytes, so a map
-/// anywhere in the cacheable prefix — a tool's JSON Schema `properties`, a
-/// document's metadata — makes every request a guaranteed cache miss, silently
-/// and permanently.
-///
-/// This is invisible to almost every test one would think to write: cassette
-/// replay compares key-sorted canonical JSON, and a `serde_json::Value`
-/// round-trip normalizes key order too, so recorded evidence looks identical
-/// while the live wire never repeats itself. It is caught by
-/// `provider_request_serialization_is_deterministic` in
-/// `tests/cassette_cache_prefix.rs`, which serializes the same request several
-/// times and compares the raw bytes.
-///
-/// Sorting rather than preserving insertion order matches the deliberate choice
-/// already made when rendering [`crate::completion::Document`] metadata into a
-/// prompt, and needs no ordered-map dependency in a public field type. JSON
-/// object key order carries no meaning to any provider API, so sorting costs
-/// nothing.
+/// Serializes a `HashMap` in lexicographic key order, propagating serializer errors.
+/// Stable ordering avoids randomized map iteration changing request bytes.
 pub fn serialize_map_sorted<S, V>(
     map: &HashMap<String, V>,
     serializer: S,
@@ -67,14 +47,8 @@ where
     }
 }
 
-/// `value` serialized with every object's keys sorted, at every depth.
-///
-/// `serde_json` keeps insertion order in a build that enables its
-/// `preserve_order` feature and sorts otherwise, so text rendered from a
-/// `serde_json::Value` — a schema quoted into a preamble — would differ
-/// between two crates over the same value, and with it the request bytes a
-/// prompt cache is keyed on. Key order carries no meaning, so the sorted
-/// rendering is the rendering.
+/// Renders compact JSON with lexicographically sorted object keys at every depth,
+/// independent of serde_json's `preserve_order` feature. Array order is retained.
 pub fn to_canonical_string(value: &serde_json::Value) -> String {
     fn sorted(value: &serde_json::Value) -> serde_json::Value {
         match value {
@@ -111,9 +85,7 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     }
 }
 
-// Only the feature-gated `image` / `audio` provider request builders call this
-// now; the default feature set has no caller, so allow it to be unused there
-// rather than warning on an otherwise-live utility.
+// Callers require the image or audio feature.
 #[cfg_attr(not(any(feature = "image", feature = "audio")), allow(dead_code))]
 pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
     if let (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) = (a, b) {
@@ -134,26 +106,14 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
     }
 }
 
-/// Serialize a JSON value to its compact string form (with `String` scalars kept quoted).
-///
-/// Unlike [`value_to_json_string`], this never unwraps a `String` value — a JSON
-/// string is serialized with its quotes. Used by the classic runtime when
-/// canonicalizing tool-call arguments and hook-rewritten payloads.
+/// Serializes compact JSON, retaining quotes and escaping for string values.
 pub fn serialize_json_value(value: &serde_json::Value) -> String {
     value.to_string()
 }
 
-/// Deserialize a field that may arrive as either a JSON-encoded string or any other
-/// JSON value, into `Option<String>`.
-///
-/// - A string is taken verbatim.
-/// - Any other JSON value is re-serialized to its compact JSON-string form (via
-///   [`value_to_json_string`]). Object key order is not preserved, which is fine
-///   because callers re-parse the string.
-/// - `null` or a missing field becomes `None`.
-///
-/// Tolerates OpenAI-compatible gateways that stream `tool_calls[].function.arguments`
-/// as an object (e.g. `{}`) instead of the spec-mandated JSON string (`"{}"`).
+/// Deserializes strings verbatim and other non-null values as compact JSON text.
+/// Null becomes `None`; fields that may be absent need a serde default.
+/// Object key order depends on serde_json's enabled features.
 pub fn deserialize_json_string_or_value<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
@@ -175,9 +135,8 @@ pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::V
     serde_json::from_str(arguments)
 }
 
-/// This module is helpful in cases where raw json objects are serialized and deserialized as
-///  strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
-///  some providers such as OpenAI return function arguments (for some reason).
+/// Serde adapters for JSON encoded inside strings. Empty or whitespace-only
+/// strings deserialize to empty objects.
 pub mod stringified_json {
     use super::parse_tool_arguments;
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -201,10 +160,8 @@ pub mod stringified_json {
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
     }
 
-    /// Deserialize JSON that may be encoded either as a string or as a raw JSON value.
-    /// OpenAI-compatible providers typically return tool arguments as a stringified JSON
-    /// object, while some implementations such as Hugging Face and `llama.cpp` return the
-    /// JSON object directly.
+    /// Parses string contents as JSON and passes other values through unchanged.
+    /// Empty or whitespace-only strings become empty objects.
     pub fn deserialize_maybe_stringified<'de, D>(
         deserializer: D,
     ) -> Result<serde_json::Value, D::Error>
@@ -220,6 +177,8 @@ pub mod stringified_json {
     }
 }
 
+/// Deserializes a string or object as one item, a sequence as multiple items,
+/// and null as an empty list. Strings use [`FromStr`]; objects use [`Deserialize`].
 pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     T: Deserialize<'de> + FromStr<Err = Infallible>,
@@ -252,19 +211,6 @@ where
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
         }
 
-        /// A bare object where a list is expected is one block, not a defect —
-        /// several wires spell single-block content that way. This arm comes
-        /// from the removed non-empty container's `string_or_one_or_many`,
-        /// whose callers (Anthropic `Message.content`, OpenAI system and user
-        /// content) now share this helper.
-        ///
-        /// The two were not interchangeable: this one also has
-        /// `visit_none`/`visit_unit`, so the migrated fields now accept `null`
-        /// where they used to raise a parse error. Those arms are load-bearing
-        /// for the OpenAI assistant-content field that already used this
-        /// helper — OpenAI sends `"content": null` for a tool-calls-only
-        /// message — so the widening is the price of sharing one helper, and it
-        /// is documented in MIGRATING rather than hidden.
         fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
         where
             M: MapAccess<'de>,

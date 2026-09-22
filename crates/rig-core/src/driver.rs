@@ -1,19 +1,17 @@
-//! The one driver: the only `async` in the provider layer.
+//! Executes provider wires with shared framing, decoding, observation, and
+//! transport-error handling. [`call`] folds buffered replies; [`stream`] yields
+//! events. [`Bound`] pairs a wire with its transport.
 //!
-//! [`call`] and [`stream`] are the whole HTTP half of every provider in this
-//! crate. Everything that used to be duplicated per provider or per
-//! `_observed` sibling lives here once: the status split and the non-success
-//! funnel (rig#2210/#2314), transport request-id capture, the `Accept`
-//! header, observation facts, the telemetry span and usage recording, and
-//! the frame-triage policy table.
+//! ```no_run
+//! use rig_core::driver::Bind;
+//! use rig_core::providers::openai::{self, OpenAI};
 //!
-//! **Unary is a stream of one frame.** [`call`] frames the whole reply body
-//! with the same framer and drives it through the same [`Decoder`] a stream
-//! would, then folds the events into the operation's response. There is no
-//! `decode`, so a provider's unary and streaming replies cannot drift.
-//!
-//! [`Bound`] is a wire plus its socket, and the one implementation of each
-//! consumer-facing trait that rig-core ships.
+//! # fn example(http: impl rig_core::driver::Socket) -> Result<(), Box<dyn std::error::Error>> {
+//! let model = OpenAI::from_env()?.responses(openai::GPT_5_2).bind(http);
+//! # let _ = model;
+//! # Ok(())
+//! # }
+//! ```
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -41,20 +39,11 @@ pub use consumers::{
     HasTranscription, HasVerify, Socket,
 };
 
-/// The frame-triage policy table, in one place for every operation:
-///
-/// | classify             | driver action                                     |
-/// |----------------------|---------------------------------------------------|
-/// | [`WireEvent::Known`] | `interpret`, then yield what it pushed            |
-/// | `WireEvent::Unknown` | warn (metadata only), skip semantically, and hand |
-/// |                      | the raw value to the operation's passthrough      |
-/// | `WireEvent::Corrupt` | an in-band `Err` item; keep consuming             |
-/// | transport `Err`      | flush delivered content, one `Err`, then end      |
-///
-/// The same table serves a streamed reply and a buffered one: `call` stops
-/// at the first `Err` item because its fold is fallible, so a corrupt frame
-/// fails a unary call and surfaces in-band on a stream without the driver
-/// naming the difference.
+/// Drives classified frames through an operation decoder. Known frames are
+/// interpreted; unknown frames produce metadata-only warnings and optional raw
+/// passthrough events. Corrupt frames yield errors without stopping consumption.
+/// Transport failure flushes delivered content before one final error.
+/// [`call`] fails on the first error; streams expose errors in-band.
 pub struct WireDriver<Op: Operation, D, F = WireFrame> {
     decoder: D,
     out: Op::Output,
@@ -134,9 +123,8 @@ where
         }
     }
 
-    /// Report a transport failure: truncation semantics — content the
-    /// provider fully delivered flushes first, then the error is the last
-    /// item and nothing follows it.
+    /// Flushes delivered content before a final transport error.
+    /// Does nothing after termination.
     pub fn fail(&mut self, error: Op::Error) {
         if self.done {
             return;
@@ -234,14 +222,9 @@ where
     }
 }
 
-/// Drive an already-framed transport stream through a decoder.
-///
-/// The async wrapper over [`WireDriver`], and nothing else: it exists so a
-/// typed transport — an AWS event stream, a gRPC stream, an in-process
-/// generator — can reuse the fold without an HTTP request behind it. Every
-/// byte wire in this crate goes through [`stream`] instead, which frames the
-/// bytes, captures the request id and records the span on top of the same
-/// fold.
+/// Drives already-framed completion events through a decoder until termination.
+/// Transport errors flush delivered content before the error; EOF invokes the
+/// decoder's finish policy. HTTP framing and observation are not supplied here.
 pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> crate::streaming::StreamingResult
 where
     D: Decoder<crate::operation::Completion, F> + WasmCompatSend + 'static,
@@ -276,30 +259,19 @@ where
 pub enum TriagedFrame<T> {
     /// A modeled event, ready for [`Decoder::interpret`].
     Event(T),
-    /// An unknown frame's raw payload. Already warned; the caller forwards it
-    /// as `StreamEvent::Unknown` where the surface has a raw channel
-    /// (openai-agents' raw-event precedent), and never interprets it — the
-    /// semantic path skips it.
+    /// Unknown payload, already logged without content. Forward through a raw
+    /// channel when available; do not interpret it as modeled content.
     Unknown(crate::streaming::UnknownPayload),
 }
 
-/// Triage one classified frame under the policy table on [`WireDriver`]:
-/// `Known` passes through, `Unknown` is warned (structural metadata only)
-/// and handed back raw for the passthrough channel, `Corrupt` is the
-/// operation's JSON error.
-///
-/// [`WireDriver::push`]'s per-frame policy factored out for the non-stream
-/// surfaces that classify frames one at a time (the websocket pre-dispatch),
-/// so they share the table instead of restating it.
+/// Returns known events or unknown payloads, warning without content for the
+/// latter. Corrupt frames return a JSON error.
 pub fn triage_frame<T>(
     event: WireEvent<T>,
 ) -> Result<TriagedFrame<T>, crate::completion::CompletionError> {
     match event {
         WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
-            // Structural metadata only — see `warn_unmodeled`. The full
-            // payload survives on the `Unknown` raw passthrough channel;
-            // that channel IS the opt-in for consumers who want the content.
             warn_unmodeled(&event_type, &value);
             Ok(TriagedFrame::Unknown(value))
         }
@@ -307,14 +279,8 @@ pub fn triage_frame<T>(
     }
 }
 
-/// Warn about an unmodeled wire payload with **structural metadata only** —
-/// its kind and serialized byte size, never the payload itself. Unmodeled
-/// frames and parts can carry model output or other sensitive provider
-/// data, which must not leak into production WARN logs; the one redaction
-/// policy lives here, used by the driver's Unknown arm and by adapters that
-/// skip an unmodeled part kind. `driver_adoption.rs` scans streaming
-/// modules for direct `warn!(?...)` payload captures, so bypassing this
-/// helper fails CI.
+/// Logs an unmodeled payload's kind and serialized size, never its content.
+/// Callers must supply a structural kind label without sensitive data.
 pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
     tracing::warn!(
         kind,
@@ -347,14 +313,8 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
     counter.0
 }
 
-/// Ceiling on the pages one [`call`] will follow.
-///
-/// Generous by orders of magnitude: a model catalog's page holds hundreds of
-/// entries, so a real listing finishes in one or two requests. This exists
-/// only so a cursor that keeps *changing* without advancing — a gateway
-/// alternating `c1, c2, c1, …`, or minting a fresh cursor per request —
-/// terminates. It bounds continuation-following only; the requests a batched
-/// wire encodes up front are all sent however many there are.
+/// Page count after which continuation requests are ignored, preventing
+/// infinite cursor cycles. Initially encoded batch requests remain eligible.
 const MAX_CONTINUATION_PAGES: usize = 1000;
 
 /// Send one request and fold its whole reply into the operation's response.
@@ -387,20 +347,15 @@ where
         provider_request_id: None,
     };
 
-    // One document per page. A batched wire — Cohere embeds one image per
-    // call — answers a single operation with several, and the last one is
-    // not the reply.
+    // Preserve every page document so batched replies do not lose earlier data.
     let mut documents: Vec<serde_json::Value> = Vec::new();
     let mut pending: std::collections::VecDeque<http::Request<Body>> = requests.into();
     // Replies read in this call, which is what MAX_CONTINUATION_PAGES bounds.
     let mut pages: usize = 0;
     while let Some(mut http_request) = pending.pop_front() {
         accept_header(&mut http_request, framing);
-        // Two different facts, deliberately not one variable. `route` is the
-        // URL that was actually sent, which is what a human debugging a 404
-        // needs from `with_route`'s decoration. The observation records the
-        // *template* the wire declares, so a consumer grouping attempts by
-        // route gets one bucket per endpoint rather than one per base URL.
+        // Errors need the actual path; observations use the declared template
+        // to group attempts independently of concrete URLs.
         let route = http_request.uri().path().to_owned();
         let declared = wire.route().unwrap_or(&route);
         // What was sent, kept to recognize a continuation that would re-send
@@ -414,9 +369,8 @@ where
             observation.install(attempt);
         }
         let mut page = WireDriver::<W::Op, _>::observed(
-            // Every page this loop reads is read to its end, so the
-            // decoder's EOF is the end of an answer rather than a stream
-            // stopping early — which is what `Mode::Unary` tells it.
+            // Each page is read completely, so unary mode treats EOF as a
+            // complete answer rather than an interrupted stream.
             wire.decoder(Mode::Unary),
             observation.clone(),
         );
@@ -518,16 +472,8 @@ where
         documents.push(document);
 
         pages += 1;
-        // When the loop stops following a cursor the provider is still
-        // naming, the catalog handed back is truncated, so say which rule
-        // stopped it. Both of these are unbounded loops if left unchecked
-        // (rig#2334): the listing never returns and the fold grows without
-        // limit.
-        //
-        // Only running out of budget is a ceiling. A reply naming no
-        // continuation is the provider ending the listing — the normal path,
-        // and silent. Inferring the ceiling from "a cursor is still held"
-        // would report one on every listing past its first page.
+        // Warn only when an offered continuation is rejected: normal exhaustion
+        // is not truncation, while repeated or cycling cursors need a bound.
         if let Some(next) = page.continuation() {
             if (next.method(), next.uri()) == (&sent_target.0, &sent_target.1) {
                 // The next request would be identical to the one just
@@ -566,10 +512,9 @@ where
     Ok(response)
 }
 
-/// Open a streamed reply.
-///
-/// An encoding error surfaces here; a connect error is the stream's only
-/// item — the semantics the per-provider `async fn stream` had.
+/// Opens a streamed reply from exactly one byte-body request.
+/// Encoding errors return immediately; connection errors arrive as stream items.
+/// Transport work and attempt observation begin on the first poll.
 pub fn stream<W, H>(
     wire: &W,
     http: &H,
@@ -610,14 +555,9 @@ where
     let declared_route = wire.route().map(str::to_owned);
 
     let frames = async_stream::stream! {
-        // The attempt is announced on the first poll, not here: a stream
-        // that is built and dropped without being polled never reaches the
-        // transport, and an observation log that already carried its
-        // `Started` would claim a send that never happened. Only the
-        // encoding above is eager, because `stream` returns a `Result` and
-        // an encode failure is not the stream's problem to deliver.
+        // Unpolled streams must not report transport attempts.
         if let Some(observation) = &observation {
-            // The declared template, not the concrete path — see `call`.
+            // Group attempts by declared route rather than concrete path.
             let path = http_request.uri().path().to_owned();
             let declared = declared_route.as_deref().unwrap_or(&path);
             observation.install(
@@ -627,10 +567,8 @@ where
             );
         }
         let response = match http.send_streaming(http_request).await {
-            // The bundled transports reject a non-success reply before it
-            // gets here; a custom `HttpClientExt` may hand it back as a
-            // response. Either way the server answered, and its answer —
-            // status, headers, body — is the error, never a bare status.
+            // Custom transports may return rejected responses directly; preserve
+            // their status, headers, and bounded body in the error.
             Ok(response) if response.status() != http::StatusCode::OK => {
                 Err(reject_response(response).await)
             }
@@ -677,12 +615,7 @@ where
             let chunk = match chunk {
                 Ok(chunk) => chunk,
                 Err(error) => {
-                    // The body stream's items are already
-                    // `http_client::Result<Bytes>`, so the error IS the
-                    // transport's own: boxing it into
-                    // `http_client::Error::Instance` discarded the
-                    // non-success status, headers and body a mid-stream
-                    // failure carries, and doubled its `Display` prefix.
+                    // Preserve the transport error's response metadata without reboxing.
                     if let Some(observation) = &observation {
                         observation.error_boundary(AdapterErrorBoundary::Transport);
                     }
@@ -749,8 +682,7 @@ struct Sent {
     provider_request_id: Option<String>,
 }
 
-/// Send one unary request and split its reply, funnelling every non-success
-/// shape the four transport/provider cells produce (rig#2210, rig#2314).
+/// Sends a buffered request, preserving non-success response details and IDs.
 async fn send<Op, H>(
     http: &H,
     request: http::Request<Body>,
@@ -823,14 +755,8 @@ fn request_id_from(headers: &http::HeaderMap, header: Option<&str>) -> Option<St
     crate::providers::internal::request_id_from_headers(headers, header)
 }
 
-/// Every JSON request carries `Content-Type: application/json`, including a
-/// bodyless `GET`.
-///
-/// The deleted client layer put it in the default headers of every request
-/// it built, so recorded traffic pins it on the catalog and verification
-/// GETs as well as the POSTs. It is one line here rather than a line in
-/// every wire's `encode`, and a wire that needs another content type sets
-/// it itself.
+/// Defaults byte-body requests to `application/json`, including bodyless GETs.
+/// Preserves an explicitly supplied content type.
 fn content_type(request: &mut http::Request<Body>) {
     if matches!(request.body(), Body::Bytes(_)) {
         request
@@ -895,9 +821,8 @@ fn byte_request<E: WireError>(request: http::Request<Body>) -> Result<http::Requ
     }
 }
 
-/// One framed payload: the bytes the observer sees, and the frame the
-/// decoder sees — a whitespace-only SSE payload is a heartbeat, which is not
-/// a frame on any wire.
+/// Observable payload with an optional decoder frame. Whitespace-only SSE
+/// payloads are observed as heartbeats but not decoded.
 struct Framed {
     payload: Vec<u8>,
     frame: bool,

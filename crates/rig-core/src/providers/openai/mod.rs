@@ -1,7 +1,6 @@
 //! OpenAI: one configuration, the Responses and Chat Completions wires, and
 //! every OpenAI-shaped dialect.
 //!
-//! # Example
 //! ```no_run
 //! use rig_core::providers::openai;
 //!
@@ -44,12 +43,10 @@ pub mod transcription;
 pub use completion::*;
 pub use embedding::*;
 
-/// Recursively ensures all object schemas in a JSON schema respect OpenAI structured output restrictions.
-/// Nested arrays, schema $defs, object properties and enums should be handled through this method
-///
-/// Sources:
-/// - <https://platform.openai.com/docs/guides/structured-outputs#additionalproperties-false-must-always-be-set-in-objects>
-/// - <https://platform.openai.com/docs/guides/structured-outputs#all-fields-must-be-required>
+/// Sanitize nested schema definitions, properties, items, and combinators.
+/// Require all properties, supply missing object properties and
+/// `additionalProperties: false`, remove `$ref` siblings, and merge `oneOf`
+/// into `anyOf`.
 pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
     crate::providers::internal::schema::sanitize_schema(
         schema,
@@ -61,14 +58,8 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
     );
 }
 
-/// The `(name, schema)` pair OpenAI's structured-output configs need from a
-/// request's output schema: the schema's `title` (falling back to
-/// `response_schema`, which OpenAI requires a name for) and the schema
-/// sanitized for the strict subset.
-///
-/// Derived once for both API surfaces — Chat Completions' `response_format`
-/// and Responses' `text.format` — so a turn's structured output is named and
-/// sanitized identically whichever endpoint serves it.
+/// Return the schema title, or `response_schema` when absent, and a sanitized
+/// schema for either structured-output endpoint.
 pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, serde_json::Value) {
     let name = schema
         .as_object()

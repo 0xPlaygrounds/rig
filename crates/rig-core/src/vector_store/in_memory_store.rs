@@ -1,4 +1,11 @@
-//! In-memory implementation of a vector store.
+//! In-memory vector storage with cosine scoring and optional approximate candidates.
+//!
+//! ```
+//! use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
+//!
+//! let store = InMemoryVectorStore::<String>::builder().build();
+//! assert!(store.is_empty());
+//! ```
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
@@ -33,18 +40,7 @@ pub struct InMemoryVectorStore<D: Serialize> {
 }
 
 impl<D: Serialize + Eq> InMemoryVectorStore<D> {
-    /// Create a new builder for configuring an [InMemoryVectorStore].
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use rig_core::vector_store::InMemoryVectorStore;
-    ///
-    /// let store = InMemoryVectorStore::<String>::builder()
-    ///     .with_lsh()
-    ///     .documents(documents)
-    ///     .build();
-    /// ```
+    /// Creates an empty builder with brute-force search as the default strategy.
     pub fn builder() -> InMemoryVectorStoreBuilder<D> {
         InMemoryVectorStoreBuilder::new()
     }
@@ -54,7 +50,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         embeddings: HashMap<String, (D, Vec<Embedding>)>,
         index_strategy: IndexStrategy,
     ) -> Self {
-        // Initialize LSH index if needed
         let lsh_params = match &index_strategy {
             IndexStrategy::LSH {
                 num_tables,
@@ -111,7 +106,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         store
     }
 
-    /// Insert a single document, keeping the LSH index (when enabled) in sync.
+    /// Inserts or replaces a document and adds its embeddings to any existing LSH index.
     fn insert_document(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
         if let Some(ref mut lsh_index) = self.lsh_index {
             for embedding in embeddings.iter() {
@@ -157,14 +152,8 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             return Ok(None);
         }
 
-        // Best (highest-similarity) embedding for this document.
-        //
-        // A zero-magnitude embedding yields a NaN similarity, which sorts as the
-        // maximum under `OrderedFloat` and slips past `distance < threshold`
-        // (every comparison with NaN is false). Drop non-finite similarities
-        // *before* selecting the max so a document still ranks by its best
-        // finite embedding; the document is skipped only when it has no finite
-        // similarity at all.
+        // Filter non-finite scores before selecting the maximum so NaN cannot
+        // outrank valid embeddings or bypass the threshold.
         let Some((distance, embed_doc)) = embeddings
             .iter()
             .map(|embedding| {
@@ -179,7 +168,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             return Ok(None);
         };
 
-        // Skip documents below the similarity threshold.
         if threshold.is_some_and(|t| distance.0 < t) {
             return Ok(None);
         }
@@ -209,7 +197,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
                 threshold,
             ),
             IndexStrategy::LSH { .. } => {
-                // If we don't have an LSH index yet, fall back to brute force
                 let Some(lsh_index) = self.lsh_index.as_ref() else {
                     tracing::warn!("LSH index not initialized, falling back to brute force search");
                     return self.rank_candidates(
@@ -243,7 +230,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         filter: Option<&Filter<serde_json::Value>>,
         threshold: Option<f64>,
     ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
-        // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 
         for candidate_id in candidate_ids {
@@ -287,7 +273,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             return;
         }
 
-        // Get the dimension from the first embedding
         let first_embedding = self
             .embeddings
             .values()
@@ -301,7 +286,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
         let mut lsh_index = LSHIndex::new(first_embedding, num_tables, num_hyperplanes);
 
-        // Insert all existing embeddings into the LSH index
         for (id, (_, embeddings)) in self.embeddings.iter() {
             for embedding in embeddings.iter() {
                 lsh_index.insert(id, &embedding.vec);
@@ -354,12 +338,8 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 #[derive(Eq, PartialEq)]
 struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
 
-/// The ranking's items best first — highest score, then document id for
-/// equal scores. A `BinaryHeap` iterates in heap order, which depends on
-/// the order its items arrived in (a `HashMap`'s iteration order, so a
-/// process's hash seed): a search that consumed the heap unsorted put the
-/// same documents into a request in a different order from one run to the
-/// next, and a recorded request replayed as a different one.
+/// Orders results by descending score and ascending document ID for ties.
+/// Explicit ordering keeps retrieval independent of hash-map iteration order.
 fn ranked<D: Serialize + Eq>(docs: EmbeddingRanking<'_, D>) -> Vec<RankingItem<'_, D>> {
     let mut items: Vec<RankingItem<'_, D>> = docs.into_iter().map(|Reverse(item)| item).collect();
     items.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(right.1)));
@@ -398,14 +378,9 @@ impl<D: Serialize> InMemoryVectorStore<D> {
     }
 }
 
-/// An in-memory vector index: a store plus the embedding model that turns
-/// queries into vectors.
-///
-/// The model's concrete type is erased at construction into an
-/// the model by type, so the index is generic over its provider. The index
-/// is a long-lived consumer of a model, not a place to swap one: the handle
-/// it holds is fixed for the index's lifetime, because an index populated
-/// under one model is only meaningful under that model.
+/// A vector store paired with a query embedding model. Stored vectors must use
+/// the same embedding space and dimensions as query vectors. Results are ordered
+/// by descending best finite cosine similarity, then ascending document ID.
 pub struct InMemoryVectorIndex<D: Serialize, M> {
     model: M,
     pub store: InMemoryVectorStore<D>,
@@ -416,7 +391,7 @@ impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
         Self { model, store }
     }
 
-    /// The erased embedding model this index queries with.
+    /// The embedding model used for queries.
     pub fn model(&self) -> &M {
         &self.model
     }
@@ -452,7 +427,6 @@ impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> Vec
             req.threshold(),
         )?;
 
-        // The n best, best first.
         ranked(docs)
             .into_iter()
             .map(|RankingItem(distance, id, doc, _)| {

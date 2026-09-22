@@ -1,6 +1,10 @@
-// ================================================================
-//! Google Gemini gRPC Streaming Integration
-// ================================================================
+//! Normalizes Gemini protobuf streams into Rig completion events.
+//!
+//! ```
+//! use rig_gemini_grpc::streaming::stream_from_events;
+//!
+//! let response = stream_from_events(futures::stream::empty());
+//! ```
 
 use async_stream::stream;
 use futures::StreamExt;
@@ -23,18 +27,11 @@ use super::proto;
 /// the per-stream state is the thought block's lifecycle plus the tool-key
 /// minter.
 struct GrpcAdapter {
-    /// Owns the constant-key thought lifecycle. Thought parts carry no wire id
-    /// and this wire announces no block boundaries, so the shared derivation
-    /// emits the signed close and the synthesized boundary end — the same
-    /// helper the REST wire uses, so both Gemini surfaces agree.
+    /// Derives signed reasoning boundaries for thought parts without wire IDs.
     reasoning: MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool-call keys — a fresh key per call, so
-    /// two id-less calls in one turn never collide on one identity.
+    /// Mints a distinct identity for each call lacking a wire ID.
     tool_ids: streaming::SyntheticIds,
-    /// A tool-protocol finish reason ended the turn; later frames are dead —
-    /// the provider aborted, and interpreting more output (or a terminal)
-    /// would dress the failure up as a completed turn. Mirrors the REST
-    /// adapter's identically named latch.
+    /// Suppresses further output after a tool-protocol terminal failure.
     failed: bool,
 }
 
@@ -52,11 +49,8 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
     type Event = proto::GenerateContentResponse;
 
     fn classify(&self, frame: proto::GenerateContentResponse) -> WireEvent<Self::Event> {
-        // prost/tonic already deserialized the frame, and a gRPC decode
-        // failure surfaces as a transport `Status` error, so every frame is a
-        // modeled event here. The wire's unknown-variant signal is per-part
-        // (a `part.data` oneof decoding to `None`) — sub-frame granularity,
-        // so `interpret` applies the warn-and-skip policy there.
+        // Tonic handles frame decoding; unknown oneof values are handled per
+        // part during interpretation.
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
@@ -73,9 +67,7 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
                 is_final = true;
             }
 
-            // A tool-protocol abort is a failed turn, not a finished one:
-            // push the error and stop, exactly as the REST adapter does, so
-            // no terminal record follows to report the turn as complete.
+            // Protocol failures must not be followed by a successful terminal record.
             if let Some(err) = super::completion::tool_protocol_finish_reason_error(
                 candidate.finish_reason,
                 candidate.finish_message.as_deref(),
@@ -93,11 +85,8 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
             }
         }
 
-        // Only a chunk carrying a genuine finish reason counts as the provider
-        // completing the turn. A stream that reached EOF without one was
-        // truncated, and synthesizing a terminal record from the last content
-        // chunk (or a default) would report a successful completion for a turn
-        // the provider never finished.
+        // Only a provider finish reason establishes completion; synthesizing a
+        // terminal at EOF would hide truncation.
         if is_final {
             match terminal_record(&resp) {
                 Ok(record) => out.final_record(record),
@@ -111,18 +100,13 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
     }
 
     fn is_finished(&self) -> bool {
-        // A tool-protocol terminal failure is the wire's own in-band
-        // terminal: `interpret` already pushed the `Err` and gates itself on
-        // `failed`, so the driver must stop reading rather than drain the
-        // rest of the transport.
+        // Stop reading after an emitted protocol failure rather than drain the transport.
         self.failed
     }
 }
 
 impl GrpcAdapter {
-    /// Declare what one protobuf part carried; the shared lifecycle derives
-    /// the event sequence, so this adapter holds no boundary bookkeeping of
-    /// its own (the REST wire's `interpret_part` has the same shape).
+    /// Converts a protobuf part into content for shared lifecycle derivation.
     fn interpret_part(&mut self, part: &proto::Part) -> ChunkParts {
         match &part.data {
             // A thought part's signature closes the thinking block: the shared
@@ -133,10 +117,8 @@ impl GrpcAdapter {
                 reasoning_signature: encode_signature(&part.thought_signature),
                 ..ChunkParts::default()
             },
-            // A trailing non-thought part can carry the signature of the
-            // already-closed thought block, and one lifecycle end signs the
-            // right part in every case (#2258 B4); the text after it closes a
-            // still-open block through the derived boundary end.
+            // Non-thought text may carry the preceding reasoning signature;
+            // lifecycle derivation attaches it before closing the boundary.
             Some(proto::part::Data::Text(text)) => ChunkParts {
                 reasoning_signature: encode_signature(&part.thought_signature),
                 text: Some(text.clone()),
@@ -148,20 +130,15 @@ impl GrpcAdapter {
                     .as_ref()
                     .map_or_else(|| Value::Object(Map::new()), prost_struct_to_json);
 
-                // The wire's id when present; never the tool name — a
-                // name-as-id would collide two calls to the same tool in one
-                // turn. An id-less call keys the stream by a minted identity,
-                // counted up per stream so two id-less calls stay distinct,
-                // and its durable id stays absent.
+                // Preserve wire identity or mint a distinct local key; tool names
+                // cannot distinguish repeated calls and are never identifiers.
                 let key = match streaming::non_empty_id(function_call.id.clone()) {
                     Some(wire_id) => streaming::BlockId::wire(wire_id),
                     None => self.tool_ids.mint(),
                 };
 
-                // Gemini is a single-identifier wire: the id above travels as
-                // the part identity and `call_id` stays unset — setting both
-                // from one id would take the dual-wire arm downstream and
-                // fabricate an item id the wire never issued.
+                // Keep call_id unset for this single-ID protocol so downstream
+                // normalization does not infer a separate item identity.
                 let mut end = streaming::ToolCallEnd::whole(function_call.name.clone(), args_json)
                     // A signature on a function-call part belongs to the
                     // call, not to the thought block.
@@ -185,10 +162,7 @@ impl GrpcAdapter {
                 }
             }
             None => {
-                // A oneof decoding to `None` is prost's unknown-variant
-                // signal: a part kind this client does not model. Warn-and-skip
-                // through the shared redaction policy, mirroring the driver's
-                // `Unknown` policy at part granularity.
+                // Missing or unknown oneof data uses the shared redacted warning policy.
                 warn_unmodeled("gemini_grpc_part", part);
                 ChunkParts::default()
             }
@@ -219,13 +193,8 @@ fn terminal_record(
     .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty())))
 }
 
-/// Drive already-typed `GenerateContentResponse` events through the full
-/// shared pipeline — driver policy, canonical grammar, terminal
-/// normalization.
-///
-/// The events-first conformance seam: the adapter is a pure
-/// `(state, event) → events` function, so grammar scenarios feed protobuf
-/// events directly with no gRPC transport.
+/// Normalizes typed protobuf events through the shared completion driver.
+/// No gRPC transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, CompletionError>>
     + WasmCompatSend
@@ -257,8 +226,8 @@ pub(crate) async fn stream(
         .map_err(|status| super::completion::rpc_error(&status))?
         .into_inner();
 
-    // Transport layer: gRPC messages only — a `Status` error is a transport
-    // error; classification and policy live in the shared driver.
+    // Stop receiving after a tonic failure; successfully received messages
+    // are classified by the shared driver.
     let transport = stream! {
         while let Some(item) = response_stream.next().await {
             match item {

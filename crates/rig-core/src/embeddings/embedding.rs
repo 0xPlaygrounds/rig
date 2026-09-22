@@ -1,10 +1,14 @@
-//! The module defines the [EmbeddingModel] and [ImageEmbeddingModel] traits, which represent
-//! embedding models that can generate embeddings for text documents and images.
+//! Text and image embedding models, responses, and input identifiers.
 //!
-//! The module also defines the [Embedding] struct, which represents a single document embedding.
+//! ```no_run
+//! use rig_core::embeddings::EmbeddingModel;
 //!
-//! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
-//! can occur during embedding generation or processing.
+//! # async fn example(model: impl EmbeddingModel) -> Result<(), Box<dyn std::error::Error>> {
+//! let embedding = model.embed_text("A document").await?;
+//! # let _ = embedding;
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::{
     completion::{ResponseIdentity, Usage},
@@ -73,26 +77,12 @@ crate::provider_response::provider_error_enum!(
     /// Raised only when the width was set *explicitly*: a model handle built
     /// without one reports whatever the provider's own table says and has
     /// nothing to disagree with.
-    ///
-    /// The failure this prevents is silent and expensive. `ndims()` is what a
-    /// vector store sizes its index from, so a model reporting one width while
-    /// returning another builds an index that cannot hold its own vectors —
-    /// and nothing on the request path can catch it, because the providers
-    /// where it happens are exactly the ones that *ignore* the `dimensions`
-    /// field instead of rejecting it. Measured on `llama-server`
-    /// b10499-6d05498, whose embeddings handler reads no such field at all: a
-    /// request for 128 dimensions answers 200 with 1024-wide vectors.
     #[error(
         "{provider} embedding response returned {returned}-dimension vectors, but the model was \
          created with {requested} dimensions; this provider does not resize embeddings"
     )]
     MismatchedDimensions {
         /// Provider whose response disagreed with the declared width.
-        ///
-        /// Owned, unlike the `&'static str` the request-shaped variants
-        /// above carry: this one is raised by the shared driver from a
-        /// [`Wire`](crate::wire::Wire)'s name, and the wire model erases the
-        /// provider's `'static` descriptor to `&str` at that seam.
         provider: String,
         /// Width the caller declared.
         requested: usize,
@@ -104,12 +94,7 @@ crate::provider_response::provider_error_enum!(
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
-    /// The maximum number of documents that can be embedded in a single
-    /// request.
-    ///
-    /// A method rather than an associated constant so the value survives type
-    /// erasure: [`FamilyDescriptor::Embed`](crate::effect::FamilyDescriptor::Embed)
-    /// captures it by value when the model registers on the bus.
+    /// The maximum number of documents accepted in a single request.
     fn max_documents(&self) -> usize;
 
     /// The number of dimensions in the embedding vector.
@@ -117,11 +102,6 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
 
     /// Embed multiple text documents in a single request and return the full
     /// normalized response: embeddings, usage, provider, and identity.
-    ///
-    /// This is the method a provider implements; [`EmbeddingModel::embed_texts`],
-    /// [`EmbeddingModel::embed_text`] and [`EmbeddingModel::embed_text_response`]
-    /// derive from it. It cannot be the other way round: a default that
-    /// forwarded to `embed_texts` would have to invent the provider name.
     ///
     /// Implementations must preserve input order in the returned embeddings.
     fn embed_texts_response(
@@ -141,7 +121,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
         async { Ok(self.embed_texts_response(texts).await?.embeddings) }
     }
 
-    /// Embed a single text document.
+    /// Embeds one text, returning the last vector or an error if none is returned.
     fn embed_text(
         &self,
         text: &str,
@@ -156,7 +136,8 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
         }
     }
 
-    /// Embed a single text document and return the full normalized response.
+    /// Embeds one text and returns the normalized response, rejecting an empty
+    /// embedding list.
     fn embed_text_response(
         &self,
         text: &str,
@@ -175,13 +156,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     }
 }
 
-/// The normalized embedding response: the embeddings plus the metadata every
-/// provider can report, attributed to the provider that produced it.
-///
-/// Concrete and provider-neutral, so it survives type erasure through a
-/// handle unchanged. The provider's own payload stays reachable through a
-/// model's inherent `raw_embed_texts` method, which performs the same request and
-/// returns the provider's native type, and through [`Self::raw`].
+/// Text embeddings and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     /// The embeddings returned by the provider, one per input text, in input order.
@@ -199,16 +174,10 @@ pub struct EmbeddingResponse {
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
-    /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
-    /// provider reported none; that is a documented outcome, never an error.
+    /// Transport request identifier from HTTP response headers, or `None` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
-    /// The provider's own response for this call: the value the model's
-    /// inherent `raw_embed_texts` would have returned, serialized. Every provider
-    /// seam populates it. `Value::Null` means the value was built without a
-    /// provider behind it (a test double), never that the provider sent
-    /// nothing.
+    /// Provider response payload, or null when no raw payload was attached.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
@@ -242,13 +211,7 @@ impl EmbeddingResponse {
 
 crate::provider_response::modality_response_metadata_setters!(EmbeddingResponse);
 
-/// Convert a provider's own embedding payload into the normalized [`EmbeddingResponse`].
-///
-/// The provider descriptor name is an *input*, never something the conversion
-/// knows — several providers share one wire shape, and a hardcoded name would
-/// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
-/// so that out-of-tree provider extensions can implement it on their own
-/// response type without tripping the orphan rule.
+/// Normalizes embedding payloads using the supplied provider name and input documents.
 pub trait NormalizeEmbeddingResponse {
     /// Normalize this payload, attributing it to `provider`. `documents` are
     /// the inputs in request order, for [`Embedding::document`].
@@ -259,13 +222,7 @@ pub trait NormalizeEmbeddingResponse {
     ) -> Result<EmbeddingResponse, EmbeddingError>;
 }
 
-/// The normalized image embedding response: the embeddings plus the metadata every
-/// provider can report, attributed to the provider that produced it.
-///
-/// Concrete and provider-neutral, so it survives type erasure through a
-/// handle unchanged. The provider's own payload stays reachable through a
-/// model's inherent `raw_embed_images` method, which performs the same request and
-/// returns the provider's native type, and through [`Self::raw`].
+/// Image embeddings and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageEmbeddingResponse {
     /// The embeddings returned by the provider, one per input image, in input order.
@@ -283,16 +240,10 @@ pub struct ImageEmbeddingResponse {
     /// Provider-assigned response-scoped identifier, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
-    /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
-    /// provider reported none; that is a documented outcome, never an error.
+    /// Transport request identifier from HTTP response headers, or `None` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
-    /// The provider's own response for this call: the value the model's
-    /// inherent `raw_embed_images` would have returned, serialized. Every provider
-    /// seam populates it. `Value::Null` means the value was built without a
-    /// provider behind it (a test double), never that the provider sent
-    /// nothing.
+    /// Provider response payload, or null when no raw payload was attached.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
@@ -329,10 +280,6 @@ crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResp
 /// Trait for embedding models that can generate embeddings for images.
 pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of images the provider accepts in one request.
-    ///
-    /// A method rather than an associated constant so the value survives type
-    /// erasure: [`FamilyDescriptor::Embed`](crate::effect::FamilyDescriptor::Embed)
-    /// captures it by value when the model registers on the bus.
     fn max_documents(&self) -> usize;
 
     /// The number of dimensions in the embedding vector.
@@ -360,7 +307,8 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
         async { Ok(self.embed_images_response(images).await?.embeddings) }
     }
 
-    /// Embed a single image from its encoded file bytes.
+    /// Embeds one encoded image, returning the last vector or an error if none
+    /// is returned.
     fn embed_image(
         &self,
         bytes: &[u8],
@@ -376,7 +324,8 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     }
 }
 
-/// Struct that holds a single document and its embedding.
+/// A document identifier and its vector. Equality compares only the document,
+/// not vector values.
 #[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct Embedding {
     /// The text that was embedded, or a non-sensitive input identifier for
@@ -415,13 +364,9 @@ pub fn image_media_type(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// The identifier an image embedding's [`Embedding::document`] carries.
-///
-/// An image has no text to name it and its bytes must never travel back in
-/// a response, so the identity is its media type and a digest — enough to
-/// pair a vector with its input and to tell two inputs apart, and not
-/// reversible. An unsniffable format is named as such rather than guessed;
-/// a wire rejects it before the request is sent.
+/// Identifies image bytes by media type and a URL-safe, unpadded SHA-256 digest,
+/// without retaining the image or a reversible encoding. Unknown formats use
+/// `application/octet-stream`; this function does not validate provider support.
 pub fn image_document(bytes: &[u8]) -> String {
     use base64::Engine as _;
     use sha2::Digest as _;

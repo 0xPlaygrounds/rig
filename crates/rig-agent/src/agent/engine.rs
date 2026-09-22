@@ -490,7 +490,7 @@ where
 /// The batch commits and surfaces all-or-nothing:
 ///
 /// - The model tool-call events ([`MultiTurnStreamItem::ToolCall`]) are
-///   emitted up front — they report what the model emitted at turn commit.
+///   emitted up front, reporting what the model emitted at turn commit.
 /// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
 ///   concurrently bounded by it), with outcomes **collected, not surfaced**.
 /// - On the first hook termination / fail-closed error the batch fails fast: no
@@ -533,7 +533,8 @@ where
     //   - `Executed`: `ToolExecutionCommitted` (with the effective, hook-rewritten
     //     call) + the `ToolResult`.
     //   - `Skipped`: the `ToolResult` only (a `ToolCall` hook returned `Skip`, so
-    //     nothing ran — no execution commit — but the model still sees the result).
+    //     nothing ran and no execution commit is surfaced, but the model still
+    //     sees the result).
     //   - `Preresolved`: neither (an invalid-recovery result, already surfaced
     //     during the model turn); committed to history only.
     enum ToolSurface {
@@ -582,11 +583,10 @@ where
             });
         }
 
-        // Run all tools, COLLECTING outcomes in call order — nothing is surfaced
-        // or committed until the whole batch settles (atomic per-batch). On the
-        // first hook termination / fail-closed error we stop starting new tools;
-        // already-started ones are drained; the lowest call-index error wins; and
-        // no successful result is surfaced or committed.
+        // Outcomes are collected in call order and nothing is surfaced or
+        // committed until the whole batch settles. After the first termination or
+        // fail-closed error no new tool starts, started ones are drained, and the
+        // lowest call-index error wins.
         let mut collected: Vec<Option<CollectedToolResult>> =
             (0..call_count).map(|_| None).collect();
         let mut first_error: Option<(usize, PromptError)> = None;
@@ -595,9 +595,9 @@ where
             // Bounded by `tool_concurrency` (`0`/`1` poll strictly in call
             // order, giving sequential fail-fast). A shared `terminating`
             // flag makes a not-yet-started sibling skip (its side effect never
-            // runs) once any sibling terminates — avoiding the Semantic-Kernel
-            // fail-open — while already-in-flight siblings are drained so the
-            // lowest call-index terminator wins and no task is left detached.
+            // runs) once any sibling terminates, while in-flight siblings are
+            // drained so the lowest call-index terminator wins and no task is left
+            // detached.
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let unordered = stream::iter(prepared.into_iter().enumerate())
                 .map(|(index, call)| {
@@ -670,8 +670,8 @@ where
             }
         }
 
-        // Settle. On termination: surface only the deterministic error — no
-        // execution commit, no result, no history commit (all-or-nothing).
+        // On termination surface only the deterministic error: no execution
+        // commit, no result, and no history commit.
         if let Some((_, err)) = first_error {
             yield Err(StreamingError::Prompt(err));
             return;
@@ -757,7 +757,7 @@ pub(crate) struct StreamingTurnSource {
     observes_text_delta: bool,
     observes_reasoning_delta: bool,
     observes_tool_call_delta: bool,
-    /// Whether any hook is present — gates building the (history-cloning)
+    /// Whether any hook is present. Gates building the history-cloning
     /// invalid-tool diagnostic context.
     has_hooks: bool,
 }
@@ -771,9 +771,6 @@ impl StreamingTurnSource {
     ) -> Self {
         Self {
             // Nothing has streamed yet, so the last final choice is nothing.
-            // This was a fabricated empty-text part for want of an empty
-            // representation; `is_empty_assistant_turn` treated it as empty
-            // anyway, so the two are equivalent — this one is just honest.
             last_final_choice: Vec::new(),
             last_message_id: None,
             agent_name,
@@ -879,8 +876,8 @@ impl TurnSource for StreamingTurnSource {
                 ($usage:expr) => {{
                     // Same source as identity below: the provider's terminal
                     // record. A path that never saw one yields `None`, which is
-                    // "the provider reported no reason" — not "the turn stopped
-                    // normally".
+                    // "the provider reported no reason" rather than "the turn
+                    // stopped normally".
                     let reason = stream
                         .response
                         .as_ref()
@@ -920,16 +917,10 @@ impl TurnSource for StreamingTurnSource {
             }
 
             'turn: while let Some(item) = stream.next().await {
-                // A provider stream's `Err` item is normally fatal. One
-                // shape is not: the model closed a tool call with input that
-                // is not JSON (rig#2447). That is the model's mistake, and
-                // the same recovery the run offers for an unknown tool name
-                // applies — so it is routed into that seam with the raw text
-                // and the parser's reason, and `Fail` reproduces the error
-                // that used to end the run here. Every other error stays
-                // fatal.
-                // At most one event per ingested item forwards the item itself;
-                // moving it out of the slot avoids a clone per streamed delta.
+                // Stream errors are fatal except unparsable tool-call input,
+                // which takes the same recovery seam as an unknown tool name.
+                // At most one event per item forwards the item itself, so moving
+                // it out of the slot avoids cloning every streamed delta.
                 let (mut item_slot, mut events): (Option<StreamEvent>, VecDeque<StreamedTurnEvent>) =
                     match item {
                         Ok(item) => {
@@ -990,9 +981,7 @@ impl TurnSource for StreamingTurnSource {
                             {
                                 // The stop is the run's: the dispatch in flight is
                                 // cancelled here, before the error surfaces, so the
-                                // record is the same cancel on every transport (it
-                                // used to depend on whether the provider had finished
-                                // before the consumer dropped the run).
+                                // record is the same cancel on every transport.
                                 drop(stream);
                                 yield Err(StreamingError::Prompt(
                                     run.cancel_error(reason),
@@ -1028,9 +1017,7 @@ impl TurnSource for StreamingTurnSource {
                                 ) {
                                     // The stop is the run's: the dispatch in flight is
                                     // cancelled here, before the error surfaces, so the
-                                    // record is the same cancel on every transport (it
-                                    // used to depend on whether the provider had finished
-                                    // before the consumer dropped the run).
+                                    // record is the same cancel on every transport.
                                     drop(stream);
                                     yield Err(StreamingError::Prompt(
                                         run.cancel_error(reason),
@@ -1067,9 +1054,7 @@ impl TurnSource for StreamingTurnSource {
                                 ) {
                                     // The stop is the run's: the dispatch in flight is
                                     // cancelled here, before the error surfaces, so the
-                                    // record is the same cancel on every transport (it
-                                    // used to depend on whether the provider had finished
-                                    // before the consumer dropped the run).
+                                    // record is the same cancel on every transport.
                                     drop(stream);
                                     yield Err(StreamingError::Prompt(
                                         run.cancel_error(reason),
@@ -1127,8 +1112,7 @@ impl TurnSource for StreamingTurnSource {
                             };
                             // No hook resolved it: the runner's policy, as the
                             // unary surface applies it (`Ignore` drops the call
-                            // and goes on; `Fail` fails the run). This surface
-                            // used to fail regardless of the policy.
+                            // and goes on; `Fail` fails the run).
                             let resolved = match hook_action {
                                 Some(action) => {
                                     run.resolve_streamed_invalid_tool_call(&partial, &invalid, action)
@@ -1227,14 +1211,10 @@ impl TurnSource for StreamingTurnSource {
                 return;
             }
 
-            // Final fallback: no usage was ever learned, so there is nothing to
-            // record onto the span (every counter stays `None`)
-            // and this is the last read of the flag — kept inline (not
-            // `emit_completion_call!`) so it doesn't emit a dead
-            // `completion_call_emitted = true` write, which `unused_assignments`
-            // rejects. Identity and payload come from the terminal record the
-            // macro reads too, so `completion_calls` and hook observations
-            // agree on this path.
+            // No usage was ever learned, so every span counter stays `None`.
+            // Written inline rather than through the macro to avoid a dead
+            // assignment. Identity and payload still come from the terminal
+            // record, so completion calls and hook observations agree.
             if !completion_call_emitted {
                 match run.record_streamed_completion_call(
                     crate::completion::Usage::default(),
@@ -1252,18 +1232,16 @@ impl TurnSource for StreamingTurnSource {
 
             let mut final_turn_content = stream.snapshot();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
-            // This attempt's identity, read from *this* stream's terminal
-            // record (each attempt — including a retry — opens its own
-            // stream, so a previous attempt's ids can never leak in). The
-            // message id prefers the assembled turn's, which folds in an
-            // explicit `MessageId` event; the terminal's ids fill the rest.
+            // This attempt's identity comes from this stream's terminal record,
+            // and every attempt opens its own stream, so earlier ids cannot leak
+            // in. The message id prefers the assembled turn's, which folds in an
+            // explicit `MessageId` event.
             let identity = rig_core::completion::ResponseIdentity {
                 message_id: streamed_turn.message_id.clone(),
                 ..stream.identity()
             };
-            // This attempt's raw payload, from the same terminal record as the
-            // identity above — so a retry never observes a previous attempt's
-            // response.
+            // The raw payload comes from the same terminal record as the identity
+            // above, so a retry never observes an earlier attempt's response.
             let attempt_raw = &terminal.raw;
             self.last_message_id.clone_from(&streamed_turn.message_id);
             // The canonical assistant content: `finish` normalizes
@@ -1384,8 +1362,8 @@ impl TurnSource for StreamingTurnSource {
     }
 
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
-        // Tool output mode (#1928): when the finishing turn made the output-tool
-        // call, surface the run's structured output as the final content.
+        // In tool output mode, when the finishing turn made the output-tool call,
+        // surface the run's structured output as the final content.
         let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
             .unwrap_or_else(|| {
                 if is_empty_assistant_turn(&self.last_final_choice) {
@@ -1424,8 +1402,8 @@ pub(crate) fn observe_action(action: ObservationAction) -> Option<String> {
 /// Resolved outcome of the shared, medium-neutral model-turn hook.
 pub(crate) enum ModelTurnDecision {
     /// Accept the turn and advance normally. Carries the content a hook
-    /// replaced the turn with, when one did — the streaming surface's final
-    /// item follows it.
+    /// replaced the turn with, when one did. The streaming surface's final item
+    /// follows it.
     Advance {
         replaced: Option<Vec<AssistantContent>>,
     },
@@ -1437,7 +1415,7 @@ pub(crate) enum ModelTurnDecision {
 
 /// One attempt's assembled response, as both drivers hand it to
 /// [`settle_model_turn`]: the unary response under `run()`, the finished
-/// stream under `stream()`. Every field is this attempt's own — a retry
+/// stream under `stream()`. Every field belongs to this attempt, and a retry
 /// re-enters with a fresh response, so a stale attempt's ids or payload can
 /// never be attributed here.
 pub(crate) struct AssembledTurn<'a> {
@@ -1462,9 +1440,9 @@ pub(crate) struct AssembledTurn<'a> {
 /// `Cancelled` replacement terminates), then
 /// [`AgentHook::on_model_turn_finished`] and apply its action to the sans-IO
 /// run. The outcome hook fires here rather than at the dispatch so that both
-/// media fire it in one slot — after the run validated the answer's tool
-/// calls (a recovered turn fires neither hook, on either medium) and while
-/// the turn can still be replaced. Both drivers call this once per accepted attempt, so retry history,
+/// media fire it in one slot, after the run validated the answer's tool calls
+/// (a recovered turn fires neither hook, on either medium) and while the turn
+/// can still be replaced. Both drivers call this once per accepted attempt, so retry history,
 /// tool-turn rejection, and state transitions cannot diverge by medium. The
 /// callers own what happens next: the blocking driver records the accepted
 /// turn's telemetry; the streaming driver additionally surfaces or discards
@@ -1586,7 +1564,7 @@ pub(crate) async fn append_run_messages(
     memory_handle: Option<&(MemoryHandle, rig_core::id::ConversationId)>,
     messages: &[Message],
 ) -> Option<MemoryAppend> {
-    // Clone into an owned vec only when there is a backend to append to — the
+    // Clone into an owned vec only when there is a backend to append to, so the
     // common no-memory path pays nothing.
     let (memory, id) = memory_handle?;
     let appended = dispatch_effect(
@@ -1685,15 +1663,15 @@ pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
 
 /// Whether (and how) a tool call executed, for [`run_single_tool`].
 pub(crate) enum ToolExecution {
-    /// The tool's body ran. Carries the **effective** tool call — the model's
-    /// call with any [`DispatchAction::Patch`] hook
-    /// rewrite applied — so the driver can surface it in the
+    /// The tool's body ran. Carries the effective tool call, meaning the model's
+    /// call with any [`DispatchAction::Patch`] hook rewrite applied, so the
+    /// driver can surface it in the
     /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted)
     /// event (what actually ran, not the model's original arguments).
     Executed(ToolCall),
     /// A dispatch hook denied the call ([`DispatchAction::skip`]): the
-    /// body did not run, so no execution-commit is surfaced — but the skip result
-    /// is still delivered to the model (and surfaced as a `ToolResult`).
+    /// body did not run, so no execution-commit is surfaced, but the skip result
+    /// still reaches the model and is surfaced as a `ToolResult`.
     Skipped,
 }
 
@@ -1825,7 +1803,7 @@ pub(crate) struct UnaryTurnSource {
     /// task: `run_tool_calls` passes `chain_span` as a closure into
     /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
     /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
-    /// `UnaryTurnSource: Sync` — which `AtomicU64` provides and `Cell` does not.
+    /// `UnaryTurnSource: Sync`, which `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
     record_telemetry_content: bool,
 }
@@ -2030,10 +2008,9 @@ impl TurnSource for UnaryTurnSource {
         response: &PromptResponse,
         created_agent_span: bool,
     ) {
-        // Record run-level completion + usage onto the agent span, but only when
-        // we created it — never pollute a caller-supplied outer span. The usage
-        // fields go through the same recorder the streaming surface uses; the
-        // blocking surface additionally records the final completion text.
+        // Record completion and usage onto the agent span only when this run
+        // created it, never onto a caller-supplied outer span. The blocking
+        // surface additionally records the final completion text.
         if created_agent_span {
             if self.record_telemetry_content {
                 agent_span.record("gen_ai.completion", &response.output);
@@ -2094,9 +2071,8 @@ fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
 /// Dispatch a completion through the agent's bus at the dispatch boundary:
 /// `on_dispatch` before (patch or deny), then the bus. The outcome hook is
 /// not fired here: on either medium it fires in [`settle_model_turn`], once
-/// the run has validated the answer's tool calls and parked the turn — the
-/// slot where a hook can still replace what history keeps, and the same
-/// slot on both media.
+/// the run has validated the answer's tool calls and parked the turn. That is
+/// the slot where a hook can still replace what history keeps, on both media.
 pub(crate) async fn dispatch_completion(
     runner: &AgentRunner,
     ctx: &HookContext,
@@ -2192,7 +2168,7 @@ pub(crate) struct ToolCallDispatch {
 /// the model sees.
 /// Why a tool dispatch produced no result for the model: a hook cancelled
 /// the run, or the bus could not serve the call (closed, or the tool's
-/// handler gone) — a failure of the run, not of the tool.
+/// handler gone). This is a failure of the run, not of the tool.
 pub(crate) enum ToolDispatchAbort {
     Cancelled(String),
     Failed(ErrorReport),
@@ -2338,9 +2314,9 @@ pub(crate) async fn dispatch_tool_call(
             }
         }
         // The bus could not serve the call, or a replayer refused it as a
-        // divergence: the run fails with the report rather than telling the
-        // model its tool failed — a replay that continues on an answer the
-        // record never gave is a passed test with a different trace.
+        // divergence: the run fails with the report rather than telling the model
+        // its tool failed, since a replay continuing on an answer the record never
+        // gave would pass with a different trace.
         Err(report)
             if matches!(
                 report.kind,

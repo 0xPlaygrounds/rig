@@ -1,21 +1,13 @@
-//! Index → grammar-identity bridging for streamed tool calls.
+//! Maps wire indices to stable assembly identities for streamed tool calls.
+//! Calls without provider IDs receive distinct minted keys, without claiming
+//! provider provenance. Argument assembly remains in the shared accumulator.
 //!
-//! Several wires key tool-call fragments by a numeric index (the chat-compat
-//! chunk index, Bedrock's `contentBlockIndex`) rather than by the grammar id
-//! the shared accumulator assembles under. Every adapter on such a wire needs
-//! the same bridge: a per-stream map from the wire's index to the identity the
-//! adapter established for that call. [`ToolCallBridge`] is that map, shared
-//! so the mandatory-identity invariant on
-//! tool-call [`BlockDelta`](crate::streaming::StreamEvent::BlockDelta)
-//! is enforced in exactly one place: when the wire supplies no id, the slot's
-//! grammar id is a `BlockId::Minted` from the bridge's [`SyntheticIds`]
-//! counter, so parallel id-less calls can never share an assembly key
-//! downstream — and a minted id structurally cannot serialize upstream as a
-//! wire-genuine one.
-//!
-//! Only the *bridging state* lives here. Argument assembly, internal-id
-//! minting for finalized calls, and finalize policy stay in the shared
-//! accumulator (`BlockAccumulator`); frame triage stays in the driver.
+//! ```
+//! use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
+//! let mut bridge = ToolCallBridge::<usize>::new();
+//! let slot = bridge.open(0, None, Some("search"));
+//! assert!(slot.key().is_minted());
+//! ```
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -24,15 +16,10 @@ use crate::streaming::{
     BlockId, StreamEvent, SyntheticIds, ToolCallDecoration, ToolCallEnd, UnparseableToolInput,
 };
 
-/// Wire identity of a tool call whose input is streaming, as tracked by an
-/// adapter. The slot keeps only what the wire keys by — an index — mapped to
-/// the identity the adapter established for that call.
+/// Assembly identity and provider metadata for one streaming tool call.
 #[derive(Debug, Clone)]
 pub struct ToolCallSlot {
-    /// Assembly id: the id under which this call's fragments are emitted.
-    /// Fixed at open: the first-seen provider id, or a minted identity when
-    /// the wire omits one — so parallel id-less calls can never share an
-    /// assembly key downstream.
+    /// Assembly key fixed at opening: the initial provider ID or a unique mint.
     key: BlockId,
     /// Established provider id: updated when a later chunk carries one.
     /// Empty until the wire supplies one.
@@ -43,22 +30,16 @@ pub struct ToolCallSlot {
     pub signature: Option<String>,
     /// Provider-specific decoration carried onto the call's end event.
     pub additional_params: Option<serde_json::Value>,
-    /// Whether any raw argument fragment streamed for this slot. The done
-    /// item's unparseable restatement re-emits its raw bytes only when NO
-    /// fragment preceded it — the buffer already holds streamed bytes, and
-    /// re-emitting the restatement doubled them.
+    /// Whether raw argument fragments have streamed. Re-emit an unparseable
+    /// restatement only when false to avoid duplicating buffered bytes.
     pub saw_arguments_delta: bool,
     /// Whether any argument fragment carried a non-whitespace byte. An empty
     /// argument slot under an output-length finish reason is an incomplete
     /// call, not evidence that the model deliberately invoked a zero-argument
     /// tool.
     saw_non_whitespace_arguments_delta: bool,
-    /// The payload the wire announced when it opened the call (Gemini
-    /// Interactions `step.start` usually carries `"arguments": {}`, and
-    /// sometimes the whole payload). Replace-if-no-deltas, never
-    /// concatenated: fragments, when they arrive, ARE the arguments and
-    /// the announce is ignored; only a slot that fragmented nothing falls
-    /// back to what it announced.
+    /// Opening arguments used only if no argument delta arrives.
+    /// Never concatenated with streamed fragments.
     pub announce_arguments: Option<serde_json::Value>,
 }
 
@@ -108,11 +89,8 @@ impl ToolCallSlot {
     }
 }
 
-/// Per-stream index → grammar-identity map for streamed tool calls.
-///
-/// `I` is the wire's own index type (`usize` for chat-compat chunk indices,
-/// `i32` for Bedrock content-block indices); it must display so a minted id
-/// can derive from it, and order so a drain preserves wire ordering.
+/// Per-stream map from wire indices to tool-call assembly identities.
+/// `I` must support equality, hashing, copying, and ordering for sorted drains.
 #[derive(Debug)]
 pub struct ToolCallBridge<I> {
     slots: HashMap<I, ToolCallSlot>,
@@ -151,13 +129,9 @@ where
         }
     }
 
-    /// Open (or update) the slot for a wire index, establishing its identity.
-    ///
-    /// On first sight the assembly key is fixed: the wire id when one is
-    /// supplied, else a freshly minted identity — the single enforcement
-    /// point of the mandatory-identity invariant. Later fragments update the
-    /// established provider id and name from any non-empty values they
-    /// carry.
+    /// Open or update a slot, fixing its assembly key on first insertion.
+    /// An absent or empty initial wire ID receives a minted key. Later nonempty
+    /// IDs and names update metadata without changing that key.
     pub fn open(
         &mut self,
         index: I,
@@ -168,10 +142,7 @@ where
         let slot = self.slots.entry(index).or_insert_with(|| ToolCallSlot {
             key: match wire_id {
                 Some(id) if !id.is_empty() => BlockId::wire(id),
-                // Id-less wires (several llama.cpp/vllm-style gateways) key
-                // tool calls by index alone; the slot identity is minted so
-                // it can never collide with a wire-genuine id — and can
-                // never serialize upstream.
+                // Minted keys cannot collide with or claim provider-issued identity.
                 _ => minted.mint(),
             },
             id: String::new(),
@@ -203,8 +174,7 @@ where
         self.slots.get(&index)
     }
 
-    /// The open slot at a wire index, mutably — for fragment bookkeeping
-    /// on an already-open slot without `open`'s insert-if-absent.
+    /// Mutably borrow an existing slot without inserting one.
     pub fn get_mut(&mut self, index: I) -> Option<&mut ToolCallSlot> {
         self.slots.get_mut(&index)
     }
@@ -221,11 +191,8 @@ where
         self.slots.remove(&index)
     }
 
-    /// Evict the slot at a wire index when the predicate says the incoming
-    /// fragment belongs to a *different* call reusing the same index (the
-    /// per-profile eviction semantics — e.g. a distinct id + name pair on a
-    /// wire that restarts indices per call). Returns the evicted slot so the
-    /// caller can flush it to the consumer.
+    /// Remove and return an existing slot if `should_evict` accepts it.
+    /// The caller must flush the returned slot before reusing its index.
     pub fn evict_if(
         &mut self,
         index: I,
@@ -237,18 +204,8 @@ where
         None
     }
 
-    /// Apply a provider decoration to the in-flight call it names, matched by
-    /// the established provider id. Decorations ride the slot onto its end
-    /// event; assembly itself is untouched.
-    ///
-    /// Two matching rules keep this deterministic:
-    /// - A slot whose wire never established a provider id (empty `id`) never
-    ///   matches — a decoration for the empty string would otherwise pick an
-    ///   arbitrary id-less slot out of `HashMap` iteration order.
-    /// - Each field is **first-wins**: a later decoration for the same call
-    ///   fills only the fields still unset, so a gemini-style
-    ///   signature-then-params sequence composes instead of the second
-    ///   decoration clobbering the first's signature with `None`.
+    /// Fill unset decoration fields on a slot matching a nonempty provider ID.
+    /// Existing fields win. Callers must keep provider IDs unique among open slots.
     pub fn decorate(&mut self, decoration: ToolCallDecoration) {
         if decoration.tool_id.is_empty() {
             return;
@@ -267,7 +224,7 @@ where
         }
     }
 
-    /// Whether any call is still open.
+    /// Whether no calls remain open.
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
@@ -282,9 +239,7 @@ where
             .collect()
     }
 
-    /// [`ToolCallBridge::drain_ordered`], keeping each slot's wire index —
-    /// for adapters that track per-slot state of their own beside the
-    /// bridge (the Responses adapter's pending `call_id`s).
+    /// Drain all slots in ascending wire-index order, retaining their indices.
     pub fn drain_ordered_indexed(&mut self) -> Vec<(I, ToolCallSlot)> {
         let mut slots: Vec<(I, ToolCallSlot)> = self.slots.drain().collect();
         slots.sort_by_key(|(index, _)| *index);

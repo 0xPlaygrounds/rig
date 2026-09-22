@@ -1,11 +1,8 @@
-//! ScyllaDB vector store integration for Rig.
+//! ScyllaDB vector store for Rig.
 //!
-//! This crate provides [`ScyllaDbVectorStore`], a Rig vector store backed by a
-//! ScyllaDB keyspace and table. It stores document payloads and embeddings in
-//! ScyllaDB and performs application-level cosine similarity search.
-//!
-//! The root `rig` facade re-exports this crate as `rig::scylladb` when the
-//! `scylladb` feature is enabled.
+//! [`ScyllaDbVectorStore`] stores documents and embeddings in a ScyllaDB table
+//! and scores candidates with cosine similarity in the client process. The `rig`
+//! facade re-exports this crate as `rig::scylladb` under the `scylladb` feature.
 
 use rig_core::{
     Embed,
@@ -32,33 +29,27 @@ use std::{
 };
 use uuid::Uuid;
 
-/// Represents a vector store implementation using ScyllaDB as the backend.
+/// Vector store backed by a ScyllaDB table.
 ///
-/// ScyllaDB is a high-performance NoSQL database that's compatible with Apache Cassandra
-/// and provides excellent performance for vector storage and similarity search operations.
-///
-/// The store is generic over its embedding model `M`, which is fixed for the
-/// store's lifetime: an index populated under one model is only meaningful under
-/// that same model.
+/// Queries are embedded with the same model `M` that populated the table, so
+/// results are meaningless under another model. Every search reads the matching
+/// rows and ranks them client-side.
 pub struct ScyllaDbVectorStore<M> {
-    /// Model used to generate embeddings for the vector store
     model: M,
-    /// Session instance for ScyllaDB communication
     pub session: Arc<Session>,
-    /// Keyspace and table name for vector storage
     keyspace: String,
     table: String,
-    /// The number of dimensions for vectors
+    /// Vector width enforced on insertion.
     dimensions: usize,
-    /// Prepared statements for optimized queries
     insert_stmt: PreparedStatement,
     search_stmt: PreparedStatement,
     get_by_id_stmt: PreparedStatement,
-    /// Cache for statements which cannot be prepared AOT
+    /// Statements for filtered scans, keyed by filter condition text.
     cache: Arc<RwLock<HashMap<u64, PreparedStatement>>>,
 }
 
-/// Converts a `serde_json::Value` to a `CqlValue` for use in ScyllaDB queries.
+/// Converts a JSON value into a bindable CQL value. Nulls become
+/// [`CqlValue::Empty`] and unrepresentable numbers are rejected.
 fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError> {
     use scylla::value::CqlVarint;
     use serde_json::Value;
@@ -69,8 +60,7 @@ fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError
             if let Some(i) = n.as_i64() {
                 Ok(CqlValue::BigInt(i))
             } else if let Some(u) = n.as_u64() {
-                // u64 values that don't fit in i64 - use Varint with big-endian bytes
-                // Add a leading zero byte to ensure it's interpreted as positive
+                // The leading zero byte keeps the big-endian varint positive.
                 let mut bytes = vec![0u8];
                 bytes.extend_from_slice(&u.to_be_bytes());
                 Ok(CqlValue::Varint(CqlVarint::from_signed_bytes_be(bytes)))
@@ -100,15 +90,16 @@ fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError
     }
 }
 
-/// Placeholder token CQL expects for every bind parameter.
+/// Bind placeholder token CQL expects.
 const PLACEHOLDER: &str = "?";
 
-/// ScyllaDB query filter: a CQL `WHERE` fragment plus the values to bind to it.
+/// CQL `WHERE` fragment with its bind values. Keys are spliced into the
+/// statement verbatim; only values are bound.
 #[derive(Clone, Debug)]
 pub struct ScyllaSearchFilter(SqlCondition<CqlValue>);
 
-/// Only the condition is hashed: it is what the prepared-statement cache is
-/// keyed on, and the bound parameters do not change the statement text.
+/// Hashes only the condition text, since bound values do not change the
+/// prepared statement.
 impl std::hash::Hash for ScyllaSearchFilter {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.condition().hash(state);
@@ -188,14 +179,12 @@ impl DynamicSearchFilter for ScyllaSearchFilter {
 }
 
 impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
-    /// Creates a new instance of `ScyllaDbVectorStore`.
+    /// Creates a store, creating the keyspace and table when absent and
+    /// preparing the fixed statements.
     ///
-    /// # Arguments
-    /// * `model` - Embedding model instance
-    /// * `session` - ScyllaDB session
-    /// * `keyspace` - Keyspace name (will be created if it doesn't exist)
-    /// * `table` - Table name for storing vectors
-    /// * `dimensions` - Number of dimensions for the vectors
+    /// The keyspace is created with `SimpleStrategy` at replication factor one.
+    /// `keyspace` and `table` are spliced into every statement verbatim.
+    /// `dimensions` is the vector width insertion enforces.
     pub async fn new(
         model: M,
         session: Session,
@@ -205,7 +194,6 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
     ) -> Result<Self, VectorStoreError> {
         let session = Arc::new(session);
 
-        // Create keyspace if it doesn't exist
         let create_keyspace_cql = format!(
             "CREATE KEYSPACE IF NOT EXISTS {keyspace} WITH REPLICATION = {{
                 'class': 'SimpleStrategy',
@@ -217,9 +205,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        // Create table for storing vectors
-        // Note: Once ScyllaDB vector search is fully available, we'll use VECTOR type
-        // For now, we use a list of floats and implement similarity search in application code
+        // Embeddings are stored as float lists because scoring happens client-side.
         let create_table_cql = format!(
             "CREATE TABLE IF NOT EXISTS {keyspace}.{table} (
                 id UUID PRIMARY KEY,
@@ -233,7 +219,6 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        // Prepare statements for better performance
         let insert_stmt = session
             .prepare(format!(
                 "INSERT INTO {keyspace}.{table} (id, vector, metadata, created_at) VALUES (?, ?, ?, ?)"
@@ -268,22 +253,21 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         })
     }
 
-    /// Get the session reference
     pub fn session(&self) -> &Arc<Session> {
         &self.session
     }
 
-    /// Get the keyspace name
     pub fn keyspace(&self) -> &str {
         &self.keyspace
     }
 
-    /// Get the table name
     pub fn table(&self) -> &str {
         &self.table
     }
 
-    /// Get a document by its ID
+    /// Looks up one stored document by row id, returning `None` when no row
+    /// matches. Errors when `id` is not a UUID or the payload does not
+    /// deserialize into `T`.
     pub async fn get_by_id<T: for<'a> Deserialize<'a> + Send>(
         &self,
         id: &str,
@@ -314,7 +298,8 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         Ok(None)
     }
 
-    /// Calculate cosine similarity between two vectors
+    /// Cosine similarity, returning zero when either vector has zero norm.
+    /// Extra components of the longer vector are ignored.
     fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
         let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
         let norm1: f32 = vec1.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -327,12 +312,13 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         }
     }
 
-    /// Generate query vector from text
     async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
         let embedding = self.model.embed_text(query).await?;
         Ok(embedding.vec.iter().map(|&x| x as f32).collect())
     }
 
+    /// Returns the prepared scan for this request, preparing and caching a
+    /// filtered statement the first time each filter condition is seen.
     async fn get_filter_statement_or_default(
         &self,
         req: &VectorSearchRequest<ScyllaSearchFilter>,
@@ -378,8 +364,9 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
         }
     }
 
-    /// Runs the (optionally filtered) scan and scores every row against the
-    /// query, returning the sorted, truncated `(score, id, metadata)` list.
+    /// Reads every matching row, scores it against the embedded query, and
+    /// returns the thresholded rows sorted by descending similarity and
+    /// truncated to the requested sample count.
     async fn search_candidates(
         &self,
         req: &VectorSearchRequest<ScyllaSearchFilter>,
@@ -393,7 +380,6 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
             .map(ScyllaSearchFilter::params)
             .unwrap_or_default();
 
-        // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
         let results = self
             .session
             .execute_unpaged(&statement, params)
@@ -421,7 +407,6 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
             candidates.push((score, id.to_string(), metadata));
         }
 
-        // Sort by similarity score (descending) and take top n
         candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
         candidates.truncate(req.samples() as usize);
 
@@ -468,12 +453,8 @@ impl<M: EmbeddingModel> InsertDocuments for ScyllaDbVectorStore<M> {
 impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
     type Filter = ScyllaSearchFilter;
 
-    /// Search for the top `n` nearest neighbors to the given query.
-    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
-    ///
-    /// Note: This implementation performs a brute-force search since ScyllaDB's native vector
-    /// search is still in development. Once available, this will be optimized to use native
-    /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
+    /// Returns matches as `(cosine similarity, row id, document)`. Scoring reads
+    /// every row the filter admits, so cost grows with the scanned table.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
@@ -485,8 +466,8 @@ impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
             .collect()
     }
 
-    /// Search for the top `n` nearest neighbors to the given query.
-    /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
+    /// Like `top_n` but returns `(cosine similarity, row id)` without
+    /// deserializing documents.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
@@ -500,7 +481,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
     }
 }
 
-/// Convenience function to create a ScyllaDB session
+/// Opens an LZ4-compressed session to a single known node.
 pub async fn create_session(uri: &str) -> Result<Session, VectorStoreError> {
     SessionBuilder::new()
         .known_node(uri)

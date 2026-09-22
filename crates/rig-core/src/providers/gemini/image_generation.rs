@@ -1,4 +1,13 @@
-//! Gemini image generation support.
+//! Image generation through Gemini's `generateContent` endpoint.
+//!
+//! ```no_run
+//! use rig_core::providers::gemini::{Gemini, image_generation::{Images, GEMINI_2_5_FLASH_IMAGE}};
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let wire = Images::new(Gemini::from_env()?, GEMINI_2_5_FLASH_IMAGE);
+//! # Ok(())
+//! # }
+//! ```
 
 use super::completion::gemini_api_types::{
     Content, GenerateContentRequest, GenerateContentResponse, GenerationConfig, ImageConfig, Part,
@@ -143,10 +152,7 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Imag
 
 /// The image generation wire: `POST /v1beta/models/{model}:generateContent`.
 ///
-/// Gemini generates images through the same `generateContent` endpoint as
-/// text, asking for them with `responseModalities: ["IMAGE"]`, and answers
-/// with one whole document either way — so both [`Mode`]s send the same
-/// request.
+/// Both [`Mode`]s request image output and decode a whole response document.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Images {
     /// The provider this wire speaks to.
@@ -183,8 +189,6 @@ impl Wire for Images {
         _mode: Mode,
     ) -> Result<Encoded, ImageGenerationError> {
         let body = serde_json::to_vec(&create_request_body(request)?)?;
-        // The GenerateContent family authenticates through the `key` query
-        // parameter, appended last.
         let request = http::Request::post(format!(
             "{}{}?key={}",
             self.provider.base_url,
@@ -203,10 +207,8 @@ impl Wire for Images {
     }
 }
 
-/// Decodes one `generateContent` reply into the image it carries.
-///
-/// `project` stays at its default: this reply carries nothing beyond what the
-/// GenerateContent decoder's own projection already observes.
+/// Decode the first non-thought image in a `generateContent` reply.
+/// Missing image data and invalid base64 produce response errors.
 #[derive(Default)]
 pub struct ImagesDecoder;
 
@@ -220,9 +222,6 @@ impl Decoder<ImageGeneration> for ImagesDecoder {
         )
     }
 
-    /// Picking the image out of the candidates' parts and reporting a
-    /// payload that is not base64 is [`NormalizeImageGenerationResponse`]'s,
-    /// so this wire holds no second reading of the same reply.
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ImageGeneration>) {
         out.push(event.normalize(super::PROVIDER_NAME));
     }

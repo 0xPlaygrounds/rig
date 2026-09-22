@@ -1,4 +1,10 @@
-//! Central definitions for the model/checkpoint combinations Rig can execute.
+//! Model architectures, conversation protocols, and checkpoint validation profiles.
+//!
+//! ```
+//! use rig_candle::ConversationProtocol;
+//!
+//! let protocol = ConversationProtocol::Qwen3;
+//! ```
 
 use std::collections::HashSet;
 

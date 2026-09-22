@@ -1,10 +1,13 @@
-//! Handlers over the impl-side traits.
+//! Effect handlers adapting model, tool, memory, and retrieval traits.
+//! Each adapter translates its effect family into trait calls and returns
+//! outcomes or streaming events.
 //!
-//! Each adapter translates its family's [`EffectKind`] arm into the trait
-//! call and the result into an [`Outcome`] (or
-//! [`StreamEvent`](crate::streaming::StreamEvent)s), so a
-//! provider or tool author writes the impl-side trait exactly as before and
-//! registers the adapter.
+//! ```
+//! use rig_core::{memory::InMemoryConversationMemory, serve::{Serve, adapters::MemoryAdapter}};
+//!
+//! let handler = MemoryAdapter::new(InMemoryConversationMemory::new());
+//! assert_eq!(handler.descriptor().key.as_str(), "memory");
+//! ```
 
 use crate::{
     completion::{CompletionModel, ModelRef},
@@ -146,8 +149,8 @@ impl<T: Tool> ToolAdapter<T> {
         }
     }
 
-    /// Wrap a retrievable tool: the descriptor carries its embedding
-    /// context so a catalog can advertise it by similarity.
+    /// Wraps a tool with embedding descriptions and serialized reconstruction
+    /// context. Returns an error if context serialization fails.
     pub fn retrievable(tool: T) -> Result<Self, serde_json::Error>
     where
         T: ToolEmbedding,
@@ -190,9 +193,7 @@ where
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::ToolCall { name, .. } if name != T::NAME => {
-                // Routing is by key, so this is an invariant violation, as
-                // `Layer::serve` treats a renamed call: the handler under
-                // `tool:<name>` runs the tool of that name and no other.
+                // Key routing must not invoke a different tool than the bound target.
                 Reply::Outcome(Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("tool handler `{}` asked to run `{name}`", T::NAME),
@@ -216,9 +217,8 @@ where
     }
 }
 
-/// The callback shape of a tool defined at runtime (an MCP tool, a closure
-/// built from an agent). The callback is the handler; there is no other
-/// erasure of it.
+/// Contextual tool callback accepting JSON arguments and returning canonical
+/// output or a tool execution error.
 pub trait ToolCallback:
     for<'a> Fn(
         &'a mut crate::tool::ToolContext,
@@ -243,8 +243,7 @@ impl<F> ToolCallback for F where
 {
 }
 
-/// A tool defined by a name, a schema and a callback — the runtime-defined
-/// tool as a handler.
+/// A runtime-defined tool handler with a name, argument schema, and callback.
 pub struct ToolFn<F> {
     name: String,
     description: String,

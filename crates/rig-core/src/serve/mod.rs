@@ -5,6 +5,13 @@
 //! is the shared registry boundary; drivers own polling and cancellation.
 //! Provider and tool authors retain their domain traits through [`adapters`].
 //! [`Reply::written`] offers a writer that mints stream block identities.
+//!
+//! ```
+//! use rig_core::serve::ServingPolicy;
+//!
+//! let policy = ServingPolicy::default();
+//! assert!(!policy.serial_per_handler);
+//! ```
 
 pub mod adapters;
 mod handler;
@@ -20,10 +27,8 @@ pub use layer::{Decision, Intercept, Layer, Verdict};
 pub use recorder::{Origin, Recorder};
 pub use writer::StreamWriter;
 
-/// A driver's sizing and serving policy: what a program was recorded
-/// under and what a host runs it under. Serve-side data, so a log names no
-/// runtime and any driver — rig-agent's, a host's own — states its policy in
-/// the same terms.
+/// Driver queue capacities and per-handler ordering policy, retained as data
+/// for recording and replay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServingPolicy {
     /// Commands the driver buffers, bus-wide, before a dispatch parks at
@@ -35,16 +40,12 @@ pub struct ServingPolicy {
     /// rig-ecs uses at least one shared slot plus one sender-reserved slot.
     /// Source-internal buffers and collection work limits are separate.
     pub stream_capacity: usize,
-    /// Serve one command at a time per key. `false` serves every command
-    /// concurrently; `true` is the cassette-ordered property — a handler
-    /// sees its dispatches in the order they arrived.
+    /// Serves one command at a time per key in arrival order when true;
+    /// otherwise permits concurrent execution.
     ///
-    /// Under serial serving a handler must not dispatch to **its own key**
-    /// and wait for the answer: that dispatch would queue behind the
-    /// command that waits on it. A driver refuses the case it can see with
-    /// a `Request` report instead of hanging; a handler that needs its own
-    /// key serves it from a second key, or runs with
-    /// `serial_per_handler: false`.
+    /// Serial handlers must not dispatch to their own key and await the result,
+    /// which would deadlock. Drivers reject detectable cases as request errors.
+    /// Use another key or concurrent serving for nested calls to the same handler.
     pub serial_per_handler: bool,
 }
 

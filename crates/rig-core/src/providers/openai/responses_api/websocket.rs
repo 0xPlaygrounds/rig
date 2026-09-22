@@ -1,16 +1,11 @@
-//! WebSocket session support for the OpenAI Responses API.
+//! Stateful Responses WebSocket sessions over caller-supplied connections.
+//! Sessions permit one in-flight turn and chain completed or incomplete response IDs.
 //!
-//! This module implements OpenAI's `/v1/responses` WebSocket mode as a stateful,
-//! sequential session. Each connection supports a single in-flight response at a
-//! time, which matches OpenAI's current protocol constraints.
-//!
-//! The session is transport-agnostic: it drives a
-//! [`crate::ws_client::WebSocketConnection`] supplied by a
-//! backend such as `rig-tungstenite`, exactly as the rest of this provider
-//! drives an [`HttpClientExt`](crate::http_client::HttpClientExt). The
-//! protocol — the event envelopes, the `previous_response_id` chaining, the
-//! terminal-record rules — lives here with the provider rather than in
-//! whichever crate owns the socket library.
+//! ```
+//! use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketCreateOptions;
+//! let options = ResponsesWebSocketCreateOptions::warmup();
+//! assert_eq!(options.generate, Some(false));
+//! ```
 
 use crate::completion::{self, CompletionError};
 use crate::driver::{Bound, WireDriver};
@@ -40,9 +35,7 @@ const WEBSOCKET_PATH: &str = "responses";
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The transport request-id header this endpoint reports, shared with the
-/// HTTP twin through the dialect — the websocket upgrade is answered by the
-/// same service and reports the same id.
+/// Request-ID header read from rejected WebSocket upgrades.
 const REQUEST_ID_HEADER: Option<&'static str> =
     crate::providers::openai::wire::OPENAI.request_id_header;
 
@@ -177,9 +170,7 @@ pub enum ResponsesWebSocketEvent {
     Error(ResponsesWebSocketErrorEvent),
     /// An optional `response.done` event emitted by OpenAI over WebSockets.
     Done(ResponsesWebSocketDoneEvent),
-    /// An unrecognized event's raw payload — warned and skipped on the
-    /// semantic path, forwarded verbatim so the streaming surface can carry
-    /// it on the [`StreamEvent::Unknown`] passthrough channel.
+    /// Unrecognized event retained for [`StreamEvent::Unknown`] passthrough.
     Unknown(crate::streaming::UnknownPayload),
 }
 
@@ -259,13 +250,8 @@ impl ResponsesWebSocketSessionBuilder {
 }
 
 impl ResponsesWebSocketSessionBuilder {
-    /// Opens the websocket session over `backend`, using the configured
-    /// builder options.
-    ///
-    /// rig-core names no websocket backend, exactly as it names no HTTP
-    /// transport. A caller using the bundled one reaches for the
-    /// `connect()` convenience the backend crate supplies instead of naming it
-    /// here.
+    /// Open a session over `backend` with the configured timeouts.
+    /// Return handshake construction, transport, or provider errors.
     pub async fn connect_with<W>(
         self,
         backend: &W,
@@ -283,14 +269,9 @@ impl ResponsesWebSocketSessionBuilder {
     }
 }
 
-/// A stateful OpenAI Responses WebSocket session.
-///
-/// This session keeps track of the most recent successful `response.id` so later
-/// turns can automatically chain via `previous_response_id` unless the request
-/// explicitly sets a different one.
-///
-/// Call [`ResponsesWebSocketSession::close`] when you are finished with the
-/// session so the websocket can complete a close handshake cleanly.
+/// Sequential Responses session with automatic response-ID chaining.
+/// Completed and incomplete responses update the chain unless a request supplies
+/// its own `previous_response_id`. Call [`Self::close`] to perform a close handshake.
 pub struct ResponsesWebSocketSession {
     wire: Responses,
     previous_response_id: Option<String>,
@@ -321,13 +302,8 @@ impl ResponsesWebSocketSession {
         Ok(Self::from_connection(wire, socket, event_timeout))
     }
 
-    /// Build a session over an already-open connection.
-    ///
-    /// The entry point for a backend that opens its socket some other way —
-    /// a pre-authenticated connection handed in by a host, or an in-memory
-    /// connection in a test. `event_timeout` matches
-    /// [`ResponsesWebSocketSessionBuilder::event_timeout`]; `None` waits
-    /// indefinitely for each event.
+    /// Build a session over an already-open, authenticated connection.
+    /// `event_timeout: None` waits indefinitely for each event.
     pub fn from_connection(
         wire: Responses,
         connection: BoxedWebSocketConnection,
@@ -345,7 +321,7 @@ impl ResponsesWebSocketSession {
         }
     }
 
-    /// Returns the most recent successful `response.id` tracked by this session.
+    /// Return the response ID retained for automatic chaining, if any.
     #[must_use]
     pub fn previous_response_id(&self) -> Option<&str> {
         self.previous_response_id.as_deref()
@@ -382,11 +358,7 @@ impl ResponsesWebSocketSession {
             ));
         }
 
-        // The session takes a raw `CompletionRequest`, bypassing the builder's
-        // `send`/`stream` — so this is a direct-to-model surface and validates
-        // here, per `validate_message_content`'s own contract. Every session
-        // entry point (`send`, `warmup`, `completion`) funnels through this
-        // method.
+        // Direct session requests bypass builder validation.
         completion_request.validate_message_content()?;
 
         let payload = ResponsesWebSocketClientEvent {
@@ -416,12 +388,8 @@ impl ResponsesWebSocketSession {
         self.next_event_with_payload().await.map(|(event, _)| event)
     }
 
-    /// [`Self::next_event`], keeping the frame's payload for the decoder.
-    ///
-    /// The session's own view of an event (the turn lifecycle: which
-    /// response id, whether the turn ended) is not the content decode — that
-    /// is the wire's [`ResponsesDecoder`], which the turn loop feeds these
-    /// bytes to.
+    /// Reads the next lifecycle event and retains its payload for content decoding
+    /// by [`ResponsesDecoder`]. Returns the same session errors as [`Self::next_event`].
     async fn next_event_with_payload(
         &mut self,
     ) -> Result<(ResponsesWebSocketEvent, String), CompletionError> {
@@ -546,42 +514,13 @@ impl ResponsesWebSocketSession {
         Ok(self.wait_for_terminal_response().await?.0)
     }
 
-    /// Drives the wire's own [`ResponsesDecoder`] over the websocket
-    /// messages — the same decoder the SSE stream and the unary body go
-    /// through, fed by a different transport — so streamed deltas survive
-    /// alongside the terminal body.
-    ///
-    /// **A failed turn discards the events collected so far, deliberately
-    /// (#2258 G3).** Every error exit below — the `?` on
-    /// `next_event_with_payload()`, the `response.done`-without-a-body
-    /// branch, and the provider `error` event — returns `Err` and drops the
-    /// driver with whatever text, reasoning and tool calls had arrived.
-    ///
-    /// That is not a divergence from the SSE side: the right comparison is a
-    /// buffered (unary) reply, which likewise fails the whole operation on
-    /// the first `Err` rather than returning partial content plus an error.
-    /// Only the *live* SSE surface can do better, and only because it is a
-    /// `Stream`: it yields the partial items first and the `Err` as a later
-    /// element. This session exposes a unary surface —
-    /// [`completion()`](Self::completion) returns one
-    /// `Result<CompletionResponse, _>` — and a unary return type
-    /// cannot express partial-content-plus-error without inventing a second
-    /// channel. Keeping the failed turn's fragments would mean returning a
-    /// `CompletionResponse` that never completed, which is the exact
-    /// fabrication the terminal-record rules exist to prevent.
-    ///
-    /// If a caller needs the partial content of a failed websocket turn, the
-    /// fix is a streaming websocket surface, not a partial unary response.
+    /// Collect decoded events and the provider's completed or incomplete response.
+    /// Transport, protocol, and decoder failures return an error and discard
+    /// collected events. A terminal event without a response body is an error.
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
-        // A session is a stream of messages, not a buffered reply: the
-        // decoder is fed the same deltas the SSE transport feeds it, one
-        // message at a time, and this loop only ever reaches `finish()`
-        // after the provider's own terminal event. So its EOF can never be
-        // "the provider answered with nothing" — the state a whole reply's
-        // EOF reports — and the mode it is built for is `Streaming` even
-        // though the surface above it returns one response.
+        // Frames arrive incrementally; finish only after a provider terminal event.
         let mut driver = WireDriver::<Completion, _>::new(self.wire.decoder(Mode::Streaming));
         let mut events = Vec::new();
         loop {
@@ -644,9 +583,7 @@ impl ResponsesWebSocketSession {
                     // the websocket stream, so status: None.
                     return Err(provider_error_from_event(&error));
                 }
-                // Every other message — deltas, completed items, and frames
-                // this client does not model (whose raw payload the decoder
-                // forwards on the passthrough channel) — is the decoder's.
+                // Unknown frames retain their raw payload through decoder passthrough.
                 ResponsesWebSocketEvent::Item(_) | ResponsesWebSocketEvent::Unknown(_) => {
                     drain(&mut driver, &mut events, payload)?;
                 }
@@ -732,12 +669,8 @@ impl ResponsesWebSocketSession {
         error
     }
 
-    /// Reads the next frame, honoring the session's event timeout.
-    ///
-    /// The timeout is [`crate::wasm_compat::timeout`], not `tokio::time`: this
-    /// session is transport-agnostic and builds on wasm, where `tokio::time`
-    /// does not function (and rig's tokio is built without its `time` feature
-    /// regardless).
+    /// Read a frame with a WASM-compatible timeout.
+    /// Timeout failure marks the session failed; transport results remain nested.
     async fn read_next_frame(
         &mut self,
     ) -> Result<http_client::Result<Option<Frame>>, CompletionError> {
@@ -781,9 +714,8 @@ fn drain(
     Ok(())
 }
 
-/// Fold one turn's events into the response — the same fold
-/// [`crate::driver::call`] applies to a unary reply, so a websocket turn and
-/// an HTTP one of the same content agree.
+/// Fold events into a normalized response, retaining the terminal body as raw JSON.
+/// Return fold or serialization errors.
 fn fold_events(
     provider: &str,
     events: Vec<StreamEvent>,
@@ -806,16 +738,8 @@ fn terminal_response_result(
 ) -> Result<CompletionResponse, CompletionError> {
     match response.status {
         ResponseStatus::Completed => Ok(response),
-        // Deliberate two-tier behaviour: when the provider supplies its own error
-        // object we preserve the full failed-response envelope through
-        // `from_provider_body` (status: None, no HTTP status on the websocket
-        // stream) so `provider_response_json()` parses it — consistent with the
-        // `error` event and the streaming paths. The body is re-serialized from
-        // the parsed response (not byte-identical to the wire bytes, which aren't
-        // retained past parsing) — semantically the provider's payload. When the
-        // object is absent we have nothing provider-authored to surface, so we
-        // emit a Rig-authored `ProviderError` diagnostic (provider_response_body()
-        // is None).
+        // Preserve provider error envelopes as reserialized JSON without an HTTP status.
+        // Without an error object, return a local diagnostic instead.
         ResponseStatus::Failed => match response.error.as_ref() {
             Some(error) => Err(CompletionError::from_provider_body(
                 serde_json::to_string(&response).unwrap_or_else(|_| error.message.clone()),
@@ -839,25 +763,16 @@ fn response_error_message(fallback: &str) -> String {
     format!("OpenAI websocket returned a {fallback}")
 }
 
-/// Maps a provider `error` event into a [`CompletionError`] that preserves the
-/// raw error payload as JSON (code + message + any extra provider fields) so the
-/// `provider_response_*` helpers can inspect it. The websocket stream carries no
-/// HTTP status, so `status` is `None`. The body is the event re-serialized from
-/// the parsed representation (not byte-identical to the original wire bytes,
-/// which are not retained past parsing) — semantically the provider's payload.
+/// Preserve an error event as reserialized provider JSON without an HTTP status.
+/// Fall back to its display text if serialization fails.
 fn provider_error_from_event(error: &ResponsesWebSocketErrorEvent) -> CompletionError {
     CompletionError::from_provider_body(
         serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
     )
 }
 
-/// Parses one websocket JSON payload into a server event.
-///
-/// Only the websocket-only envelope types (`error`, `response.done`) are
-/// dispatched here; every other frame classifies through the same
-/// [`classify_responses_frame`] interpreter the SSE paths use, so the modeled
-/// Responses event set — and its strict decode policy — is stated once for the
-/// wire family rather than duplicated per transport.
+/// Decode WebSocket error and done events or delegate to Responses classification.
+/// Return parsing and triage errors; preserve unknown payloads.
 fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, CompletionError> {
     #[derive(Deserialize)]
     struct EventType {
@@ -873,9 +788,6 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
         "response.done" => serde_json::from_str(payload)
             .map(|d| Some(ResponsesWebSocketEvent::Done(d)))
             .map_err(CompletionError::from),
-        // Shared per-frame triage (`Unknown` is warned and forwarded raw for
-        // the passthrough channel, `Corrupt` fails the turn — this surface
-        // has no stream to carry `Err` items).
         _ => Ok(Some(
             match triage_frame(classify_responses_frame(payload))? {
                 TriagedFrame::Event(StreamingCompletionChunk::Response(response)) => {
@@ -939,17 +851,8 @@ fn event_timeout_error(timeout: Duration) -> CompletionError {
     ))
 }
 
-/// Map a transport failure onto rig's error model: the one funnel, with
-/// OpenAI's own request id read off a rejected upgrade's headers.
-///
-/// A rejected upgrade is the provider's reply — its status, body and headers
-/// are exactly what a caller that has to back off needs from whichever
-/// transport it was refused on — so it becomes `ProviderResponse` like the
-/// unary and SSE paths. Reading OpenAI's request-id header off it is
-/// provider knowledge and belongs here; the backend's job is to report the
-/// rejection as [`http_client::Error::non_success_with_details`]. A failure
-/// that never reached the provider (TLS, DNS, a protocol violation) stays a
-/// transport error with its own retryability.
+/// Convert transport errors, retaining rejected-upgrade status, body, and request ID.
+/// Failures without a provider response retain transport error classification.
 fn websocket_provider_error(error: http_client::Error) -> CompletionError {
     let provider_request_id = error.non_success_headers().and_then(|headers| {
         crate::providers::internal::request_id_from_headers(headers, REQUEST_ID_HEADER)
@@ -957,15 +860,7 @@ fn websocket_provider_error(error: http_client::Error) -> CompletionError {
     CompletionError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
-/// OpenAI Responses websocket mode on a bound [`Responses`] wire.
-///
-/// The wire says who to talk to and which model to address; the websocket
-/// itself comes from the `W` backend passed at connect time, exactly as the
-/// HTTP half takes its transport from the caller. A caller using the bundled
-/// backend gets a no-argument `responses_websocket()` from that crate's own
-/// extension trait, the way `DefaultTransportClient` supplies `from_env()`
-/// over the bundled HTTP transport. Bring this trait into scope with
-/// `use rig::prelude::*`.
+/// Construct Responses WebSocket sessions from a bound wire and a supplied backend.
 pub trait ResponsesWebSocketExt {
     /// Start configuring a websocket session for this wire's model.
     fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder;
@@ -1000,10 +895,7 @@ impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
     }
 }
 
-/// Compile-time API contract: a session is `Send + Sync`, as it was before the
-/// connection became an erased trait object. Hosts embed sessions in types that
-/// carry those bounds, so losing one is a breaking change that no runtime test
-/// would catch.
+/// Native sessions and builders satisfy Send and Sync.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}

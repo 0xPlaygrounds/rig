@@ -1,16 +1,14 @@
 //! `check-test-layout`: every test module is a sibling file, never an inline
 //! block.
 //!
-//! The rule: a `mod` item gated by a test-only `#[cfg(...)]` (`cfg(test)`, or an
-//! `all(...)` with `test` among its operands) must be a declaration,
-//! `mod tests;`, whose body lives in the file rustc resolves it to. An inline
-//! body, `mod tests { ... }`, is rejected. Inline bodies are what turned
-//! `agent/runner.rs` into an 11,000-line file with 800 lines of code (#2433
-//! moved 214 of them out); this task keeps them out.
+//! A `mod` item gated by a test-only `#[cfg(...)]`, meaning `cfg(test)` or an
+//! `all(...)` including `test`, must be a declaration whose body lives in the
+//! file rustc resolves it to. Inline bodies are rejected because they let source
+//! files grow without bound.
 //!
-//! Files reachable only through a test-gated declaration are test code
-//! themselves and may nest modules however they like. Test-onlyness follows
-//! declarations transitively: anything a test-only file declares is test-only.
+//! Files reachable only through a test-gated declaration are themselves test
+//! code and may nest modules freely. Test-onlyness follows declarations
+//! transitively.
 //!
 //! Source is parsed with `syn`, so attributes inside strings or comments cannot
 //! trip the check and a `cfg` predicate is inspected structurally rather than by

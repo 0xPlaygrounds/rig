@@ -1,19 +1,14 @@
-//! A type-erased HTTP transport.
+//! Type-erased HTTP transport with optional middleware.
+//! Without middleware, requests pass through unchanged after body conversion to
+//! bytes; lazy response bodies convert through `U::from`.
 //!
-//! [`HttpClientExt`] is generic at the method level (`send<T, U>`), so it is
-//! not object-safe and every client that holds a transport is generic over
-//! `H`. That is the right default for a library — monomorphized, zero-cost —
-//! but a *host* that owns one transport for many providers (a worker pool, an
-//! ECS resource, a plugin) does not want `H` leaking into every type it holds
-//! and every signature that touches it. [`BoxedHttpClient`] is that host's
-//! transport: one `Arc<dyn …>` that implements [`HttpClientExt`] by collapsing
-//! the method generics to [`Bytes`] at the boundary and re-expanding them on
-//! the way out. It is the rig-core counterpart of the erased model and tool
-//! handles in rig-agent.
+//! ```
+//! use rig_core::http_client::{BoxedHttpClient, HttpClientExt};
 //!
-//! The adapter is byte-transparent: method, URI, headers and body reach the
-//! inner transport exactly as given, and the response body is the inner
-//! transport's bytes converted with `U::from`.
+//! fn erase(client: impl HttpClientExt + 'static) -> BoxedHttpClient {
+//!     BoxedHttpClient::new(client)
+//! }
+//! ```
 
 use std::any::Any;
 use std::fmt;
@@ -76,20 +71,10 @@ where
 
 /// A type-erased, cheaply cloneable HTTP transport.
 ///
-/// Wraps any `H: HttpClientExt + 'static` behind one `Arc<dyn …>` and
-/// implements [`HttpClientExt`] itself, so a `Client<Ext, BoxedHttpClient>`
-/// names no concrete transport. `Clone` is a reference-count bump: one
-/// `BoxedHttpClient` can be handed to every provider client a host builds.
-///
-/// Use it when *holding* a transport (a host runtime, an ECS resource, a
-/// registry built at startup); keep the generic `H` when *writing* a provider
-/// or when a monomorphized transport is what you want. Boxing an already
-/// boxed transport returns a clone of it, never a second layer.
-///
-/// `Debug` prints only the type name — the inner transport may carry
-/// credentials in its configuration.
-///
-/// Not serializable: a transport is a live connection pool, not data.
+/// Clones share the transport and middleware instances but copy the middleware
+/// list. Boxing an already boxed transport clones it without another layer.
+/// `Debug` prints only the type name to avoid exposing transport credentials.
+/// The transport is not serializable.
 ///
 /// ```compile_fail
 /// fn assert_serialize<T: serde::Serialize>() {}
@@ -121,12 +106,9 @@ impl BoxedHttpClient {
 
     /// Attach a transport-boundary [`HttpMiddleware`] to this handle.
     ///
-    /// Middlewares run in attachment order — see the
-    /// [`middleware`](super::middleware) module docs for the exact per-phase
-    /// ordering and error semantics. Attaching returns a new handle; existing
-    /// clones keep their previous stack. The underlying transport is shared,
-    /// so [`ptr_eq`](Self::ptr_eq) still reports the two as the same
-    /// transport.
+    /// Hooks run in attachment order with the phases defined by [`HttpMiddleware`].
+    /// Existing clones keep their previous stack. The underlying transport stays
+    /// shared, so [`Self::ptr_eq`] is unaffected.
     pub fn with_middleware<M>(mut self, middleware: M) -> Self
     where
         M: HttpMiddleware + 'static,
@@ -258,8 +240,6 @@ impl HttpClientExt for BoxedHttpClient {
                 .inner
                 .send_streaming_bytes(Request::from_parts(parts, body))
                 .await?;
-            // The response hooks run before any of the body stream is
-            // consumed — the point of `after_response` for streaming calls.
             self.apply_response_middleware(&method, &uri, response.status(), response.headers())
                 .await?;
             Ok(response)

@@ -1,16 +1,9 @@
-//! One `const` per OpenAI-shaped provider.
+//! Registered OpenAI-compatible dialects and their endpoint policies.
 //!
-//! Each constant's fields are what the provider's deleted client and
-//! completion model sent, so routing the provider through
-//! [`Chat`](super::Chat) sends the bytes it sent then. Where a constant
-//! departs from [`Quirks::openai`], the field's comment names the
-//! measurement or the provider error that forced it.
-//!
-//! `mistralrs` has no module on this branch, so it has no constant. The
-//! OpenAI halves of the dual-dialect providers (Z.AI, MiniMax, Moonshot,
-//! Xiaomi MiMo) are here; their Anthropic halves belong to the Anthropic
-//! wire. The dialects with a module of their own — xAI, ChatGPT, Copilot —
-//! define their constant there and are listed in [`all`] with the rest.
+//! ```
+//! use rig_core::providers::openai::wire::by_name;
+//! assert!(by_name("deepseek").is_some());
+//! ```
 
 use super::{
     AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
@@ -22,15 +15,13 @@ use super::{
 /// route carries it and no default addresses the right API.
 pub(super) const AZURE_API_VERSION_ENV: &str = "AZURE_API_VERSION";
 
-/// The `api-version` the Azure client builder defaulted to. Every Azure
-/// route carries one, so a configuration built without reading the
-/// environment still names a version rather than an empty string.
+/// Default Azure API version when no environment override is read.
 pub const AZURE_DEFAULT_API_VERSION: &str = "2024-10-21";
 
 /// Azure versions its speech endpoint separately from the rest.
 pub(super) const AZURE_AUDIO_API_VERSION_ENV: &str = "AZURE_AUDIO_API_VERSION";
 
-/// The speech `api-version` the Azure client defaulted to.
+/// Default Azure speech API version.
 pub(super) const AZURE_DEFAULT_AUDIO_API_VERSION: &str = "2025-04-01-preview";
 
 /// Official OpenAI: the Responses endpoint by default, Chat Completions
@@ -53,9 +44,7 @@ pub const OPENAI: Dialect = Dialect {
 /// parameter, and the credential is an `api-key` header.
 pub const AZURE: Dialect = Dialect {
     base_url_env: Some("AZURE_ENDPOINT"),
-    // `azure::Azure::from_env` accepted `AZURE_API_KEY` or `AZURE_TOKEN`,
-    // and they are not two spellings of one credential: the key goes out as
-    // `api-key`, the token as `Authorization: Bearer`.
+    // Azure tokens require bearer authentication rather than the api-key header.
     alternate_auth: Some(AuthAlternative {
         api_key_env: "AZURE_TOKEN",
         auth: Auth::Bearer,
@@ -82,9 +71,7 @@ pub const AZURE: Dialect = Dialect {
 /// DeepSeek.
 pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
-        // DeepSeek accepts only `json_object` response formats, passed
-        // through `additional_params` — not the `json_schema` mapping of
-        // `output_schema`.
+        // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
         emits_complete_single_chunk_tool_calls: true,
         verify_path: "/user/balance",
@@ -222,13 +209,9 @@ pub const LLAMACPP: Dialect = Dialect {
         // A server started without `--api-key` rejects a request that
         // carries an `Authorization` header.
         auth: Auth::OptionalBearer,
-        // Measured on llama.cpp b1-6d05498 with Qwen3-VL-2B: an image handed
-        // back through a tool reaches the model, 3/3, matching a control
-        // that sends the same bytes in a `user` message.
         supports_image_tool_results: true,
         verify_path: "/props",
-        // `llama-server` serves these at the server root; `GET /v1/props`
-        // is a 404. The deleted client carried the same list.
+        // These management routes live at the server root, outside /v1.
         root_relative_routes: &[
             "/props",
             "/health",
@@ -246,10 +229,7 @@ pub const LLAMACPP: Dialect = Dialect {
             // (`/rerank`, `/reranking`, `/v1/rerank`, `/v1/reranking`); the
             // base URL already carries `/v1`.
             path: "/rerank",
-            // It posts one task per document and waits for all of them,
-            // bounded only by memory — there is no documented cap, so this
-            // is the batching hint, matching the embeddings default rather
-            // than a number the server enforces.
+            // This is a batching hint; the server documents no document-count cap.
             max_documents: 1024,
             sends_model_field: true,
         },
@@ -347,11 +327,7 @@ pub const OPENROUTER: Dialect = Dialect {
         // reasoning blobs.
         native_finish_reason: true,
         reasoning_details: true,
-        // Its own client mapped `output_schema` straight onto
-        // `response_format`, tools or no tools, and the gateway calls the
-        // tool anyway.
         response_format_with_tools: true,
-        // Its message conversion refused a provider file id outright.
         accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,
         // Its speech-to-text route takes the audio base64 in a JSON body,
@@ -361,8 +337,7 @@ pub const OPENROUTER: Dialect = Dialect {
             requires_usage: false,
             ..EmbeddingQuirks::openai()
         },
-        // Its `/responses` route takes the system prompt as `system` items
-        // in `input`; the compatibility cassettes were recorded that way.
+        // The Responses route accepts system instructions as input messages.
         responses: ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::InputSystemMessages,
             ..ResponsesQuirks::openai()
@@ -390,25 +365,9 @@ pub const VENICE: Dialect = Dialect {
     ..Dialect::gateway("venice", "https://api.venice.ai/api/v1", "VENICE_API_KEY")
 };
 
-/// The width contract of Doubleword's embedding models.
-///
-/// The bounds are the ones Doubleword's model page documents ("Output
-/// Dimensions: 32-4096 Configurable"), and 4096 is also the width the model
-/// returns when a request names none — one table so the width
-/// `ndims()` reports and the widths the encoder will send cannot drift
-/// apart. Without the default, Doubleword's only embedding model reported
-/// `ndims() == 0` while returning 4096-wide vectors, and a vector store
-/// sized from it built a zero-width index.
-///
-/// Both bounds are worth refusing here rather than on the wire, in opposite
-/// directions. Above the ceiling Doubleword silently clamps to the native
-/// width and answers 200, which would leave `ndims()` describing vectors the
-/// API never returned — the very mismatch a width contract exists to
-/// prevent, and one no reply-side check can catch. Below the floor it is not
-/// dependable: the identical request answers `422 Unprocessable request` or
-/// `200` with a sub-floor vector at random (six of fifteen live probes at 1,
-/// 2, 8, 16 and 31 were rejected; every probe at 32 and above succeeded), so
-/// a width rig cannot promise is better refused than half-honoured.
+/// Doubleword embedding widths: 32 through 4096, defaulting to 4096.
+/// Validate both bounds locally because out-of-range requests can be clamped or
+/// inconsistently rejected by the service.
 const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
     model: crate::providers::doubleword::QWEN3_EMBEDDING_8B,
     default: Some(4_096),

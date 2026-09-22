@@ -1,4 +1,10 @@
-//! Shared ChatGPT authentication types and target-specific dispatch.
+//! ChatGPT access-token configuration and native OAuth authentication.
+//!
+//! ```no_run
+//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+//!
+//! let auth = Authenticator::new(AuthSource::OAuth, None, DeviceCodeHandler::default(), true);
+//! ```
 
 use crate::http_client::HttpClientExt;
 use crate::wire::Secret;
@@ -40,9 +46,7 @@ impl fmt::Debug for AuthSource {
 #[derive(Clone)]
 pub struct Authenticator {
     source: AuthSource,
-    /// The platform half owns the token/key caches (files plus their parsed
-    /// state); serializing access to it — rather than to a detached unit
-    /// lock — is what prevents concurrent refreshes from racing the cache.
+    /// Shared cache access, locked across refresh to prevent concurrent updates.
     platform: Arc<Mutex<platform::PlatformAuthenticator>>,
 }
 
@@ -81,8 +85,9 @@ impl Authenticator {
         }
     }
 
-    /// Resolve the access token, refreshing or signing in through `http` —
-    /// the client's own transport — when the cache is stale.
+    /// Resolve the access token and account id, refreshing through `http` as needed.
+    /// Return cache, transport, or authorization errors. OAuth is unsupported
+    /// on WASM; explicit access tokens remain available.
     pub async fn auth_context<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,

@@ -3,6 +3,8 @@ use rig_core::vector_store::request::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Literal usable in a Milvus filter expression. Integers are narrowed to
+/// `f64`; null values and objects are unsupported.
 pub enum MilvusValue {
     Number(f64),
     Bool(bool),
@@ -113,6 +115,10 @@ where
     }
 }
 
+/// Milvus boolean filter expression.
+///
+/// Field names and `LIKE` patterns are spliced in verbatim, so they must not
+/// carry untrusted input; values are escaped.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filter(String);
 
@@ -153,7 +159,7 @@ impl Filter {
         Self(format!("{key} <= {}", value.escaped()))
     }
 
-    /// IN operator
+    /// Matches fields equal to one of `values`.
     pub fn in_values(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
@@ -163,7 +169,7 @@ impl Filter {
         Self(format!("{key} in [{values_str}]"))
     }
 
-    /// NOT IN operator
+    /// Matches fields equal to none of `values`.
     pub fn not_in(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
@@ -173,17 +179,17 @@ impl Filter {
         Self(format!("{key} not in [{values_str}]"))
     }
 
-    /// LIKE operator (string pattern matching)
+    /// Matches fields against a Milvus `LIKE` pattern.
     pub fn like(key: &str, pattern: &str) -> Self {
         Self(format!("{key} like '{pattern}'"))
     }
 
-    /// Array contains
+    /// Matches array fields containing `value`.
     pub fn array_contains(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("array_contains({}, {})", key, value.escaped()))
     }
 
-    /// Array contains all
+    /// Matches array fields containing every one of `values`.
     pub fn array_contains_all(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
@@ -193,7 +199,7 @@ impl Filter {
         Self(format!("array_contains_all({key}, [{values_str}])"))
     }
 
-    /// Array contains any
+    /// Matches array fields containing at least one of `values`.
     pub fn array_contains_any(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
@@ -203,7 +209,7 @@ impl Filter {
         Self(format!("array_contains_any({key}, [{values_str}])"))
     }
 
-    /// Array length comparison
+    /// Matches array fields with exactly `length` elements.
     pub fn array_length_eq(key: &str, length: i32) -> Self {
         Self(format!("array_length({key}) == {length}"))
     }

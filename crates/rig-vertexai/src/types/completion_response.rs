@@ -61,13 +61,8 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
         // share one (the position pass below is then a no-op).
         let mut tool_index = 0u64;
 
-        // vertexai internally uses a wkt::Struct (serde_json::Map<String, serde_json::Value>) in
-        // function calling args. We need to convert that to serde_json::Value for rig_core::completion type matching
         for part in content.parts.iter() {
-            // Gemini "thinking" models attach an opaque `thoughtSignature` to (usually) the
-            // functionCall part. It must be echoed back verbatim on subsequent turns or Vertex
-            // rejects the request with INVALID_ARGUMENT ("missing a thought_signature"). We carry
-            // it through rig-core's `ToolCall.signature` (base64, since it is raw bytes).
+            // Preserve opaque signature bytes as base64 for exact replay.
             let signature = (!part.thought_signature.is_empty())
                 .then(|| BASE64.encode(&part.thought_signature));
 
@@ -77,9 +72,8 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                     |s| serde_json::Value::Object(s.clone()),
                 );
 
-                // Vertex function calls carry no identifier: mint the
-                // correlation handle at the call's index — never name-as-id,
-                // which collides two same-tool calls in one turn.
+                // Mint by call index, not name, so repeated calls to one tool
+                // retain distinct correlation handles.
                 let index = tool_index;
                 tool_index += 1;
                 assistant_contents.push(AssistantContent::ToolCall(
@@ -140,9 +134,8 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                     }
                 }
             } else if signature.is_some() {
-                // A signature-bearing part that is neither a function call nor text (e.g. a
-                // standalone "thinking" part). rig-core has no carrier for it, so it is dropped —
-                // log it so a later INVALID_ARGUMENT can be traced back here rather than being silent.
+                // Unrepresentable signatures cannot survive replay; warn without
+                // exposing their contents.
                 tracing::warn!(
                     "Vertex response part carries a thought_signature but is neither a function \
                      call nor text; signature dropped (no rig-core carrier)."
@@ -160,18 +153,11 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 input_tokens: Some(usage.prompt_token_count as u64),
                 output_tokens: Some(usage.candidates_token_count as u64),
                 total_tokens: Some(usage.total_token_count as u64),
-                // `prompt_token_count` is documented as "still the total
-                // effective prompt size... including the number of tokens in the
-                // cached content", so the cached count is a *subset* of the
-                // input count, matching the Gemini surface.
+                // Cached tokens are already included in prompt_token_count.
                 cached_input_tokens: Some(usage.cached_content_token_count as u64),
                 // Vertex reports no cache-write counter.
                 cache_creation_input_tokens: None,
                 tool_use_prompt_tokens: None,
-                // Vertex reports `thoughts_token_count`, and rig has a field for
-                // it. Hardcoding zero here silently discarded the thinking spend
-                // on every Vertex response — on the sibling Gemini surface it is
-                // routinely the largest component of the bill.
                 reasoning_tokens: Some(usage.thoughts_token_count as u64),
             })
             .unwrap_or_default();

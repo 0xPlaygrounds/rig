@@ -1,4 +1,12 @@
-#![doc = include_str!("../README.md")]
+//! Local CPU inference from caller-supplied, validated model artifacts.
+//! Supports selected Llama, SmolLM2, and Qwen3 checkpoints without performing
+//! filesystem or network access. WASM inference is synchronous; use a worker.
+//!
+//! ```
+//! use rig_candle::ConversationProtocol;
+//!
+//! let protocol = ConversationProtocol::Qwen3;
+//! ```
 
 mod artifacts;
 mod generation;

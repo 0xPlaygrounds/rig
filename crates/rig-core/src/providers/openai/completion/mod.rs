@@ -1,6 +1,9 @@
-// ================================================================
-// OpenAI Completion API
-// ================================================================
+//! Chat Completions message types, model identifiers, and request conversion.
+//!
+//! ```
+//! use rig_core::providers::openai::completion::Message;
+//! let message = Message::system("Answer briefly.");
+//! ```
 
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::json_utils::string_or_vec;
@@ -48,16 +51,16 @@ pub const GPT_5_1: &str = "gpt-5.1";
 
 /// `gpt-5` completion model
 pub const GPT_5: &str = "gpt-5";
-/// `gpt-5` completion model
+/// `gpt-5-mini` completion model.
 pub const GPT_5_MINI: &str = "gpt-5-mini";
-/// `gpt-5` completion model
+/// `gpt-5-nano` completion model.
 pub const GPT_5_NANO: &str = "gpt-5-nano";
 
 /// `gpt-4.5-preview` completion model
 pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
 /// `gpt-4.5-preview-2025-02-27` completion model
 pub const GPT_4_5_PREVIEW_2025_02_27: &str = "gpt-4.5-preview-2025-02-27";
-/// `gpt-4o-2024-11-20` completion model (this is newer than 4o)
+/// `gpt-4o-2024-11-20` completion model.
 pub const GPT_4O_2024_11_20: &str = "gpt-4o-2024-11-20";
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
@@ -100,7 +103,7 @@ pub const O3_MINI: &str = "o3-mini";
 pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
 /// `o1-pro` completion model
 pub const O1_PRO: &str = "o1-pro";
-/// `o1`` completion model
+/// `o1` completion model.
 pub const O1: &str = "o1";
 /// `o1-2024-12-17` completion model
 pub const O1_2024_12_17: &str = "o1-2024-12-17";
@@ -108,7 +111,7 @@ pub const O1_2024_12_17: &str = "o1-2024-12-17";
 pub const O1_PREVIEW: &str = "o1-preview";
 /// `o1-preview-2024-09-12` completion model
 pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
-/// `o1-mini completion model
+/// `o1-mini` completion model.
 pub const O1_MINI: &str = "o1-mini";
 /// `o1-mini-2024-09-12` completion model
 pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
@@ -336,12 +339,8 @@ pub struct FileData {
     pub filename: Option<String>,
 }
 
-/// One content part of a tool-result message.
-///
-/// Text is the only part official OpenAI accepts here; an image is refused with
-/// a 400 on `gpt-4o` and, worse, accepted-and-discarded on the GPT-5 family.
-/// Some OpenAI-compatible servers do honour an image — llama.cpp delivers one to
-/// the model, measured — so the variant exists and emitting it is gated on
+/// Text or image content in a tool-result message.
+/// Image emission requires
 /// [`Quirks::supports_image_tool_results`](crate::providers::openai::wire::Quirks::supports_image_tool_results).
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -384,12 +383,7 @@ pub enum ToolResultContentValue {
 }
 
 impl ToolResultContentValue {
-    /// The text of this tool result, with any non-text parts skipped.
-    ///
-    /// Lossy by construction: an image part has no textual rendering, so a
-    /// caller flattening a result that carries one loses it. That is why
-    /// the per-provider normalization in `TryFrom<OpenAIRequestParams>` refuses
-    /// rather than flattens when a provider cannot carry the image.
+    /// Join text parts with newlines, discarding images. String values are cloned.
     pub fn as_text(&self) -> String {
         match self {
             ToolResultContentValue::Array(arr) => arr
@@ -590,10 +584,7 @@ impl TryFrom<message::ToolResult> for Message {
                 message::ToolResultContent::Json { value } => {
                     Ok(ToolResultContent::from(value.to_string()))
                 }
-                // Represented here, refused (or not) at the wire step: whether
-                // an image may ride in a `role:"tool"` message is a per-server
-                // fact, and this conversion has no provider context. See
-                // `ToolResultContentValue::normalize_for_wire`.
+                // The request builder checks image support using the selected dialect.
                 message::ToolResultContent::Image(message::Image {
                     data,
                     media_type,
@@ -612,10 +603,7 @@ impl TryFrom<message::ToolResult> for Message {
                             })?;
                             format!("data:{};base64,{}", media_type.to_mime_type(), data)
                         }
-                        // Deliberately payload-free: `DocumentSourceKind::Raw`
-                        // Debug-formats as the entire byte vector, so `{other:?}`
-                        // would dump a whole image into an error string. The
-                        // user-image path one screen away avoids this the same way.
+                        // Error messages must not expose raw image bytes.
                         DocumentSourceKind::Raw(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "raw image bytes are not supported in a tool result; encode as \
@@ -623,9 +611,7 @@ impl TryFrom<message::ToolResult> for Message {
                                     .into(),
                             ));
                         }
-                        // Named, never Debug-printed: `FileId` and `String`
-                        // carry caller data and `Unknown` carries nothing worth
-                        // quoting.
+                        // Source values may contain private caller data.
                         DocumentSourceKind::FileId(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "a provider-side file id is not supported in a tool result on \
@@ -829,21 +815,13 @@ impl TryFrom<message::UserContent> for UserContent {
     }
 }
 
-/// Convert rig user content into OpenAI chat messages.
-///
-/// This was `impl TryFrom<OneOrMany<UserContent>> for Vec<Message>`. With the
-/// container gone both sides are foreign types, so the orphan rule forbids the
-/// impl and it becomes a named function. It stays `pub`: the impl was reachable
-/// from downstream code, and quietly demoting it to a private helper would
-/// narrow the public API under cover of a type change.
+/// Convert user content into ordered user and tool-result messages.
+/// Group adjacent non-tool content. Return conversion errors for unsupported media.
 pub fn user_content_to_messages(
     value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     fn flush_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
-        // An empty flush is a legal no-op — it fires between consecutive
-        // tool-result groups — not a conversion error. This early return is
-        // the only emptiness decision here; the pushed content is non-empty
-        // because of it.
+        // Consecutive tool results must not introduce empty user messages.
         if pending.is_empty() {
             return;
         }
@@ -871,20 +849,10 @@ pub fn user_content_to_messages(
     Ok(messages)
 }
 
-/// Convert rig assistant content into OpenAI chat messages.
-///
-/// Free function for the same orphan-rule reason as
-/// [`user_content_to_messages`], and `pub` for the same API-surface reason.
-///
-/// `reasoning_details` is the dialect's answer to whether it accepts
-/// structured reasoning replay
-/// ([`Quirks::reasoning_details`](crate::providers::openai::wire::Quirks::reasoning_details)).
-/// With it clear, a reasoning block replays as the plain `reasoning_content`
-/// string, which is all the other dialects on this wire understand. With it
-/// set, a block carrying parts replays as `reasoning_details` entries instead:
-/// OpenRouter's Anthropic and OpenAI routes require the block's *signature* or
-/// encrypted blob to be echoed back on the tool-call turn, and the display
-/// string cannot carry either — an unsigned replay is rejected upstream.
+/// Convert assistant content into at most one message, rejecting images.
+/// When `reasoning_details` is true, preserve structured reasoning parts and
+/// signatures; otherwise use display text. Return no message when text, calls,
+/// and structured details are all empty.
 pub fn assistant_content_to_messages(
     value: Vec<message::AssistantContent>,
     reasoning_details: bool,
@@ -901,10 +869,7 @@ pub fn assistant_content_to_messages(
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
-            // A block with no parts has nothing structured to replay — only
-            // the text a provider streamed under `reasoning`/
-            // `reasoning_content` — so it takes the plain path on either
-            // dialect.
+            // Structured replay preserves signatures and encrypted payloads.
             message::AssistantContent::Reasoning(reasoning)
                 if reasoning_details && !reasoning.content.is_empty() =>
             {
@@ -1069,10 +1034,7 @@ fn message_with_tool_ids(
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
-            // Keep the assistant echo consistent with the tool-result side:
-            // the provider-issued call id when one exists (e.g. a
-            // Responses-API history replayed via chat completions), else
-            // rig's minted handle — never empty.
+            // Use the same wire-handle selection as tool-result conversion.
             id: tool_call.wire_call_id().into_owned(),
             r#type: ToolType::default(),
             function: Function {
@@ -1155,33 +1117,8 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-/// The assistant message's top-level `refusal`, when it is the turn's only
-/// visible text.
-///
-/// This wire spells a refusal as a *sibling* of `content`
-/// (`{"content": null, "refusal": "I'm sorry, …"}`); the `refusal` **content
-/// part** modeled by [`AssistantContent::Refusal`] is the Responses API's
-/// shape, which chat completions never sends. Every path that reads `content`
-/// alone therefore drops a real refusal entirely, so all of them route the
-/// fallback through here — one home for the rule, and no way for the raw text
-/// view and the normalized response to disagree about whether a refusal is
-/// content.
-///
-/// The verdict is taken from the wire parts themselves rather than from
-/// whatever each caller built out of them, so a caller that discards empty
-/// parts and one that keeps them cannot disagree about when the fallback
-/// applies.
-///
-/// This is a *whole-message* rule, and it is the unary path's. The streaming
-/// path cannot share it: it decides per delta, before it knows whether text
-/// arrives later (the chat wire's `delta_text`, which prefers a delta's own
-/// content and falls back to its refusal). The two therefore agree on every
-/// shape this wire has been observed to send — a refusal turn holds `content`
-/// at `null` for its whole length — but would differ on a turn mixing both,
-/// where this rule keeps only the text and the streaming rule would deliver
-/// both in arrival order. That shape is pinned in
-/// `delta_text_prefers_content_over_a_simultaneous_refusal` so the difference
-/// is recorded rather than assumed away.
+/// Return a nonempty top-level refusal only when every content part is empty.
+/// Applies to whole messages; streaming fallback is evaluated per delta.
 pub(crate) fn assistant_refusal_fallback<'a>(
     content: &[AssistantContent],
     refusal: Option<&'a str>,
@@ -1250,37 +1187,16 @@ pub struct PromptTokensDetails {
     /// Cached tokens from prompt caching
     #[serde(default)]
     pub cached_tokens: usize,
-    /// Tokens charged for audio in the prompt.
-    ///
-    /// The dialects disagree on whether this is a *breakdown* of
-    /// `prompt_tokens` (OpenAI: `text_tokens + audio_tokens == prompt_tokens`)
-    /// or a count reported *beside* it (Mistral's Voxtral models:
-    /// `prompt_tokens + audio_tokens + completion_tokens == total_tokens`).
-    /// [`Usage::to_normalized`] decides which from the provider's own total
-    /// rather than from a per-dialect flag.
-    ///
-    /// Not serialized when zero: the streamed terminal record is rebuilt from
-    /// this type, and emitting `"audio_tokens": 0` would put a figure into a
-    /// text-only dialect's record that the provider never sent. Read through
-    /// `null_or_default` because a gateway with no audio to report spells the
-    /// absence as an explicit `null` rather than omitting the key
-    /// (Doubleword sends `"audio_tokens":null`), and `serde(default)` alone
-    /// covers only a missing key — a text-only reply would fail to decode at
-    /// all.
+    /// Audio input tokens, defaulting null or missing values to zero.
+    /// Zero is omitted from serialization. [`Usage::to_normalized`] uses the
+    /// reported total to determine whether audio is additional to prompt tokens.
     #[serde(
         default,
         deserialize_with = "json_utils::null_or_default",
         skip_serializing_if = "is_zero"
     )]
     pub audio_tokens: usize,
-    /// Tokens written to the cache on this call — a miss that populated it.
-    ///
-    /// Reported by gateways fronting upstreams that bill cache writes
-    /// separately (OpenRouter over Anthropic); OpenAI's own cache writes are
-    /// free and unreported. `Option` rather than absent-as-zero because the
-    /// normalized [`crate::completion::Usage`] distinguishes a counter the
-    /// provider did not send from a reported zero, and most dialects never
-    /// send this one.
+    /// Tokens written to cache on this call. `None` means unreported, not zero.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write_tokens: Option<usize>,
 }
@@ -1374,21 +1290,8 @@ impl From<Usage> for crate::completion::Usage {
 }
 
 impl Usage {
-    /// Every token charged against the prompt.
-    ///
-    /// `prompt_tokens` alone, except on a dialect that reports its audio
-    /// charge *beside* that count instead of inside it: Mistral's Voxtral
-    /// models answer a 375-audio-token clip with `prompt_tokens: 11`,
-    /// `prompt_tokens_details.audio_tokens: 375`, `completion_tokens: 15` and
-    /// `total_tokens: 401`, so reading `prompt_tokens` as the whole input
-    /// leaves `input + output` short of the provider's own total by the entire
-    /// audio payload.
-    ///
-    /// Which convention a reply uses is read off that total rather than a
-    /// per-dialect flag, because the arithmetic is exact: the two sums agree
-    /// only when the audio charge is zero, and then the branch is a no-op.
-    /// OpenAI itself breaks `prompt_tokens` *down* into `text_tokens` and
-    /// `audio_tokens`, and adding them there would double-count.
+    /// Return prompt tokens plus audio only when that sum and output match the total.
+    /// Missing output counts are treated as zero for this comparison.
     fn input_tokens(&self) -> usize {
         let audio = self
             .prompt_tokens_details
@@ -1402,13 +1305,8 @@ impl Usage {
         }
     }
 
-    /// Normalize this provider usage payload into rig's [`crate::completion::Usage`].
-    ///
-    /// `cached_input_tokens` prefers `prompt_tokens_details.cached_tokens`
-    /// and falls back to Mistral's top-level `num_cached_tokens`, which some
-    /// Mistral replies report on its own: reading only the OpenAI spelling
-    /// would report no cache hit on a turn that was entirely served from
-    /// cache.
+    /// Normalize token accounting, deriving absent output counts from the total.
+    /// Cached input prefers prompt details and falls back to `num_cached_tokens`.
     pub fn to_normalized(&self) -> crate::completion::Usage {
         let input_tokens = self.input_tokens();
         let details = self.prompt_tokens_details.as_ref();
@@ -1437,26 +1335,11 @@ impl Usage {
     }
 }
 
-/// Whether `model` names one of OpenAI's reasoning families, which take the
-/// output cap only as `max_completion_tokens`.
-///
-/// Matched by family prefix rather than by an exhaustive list of releases: the
-/// families are `gpt-5` and up, and the `o`-series (`o1`, `o3-mini`,
-/// `o4-mini`, …), and each gains dated snapshots and size variants that an
-/// enumerated list could not keep up with. A future family this misses keeps
-/// today's behavior — the legacy field, and the provider's own explicit
-/// `Unsupported parameter` error — rather than silently sending a field some
-/// other backend does not know.
+/// Whether the model matches the GPT-5 through GPT-9 or numeric o-series rules
+/// used to select `max_completion_tokens`.
 pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
-    /// `gpt-5` … `gpt-9`, in any spelling the family uses (`gpt-5`,
-    /// `gpt-5.1`, `gpt-5-nano`, `gpt-5-2025-08-07`).
-    ///
-    /// The major version is a single digit on purpose. Every released
-    /// generation is spelled `gpt-<digit>` or `gpt-<digit>.<minor>`, so a
-    /// multi-digit run (`gpt-45`, or a compatible server's own model name) is
-    /// not a generation number and must not be read as one. A hypothetical
-    /// `gpt-10` would fall through to the legacy field — today's behavior, and
-    /// a visible provider error — rather than a field its backend may not know.
+    /// Match a single-digit GPT major version at least `lowest`, allowing dot
+    /// and hyphen suffixes. Multi-digit major versions do not match.
     fn is_numbered_gpt_family(model: &str, lowest: u32) -> bool {
         model
             .strip_prefix("gpt-")
@@ -1466,7 +1349,7 @@ pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
             .is_some_and(|major| major >= lowest)
     }
 
-    /// `o1`, `o3`, `o4`, … — but not `openai-…` or any other `o` word.
+    /// Match `o` followed by a digit and then an end, hyphen, or another digit.
     fn is_o_series(model: &str) -> bool {
         let mut chars = model.chars();
         chars.next() == Some('o')
@@ -1495,10 +1378,7 @@ pub(crate) fn request_body(
         && let Some(object) = body.as_object_mut()
         && let Some(max_tokens) = object.remove("max_tokens")
     {
-        // A caller who spelled the modern field themselves (through
-        // `additional_params`) keeps their own value; the legacy key still has
-        // to go, since reasoning models reject its mere presence — and behind
-        // this endpoint there is no backend that wants it.
+        // Preserve explicit modern caps while removing the rejected legacy key.
         object.entry("max_completion_tokens").or_insert(max_tokens);
     }
 
@@ -1569,16 +1449,10 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
         .join("")
 }
 
-/// Shared helper for provider `finalize_request_body` hooks whose APIs only
-/// accept plain `{role, content}` chat messages: removes tool-exchange
-/// remnants left in shared histories (role `tool` messages, assistant
-/// `tool_calls`/`reasoning_content`), optionally flattens content-part arrays
-/// to strings, and drops assistant turns left without content (pure
-/// tool-call scaffolding). With `merge_same_role`, consecutive same-role
-/// string-content messages are additionally merged — the removals can leave
-/// user/user as well as assistant/assistant adjacency, and alternation-strict
-/// APIs (Perplexity) reject both; providers without that constraint keep
-/// their turns separate.
+/// Remove tool messages, assistant tool calls and reasoning, and empty assistant turns.
+/// Optionally strip names and flatten content using the supplied separator and
+/// text-only guard. With `merge_same_role`, join adjacent user or assistant text
+/// messages of the same role with newlines.
 pub(crate) fn sanitize_plain_text_history(
     messages: &mut Vec<serde_json::Value>,
     flatten: Option<(&str, bool)>,
@@ -1737,19 +1611,12 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ));
         }
 
-        // Per-provider normalization of tool-result content. This is the only
-        // place with both the parts and the provider's capabilities in hand —
-        // `TryFrom<message::ToolResult>` has neither.
+        // Image support is dialect-specific and unavailable during isolated result conversion.
         for msg in &mut full_history {
             if let Message::ToolResult { content, .. } = msg {
                 if content.has_image() {
                     if !supports_image_tool_results {
-                        // Refused rather than flattened: `as_text()` would drop
-                        // the image and send a tool result that silently says
-                        // less than the caller asked for. Official OpenAI
-                        // answers this shape with a 400 on gpt-4o and, on the
-                        // GPT-5 family, a 200 with the image discarded — so a
-                        // local error naming the constraint beats both.
+                        // Reject unsupported images instead of silently removing tool output.
                         return Err(CompletionError::RequestError(
                             concat!(
                                 "this provider does not accept an image in a tool result. ",
@@ -1800,14 +1667,8 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             (Vec::new(), None)
         };
 
-        // `additional_params` is flattened into the serialized request, so a raw
-        // `tools` array left in it would silently replace the typed `tools`
-        // field (the body is built via `serde_json::to_value`, where the
-        // flattened key wins). Merge its function tools into the typed list
-        // instead, mirroring the Responses API path (issue #1890). Entries that
-        // are not function tools stay behind for the provider's
-        // `prepare_request` hook — Groq, for one, folds its native tools
-        // (`{"type": "browser_search"}`, ...) into `compound_custom` from there.
+        // Merge function tools to prevent flattened parameters from replacing typed tools.
+        // Leave native tools for dialect-specific request preparation.
         let mut additional_params = additional_params;
         if supports_tools
             && let Some(map) = additional_params
@@ -1855,17 +1716,11 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             );
         }
 
-        // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
-        // if `response_format` is sent on the first turn alongside tools. Delay the
-        // schema until after the conversation contains a tool result — unless the
-        // dialect was measured to honour both at once
-        // (`Quirks::response_format_with_tools`), where deferring it would send a
-        // turn the gateway never saw.
+        // Defer schemas until a tool result exists unless the dialect supports both at once.
         let should_apply_response_format = output_schema.is_some()
             && supports_response_format
             && (response_format_with_tools || tools.is_empty() || history_has_tool_result);
 
-        // Map output_schema to OpenAI's response_format and merge into additional_params
         let additional_params = if let Some(schema) = output_schema
             && should_apply_response_format
         {
@@ -1888,10 +1743,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             additional_params
         };
 
-        // The wire rejects a `tool_choice` beside an empty `tools` ("'tool_choice'
-        // is only allowed when 'tools' are specified"): a turn that advertises no
-        // tool — an output tool degraded to native output under `none`, an
-        // `active_tools: []` patch — carries no choice either.
+        // The wire rejects tool_choice without advertised tools.
         let tool_choice = tool_choice.filter(|_| !tools.is_empty());
         let res = Self {
             model: request_model.unwrap_or(model),

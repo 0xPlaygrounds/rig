@@ -1,7 +1,10 @@
-//! This module primarily concerns being able to orchestrate telemetry across a given pipeline or workflow.
-//! This includes tracing, being able to send traces to an OpenTelemetry collector, setting up your
-//! agents with the correct tracing style so you can emit the right traces for platforms like Langfuse,
-//! and more.
+//! GenAI tracing spans, completion-parent adoption, and opt-in content recording.
+//!
+//! ```
+//! use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
+//!
+//! let span = CompletionSpanBuilder::new("provider", "model", CompletionOperation::Chat).build();
+//! ```
 use crate::completion::{AssistantContent, Message, Usage};
 use crate::message::{
     DocumentSourceKind, Image, MimeType, Reasoning, ReasoningContent, ToolResult,
@@ -18,27 +21,11 @@ use tracing::callsite::Identifier;
 #[doc(hidden)]
 pub use tracing as __tracing;
 
-/// Marks a span field as declared but not yet valued.
-///
-/// Re-exported so a runtime can declare a contract field through
-/// [`completion_parent_span!`](crate::completion_parent_span) without taking a
-/// direct `tracing` dependency — the crate's own `__tracing` path is hidden,
-/// and `Option::<&str>::None` is the only other portable spelling. `rig-core`
-/// already exposes `tracing` types across this module's public API
-/// ([`CompletionSpanBuilder::build`] returns a [`tracing::Span`]), so this adds
-/// no new semver surface.
+/// Declares a span field without a value, including in [`completion_parent_span!`].
 pub use tracing::field::Empty;
 
-/// Implementation detail of [`new_completion_span!`] and
-/// [`completion_parent_span!`](crate::completion_parent_span): declares a span
-/// with the caller's header fields followed by the canonical completion
-/// telemetry fields recorded over a completion's lifetime.
-///
-/// `tracing` bakes a span's field set into static metadata, so the canonical
-/// list can only be single-sourced by a macro that owns the whole
-/// `info_span!` invocation — a `const` list can never be spliced in. This is
-/// the one copy; [`COMPLETION_PARENT_REQUIRED_FIELDS`] is the checklist form
-/// of the same contract and a test asserts the two agree exactly.
+/// Declares caller-supplied header fields and canonical completion fields.
+/// The header must end with a comma; nonempty extras must begin with one.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __rig_canonical_completion_span {
@@ -116,42 +103,15 @@ impl CompletionOperation {
     }
 }
 
-/// Core-owned marker field for a runtime span that may absorb provider completion fields.
-///
-/// Runtimes declare this field on their completion-parent spans without having
-/// to share a tracing target. The field's presence (its value is ignored) marks
-/// the span as a *candidate* for adoption, but adoption also requires the span
-/// to statically declare every field in [`COMPLETION_PARENT_REQUIRED_FIELDS`].
-///
-/// This second requirement exists because [`tracing::Span::record`] silently
-/// no-ops for any field absent from a span's static metadata: a span carrying
-/// only the marker would be adopted and then drop every recorded completion
-/// field, losing telemetry with no error. A span missing any required field is
-/// therefore *not* adopted — [`CompletionSpanBuilder::build`] creates a fresh
-/// `rig::completions` child span instead, so telemetry is never silently lost.
-///
-/// The declarative source of the contract is the
-/// [`completion_parent_span!`](crate::completion_parent_span) macro; declaring
-/// a span through it is what guarantees the marker and the field set stay in
-/// agreement. Changing [`COMPLETION_PARENT_REQUIRED_FIELDS`] therefore needs no
-/// marker change to degrade safely: a hand-written span built against an older
-/// field list simply fails the gate above and gets a fresh child span, with a
-/// warning (once per offending callsite) naming what it is missing.
+/// Marker field for completion-parent adoption, independent of tracing target.
+/// Its value is ignored. Adoption requires every field in
+/// [`COMPLETION_PARENT_REQUIRED_FIELDS`]; otherwise the builder creates a child
+/// span and warns once per incomplete callsite.
 pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
 
-/// Fields a completion-parent span must statically declare (as
-/// [`tracing::field::Empty`] or a value) to be adopted by
-/// [`CompletionSpanBuilder::build`], alongside [`COMPLETION_PARENT_MARKER_FIELD`].
-///
-/// These mirror the canonical fields the builder's own `rig::completions` span
-/// declares, so an adopted span can absorb the request, response, usage, and
-/// content telemetry recorded over a completion's lifetime without dropping any.
-///
-/// This constant is the *checklist* form of the contract used by the adoption
-/// gate; the *declarative* form is the
-/// [`completion_parent_span!`](crate::completion_parent_span) macro, which is
-/// how a runtime declares a conforming span. A test asserts the two forms
-/// agree exactly, so neither can drift from the other.
+/// Fields required alongside [`COMPLETION_PARENT_MARKER_FIELD`] for adoption.
+/// Each must be statically declared with [`Empty`] or a value.
+/// [`completion_parent_span!`] declares the complete set.
 pub const COMPLETION_PARENT_REQUIRED_FIELDS: &[&str] = &[
     "gen_ai.operation.name",
     "gen_ai.provider.name",
@@ -169,38 +129,16 @@ pub const COMPLETION_PARENT_REQUIRED_FIELDS: &[&str] = &[
     "gen_ai.output.messages",
 ];
 
-/// Declare a completion-parent span conforming to the adoption contract.
+/// Declares a completion-parent span with the marker and all required fields.
+/// Defaults to the current span as parent. An optional `parent: <expr>` between
+/// `target` and `name` accepts any parent supported by [`tracing::info_span!`],
+/// including `None`.
 ///
-/// This macro is the single declarative source of the contract: it declares
-/// [`COMPLETION_PARENT_MARKER_FIELD`] and every field in
-/// [`COMPLETION_PARENT_REQUIRED_FIELDS`], so a span it builds is always
-/// adoptable by [`CompletionSpanBuilder::build`] and can absorb every field
-/// recorded over the completion's lifetime. Runtimes should declare their
-/// completion-parent spans through it rather than hand-writing the marker and
-/// field list — [`tracing::Span::record`] silently no-ops on undeclared
-/// fields, so a hand-written span that omits one field loses that telemetry
-/// with no error (and a span that omits enough to fail the adoption gate is
-/// not adopted at all). A span declared through this macro tracks the contract
-/// automatically; a hand-written one has to be maintained by hand.
-///
-/// By default the span is explicitly parented on
-/// [`tracing::Span::current()`]; pass `parent: <expr>` between `target` and
-/// `name` to override it with any parent expression [`tracing::info_span!`]
-/// accepts (including `None`). `operation` and `system_instructions` are
-/// declared with the given values; the provider records
-/// `gen_ai.provider.name` and `gen_ai.request.model` at adoption time.
-/// Additional runtime-specific fields may be appended after the named
-/// arguments. Extra fields must not repeat the marker or a required contract
-/// field: a duplicate compiles, but the span then declares two same-named
-/// fields and [`tracing::Span::record`] targets only the first.
-///
-/// Invoking this macro does not require a direct `tracing` dependency. To
-/// declare a field with no value yet, use [`Empty`] (re-exported here for
-/// exactly this reason) or `Option::<&str>::None`; [`tracing::field::Empty`]
-/// itself is the same type but only nameable by a crate that depends on
-/// `tracing` directly.
-///
-/// # Examples
+/// Records the supplied operation and system instructions. Provider and model
+/// fields are populated on adoption. Extra fields must not duplicate the marker
+/// or required fields: recording a duplicate name updates only its first field.
+/// Use [`Empty`] or `Option::<&str>::None` for unset values without a direct
+/// `tracing` dependency.
 ///
 /// ```
 /// use rig_core::telemetry::completion_parent_span;
@@ -262,15 +200,10 @@ macro_rules! completion_parent_span {
 // constants it implements.
 pub use crate::completion_parent_span;
 
-/// What [`CompletionSpanBuilder::build`] decided about the span that is
-/// current when it runs.
-///
-/// This is the whole adoption decision table in one place, kept free of
-/// side effects so every row can be asserted directly. Emitting the
-/// diagnostics for it is [`warn_once_on_completion_parent_verdict`]'s job.
+/// Classification of the current span for completion-parent adoption.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompletionParentVerdict {
-    /// The marker plus the complete contract — adopt and enrich.
+    /// The marker and all required fields are present.
     Adopt,
     /// The marker, but the span omits at least one field in
     /// [`COMPLETION_PARENT_REQUIRED_FIELDS`]. The missing names are computed
@@ -281,10 +214,7 @@ enum CompletionParentVerdict {
     NotAParent,
 }
 
-/// Fields in [`COMPLETION_PARENT_REQUIRED_FIELDS`] that `metadata` does not
-/// statically declare. Only called on the warning path — the adoption gate
-/// itself needs a yes/no, not the names, and allocating a `Vec` on every
-/// completion would be waste.
+/// Returns undeclared required fields for the warning diagnostic.
 fn missing_required_fields(metadata: &tracing::Metadata<'_>) -> Vec<&'static str> {
     let fields = metadata.fields();
     COMPLETION_PARENT_REQUIRED_FIELDS
@@ -294,8 +224,7 @@ fn missing_required_fields(metadata: &tracing::Metadata<'_>) -> Vec<&'static str
         .collect()
 }
 
-/// Classify the span `metadata` as a completion parent. Pure: no logging, no
-/// global state — see [`CompletionParentVerdict`] for the decision table.
+/// Classifies span metadata without logging or changing global state.
 fn classify_completion_parent(metadata: &tracing::Metadata<'_>) -> CompletionParentVerdict {
     let fields = metadata.fields();
     // Exact match, never a prefix: a runtime field that merely starts with the
@@ -314,14 +243,8 @@ fn classify_completion_parent(metadata: &tracing::Metadata<'_>) -> CompletionPar
     }
 }
 
-/// Near-miss parent callsites already reported.
-///
-/// Keyed per callsite rather than by one process-wide flag: two runtimes can
-/// each declare a near-miss parent, and a single flag would report whichever
-/// won the race and stay silent about the other — while the `missing_fields`
-/// list it printed describes only that one span. Callsites are static, so this
-/// set is bounded by the number of distinct near-miss spans in the program
-/// (normally zero).
+/// Incomplete parent callsites already reported, bounded by the program's
+/// static callsites. Each callsite receives its own missing-field diagnostic.
 static NEAR_MISS_WARNED: LazyLock<Mutex<HashSet<Identifier>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
@@ -341,15 +264,8 @@ fn reset_near_miss_warnings() {
         .clear();
 }
 
-/// Surface a verdict that a human should act on, once per offending callsite.
-///
-/// A rejected near-miss degrades safely — the fresh child span loses no
-/// telemetry — but silently, so the operator's only symptom would be a
-/// duplicated span layer in dashboards.
-///
-/// Neither a `Once` nor a poison-propagating lock: a subscriber panic must not
-/// turn a diagnostic into a hard failure on every subsequent completion, and a
-/// dedup set stays perfectly valid across an unrelated panic.
+/// Warns once per incomplete parent callsite, recovering a poisoned dedup lock.
+/// A subscriber panic must not prevent subsequent completions.
 fn warn_once_on_completion_parent_verdict(
     verdict: CompletionParentVerdict,
     metadata: &tracing::Metadata<'_>,
@@ -363,10 +279,8 @@ fn warn_once_on_completion_parent_verdict(
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 warned.insert(metadata.callsite())
             };
-            // The guard is released above, before `warn!`, and that scoping is
-            // load-bearing: `warn!` dispatches into arbitrary subscriber code,
-            // and a subscriber that transitively reaches `build` would
-            // deadlock re-entering this non-reentrant lock.
+            // Release the lock before invoking subscribers, which may re-enter
+            // the builder and deadlock if the guard is still held.
             if !first_sighting {
                 return;
             }
@@ -433,15 +347,8 @@ macro_rules! new_modality_span {
     };
 }
 
-/// Builder for a canonical GenAI span on a non-completion modality
-/// (embeddings, rerank, transcription, image generation, audio generation).
-///
-/// Unlike [`CompletionSpanBuilder`], this never adopts an ambient span: the
-/// adoption contract exists so one *model turn* has exactly one completion
-/// span, and a modality call is not a model turn — an agent's RAG lookup
-/// should appear as its own child span under the turn, not overwrite the
-/// turn's fields. The span is created under whatever span is current, so
-/// nesting comes for free.
+/// Builds a GenAI modality span parented on the current span.
+/// Always creates a fresh span, leaving ambient completion fields unchanged.
 pub struct ModalitySpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
@@ -492,9 +399,7 @@ impl<'a> ModalitySpanBuilder<'a> {
     }
 }
 
-/// The telemetry a normalized modality response can put on its span: the
-/// usage and identity fields every normalized response carries since the
-/// type-erasure sweep. Implemented for all six normalized response types.
+/// Normalized usage and identity metadata recorded on a modality span.
 pub trait ModalityResponseTelemetry {
     /// Rig-normalized token usage for the call.
     fn telemetry_usage(&self) -> &Usage;
@@ -531,13 +436,9 @@ impl_modality_response_telemetry!(crate::image_generation::ImageGenerationRespon
 #[cfg(feature = "audio")]
 impl_modality_response_telemetry!(crate::audio_generation::AudioGenerationResponse);
 
-/// Run a modality call inside its canonical span and record the normalized
-/// response's usage and identity onto it on success.
-///
-/// This is the one seam every provider implementation calls, so the span
-/// contract lives here rather than at thirty call sites. Errors close the
-/// span with its request fields only; the provider error itself already
-/// carries the preserved body and status.
+/// Runs a modality call in its canonical span and records usage and identity
+/// on success. Returns the call's result unchanged; errors leave only request
+/// metadata on the span.
 pub async fn instrument_modality<F, T, E>(
     provider: &str,
     request_model: &str,
@@ -564,11 +465,9 @@ where
 
 /// Builder for a canonical GenAI completion span.
 ///
-/// Runtime spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] and the
-/// [`COMPLETION_PARENT_REQUIRED_FIELDS`] are enriched and reused so one model
-/// turn has exactly one model span. Other ambient spans — and marker spans that
-/// omit a required field — remain parents of a newly created `rig::completions`
-/// span.
+/// Reuses current spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] and every
+/// field in [`COMPLETION_PARENT_REQUIRED_FIELDS`]. Otherwise creates a
+/// `rig::completions` child of the current span.
 pub struct CompletionSpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
@@ -937,8 +836,7 @@ pub trait ProviderResponseExt {
     fn usage(&self) -> Option<Self::Usage>;
 }
 
-/// A trait designed specifically to be used with Spans for the purpose of recording telemetry.
-/// Implemented for [`tracing::Span`] to record GenAI semantic convention fields.
+/// Records GenAI usage and response metadata on tracing spans.
 pub trait SpanCombinator {
     /// Record Rig-normalized token usage fields on the span.
     fn record_token_usage(&self, usage: &Usage);

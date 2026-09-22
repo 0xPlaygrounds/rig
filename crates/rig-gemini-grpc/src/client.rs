@@ -9,9 +9,6 @@ use super::GenerativeServiceClient;
 use crate::completion::CompletionModel;
 use crate::embedding::EmbeddingModel;
 
-// ================================================================
-// Google Gemini gRPC Client
-// ================================================================
 const GEMINI_GRPC_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
 
 /// User agent identifier for API tracking
@@ -32,7 +29,7 @@ impl Debug for Client {
     }
 }
 
-// Interceptor to add API key and client identification to metadata
+/// Adds API-key and client-identification metadata to outgoing requests.
 #[derive(Clone)]
 pub struct ApiKeyInterceptor {
     api_key: MetadataValue<tonic::metadata::Ascii>,
@@ -91,9 +88,10 @@ impl Client {
 impl Client {
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
     ///
-    /// The gRPC channel is not an HTTP transport, so there is no socket to
-    /// bind: construction is inherent, and the client is itself the
-    /// [`CompletionProvider`] a `Bound` would be for a wire.
+    /// Returns environment, TLS, or connection errors.
+    ///
+    /// # Panics
+    /// Panics outside a Tokio runtime or inside a current-thread runtime.
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let api_key = std::env::var("GEMINI_API_KEY")?;
         tokio::task::block_in_place(|| {
@@ -101,7 +99,10 @@ impl Client {
         })
     }
 
-    /// Create a new Google Gemini gRPC client from an explicit API key.
+    /// Connects using an explicit API key. Returns TLS or connection errors.
+    ///
+    /// # Panics
+    /// Panics outside a Tokio runtime or inside a current-thread runtime.
     pub fn from_val(api_key: String) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(Self::new(api_key))

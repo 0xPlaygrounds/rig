@@ -1,19 +1,9 @@
-//! The OpenAI Responses endpoint as data: one wire on the shared
-//! [`OpenAI`] configuration, N dialects.
+//! Responses endpoint encoding and observation for configured OpenAI dialects.
 //!
-//! [`Responses`] is the wire; [`OpenAI`] is the configuration a host stores,
-//! and [`OpenAI::responses`] builds this wire from it. A gateway that speaks
-//! this format differs from OpenAI by *data* — which request shape it
-//! accepts, whether it answers every request with an event stream, whether
-//! a 200 can carry its error envelope — so it is the
-//! [`responses`](crate::providers::openai::wire::Quirks::responses) field of
-//! a [`Dialect`](crate::providers::openai::wire::Dialect) constant, never a
-//! type or a trait.
-//!
-//! Dialects: [`OPENAI`](crate::providers::openai::wire::OPENAI),
-//! [`chatgpt::DIALECT`](crate::providers::chatgpt::DIALECT),
-//! [`xai::DIALECT`](crate::providers::xai::DIALECT) and
-//! [`copilot::wire::DIALECT`](crate::providers::copilot::wire::DIALECT).
+//! ```
+//! use rig_core::providers::openai::OpenAI;
+//! let wire = OpenAI::new("key").responses("gpt-5.2");
+//! ```
 
 use crate::completion::{self, CompletionError, ProviderCapabilities};
 use crate::observe::ObservedError;
@@ -96,10 +86,8 @@ impl Responses {
         })
     }
 
-    /// The Responses wire for `model` on `provider`, with the placement
-    /// `provider` configures — the dialect's default unless the
-    /// configuration overrode it
-    /// ([`OpenAI::system_instructions`](crate::providers::openai::wire::OpenAI::system_instructions)).
+    /// Create a wire with the provider's instruction placement and dialect's
+    /// strict-tool default, without additional tools.
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
         Self {
             system_instructions: provider.system_instructions_placement(),
@@ -260,23 +248,15 @@ impl Wire for Responses {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        // The Responses API constrains only the final assistant message via
-        // `text.format`; tools are still called across turns, so native
-        // structured output composes with tool calls (issue #1928) — except
-        // on xAI, whose does not.
+        // The xAI contract does not compose native structured output with tools.
         ProviderCapabilities::default().with_native_output_tool_composition(
             self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
         )
     }
 }
 
-/// Fold one whole Responses body into the normalized response.
-///
-/// The ONE interpreter: the decoder's unary variant synthesizes the events
-/// the stream sends, and the operation's own fold turns those into the
-/// response — the same two steps [`crate::driver::call`] runs, without a
-/// socket. Only the websocket session needs that: every other transport
-/// reaches the same fold through the driver.
+/// Normalize a whole Responses body through the decoder and completion fold.
+/// Return serialization, decoder, or fold errors without performing I/O.
 #[cfg(any(test, feature = "websocket"))]
 pub(crate) fn fold_body(
     provider: &str,
@@ -301,8 +281,6 @@ pub(crate) fn fold_body(
     }
     fold.finish(reply)
 }
-
-// ── observation ────────────────────────────────────────────────────────
 
 #[derive(Default, Deserialize)]
 struct TokenDetails {

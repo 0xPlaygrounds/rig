@@ -1,23 +1,18 @@
-//! The one stream vocabulary: what a provider adapter emits and what a
-//! consumer receives are the same [`StreamEvent`].
+//! Serializable completion-stream events shared by adapters and consumers.
+//! Blocks share a [`BlockId`] across starts, deltas, and ends. A delta can
+//! implicitly open a block; an end can supply an authoritative payload.
 //!
-//! A stream is a sequence of **blocks** — text, reasoning, tool calls, and
-//! the assistant message itself — each identified by a [`BlockId`] for the
-//! life of the stream. Every block runs `BlockStart → BlockDelta* →
-//! BlockEnd`; a start is optional (a delta for an unseen id opens its block
-//! leniently) and an end may carry the wire's authoritative payload for the
-//! block (a restated reasoning block, a completed tool call's fields).
+//! Adapters emit `block: None` on end events. The
+//! [`BlockAccumulator`](super::BlockAccumulator) fills it with finalized tool
+//! calls or reasoning while assembling the assistant response.
 //!
-//! The accumulator ([`BlockAccumulator`](super::BlockAccumulator)) folds the
-//! same events into the aggregated assistant choice, and fills
-//! [`BlockEnd::block`] on the events it yields to consumers with the block it
-//! just finalized — so a consumer that wants the completed tool call or
-//! reasoning item reads it off the end event, and one that only wants the
-//! deltas ignores it. Adapters always emit `block: None`.
+//! ```
+//! use rig_core::streaming::{BlockId, MintKind, StreamEvent};
 //!
-//! Everything here is data: serde, `Clone + Send + Sync + 'static`, no
-//! lifetimes, no `dyn`. The bus (phase C) sends these over a channel and the
-//! effect log records them; a host can persist an in-flight stream event.
+//! let id = BlockId::minted(MintKind::Text, 0);
+//! let event = StreamEvent::text(id.clone(), "Hello");
+//! assert_eq!(event.block_id(), Some(&id));
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -62,9 +57,7 @@ pub enum StreamEvent {
     /// The provider's normalized terminal record. At most one per stream,
     /// last among the content events.
     Final(StreamFinal),
-    /// A provider-native item rig does not model — e.g. an OpenAI Responses
-    /// hosted-tool result. Passed through verbatim; never folded into the
-    /// aggregated choice.
+    /// Unmodeled provider data, passed through without joining the aggregated choice.
     Unknown(UnknownPayload),
 }
 
@@ -72,10 +65,8 @@ pub enum StreamEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BlockKind {
-    /// The assistant message itself: the wire announced its provider
-    /// message id (`id` is `BlockId::wire(message_id)`). Captured into
-    /// `StreamingCompletionResponse::message_id`; outranks the terminal
-    /// record's id.
+    /// Assistant message boundary with a provider-issued block ID.
+    /// Its ID takes precedence over the terminal record's message ID.
     Message,
     /// A text block, with the provider metadata attached at its start.
     Text {
@@ -83,9 +74,8 @@ pub enum BlockKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         additional_params: Option<AdditionalParams>,
     },
-    /// A reasoning block, with the provider-issued durable id when the wire
-    /// has one — the value that becomes [`Reasoning::id`] and round-trips
-    /// upstream. A minted block id never does.
+    /// A reasoning block with an optional provider ID for [`Reasoning::id`].
+    /// Minted block keys must not become replayed provider IDs.
     Reasoning {
         /// The provider-issued reasoning item id.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -114,8 +104,7 @@ pub enum Delta {
         /// The reasoning fragment.
         text: String,
     },
-    /// The tool name (OpenAI-compatible wires stream it as a fragment; the
-    /// last non-empty value is the established name).
+    /// Tool name update. The last nonempty value becomes the established name.
     ToolName {
         /// The name fragment.
         name: String,
@@ -143,11 +132,8 @@ pub enum BlockClose {
         /// text.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
-        /// Whether the wire itself sent this end (anthropic's
-        /// `content_block_stop`), as opposed to the adapter synthesizing it
-        /// at a boundary the wire never announces. Wire-sent ends yield the
-        /// completed block even when bare; a synthesized bare end stays
-        /// silent (`block: None`).
+        /// Whether the provider explicitly ended the block. Explicit ends yield
+        /// a completed block even when bare; synthesized bare ends yield `None`.
         wire_sent: bool,
     },
     /// A tool call's input ended: the accumulator finalizes the assembled
@@ -158,10 +144,8 @@ pub enum BlockClose {
 
 /// The end of a streamed tool call's input.
 ///
-/// Optional fields are authoritative wire values that supersede the
-/// assembled state — a wire whose completed item restates the call (OpenAI
-/// Responses `output_item.done`, a whole-call wire) carries them; delta-only
-/// wires leave them `None` and the assembled fragments are parsed instead.
+/// Authoritative names and arguments supersede assembled fragments when present.
+/// Absent arguments are parsed from the accumulated deltas.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCallEnd {
     /// An already assigned local correlation handle, when re-emitting a
@@ -169,10 +153,8 @@ pub struct ToolCallEnd {
     /// handles remain in `tool_id` and `call_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub durable_id: Option<crate::message::ToolCallId>,
-    /// Authoritative provider-issued tool id, when one exists (e.g. an id
-    /// that arrived after the call opened id-less). The durable handle;
-    /// absence is `None`, never an empty string (see
-    /// [`non_empty_id`](super::non_empty_id)).
+    /// Provider-issued tool ID, including IDs received after the block opened.
+    /// Represent absence as `None`, not an empty string.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_id: Option<String>,
     /// Authoritative tool name from the wire's completed item.
@@ -210,8 +192,7 @@ impl ToolCallEnd {
         }
     }
 
-    /// A whole call delivered at once: name and arguments are authoritative
-    /// and malformed input is a response defect.
+    /// Creates a completed call with authoritative name and parsed arguments.
     pub fn whole(name: impl Into<String>, arguments: serde_json::Value) -> Self {
         Self {
             name: Some(name.into()),
@@ -270,8 +251,7 @@ impl StreamEvent {
         }
     }
 
-    /// Stable variant name for logs and law-violation messages — never the
-    /// payload (events carry wire content that must not reach logs).
+    /// Returns a stable variant name without exposing wire payloads to logs.
     pub const fn name(&self) -> &'static str {
         match self {
             Self::BlockStart { .. } => "BlockStart",

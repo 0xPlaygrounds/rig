@@ -1,10 +1,18 @@
 //! Distance and similarity helpers for embedding vectors.
 //!
-//! The [`VectorDistance`] implementation for [`Embedding`](crate::embeddings::Embedding)
-//! sums in fixed chunks on one thread, so every metric is the same bits on
-//! every run.
+//! [`Embedding`](crate::embeddings::Embedding) reductions use fixed chunks and
+//! left-to-right summation for reproducible ordering.
+//!
+//! ```
+//! use rig_core::embeddings::{Embedding, distance::VectorDistance};
+//!
+//! let vector = Embedding { document: String::new(), vec: vec![1.0, 0.0] };
+//! assert_eq!(vector.dot_product(&vector), 1.0);
+//! ```
 
 /// Distance and similarity metrics for embedding vectors.
+/// Supply equal-length vectors; the embedding implementation pairs only their
+/// shared prefix. Unnormalized cosine requires nonzero magnitudes.
 pub trait VectorDistance {
     /// Get dot product of two embedding vectors
     fn dot_product(&self, other: &Self) -> f64;
@@ -26,14 +34,8 @@ pub trait VectorDistance {
     fn chebyshev_distance(&self, other: &Self) -> f64;
 }
 
-/// The sums behind every metric are taken in fixed chunks: each chunk is
-/// summed left to right, then the chunk sums are summed left to right, so
-/// the result is the same bits on every run. (A parallel `sum()` that
-/// combined partial sums in whatever order the threads finished once gave
-/// a cosine score that differed in its last digit from one run to the
-/// next, and turned a recorded retrieval into a record that was never the
-/// same twice; the chunking is kept so a parallel build, if one returns,
-/// has the order it must reproduce.)
+/// Reduction chunk size. Preserve left-to-right summation within and across
+/// chunks to keep floating-point results reproducible.
 const CHUNK: usize = 256;
 
 /// Generates the [`VectorDistance`] method bodies for [`Embedding`](crate::embeddings::Embedding)

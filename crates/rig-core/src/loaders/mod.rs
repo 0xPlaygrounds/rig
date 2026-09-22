@@ -1,18 +1,13 @@
-//! File loading utilities for preparing local documents as model or embedding input.
+//! Local document loaders for model and embedding input, with optional error skipping.
+//! [`FileLoader`] reads paths or bytes. The `pdf` and `epub` features enable
+//! extraction by page or chapter with source numbering.
 //!
-//! [`FileLoader`] provides a common interface for reading files from disk, glob
-//! matches, directories, or in-memory bytes. It can return content alone or pair
-//! content with source paths, and it can optionally skip per-file errors.
+//! ```
+//! use rig_core::loaders::FileLoader;
 //!
-//! `PdfFileLoader` is available with the `pdf` feature. It loads PDFs and can
-//! split extracted text by page while preserving page numbers.
-//!
-//! `EpubFileLoader` is available with the `epub` feature. It loads EPUB files
-//! and can split extracted text by chapter while preserving chapter numbers.
-
-// ================================================================
-// Shared scaffolding for the typestate loaders (file, pdf, epub)
-// ================================================================
+//! let documents: Vec<_> = FileLoader::from_bytes(b"document".to_vec()).into_iter().collect();
+//! assert_eq!(documents.len(), 1);
+//! ```
 
 /// Defines the `pub(crate)` source trait for a loader (e.g. `Readable` /
 /// `Loadable`) together with its blanket impl for `Result`, which lets loader
@@ -101,8 +96,7 @@ macro_rules! loader_scaffold {
         }
 
         impl<'a, T: 'a $(, $P)?> $Loader<'a, Result<T, $Err> $(, $P)?> {
-            /// Ignores errors in the iterator, returning only successful results. This
-            ///  can be used on any loader state of iterator whose items are results.
+            /// Discards error items and yields unwrapped successful values.
             pub fn ignore_errors(self) -> $Loader<'a, T $(, $P)?> {
                 $Loader {
                     iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
@@ -112,7 +106,8 @@ macro_rules! loader_scaffold {
         }
 
         impl<'a $(, $P)?> $Loader<'a, Result<std::path::PathBuf, $Err> $(, $P)?> {
-            /// Creates a new loader using a glob pattern to match files.
+            /// Creates a loader over glob matches. Invalid patterns fail immediately;
+            /// traversal errors are yielded during iteration.
             pub fn with_glob(
                 pattern: &str,
             ) -> Result<$Loader<'_, Result<std::path::PathBuf, $Err> $(, $P)?>, $Err> {

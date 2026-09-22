@@ -1,9 +1,10 @@
-//! The OpenAI wires that are not chat: embeddings, transcription, images,
-//! speech, model listing and credential verification.
+//! Embedding, transcription, image, speech, listing, reranking, and verification wires.
+//! Each operation consumes a whole reply, using its dialect's JSON or binary format.
 //!
-//! Each is one request and one reply document, so each decoder is one
-//! `classify` that delegates to the untyped-line classifier and one
-//! `interpret` that pushes the single event its operation folds.
+//! ```
+//! use rig_core::providers::openai::{OpenAI, TEXT_EMBEDDING_3_SMALL};
+//! let wire = OpenAI::new("key").embeddings(TEXT_EMBEDDING_3_SMALL, None);
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -27,20 +28,14 @@ use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
 
-use super::{AcceptedWidths, ModelWidth, OpenAI, TranscriptionBody};
-// Each is read by exactly one feature-gated wire.
 #[cfg(feature = "image")]
 use super::ImageBody;
 #[cfg(feature = "audio")]
 use super::SpeechBody;
+use super::{AcceptedWidths, ModelWidth, OpenAI, TranscriptionBody};
 
-/// The `POST` this dialect's endpoint expects: a JSON body under the
-/// dialect's credential, answered whole, with the dialect's request-id
-/// header read off the reply.
-///
-/// Generic over the operation's error so a base URL that does not parse as a
-/// URI fails the operation it belongs to, rather than being reported against
-/// some other one.
+/// Encode an authenticated JSON POST with whole-response framing.
+/// Return serialization, URI, and envelope errors as the operation's error type.
 fn json_post<E: crate::wire::WireError>(
     provider: &OpenAI,
     path: &str,
@@ -72,13 +67,9 @@ fn get<E: crate::wire::WireError>(provider: &OpenAI, path: &str) -> Result<Encod
     )
 }
 
-/// Authenticate `builder`, stamp the dialect's modality envelope when it
-/// has one, and say what every endpoint on this wire says about its reply:
-/// one whole document, with the dialect's transport request id in the
-/// header it names.
-///
-/// Stated here rather than at each `encode` so the framing, the header and
-/// the envelope cannot drift apart between endpoints.
+/// Authenticate and build a request, then apply its modality envelope hook.
+/// Return construction or hook errors. Use whole-response framing and the
+/// dialect's request-ID header.
 fn encoded<E: crate::wire::WireError>(
     provider: &OpenAI,
     builder: http::request::Builder,
@@ -99,8 +90,6 @@ fn encoded<E: crate::wire::WireError>(
     Ok(Encoded::new(request, Framing::Whole)
         .with_request_id_header(provider.dialect.request_id_header))
 }
-
-// ── embeddings ──────────────────────────────────────────────────────────
 
 /// The embeddings wire.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -154,13 +143,8 @@ impl Embeddings {
             .find(|width| width.model == self.model)
     }
 
-    /// The width this wire reports, which is the caller's when they named
-    /// one and the model's documented width otherwise. Zero means unknown —
-    /// the model is absent from every table this build knows.
-    ///
-    /// The dialect's own table wins over OpenAI's `text-embedding-*` one:
-    /// the dialect documents the models it serves, and the shared table is
-    /// the fallback for the OpenAI models a compatible host may proxy.
+    /// Resolve width from the caller, dialect table, then shared model table.
+    /// Return zero when all are absent.
     fn resolved_ndims(&self) -> usize {
         self.ndims
             .or_else(|| self.model_width().and_then(|width| width.default))
@@ -168,15 +152,8 @@ impl Embeddings {
             .unwrap_or_default()
     }
 
-    /// Refuse a declared width this dialect cannot honour.
-    ///
-    /// Request-side because the providers that need it answer an
-    /// unhonourable width with `200` and a vector of some other width: an
-    /// over-wide request to Doubleword is silently clamped to the native
-    /// width, so letting it through would leave `ndims()` describing vectors
-    /// the API never returned. That is the reply-side check's blind spot —
-    /// it compares against what the caller declared, which is exactly the
-    /// number that would be wrong.
+    /// Validate declared widths against the dialect's zero-width and model policies.
+    /// Return a parameter error for unsupported widths; unknown models are unchecked.
     fn refuse_unhonourable_width(&self) -> Result<(), EmbeddingError> {
         let quirks = &self.provider.dialect.quirks.embedding;
         let invalid = |requirement, parameter| EmbeddingError::InvalidParameterValue {
@@ -204,9 +181,7 @@ impl Embeddings {
         let Some(width) = self.model_width() else {
             return Ok(());
         };
-        // A model naming its own native width is not a request for
-        // truncation — it is the caller echoing back what `resolved_ndims`
-        // reports. Accepted, and suppressed by `requested_width`.
+        // Native widths require no truncation parameter.
         if width.default == Some(declared) {
             return Ok(());
         }
@@ -229,11 +204,7 @@ impl Embeddings {
         if self.model == crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002 {
             return None;
         }
-        // The width the caller named, or the one this model is documented at
-        // — the deleted client sent `ndims.or_else(|| default_ndims(model))`,
-        // and every recorded embedding cassette carries the resolved value.
-        // A model absent from every width table resolves to 0, which is the
-        // sentinel for "unknown", and then nothing is sent.
+        // Unknown widths are metadata sentinels, not request parameters.
         let ndims = match self.resolved_ndims() {
             0 => return None,
             ndims => ndims,
@@ -251,12 +222,7 @@ impl Embeddings {
     }
 }
 
-/// The embeddings decoder.
-///
-/// Its event is [`CompatibleEmbeddingResponse`] — the permissive parse of
-/// this reply, which is also the `raw` document a caller reads back, so the
-/// shape is stated once beside OpenAI's own strict contract rather than
-/// again here.
+/// Decode embedding vectors and usage, enforcing the dialect's usage requirement.
 #[derive(Default)]
 pub struct EmbeddingsDecoder {
     /// Whether this dialect's reply must carry usage.
@@ -325,13 +291,7 @@ impl Wire for Embeddings {
     }
 
     fn capabilities(&self) -> EmbeddingCapabilities {
-        // `ndims` is the resolved width — the caller's, else the model
-        // table's — because that is what goes on the wire and what
-        // `EmbeddingModel::ndims` must report. `declared` is the narrower
-        // fact of whether the caller asked for a width at all, which is the
-        // only thing that licenses the consumer's mismatch check: a handle
-        // that named none has nothing to disagree with, and `Some(0)` is
-        // rig's sentinel for "unknown" rather than a claim.
+        // Only an explicit nonzero declaration permits reply-width mismatch checks.
         EmbeddingCapabilities::new(
             self.provider.dialect.quirks.embedding.max_documents,
             self.resolved_ndims(),
@@ -402,14 +362,12 @@ impl Wire for Embeddings {
     }
 }
 
-// ── transcription ───────────────────────────────────────────────────────
-
-/// The transcription wire: the only one whose body is multipart.
+/// Transcription requests encoded as multipart or input-audio JSON.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Transcriptions {
     /// Which provider, and how to reach it.
     pub provider: OpenAI,
-    /// The transcription model, or — for Azure — the deployment.
+    /// Transcription model or Azure deployment identifier.
     pub model: String,
 }
 
@@ -429,10 +387,7 @@ impl Transcriptions {
         use crate::http_client::multipart::Part;
 
         let mut form = MultipartForm::new();
-        // Azure addresses a deployment in the URL and sends no model field;
-        // every other dialect names the model in the form. Field order
-        // matches the order these endpoints were built by hand, so recorded
-        // requests stay byte-comparable.
+        // Azure addresses its deployment through the URL rather than the form.
         if self.provider.deployment(&self.model).is_none() {
             form = form.text("model", self.model.clone());
         }
@@ -448,9 +403,7 @@ impl Transcriptions {
         }
         if let Some(additional_params) = request.additional_params {
             for (name, value) in additional_params_object(&additional_params)? {
-                // String values go on the form verbatim — `Value::to_string`
-                // would send them JSON-quoted (`"verbose_json"`), which
-                // providers reject or ignore. Non-string values stay JSON.
+                // Form strings must not acquire JSON quotation marks.
                 let value = match value {
                     serde_json::Value::String(value) => value.clone(),
                     other => other.to_string(),
@@ -461,15 +414,8 @@ impl Transcriptions {
         Ok(Body::Multipart(form))
     }
 
-    /// OpenRouter's JSON body: the audio base64 under `input_audio`, with the
-    /// container format read off the filename because the gateway requires
-    /// one and the normalized request has no field for it.
-    ///
-    /// There is no top-level `prompt` on this route. A caller who set one is
-    /// told so rather than having it dropped: the gateway takes a
-    /// provider-side prompt through `additional_params`, and silently
-    /// discarding the field would answer a different question than the one
-    /// asked.
+    /// Encode base64 audio under `input_audio`, inferring format from the filename.
+    /// Reject top-level prompts and non-object additional parameters.
     fn input_audio_body(&self, request: TranscriptionRequest) -> Result<Body, TranscriptionError> {
         use base64::Engine;
 
@@ -522,10 +468,8 @@ fn additional_params_object(
     })
 }
 
-/// The audio container the gateway is told to expect, from the filename's
-/// extension. `wav` when the extension names nothing this wire knows —
-/// which is what the route defaults to, and the only answer available: the
-/// normalized request carries a filename and bytes, not a media type.
+/// Infer the audio container from a case-insensitive filename extension.
+/// Unknown or absent extensions default to `wav`.
 fn audio_format_of(filename: &str) -> &'static str {
     let extension = std::path::Path::new(filename)
         .extension()
@@ -611,8 +555,6 @@ impl Wire for Transcriptions {
     }
 }
 
-// ── image generation ────────────────────────────────────────────────────
-
 /// The image-generation wire.
 #[cfg(feature = "image")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -655,12 +597,7 @@ pub struct ImageDatum {
     pub b64_json: String,
 }
 
-/// One generated image under the `images` key.
-///
-/// Two forms, because two dialects use that key for different things:
-/// Hyperbolic sends an object keyed `image`, Venice sends the base64
-/// payload itself. Untagged rather than two fields, so `images` stays one
-/// list whichever form its elements take and a reply cannot claim both.
+/// Base64 image represented as a string or an object with an `image` field.
 #[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -685,13 +622,7 @@ impl ImagesReplyImage {
     }
 }
 
-/// The image-generation reply.
-///
-/// Four shapes, and the keys are disjoint, so one type reads all of them
-/// without asking which dialect answered: OpenAI sends `{created, data}`,
-/// xAI sends `{data}` with no `created` (a required one would fail every xAI
-/// reply), Hyperbolic sends `{images:[{image}]}`, and Venice sends
-/// `{id, images:["<base64>"], request, timing}`.
+/// JSON image reply accepting `data` and `images` arrays with optional metadata.
 #[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImagesReply {
@@ -720,11 +651,7 @@ impl ImagesReply {
     }
 }
 
-/// One image-generation reply, in whichever form the dialect sent it.
-///
-/// The JSON dialects are classified and decoded; Hugging Face's router
-/// sends the image and nothing else, so for it the frame *is* the payload
-/// and no envelope is parsed.
+/// Generated images in a decoded JSON envelope or as raw bytes.
 #[cfg(feature = "image")]
 #[derive(Debug, Clone)]
 pub enum ImagesEvent {
@@ -740,10 +667,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         match self.body {
-            // Not JSON at all: there is nothing to decode, so there is
-            // nothing to classify — the bytes are the answer. A body that
-            // happened to be valid UTF-8 still arrives as text, so both
-            // frame forms are the same payload here.
+            // Preserve raw image bytes even when framing recognized valid UTF-8.
             ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
                 WireFrame::Text(text) => text.into_bytes(),
                 WireFrame::Bytes(bytes) => bytes,
@@ -827,27 +751,19 @@ impl Wire for Images {
                 "response_format": "b64_json",
                 "aspect_ratio": "1:1",
             }),
-            // Hyperbolic names the model `model_name` and takes the size as
-            // two fields rather than `"{w}x{h}"`.
             ImageBody::Hyperbolic => serde_json::json!({
                 "model_name": self.model,
                 "prompt": request.prompt,
                 "height": request.height,
                 "width": request.width,
             }),
-            // Venice's own `/image/generate` keeps OpenAI's `model` key and
-            // takes the size as two fields; `size` is not a field it reads,
-            // so sending one would leave the request at the endpoint's
-            // default dimensions.
             ImageBody::Venice => serde_json::json!({
                 "model": self.model,
                 "prompt": request.prompt,
                 "width": request.width,
                 "height": request.height,
             }),
-            // Hugging Face's router takes the prompt as `inputs` and the
-            // size nested under `parameters`; the model is the path, not a
-            // body field, so the body names none.
+            // The model is addressed through the URL, not the body.
             ImageBody::HuggingFace => serde_json::json!({
                 "inputs": request.prompt,
                 "parameters": {
@@ -881,8 +797,6 @@ impl Wire for Images {
     }
 }
 
-// ── speech ──────────────────────────────────────────────────────────────
-
 /// The speech wire.
 #[cfg(feature = "audio")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -904,10 +818,7 @@ impl Speech {
     }
 }
 
-/// The speech decoder.
-///
-/// This endpoint answers with the audio bytes themselves and no JSON
-/// envelope, so the frame *is* the payload.
+/// Decode raw audio or the dialect's base64 JSON envelope.
 #[cfg(feature = "audio")]
 #[derive(Default)]
 pub struct SpeechDecoder {
@@ -930,8 +841,7 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
     type Event = Vec<u8>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        // Not JSON at all: there is nothing to decode, so there is nothing
-        // to classify — the bytes are the answer.
+        // Interpretation selects raw audio or JSON decoding from the dialect.
         WireEvent::Known(match frame {
             WireFrame::Text(text) => text.into_bytes(),
             WireFrame::Bytes(bytes) => bytes,
@@ -998,8 +908,7 @@ impl Wire for Speech {
                 "voice": request.voice,
                 "speed": request.speed,
             }),
-            // xAI's `/v1/tts` names the voice `voice_id` and takes no model
-            // in the body; `eve` is the voice its client defaulted to.
+            // xAI requires a default voice when the caller leaves it empty.
             SpeechBody::Xai => serde_json::json!({
                 "text": request.text,
                 "voice_id": if request.voice.is_empty() { "eve" } else { request.voice.as_str() },
@@ -1014,10 +923,7 @@ impl Wire for Speech {
                 "speed": request.speed,
             }),
         };
-        // Last, so a caller can reach the endpoint's other parameters —
-        // `response_format`, `instructions` — and override what is derived
-        // above. They demonstrably change the reply: `response_format: "wav"`
-        // returns RIFF where the default returns MP3.
+        // Caller parameters take precedence, including response format and instructions.
         if let Some(additional_params) = request.additional_params {
             crate::json_utils::merge_inplace(&mut body, additional_params);
         }
@@ -1040,8 +946,6 @@ impl Wire for Speech {
     }
 }
 
-// ── model listing ───────────────────────────────────────────────────────
-
 /// The model-listing wire.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
@@ -1056,17 +960,9 @@ impl Models {
     }
 }
 
-/// One entry of an OpenAI-style `{ "data": [...] }` listing.
-///
-/// `id` is the one field every dialect on this wire sends; the rest are
-/// optional so a dialect that omits them still decodes. The dialects do not
-/// agree on how to spell the context window — Groq says `context_window`,
-/// OpenRouter `context_length`, Mistral `max_context_length` — and each sends
-/// only its own, so all three are modelled here and the first one present
-/// becomes [`Model::context_length`]. Same for the output ceiling: Groq
-/// reports `max_completion_tokens` at the top level, OpenRouter one level down
-/// under `top_provider`. Modelling only one dialect's spelling drops the
-/// others on the floor (rig#2079, rig#2322).
+/// Model-list entry with required `id` and optional metadata.
+/// Context length prefers `context_window`, then `context_length`, then
+/// `max_context_length`. Top-level output limits take precedence over `top_provider`.
 #[derive(Debug, Deserialize)]
 pub struct ModelEntry {
     pub id: String,
@@ -1129,10 +1025,7 @@ pub struct ModelsReply {
     pub data: Vec<ModelEntry>,
 }
 
-/// The model-listing decoder.
-///
-/// This endpoint is not paged — it answers with the whole catalogue — so
-/// [`Decoder::continuation`] keeps its default `None`.
+/// Decode a complete model catalogue without pagination.
 #[derive(Default)]
 pub struct ModelsDecoder;
 
@@ -1166,15 +1059,8 @@ impl Wire for Models {
     }
 }
 
-// ── reranking ───────────────────────────────────────────────────────────
-
-/// The rerank wire.
-///
-/// There is no reranking endpoint in the OpenAI API, so the compatible
-/// servers that offer one converged on Jina's shape:
-/// `{model, query, documents, top_n}` answered with
-/// `{model, results:[{index, relevance_score}], usage}`. `llama-server`
-/// serves exactly that.
+/// Rerank documents with `{model, query, documents, top_n}` requests.
+/// The dialect must configure a nonempty reranking path.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rerank {
     /// Which provider, and how to reach it.
@@ -1203,12 +1089,7 @@ impl Rerank {
     }
 }
 
-/// One scored document.
-///
-/// The score key is `relevance_score` on the Jina-shaped path and `score` on
-/// the text-embeddings-inference path the same llama.cpp handler switches to;
-/// both are accepted, so a server answering either shape decodes rather than
-/// silently scoring every document zero.
+/// Scored input document accepting `relevance_score` or `score` as its score key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankResultEntry {
     /// Which input document this scored.
@@ -1278,8 +1159,6 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        // A server that omits `model` still produced a ranking; `None` is the
-        // honest report.
         out.push(Ok(crate::rerank::RerankResponse::new(
             results,
             self.provider,
@@ -1312,9 +1191,7 @@ impl Wire for Rerank {
         _mode: Mode,
     ) -> Result<Encoded, RerankError> {
         let quirks = &self.provider.dialect.quirks.rerank;
-        // Empty means the dialect does not offer reranking, stated rather
-        // than defaulted: a future dialect that leaves it out is refused
-        // here instead of posting to a path its server never served.
+        // An empty path explicitly disables reranking.
         if quirks.path.is_empty() {
             return Err(RerankError::ProviderError(format!(
                 "{} offers no reranking endpoint",
@@ -1351,8 +1228,6 @@ impl Wire for Rerank {
         }
     }
 }
-
-// ── verification ────────────────────────────────────────────────────────
 
 /// The credential-check wire: a `GET` whose status is the answer.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -1,17 +1,11 @@
-//! The completion wire a configuration builds when asked for "a
-//! completion": whichever of its two endpoints it is routed to.
+//! Dispatches completion requests to Chat Completions or Responses wires.
+//! Explicit configuration routes override model-specific hooks and dialect defaults.
 //!
-//! OpenAI, xAI and ChatGPT serve `/responses` as their primary completion
-//! API and keep `/chat/completions` beside it; every OpenAI-*compatible*
-//! gateway serves only the latter. So a [`Dialect`](super::Dialect) names
-//! its flagship [`Route`], a configuration may pick the other one once with
-//! [`OpenAI::with_route`](super::OpenAI::with_route), and [`OpenAiWire`] is
-//! that route's wire — a wire choosing a wire, with every [`Wire`] and
-//! [`Decoder`] method dispatching on the variant. There is no second
-//! request conversion, no second decoder and no second observation
-//! projection: the two arms are the two wires that already exist. Naming a
-//! route for one model is [`OpenAI::chat`](super::OpenAI::chat) or
-//! [`OpenAI::responses`](super::OpenAI::responses).
+//! ```
+//! use rig_core::providers::openai::{OpenAI, Route};
+//! let provider = OpenAI::new("key").with_route(Route::Chat);
+//! let wire = provider.chat("gpt-5.2");
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -30,13 +24,7 @@ use crate::wire::{
 use super::OpenAI;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
 
-/// Ask whichever route this is.
-///
-/// Every [`Wire`] and [`Decoder`] method below is the same two-arm match on
-/// the variant — the enum chooses a wire, and the method asks that wire — so
-/// the match is written once here instead of fourteen times. The two methods
-/// whose arms genuinely differ, `decoder` and `classify`, wrap their result
-/// in the matching variant and are written out.
+/// Dispatch a shared expression to the selected route.
 macro_rules! on_route {
     ($chosen:expr, $wire:ident => $ask:expr) => {
         match $chosen {
@@ -55,14 +43,8 @@ pub enum Route {
     Responses,
 }
 
-/// The dialect's default completion wire: its [`Route`]'s wire.
-///
-/// Both variants are the shared wire types on the same configuration, so
-/// this is what [`Bound<OpenAI>::completion`](crate::driver::Bound) — and
-/// the agent sugar on top of it — builds. A caller who wants a specific
-/// endpoint names it and gets the concrete wire back; every option either
-/// route takes is also forwarded here, and is a no-op on the route that
-/// has no such option, so `map_wire` reaches all of them.
+/// A completion wire selected by configuration, model hook, or dialect default.
+/// Route-specific options are no-ops on the other route.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum OpenAiWire {
     /// The chat-completions wire.
@@ -259,10 +241,7 @@ impl Decoder<Completion> for OpenAiDecoder {
             (Self::Responses(decoder), OpenAiEvent::Responses(event)) => {
                 decoder.interpret(event, out);
             }
-            // A decoder is built fresh per reply and only ever sees the
-            // events its own `classify` produced, so the routes cannot
-            // cross; there is nothing for the other route's state machine to
-            // do with a frame it never decoded.
+            // Drivers feed each decoder only events from its own classifier.
             (Self::Chat(_), OpenAiEvent::Responses(_))
             | (Self::Responses(_), OpenAiEvent::Chat(_)) => {}
         }

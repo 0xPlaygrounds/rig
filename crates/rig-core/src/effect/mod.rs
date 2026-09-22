@@ -1,41 +1,14 @@
-//! The effect protocol as data.
+//! Serializable effect requests, handler descriptions, outcomes, and recording data.
+//! [`HandlerKey`] identifies a destination; [`EffectKind`] and [`Outcome`] describe
+//! the exchange. Host-defined operations use [`CustomEffect`].
 //!
-//! An *effect* is one request an agent (or any host) makes of the outside
-//! world — a completion, a tool call, an embedding, a conversation-memory
-//! operation, a retrieval — expressed as a value rather than as a call on a
-//! trait object. The bus (`rig_agent::bus`) carries these values to the
-//! handler registered for a [`HandlerKey`] and carries the [`Outcome`] back;
-//! an `EffectLog` (`rig_cassette::effect_log`) records every exchange so a run can be
-//! replayed.
+//! ```
+//! use rig_core::effect::{EffectFamily, EffectRow, model_key};
 //!
-//! Everything in this module is serde, `Clone + Send + Sync + 'static`, with
-//! no lifetimes and no `dyn` (asserted at compile time on every target). A
-//! host that stores an [`EffectKind`] in a component re-dispatches it by
-//! cloning it; a scene stores a [`HandlerDescriptor`] and re-binds a handle at
-//! load.
-//!
-//! # Vocabulary
-//!
-//! The in-tree kinds are *transcriptions* of the six impl-side traits —
-//! [`CompletionModel`](crate::completion::CompletionModel),
-//! [`Tool`](crate::tool::Tool), [`EmbeddingModel`](crate::embeddings::EmbeddingModel)
-//! (and its image twin), [`ConversationMemory`](crate::memory::ConversationMemory),
-//! [`VectorStoreIndex`](crate::vector_store::VectorStoreIndex),
-//! [`RerankModel`](crate::rerank::RerankModel) — one arm per method, with
-//! the rules:
-//!
-//! - a generic result type parameter does not cross the wire:
-//!   `VectorStoreIndex::top_n<T>` becomes [`RetrieveQuery::TopN`] answering
-//!   JSON documents, and the typed view deserialises on the client side;
-//! - `ConversationMemory` is three ops ([`MemoryOp`]); the `*_owned`
-//!   conveniences are the adapter's business, not the wire's;
-//! - no impl-side method takes `&mut self`, so no op needs an exclusive form;
-//! - only [`EffectKind::Completion`] with `stream: true` streams; every other
-//!   kind is unary.
-//!
-//! Out-of-tree kinds go through [`EffectKind::Custom`]. In-tree arms are added
-//! as breaking changes: the enums are exhaustive on purpose, so every `match`
-//! stays a complete census of the vocabulary.
+//! let mut row = EffectRow::new();
+//! row.insert(model_key("primary"), EffectFamily::Completion);
+//! assert_eq!(row.len(), 1);
+//! ```
 
 use std::{fmt, sync::Arc};
 
@@ -80,11 +53,7 @@ impl fmt::Display for EffectId {
     }
 }
 
-/// Which registered handler serves an effect.
-///
-/// A key is a plain string: the builder generates them (`model`, `tool:add`),
-/// hosts choose their own. It is the serde half of a handle — a scene stores
-/// the key plus its [`HandlerDescriptor`] and re-binds at load.
+/// String identifier for a registered handler, serializable without a live handle.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct HandlerKey(Arc<str>);
 
@@ -99,8 +68,8 @@ impl HandlerKey {
         &self.0
     }
 
-    /// The key read by its grammar: see [`KeyParts`]. Never fails — every
-    /// string is some key — and round-trips through [`KeyParts::to_key`].
+    /// Parses the key into [`KeyParts`] without failure. Formatting the parts
+    /// reproduces the original key.
     pub fn parts(&self) -> KeyParts {
         KeyParts::parse(&self.0)
     }
@@ -223,9 +192,7 @@ impl AsRef<str> for HandlerKey {
     }
 }
 
-// Transparent string (de)serialization without serde's `rc` feature — the
-// same choice `ModelRef` makes; the two `Arc<str>` sites in this module use
-// hand-written impls rather than enabling a feature on the dependency.
+// Serialize as a string without requiring serde's rc feature.
 impl Serialize for HandlerKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.0)
@@ -284,8 +251,7 @@ mod opt_arc_str {
     }
 }
 
-/// The families of effect — the discriminant a typed view checks at bind
-/// time and the label a log line prints.
+/// Effect classification used by typed binding and recording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectFamily {
@@ -326,13 +292,9 @@ impl fmt::Display for EffectFamily {
     }
 }
 
-/// A type-level family marker: what a typed view (`Handle<F>`) is generic
-/// over, and what it knows: the request a typed dispatch of the family
-/// takes, the answer it resolves to, and how each maps onto the wire's
-/// [`EffectKind`] and [`Outcome`]. Implemented by the unit types in
-/// [`family`] and by [`family::Custom<E>`] for a host's [`CustomEffect`];
-/// sealed — hosts define custom *effects*, never new families (the
-/// transcription rule keeps the vocabulary to the six impl-side traits).
+/// Sealed mapping between typed requests and answers and the wire's
+/// [`EffectKind`] and [`Outcome`]. Hosts extend the protocol through
+/// [`CustomEffect`] and [`family::Custom`], not new family implementations.
 pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// The family this marker names.
     const FAMILY: EffectFamily;
@@ -364,10 +326,8 @@ mod sealed {
     pub trait Sealed {}
 }
 
-/// What a handler serves, as a type: a [`Family`] (`Some(F::FAMILY)`), or
-/// [`family::Dynamic`] (`None`) for a handler that answers whatever it is
-/// given — a replayer, an erased handler. A typed key can be proven only
-/// against a handler with a family. Sealed.
+/// Sealed handler-family declaration. Typed families expose `Some(F::FAMILY)`;
+/// [`family::Dynamic`] exposes `None` and requires runtime family checks.
 pub trait Served: sealed::Sealed + 'static {
     /// The family, when the handler has one.
     const SERVED: Option<EffectFamily>;
@@ -441,7 +401,12 @@ pub fn retrieve_key(label: &str) -> HandlerKey {
     HandlerKey::from(format!("retrieve:{label}"))
 }
 
-/// The family markers.
+/// Type-level markers for built-in and host-defined effect families.
+///
+/// ```
+/// use rig_core::effect::{family, Family, EffectFamily};
+/// assert_eq!(family::Completion::FAMILY, EffectFamily::Completion);
+/// ```
 pub mod family {
     use std::marker::PhantomData;
 
@@ -589,10 +554,8 @@ pub mod family {
         type Answer = E::Answer;
 
         fn wrap(request: E) -> Result<EffectKind, ErrorReport> {
-            // An effect that does not serialize is a defect in `E`: the
-            // dispatch is refused with the serde error as its report, so no
-            // handler serves and no log records a request that had no
-            // wire form.
+            // Reject unencodable requests before dispatch so no handler or log
+            // receives an effect without a wire representation.
             serde_json::to_value(&request)
                 .map(|payload| EffectKind::Custom {
                     kind: std::sync::Arc::from(E::KIND),
@@ -632,11 +595,8 @@ pub struct HandlerDescriptor {
     pub key: HandlerKey,
     /// The family and its advertised metadata.
     pub family: FamilyDescriptor,
-    /// The layers wrapped around the handler, outermost first: each
-    /// [`Intercept`](crate::serve::Intercept)'s name. Part of what serves
-    /// the key — a log's handler table names them, and a program recorded
-    /// under one layer stack refuses a replay under another, as it refuses
-    /// another hook stack. Empty for a bare handler.
+    /// Interceptor names in outermost-first order, used to validate the layer
+    /// stack during replay. Empty for a handler without layers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<String>,
 }
@@ -794,8 +754,8 @@ impl EffectKind {
         }
     }
 
-    /// A stable label for logs and overlays — never the payload. `Custom`
-    /// returns its own kind label.
+    /// Classification label without payload data. Custom effects return their
+    /// host-defined kind label.
     pub fn name(&self) -> &str {
         match self {
             Self::Custom { kind, .. } => kind,
@@ -1020,29 +980,17 @@ pub struct EffectRecord {
     /// boundaries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<StreamEvent>>,
-    /// The dispatch this one was made from — a handler serving `parent`
-    /// dispatched it through its sink's dispatcher — or `None` for a
-    /// dispatch the consumer made itself. Causality as data: a host parents
-    /// the effect's entity by it, a replay reads the chain off the record.
+    /// Parent dispatch for a nested handler call, or `None` for a root dispatch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<EffectId>,
-    /// The scope of the program that made the dispatch: a stable serde id
-    /// of the dispatching run or agent — never a runtime handle — stamped
-    /// by a scoped dispatcher, so one log written by several programs in
-    /// one world can be read per program. `None` when the dispatcher had
-    /// no scope, which is every record today.
+    /// Stable identifier of the dispatching program or run, not a runtime handle.
+    /// `None` when the dispatcher supplied no scope.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
     pub scope: Option<std::sync::Arc<str>>,
 }
 
-/// The effect row of a program: which keys it can dispatch to, and of
-/// which family — the effect type of the program, as a row of
-/// `key: family` entries (Leijen's effect rows, with the key as the
-/// label). One type, three readers: the log's header stores the program's
-/// row and the trace's signature, the agent checks its row against a
-/// log's handler table on replay, and a host checks a scene's row against
-/// its bus at startup — all with [`EffectRow::is_subset_of`], which names
-/// the first gap.
+/// Required handler keys and their effect families, ordered by key.
+/// [`Self::is_subset_of`] validates the requirements against handler descriptors.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EffectRow(std::collections::BTreeMap<HandlerKey, EffectFamily>);
@@ -1162,9 +1110,8 @@ impl EffectRow {
         self.0.is_empty()
     }
 
-    /// Whether every entry of this row is served by `handlers` as the
-    /// family the row needs: `Ok` when it is, else the first gap in key
-    /// order — a key nothing serves, or one served as another family.
+    /// Validates that every key is served with the required family, returning
+    /// the first gap in key order. Uses the first descriptor matching each key.
     pub fn is_subset_of(&self, handlers: &[HandlerDescriptor]) -> Result<(), RowGap> {
         for (key, needed) in &self.0 {
             let served = handlers
@@ -1185,9 +1132,8 @@ impl EffectRow {
         Ok(())
     }
 
-    /// Every difference between this row and `other`, in key order:
-    /// entries `other` lacks, entries it has and this row lacks, and keys
-    /// both name as different families.
+    /// Returns missing and mismatched entries in this row's key order, followed
+    /// by extra entries in the other row's key order.
     pub fn diff(&self, other: &EffectRow) -> Vec<RowDiff> {
         let mut diffs = Vec::new();
         for (key, family) in &self.0 {

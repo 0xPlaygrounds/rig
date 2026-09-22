@@ -1,13 +1,12 @@
-//! Decode-then-validate classification for JSON stream wire frames.
+//! Classifies stream frames as known, unknown, or corrupt before interpretation.
+//! Known discriminators require typed decoding; invalid known payloads must not
+//! become ignorable unknown events.
 //!
-//! Each streaming wire family classifies every frame through exactly one of
-//! the functions below before acting on it, so the parse policy is stated once
-//! per family instead of being re-derived from serde failure modes at each
-//! call site. The classification is a hand-written tag dispatch, never an
-//! untagged serde fallback: a trailing `#[serde(untagged)]` variant on an
-//! internally-tagged enum swallows a known tag with an invalid payload
-//! (`rig-2257-code-review-findings-34ee8ba5.md` P2), which would silently
-//! demote a data-level defect to an ignorable unknown event.
+//! ```
+//! use rig_core::providers::internal::wire::{classify_untyped_line, WireEvent};
+//! let event = classify_untyped_line::<serde_json::Value>(b"{}");
+//! assert!(matches!(event, WireEvent::Known(_)));
+//! ```
 
 /// One classified wire frame.
 #[derive(Debug)]
@@ -15,20 +14,16 @@ pub enum WireEvent<T> {
     /// The frame carries a discriminator this client models and its payload
     /// decoded fully.
     Known(T),
-    /// Valid JSON whose discriminator this client does not model. Policy
-    /// (owned by the stream driver, never per adapter): warn — structural
-    /// metadata only, so payloads never leak into logs — and skip, for
-    /// forward compatibility.
+    /// Valid JSON not recognized by this classifier.
+    /// Drivers log structural metadata only and skip interpretation.
     Unknown {
         /// The unmodeled discriminator value.
         event_type: String,
-        /// The full frame payload, for the driver's raw passthrough channel
-        /// (never for its warn log — and its Debug is redacted by type).
+        /// Full payload for raw passthrough, never warning logs. Debug is redacted.
         value: crate::streaming::UnknownPayload,
     },
-    /// Not valid JSON, or a modeled discriminator whose payload failed the
-    /// typed decode — a data-level defect in a known event, which must never
-    /// be demoted to `Unknown`.
+    /// Invalid JSON or a recognized frame that failed typed decoding.
+    /// Must not be demoted to `Unknown`.
     Corrupt(serde_json::Error),
 }
 
@@ -47,17 +42,10 @@ impl<T> WireEvent<T> {
     }
 }
 
-/// Classify one frame of a tag-discriminated JSON wire (OpenAI Responses SSE,
-/// Cohere SSE, and Anthropic use `type`; Gemini Interactions uses
-/// `event_type`).
-///
-/// Dispatch on the envelope's `tag` field: a value outside
-/// `is_known_event_type` is `Unknown`; a modeled value — or a missing tag,
-/// which no modeled event omits — must pass the full typed decode, and a
-/// failure there is `Corrupt`, not `Unknown`. A frame carrying the tag key
-/// more than once is `Corrupt` outright: `serde_json::Value` keeps only the
-/// last occurrence, so without the rejection a defective known frame could
-/// masquerade as a skippable unknown one.
+/// Classify JSON by its top-level `tag` string.
+/// Unknown strings and non-object JSON produce `Unknown`. Known, missing, or
+/// nonstring tags require typed decoding. Invalid JSON, duplicate tags, and
+/// failed typed decoding produce `Corrupt`.
 pub fn classify_tagged_frame<T>(
     data: &str,
     tag: &str,
@@ -79,16 +67,12 @@ where
                 _ => decode_known(data),
             }
         }
-        // Valid JSON that is not an object (a gateway keep-alive `null`, a
-        // bare array or scalar) cannot be a modeled event: it is Unknown
-        // (warn-and-skip), never routed into the typed decode where its
-        // guaranteed failure would read as Corrupt and error the stream.
+        // Non-object keep-alives must not become fatal typed-decode failures.
         DiscriminatorScan::NotObject => unknown_with_value(data, String::new()),
     }
 }
 
-/// Build the `Unknown` cold path: the raw channel carries the full payload,
-/// parsed lazily here — the hot Known path never pays for it.
+/// Parse the payload for raw passthrough after classifying a frame as unknown.
 fn unknown_with_value<T>(data: &str, event_type: String) -> WireEvent<T> {
     match serde_json::from_str::<serde_json::Value>(data) {
         Ok(value) => WireEvent::Unknown {
@@ -118,9 +102,7 @@ where
     };
     let found = match scanned {
         DiscriminatorScan::Object(found) => found,
-        // Same policy as `classify_tagged_frame`: non-object valid JSON is
-        // unrecognizable, so it is Unknown (warn-and-skip) — a keep-alive
-        // `null` must not become a fatal Corrupt via a doomed typed decode.
+        // Non-object JSON is unrecognized rather than corrupt.
         DiscriminatorScan::NotObject => return unknown_with_value(data, String::new()),
     };
     let object_value = found.first().and_then(|key| key.string_value.as_deref());
@@ -134,20 +116,14 @@ where
     decode_known(data)
 }
 
-/// Classify one frame of an untagged JSON wire recognized by payload keys
-/// (Gemini `streamGenerateContent`).
-///
-/// The wire has no discriminator, so recognizability substitutes — the same
-/// policy as [`classify_chat_completions_frame`]: a frame carrying any of
-/// `marker_keys` at top level is the wire's chunk shape and must pass the
-/// full typed decode (failure is `Corrupt`); valid JSON carrying none of them
-/// is `Unknown`.
+/// Classify JSON by the presence of any top-level `marker_keys`.
+/// Recognized frames require typed decoding; failures produce `Corrupt`.
+/// Valid JSON without markers produces `Unknown`. Duplicate markers are allowed.
 pub fn classify_marker_keyed_frame<T>(data: &str, marker_keys: &[&str]) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
 {
-    // Markers are presence checks, not discriminators — historically
-    // duplicate-tolerant, so the scan does not reject duplicates here.
+    // Presence markers permit duplicates because their values do not select a type.
     let scanned = match scan_discriminators(data, marker_keys, false) {
         Ok(scanned) => scanned,
         Err(error) => return WireEvent::Corrupt(error),
@@ -200,28 +176,19 @@ where
 pub enum TypedEvent<T> {
     /// A variant this client models.
     Modeled(T),
-    /// The SDK's own unknown-variant signal — aws-sdk's non-exhaustive
-    /// `Unknown` union variant, a prost oneof decoding to `None`.
+    /// An unrecognized variant reported by the transport SDK.
     Unrecognized {
         /// Discriminator for the driver's warn log.
         event_type: String,
-        /// Debug rendering of the frame, for the driver's warn log.
+        /// Frame detail retained for raw passthrough, not warning logs.
         detail: String,
     },
-    /// The SDK reported a decode failure for a modeled event — a data-level
-    /// defect in a known event.
+    /// SDK decode failure for a modeled event.
     Malformed(String),
 }
 
-/// Classify one event of a typed-transport wire (bedrock's Converse event
-/// stream, gemini-grpc, candle's in-process generation).
-///
-/// The transport SDK already deserialized the frame, so the byte-level decode
-/// step collapses and only the triage remains: modeled variants are `Known`;
-/// the SDK's non-exhaustive/unrecognized variants are `Unknown`; an SDK
-/// decode error for a modeled event is `Corrupt` — the same known-tag
-/// strictness as the JSON classifiers, so a typed transport earns no policy
-/// exemption.
+/// Map modeled SDK events to `Known`, unrecognized events to `Unknown`, and
+/// malformed events to `Corrupt`. Unknown detail is retained for raw passthrough.
 pub fn classify_typed_event<T>(event: TypedEvent<T>) -> WireEvent<T> {
     match event {
         TypedEvent::Modeled(event) => WireEvent::Known(event),
@@ -235,17 +202,10 @@ pub fn classify_typed_event<T>(event: TypedEvent<T>) -> WireEvent<T> {
     }
 }
 
-/// Classify a frame with a one-shot salvage step for `Corrupt` results.
-///
-/// Some replayed (buffered) wire bodies verifiably omit envelope bookkeeping
-/// fields the typed decode requires (ChatGPT's unary Responses bodies). This
-/// wrapper keeps that salvage inside the classify layer: when `classify`
-/// reports `Corrupt`, `repair` may produce an amended frame that is classified
-/// once more through the SAME interpreter. A frame `repair` cannot amend
-/// (`None`) maps to `Corrupt(on_unrepairable(original_error))`; a repaired
-/// frame that still fails maps to `Corrupt(on_still_corrupt())` — it is
-/// defective in its data, not its envelope. `Known` and `Unknown` results
-/// pass through untouched, so no policy is decided here.
+/// Retry classification once after repairing a `Corrupt` frame.
+/// Initial `Known` and `Unknown` results pass through. No repair returns
+/// `on_unrepairable`'s error; repaired frames must classify as `Known` or return
+/// `on_still_corrupt`'s error.
 pub fn classify_with_repair<T>(
     data: &str,
     classify: impl Fn(&str) -> WireEvent<T>,
@@ -270,23 +230,9 @@ pub fn classify_with_repair<T>(
     }
 }
 
-/// Classify a frame through `first`, falling back to `then` when `first`
-/// reports `Corrupt`.
-///
-/// A wire with more than one reply shape on one decoder — the Responses
-/// endpoint answers with a tagged SSE event, an untagged response object,
-/// or, on one gateway, an error envelope inside a 200 — needs to *read* the
-/// first classifier's verdict, and reading it in a provider is the one thing
-/// the single-policy rule forbids. So the composition lives here: a frame
-/// that is not `first`'s kind at all is what makes `first` report `Corrupt`,
-/// and that is exactly when the next shape is worth trying.
-///
-/// `Known` and `Unknown` from `first` pass through untouched — an unmodeled
-/// tag is forward compatibility, not a different shape. When `then` also
-/// fails, `first`'s error is the diagnostic, because `first` is the shape
-/// the wire mostly sends; the exception is a `then` that recognized the
-/// shape and rejected its *data*, whose error is the specific one. Composes,
-/// so a wire with three shapes chains two calls.
+/// Try `then` only when `first` returns `Corrupt`.
+/// Return `then`'s known event or corrupt error. If `then` returns `Unknown`,
+/// preserve `first`'s error. Initial `Known` and `Unknown` results pass through.
 pub fn classify_or<T>(
     data: &str,
     first: impl Fn(&str) -> WireEvent<T>,
@@ -302,30 +248,11 @@ pub fn classify_or<T>(
     }
 }
 
-/// Reject a top-level object that carries any discriminator key more than
-/// once.
-///
-/// `serde_json::Value` retains only the last occurrence of a duplicate key,
-/// so a frame like `{"type":"text.delta","type":"future.event",...}` would
-/// otherwise dispatch on the *last* value and demote a defective known frame
-/// to a skippable `Unknown` — violating the classifier invariant that a
-/// data-level defect in a known event is always `Corrupt`. This re-scans the
-/// raw text with a streaming visitor that sees every key occurrence.
-/// `value` (the already-parsed frame) gates the scan to top-level objects.
-/// What one streaming pass learned about a frame's discriminator keys.
-///
-/// This is the fused form of "parse to `Value` for the discriminator lookup"
-/// and "scan for duplicate discriminator keys": one tokenization pass over
-/// the raw text yields both, so the hot path (Known frames) runs exactly two
-/// passes — this scan plus the typed decode, the irreducible minimum. The
-/// `Unknown` cold path lazily parses the `Value` it must carry anyway.
+/// Discriminator presence and first string values collected in one JSON scan.
 enum DiscriminatorScan {
-    /// Top-level object: per requested key, whether it was present and its
-    /// string value when it had one (first occurrence; a duplicate is an
-    /// error before this is returned).
+    /// Presence and first string value for each requested top-level key.
     Object(Vec<KeyScan>),
-    /// Not a JSON object — no top-level keys exist; classification falls
-    /// through to the typed decode.
+    /// Valid non-object JSON with no top-level keys.
     NotObject,
 }
 
@@ -390,7 +317,6 @@ fn scan_discriminators(
             Ok(DiscriminatorScan::Object(found))
         }
 
-        // Every non-map shape falls through to the typed decode downstream.
         fn visit_bool<E>(self, _: bool) -> Result<DiscriminatorScan, E> {
             Ok(DiscriminatorScan::NotObject)
         }

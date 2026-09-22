@@ -14,24 +14,19 @@ pub enum ImageQuality {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageGenerationConfig {
-    // The quality of the image.
-    // Default: standard
+    /// Image quality. Defaults to standard.
     pub quality: Option<ImageQuality>,
-    // The number of images to generate.
-    // Default: 1, Minimum: 1, Maximum: 5
+    /// Requested image count, defaulting to one. Provider limits are not validated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub number_of_images: Option<u32>,
-    // The height of the image in pixels.
+    /// Image height in pixels, defaulting to 512.
     pub height: Option<u32>,
-    // The width of the image in pixels.
+    /// Image width in pixels, defaulting to 512.
     pub width: Option<u32>,
-    // Specifies how strongly the generated image should adhere to the prompt. Use a lower value to introduce more randomness in the generation.
-    // Default: 8.0. Minimum: 1.1, Maximum: 10.0
+    /// Prompt adherence strength. Omitted by default for the provider to choose.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cfg_scale: Option<f32>,
-    // Use to control and reproduce results. Determines the initial noise setting.
-    // Use the same seed and the same settings as a previous run to allow inference to create a similar image.
-    // Default: 42, Minimum: 0, Maximum: 2147483646
+    /// Initial noise seed for reproducible generation. Omitted by default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u32>,
 }

@@ -19,8 +19,7 @@ use rig_core::vector_store::VectorStoreError;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-/// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
-/// Data returned by LanceDB is a vector of `RecordBatch` items.
+/// Converts Arrow record batches returned by LanceDB into JSON rows.
 pub(crate) trait RecordBatchDeserializer {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
 }
@@ -37,7 +36,6 @@ impl RecordBatchDeserializer for Vec<RecordBatch> {
     }
 }
 
-/// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
 impl RecordBatchDeserializer for RecordBatch {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
         let schema = self.schema();
@@ -59,7 +57,8 @@ impl RecordBatchDeserializer for RecordBatch {
     }
 }
 
-/// Recursive function that matches all possible data types store in LanceDB and converts them to serde_json::Value vector.
+/// Converts one Arrow column into a JSON value per row, recursing through nested
+/// types. Unsupported types are rejected.
 fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError> {
     /// Expands to a `type_matcher` arm body converting `column` to JSON values
     /// via the given helper method (e.g. `to_primitive_value::<Float32Type>`).
@@ -254,10 +253,6 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
     }
 }
 
-// ================================================================
-// Everything below includes helpers for the recursive function `type_matcher`
-// ================================================================
-
 /// Expands a run-end encoded column into one JSON value per logical row.
 fn run_end_values<T: RunEndIndexType>(
     column: &Arc<dyn Array>,
@@ -282,13 +277,12 @@ where
         .collect())
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as as list of primitive objects.
+/// Reads a primitive Arrow column.
 trait DeserializePrimitiveArray {
-    /// Downcast arrow Array into a `PrimitiveArray` with items that implement trait `ArrowPrimitiveType`.
-    /// Return the primitive array values.
+    /// Returns the column's native values.
     fn to_primitive<T: ArrowPrimitiveType>(&self) -> Vec<<T as ArrowPrimitiveType>::Native>;
 
-    /// Same as above but convert the resulting array values into serde_json::Value.
+    /// Returns the column's values as JSON.
     fn to_primitive_value<T: ArrowPrimitiveType>(&self) -> Result<Vec<Value>, serde_json::Error>
     where
         <T as ArrowPrimitiveType>::Native: Serialize;
@@ -314,13 +308,12 @@ impl DeserializePrimitiveArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as as list of str objects.
+/// Reads a byte-backed Arrow column.
 trait DeserializeByteArray {
-    /// Downcast arrow Array into a `GenericByteArray` with items that implement trait `ByteArrayType`.
-    /// Return the generic byte array values.
+    /// Returns the column's native values.
     fn to_str<T: ByteArrayType>(&self) -> Vec<&<T as ByteArrayType>::Native>;
 
-    /// Same as above but convert the resulting array values into serde_json::Value.
+    /// Returns the column's values as JSON.
     fn to_str_value<T: ByteArrayType>(&self) -> Result<Vec<Value>, serde_json::Error>
     where
         <T as ByteArrayType>::Native: Serialize;
@@ -343,10 +336,9 @@ impl DeserializeByteArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as a list of list objects.
+/// Reads a variable-length list Arrow column.
 trait DeserializeListArray {
-    /// Downcast arrow Array into a `GenericListArray` with items that implement trait `OffsetSizeTrait`.
-    /// Return the generic list array values.
+    /// Returns one nested array per row.
     fn to_list<T: OffsetSizeTrait>(&self) -> Vec<Arc<dyn arrow_array::Array>>;
 }
 
@@ -358,10 +350,9 @@ impl DeserializeListArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as a list of dict objects.
+/// Reads a dictionary-encoded Arrow column.
 trait DeserializeDictArray {
-    /// Downcast arrow Array into a `DictionaryArray` with items that implement trait `ArrowDictionaryKeyType`.
-    /// Return the dictionary keys and values as a tuple.
+    /// Returns the column's keys alongside its value array.
     fn to_dict<T: ArrowDictionaryKeyType>(
         &self,
     ) -> (
@@ -409,10 +400,9 @@ impl DeserializeDictArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as as list of fixed size list objects.
+/// Reads a fixed-size list Arrow column.
 trait DeserializeArray {
-    /// Downcast arrow Array into a `FixedSizeListArray`.
-    /// Return the fixed size list array values.
+    /// Returns one nested array per row.
     fn to_fixed_lists(&self) -> Vec<Arc<dyn arrow_array::Array>>;
 }
 
@@ -429,10 +419,9 @@ type RunArrayParts<T> = (
     Arc<dyn arrow_array::Array>,
 );
 
-/// Trait used to "deserialize" an arrow_array::Array as a list of list objects.
+/// Reads a run-end encoded Arrow column.
 trait DeserializeRunArray {
-    /// Downcast arrow Array into a `GenericListArray` with items that implement trait `RunEndIndexType`.
-    /// Return the generic list array values.
+    /// Returns the run-end indexes alongside the encoded value array.
     fn to_run_end<T: RunEndIndexType>(&self) -> Result<RunArrayParts<T>, ArrowError>;
 }
 

@@ -1,4 +1,13 @@
-//! All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
+//! Unary Vertex AI completions and model identifiers. Streaming is unsupported.
+//!
+//! ```no_run
+//! use rig_vertexai::{Client, completion::{CompletionModel, GEMINI_2_5_FLASH}};
+//!
+//! # async fn example() -> Result<(), rig_vertexai::client::VertexAiClientError> {
+//! let model = CompletionModel::new(Client::from_env()?, GEMINI_2_5_FLASH);
+//! # Ok(())
+//! # }
+//! ```
 
 use super::Client;
 use crate::types::completion_request::VertexCompletionRequest;
@@ -57,13 +66,9 @@ impl CompletionModel {
 }
 
 impl CompletionModel {
-    /// Execute a completion and return Vertex AI's own wire response.
-    ///
-    /// This is the escape hatch for fields rig does not normalize;
-    /// [`CompletionModelTrait::completion`] calls it and maps the result, so
-    /// there is exactly one RPC either way. The returned type is publicly named
-    /// [`VertexGenerateContentOutput`] in this module and can also be deserialized
-    /// from a normalized [`CompletionResponse::raw`].
+    /// Executes one completion RPC and returns provider-native output.
+    /// Returns request-conversion, client-initialization, or RPC errors.
+    /// The output type also deserializes from [`CompletionResponse::raw`].
     pub async fn raw_completion(
         &self,
         request: CompletionRequest,
@@ -143,26 +148,14 @@ impl CompletionModelTrait for CompletionModel {
     }
 }
 
-/// Map a failed `send()` RPC into a [`CompletionError`] that preserves the
-/// provider's error text verbatim, with everything the SDK knows about it:
-/// the HTTP status when the SDK saw one (then the reply classifies by
-/// status like any HTTP reply), else the RPC code as the provider's own
-/// code and the transport's retry verdict derived from it. (The `inner()`
-/// client-init failure stays a `ProviderError` because it is a Rig-side
-/// setup failure, not a provider response.)
-///
-/// Note: the SDK does not distinguish a server-returned RPC error from a
-/// transport/connection failure, so a pure connection error is also
-/// preserved here rather than gated out as a Rig diagnostic the way
-/// Bedrock's typed service errors are.
+/// Preserves SDK error display text, HTTP status, RPC code, and retry hints.
+/// Transport errors also use the provider-body representation.
 fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> CompletionError {
     let status = error
         .http_status_code()
         .and_then(|code| rig_core::http_client::StatusCode::from_u16(code).ok());
     let code = error.status().map(|status| status.code.name());
-    // The SDK classifies its own response-less failures: a connect, I/O,
-    // timeout or transport error never reached a decision, so the same
-    // call may be retried, as every HTTP wire retries the same condition.
+    // SDK transport classifications supply retry hints when no RPC code exists.
     let transient = code.map(transient_rpc_code).or_else(|| {
         (error.is_transport() || error.is_io() || error.is_timeout() || error.is_connect())
             .then_some(true)
@@ -173,11 +166,7 @@ fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> CompletionError {
         .with_transient(transient)
 }
 
-/// Whether an RPC code (by its canonical name) is one the same call may
-/// reasonably be retried on: the server was unreachable or overloaded, or
-/// the call was cut short. Every other code says the call itself is wrong
-/// or the resource is not there, and retrying it as-is asks the same
-/// question again.
+/// Recognizes transient RPC codes; unlisted codes are non-transient.
 fn transient_rpc_code(code: &str) -> bool {
     matches!(
         code,

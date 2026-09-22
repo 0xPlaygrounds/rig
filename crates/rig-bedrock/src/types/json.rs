@@ -31,8 +31,7 @@ impl From<AwsDocument> for Value {
             }
             Document::Number(Number::Float(number)) => match serde_json::Number::from_f64(number) {
                 Some(n) => Value::Number(n),
-                // https://www.rfc-editor.org/rfc/rfc7159
-                // Numeric values that cannot be represented in the grammar (such as Infinity and NaN) are not permitted.
+                // JSON cannot represent non-finite numbers.
                 None => Value::Null,
             },
             Document::String(s) => Value::String(s),

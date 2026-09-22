@@ -1,15 +1,17 @@
-//! The verification operation: a request whose only answer is its status.
+//! Status-based credential verification.
+//!
+//! ```
+//! use rig_core::{operation::Verify, wire::Operation};
+//!
+//! assert_eq!(Verify::NAME, "verify");
+//! ```
 
 use super::{One, Take};
 use crate::client::VerifyError;
 use crate::wire::{Decoder, Operation, Output, Sink, WireEvent, WireFrame};
 
-/// Checking that a provider accepts the configured credentials.
-///
-/// The reply body is not read for meaning: a success status is the answer,
-/// and the rejection classification (401/403 as invalid authentication)
-/// lives in [`VerifyError`]'s [`WireError`](crate::wire::WireError) impl, so
-/// no wire restates it.
+/// Checks credentials using response status. HTTP 401/403 indicate invalid
+/// authentication; status-only decoders do not interpret the response body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Verify;
 
@@ -32,12 +34,8 @@ impl Operation for Verify {
     fn telemetry(_streaming: bool) -> Self::Telemetry {}
 }
 
-/// The decoder of every status-only credential check: a success status is
-/// the whole answer, and the body is not read for meaning.
-///
-/// Shared by the wires whose verification endpoint answers with an
-/// arbitrary document (Anthropic and every OpenAI-shaped dialect); a wire
-/// that validates the body's shape names a decoder of its own.
+/// Accepts any body, including an empty one, after driver status validation.
+/// Endpoints requiring body validation must use another decoder.
 #[derive(Debug, Default)]
 pub struct VerifyDecoder;
 

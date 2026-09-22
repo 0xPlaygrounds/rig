@@ -9,157 +9,19 @@
         clippy::unreachable
     )
 )]
-//! Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
+//! Provider-agnostic model, message, tool, memory, and vector-store contracts.
+//! Provider configurations and endpoint wires bind to transports through
+//! [`driver::Bound`]. Companion crates supply transports, agent runtimes,
+//! and external storage integrations.
 //!
-//! # Table of contents
-//! - [High-level features](#high-level-features)
-//! - [Simple Example](#simple-example)
-//! - [Core Concepts](#core-concepts)
-//! - [Integrations](#integrations)
+//! ```no_run
+//! use rig_core::completion::{CompletionError, CompletionModel, CompletionResponse};
 //!
-//! # High-level features
-//! - Full support for LLM completion and embedding workflows
-//! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
-//! - Integrate LLMs in your app with minimal boilerplate
-//!
-//! # Simple example
-//! ```ignore
-//! use rig_core::{
-//!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai::{self, OpenAI},
-//! };
-//! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
-//! use rig_reqwest::prelude::*;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
-//!     // transport, and pick a model: a model is a wire plus its socket.
-//!     // OpenAI's default completion route is the Responses API;
-//!     // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
-//!     let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
-//!
+//! async fn ask<M: CompletionModel + Clone>(model: &M) -> Result<CompletionResponse, CompletionError> {
 //!     let request = model.completion_request("Who are you?").build();
-//!     let response = model.completion(request).await?;
-//!     for item in response.choice {
-//!         if let AssistantContent::Text(text) = item {
-//!             println!("{}", text.text);
-//!         }
-//!     }
-//!
-//!     Ok(())
+//!     model.completion(request).await
 //! }
 //! ```
-//! Note: using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
-//! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
-//!
-//! # Core concepts
-//! ## Providers, wires, and models
-//! Rig provides a consistent API for working with LLMs and embeddings. A
-//! provider is plain configuration data (`openai::wire::OpenAI`,
-//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) — its base URL, its
-//! credential, its dialect — plus one *wire* per API endpoint, saying what to
-//! send and how to read the reply. Nothing generic sits between the two.
-//!
-//! Binding a provider to an HTTP transport yields a
-//! [`Bound`](crate::driver::Bound): `provider.bound()?` builds the bundled
-//! `reqwest` transport (from `rig-reqwest`, whose prelude the `rig` facade
-//! re-exports), and `provider.bind(transport)` takes one you already own.
-//! Every capability hangs off that `Bound` — `completion(model)`,
-//! `embedding(model, ndims)`, `verify()`, one method per capability the
-//! provider declares a wire for. A capability it has no wire for is a method
-//! that does not exist, and the compiler says so.
-//!
-//! `Bound` is the single implementor of
-//! [CompletionModel](crate::completion::CompletionModel),
-//! [EmbeddingModel](crate::embeddings::EmbeddingModel) and their siblings,
-//! which provide a common, low-level interface for creating completion and
-//! embedding requests and executing them; one driver ([`driver`]) runs all of
-//! them, so a provider never restates request plumbing, retry classification,
-//! or telemetry.
-//!
-//! ## Agent runtimes
-//! This crate owns the provider-agnostic model, message, tool, and storage
-//! contracts. The sibling `rig-agent` crate provides the classic builder and
-//! run-loop API.
-//!
-//! ## Vector stores and indexes
-//! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! trait, which can be implemented to define vector stores and indices respectively.
-//! Indexes can be queried directly by applications or runtimes. For active RAG,
-//! expose the index through its blanket [`PortableTool`](crate::tool::PortableTool)
-//! implementation, or through a custom tool, so the model decides when and how
-//! to retrieve. The classic `rig-agent` runtime can also query indexes from
-//! hooks and append the resulting documents to a turn's extra context.
-//!
-//! Indexes can also serve custom architectures that use multiple LLMs or agents.
-//!
-//! ## Conversation memory
-//! Runtimes can load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. The classic
-//! `rig-agent` runtime integrates this portable backend contract.
-//! The default in-process backend
-//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
-//! for tests and single-process agents; reusable history-shaping policies (sliding
-//! window, token budget) live in the [`rig-memory`](https://crates.io/crates/rig-memory)
-//! companion crate. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
-//! for a runnable end-to-end example.
-//!
-//! # Integrations
-//! ## Model Providers
-//! Rig natively supports the following completion and embedding model provider integrations:
-//! - Anthropic
-//! - Azure OpenAI
-//! - ChatGPT and GitHub Copilot (OAuth-backed)
-//! - Cohere
-//! - DeepSeek
-//! - Gemini
-//! - Groq
-//! - Hugging Face
-//! - Hyperbolic
-//! - llama.cpp (`llama-server`, and llamafile)
-//! - MiniMax
-//! - Mira
-//! - Mistral
-//! - Moonshot
-//! - Ollama
-//! - OpenAI
-//! - OpenRouter
-//! - Perplexity
-//! - Together
-//! - Voyage AI
-//! - xAI
-//! - Xiaomi MiMo
-//! - Z.ai
-//!
-//! You can also implement your own model provider integration by defining types that
-//! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
-//!
-//! Vector stores are available as separate companion-crates:
-//!
-//! - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)
-//! - LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb)
-//! - Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j)
-//! - Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-qdrant)
-//! - SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite)
-//! - SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb)
-//! - Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus)
-//! - ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb)
-//! - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors)
-//! - HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
-//! - Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
-//!
-//! You can also implement your own vector store integration by defining types that
-//! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
-//!
-//! The following providers are available as separate companion-crates:
-//!
-//! - AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock)
-//! - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed)
-//! - Google Gemini gRPC: [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc)
-//! - Google Vertex AI: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai)
-//!
 
 extern crate self as rig;
 
@@ -207,7 +69,6 @@ pub mod wire;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod ws_client;
 
-// Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
 pub use error::{ErrorKind, ErrorReport};
@@ -226,19 +87,13 @@ pub use rig_derive::ContextValue;
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::Embed;
 
-// The portable `#[rig_tool]` macro produces context-free `PortableTool`s, which
-// are rig-core-owned, so direct `rig-core` dependents can reach it without
-// pulling in `rig-derive` themselves.
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool;
 
 pub mod telemetry;
 
-// Compile-time thread-safety contract. These types cross threads in host
-// runtimes (worker pools, ECS resources); on native they must stay
-// `Send + Sync + 'static`, and losing it is an API break that should fail the
-// build here rather than in a downstream crate.
+// Native runtime values must retain their thread-safety bounds.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync_static<T: Send + Sync + 'static>() {}

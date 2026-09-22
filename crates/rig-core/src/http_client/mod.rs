@@ -1,3 +1,13 @@
+//! Transport-independent HTTP requests, lazy response bodies, and errors.
+//!
+//! ```
+//! use rig_core::http_client::{HeaderMap, bearer_auth_header};
+//!
+//! let mut headers = HeaderMap::new();
+//! bearer_auth_header(&mut headers, "example-token")?;
+//! # Ok::<(), rig_core::http_client::Error>(())
+//! ```
+
 use bytes::Bytes;
 use http::HeaderName;
 pub use http::{
@@ -17,13 +27,9 @@ pub use multipart::MultipartForm;
 pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
-    /// The one non-success response shape: the server answered, and the
-    /// transport kept everything it said — status, body and headers — so
-    /// provider layers can read the reply and its transport metadata (their
-    /// request-id contract, `Retry-After`) off the error (rig#2314). A
-    /// transport never reports a status without the body behind it; a
-    /// response-less failure is [`Self::Instance`] or one of the protocol
-    /// variants.
+    /// Failed HTTP response preserving its status, body, and headers.
+    /// Transport failures without a response use [`Self::Instance`] or a
+    /// protocol variant.
     #[error("Invalid status code {status} with message: {body}")]
     InvalidStatusCodeWithDetails {
         /// The non-success status.
@@ -51,12 +57,7 @@ pub enum Error {
 }
 
 impl Error {
-    /// The status this error carries, when it was built from a non-success
-    /// response. `None` for a response-less failure (connect, decode, timeout).
-    ///
-    /// Public because a transport crate outside rig-core needs it: a websocket
-    /// backend builds this error from a rejected upgrade, and the provider
-    /// layer that maps it back into its own error model reads the status here.
+    /// Preserved HTTP failure status, or `None` for other error variants.
     pub fn non_success_status(&self) -> Option<StatusCode> {
         match self {
             Self::InvalidStatusCodeWithDetails { status, .. } => Some(*status),
@@ -73,10 +74,8 @@ impl Error {
         }
     }
 
-    /// Build the headers-preserving non-success error from a failed
-    /// response's parts. Transports call this with the status, headers and
-    /// body they read off the wire, so provider layers can recover transport
-    /// metadata — request ids, rate-limit headers — from the error (rig#2314).
+    /// Constructs a failure from its HTTP status, headers, and body without
+    /// validating that the status is non-successful.
     pub fn non_success_with_details(status: StatusCode, headers: HeaderMap, body: String) -> Self {
         Self::InvalidStatusCodeWithDetails {
             status,
@@ -87,11 +86,7 @@ impl Error {
 
     /// Returns the failed response's headers, when this error preserved them.
     ///
-    /// Rig's bundled HTTP clients capture the full [`HeaderMap`] whenever a
-    /// non-success status error is built from a live response, so rate-limit
-    /// metadata such as `Retry-After` or `x-ratelimit-*` stays readable
-    /// (rig#2210). This is the accessor a caller's retry policy uses to honor
-    /// a server-supplied backoff, since it is handed this error directly:
+    /// The following example reads the seconds form of `Retry-After`:
     ///
     /// ```
     /// # use rig_core::http_client::Error;
@@ -176,7 +171,7 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
 
 /// A helper trait to make generic requests (both regular and SSE) possible.
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
-    /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
+    /// Sends a request and returns headers with a lazy body converted from bytes to `U`.
     fn send<T, U>(
         &self,
         req: Request<T>,
@@ -187,7 +182,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
         U: From<Bytes>,
         U: WasmCompatSend + 'static;
 
-    /// Send a HTTP request with a multipart body, get a response back (as bytes). Response must be able to be turned back into Bytes (although usually for the response, you will probably want to specify Bytes anyway).
+    /// Sends a multipart request and returns headers with a lazy body converted to `U`.
     fn send_multipart<U>(
         &self,
         req: Request<MultipartForm>,
@@ -196,7 +191,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
         U: From<Bytes>,
         U: WasmCompatSend + 'static;
 
-    /// Send a HTTP request, get a streamed response back (as a stream of [`bytes::Bytes`].)
+    /// Sends a request and returns headers with a stream of transport byte chunks.
     fn send_streaming<T>(
         &self,
         req: Request<T>,

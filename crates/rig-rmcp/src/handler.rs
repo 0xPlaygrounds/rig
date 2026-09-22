@@ -1,5 +1,13 @@
-//! `McpClientHandler`: keeps a [`ManagedToolSink`] in sync with an MCP server's
-//! tool list.
+//! Synchronizes managed tool registrations with an MCP server's tool list.
+//!
+//! ```
+//! use rig_core::tool::ManagedToolSink;
+//! use rig_rmcp::{McpClientHandler, rmcp};
+//!
+//! fn handler<S: ManagedToolSink + Send + Sync + 'static>(sink: S) -> McpClientHandler<S> {
+//!     McpClientHandler::new(rmcp::model::ClientInfo::default(), sink)
+//! }
+//! ```
 
 use std::collections::HashMap;
 use std::sync::{
@@ -33,36 +41,14 @@ pub(crate) struct RefreshActivity {
 
 pub(crate) const MAX_CONCURRENT_REFRESHES: usize = 2;
 
-/// An MCP client handler that automatically re-fetches the tool list when the
-/// server sends a `notifications/tools/list_changed` notification.
-///
-/// This handler implements [`rmcp::ClientHandler`] and bridges the MCP
-/// notification lifecycle with any [`ManagedToolSink`] — rig-agent's
-/// `ToolServerHandle` implements it, so the rig-agent usage is
-/// `McpClientHandler::new(client_info, tool_server_handle.clone())`.
-/// When the MCP server's available tools change, this handler:
-/// 1. Re-fetches the full tool list from the MCP server
-/// 2. Replaces or removes registrations still owned by this handler
-/// 3. Leaves newer local and peer-handler same-name registrations intact
-///
-/// # Usage
-///
-/// Use [`McpClientHandler::connect`] for a streamlined setup that handles
-/// connection, initial tool fetch, and registration in one call:
-///
-/// ```rust,ignore
-/// let tool_server_handle = ToolServer::new().run();
-/// let handler = McpClientHandler::new(client_info, tool_server_handle.clone());
-/// let mcp_service = handler.connect(transport).await?;
-/// ```
-///
-/// The returned `RunningService` keeps the MCP connection alive. When the
-/// server updates its tools, the handler automatically syncs with the tool server.
+/// Registers MCP tools in a [`ManagedToolSink`] and refreshes them on list changes.
+/// Refreshes replace or remove only registrations still owned by this handler,
+/// preserving newer same-name registrations. [`Self::connect`] performs the
+/// initial fetch and returns the service that keeps the connection alive.
 pub struct McpClientHandler<S> {
     client_info: rmcp::model::ClientInfo,
     sink: S,
-    /// Per-call timeout applied to every MCP tool this handler registers
-    /// (see issue #1914). Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
+    /// Per-call timeout for registered tools, initially [`DEFAULT_MCP_TOOL_TIMEOUT`].
     timeout: Option<Duration>,
     /// Deadline for initial and list-changed tool-list fetches.
     refresh_timeout: Duration,

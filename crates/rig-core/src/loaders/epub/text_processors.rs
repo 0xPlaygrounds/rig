@@ -4,10 +4,6 @@ use quick_xml::Reader;
 use quick_xml::escape::{resolve_xml_entity, unescape_with};
 use quick_xml::events::Event;
 
-// ================================================================
-// Implementing TextProcessor trait for post-processing epubs
-// ================================================================
-
 pub trait TextProcessor {
     type Error: Error + 'static;
 
@@ -46,7 +42,7 @@ impl TextProcessor for StripXmlProcessor {
     fn process(xml: &str) -> Result<String, Self::Error> {
         let mut reader = Reader::from_str(xml.trim());
 
-        let mut result = String::with_capacity(xml.len() / 2); // Rough estimate
+        let mut result = String::with_capacity(xml.len() / 2);
         let mut last_was_text = false;
         let mut text = String::new();
 
@@ -79,8 +75,7 @@ impl TextProcessor for StripXmlProcessor {
             }
             text.clear();
 
-            // Keep CDATA as a separate literal text boundary and let markup reset
-            // adjacency, just as it did before references were coalesced.
+            // CDATA stays literal; markup resets text adjacency.
             match event {
                 Event::CData(e) => {
                     let text = String::from_utf8(e.into_inner().into_owned())?;

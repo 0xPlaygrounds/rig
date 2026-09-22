@@ -1,9 +1,5 @@
-//! Google Gemini gRPC API client and Rig integration
+//! Gemini completion and embedding models using the gRPC API.
 //!
-//! This module provides gRPC-based access to the Gemini API, offering better
-//! performance and type safety compared to the REST API.
-//!
-//! # Example
 //! ```no_run
 //! use rig_core::driver::CompletionProvider;
 //! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
@@ -23,21 +19,25 @@ pub mod streaming;
 
 pub use client::Client;
 
-// Include the generated proto code. Public so the events-first conformance
-// seam ([`streaming::stream_from_events`]) can be fed constructed events.
+/// Generated Gemini protobuf messages and service client.
+///
+/// ```
+/// use rig_gemini_grpc::proto::GenerateContentResponse;
+///
+/// let response = GenerateContentResponse::default();
+/// assert!(response.candidates.is_empty());
+/// ```
 pub mod proto {
     #![allow(clippy::all)]
     #![allow(warnings)]
     tonic::include_proto!("google.ai.generativelanguage.v1beta");
 }
 
-// Re-export commonly used proto types
 pub use proto::{
     Content, EmbedContentRequest, EmbedContentResponse, GenerateContentRequest,
     GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
 
-// Normalize Gemini's protobuf usage metadata into rig's usage record.
 impl From<&proto::GenerateContentResponse> for rig_core::completion::Usage {
     fn from(response: &proto::GenerateContentResponse) -> Self {
         response

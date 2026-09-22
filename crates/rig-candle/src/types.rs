@@ -1,4 +1,11 @@
-//! Public errors and response metadata.
+//! Local inference errors, finish reasons, and response metadata.
+//!
+//! ```
+//! use rig_candle::FinishReason;
+//!
+//! assert_eq!(serde_json::to_string(&FinishReason::Eos)?, "\"eos\"");
+//! # Ok::<(), serde_json::Error>(())
+//! ```
 
 use rig_core::completion::{CompletionError, Usage};
 use serde::{Deserialize, Serialize};

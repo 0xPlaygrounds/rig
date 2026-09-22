@@ -272,14 +272,11 @@ impl MaxPrice {
 /// omitted, leaving gateway defaults in effect. Rig serializes these preferences
 /// without validating provider slugs or numeric limits.
 ///
-/// See: <https://openrouter.ai/docs/guides/routing/provider-selection>
-///
-/// # Example
+/// See <https://openrouter.ai/docs/guides/routing/provider-selection>.
 ///
 /// ```rust
 /// use rig_core::providers::openrouter::{ProviderPreferences, ProviderSortStrategy, Quantization};
 ///
-/// // Create preferences for zero data retention providers, sorted by throughput
 /// let prefs = ProviderPreferences::new()
 ///     .sort(ProviderSortStrategy::Throughput)
 ///     .zdr(true)
@@ -356,8 +353,6 @@ impl ProviderPreferences {
     /// If `allow_fallbacks` is true (default), OpenRouter may try other providers
     /// after this list is exhausted.
     ///
-    /// # Example
-    ///
     /// ```rust
     /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
@@ -374,9 +369,7 @@ impl ProviderPreferences {
         self
     }
 
-    /// Hard allowlist. Only these provider slugs are eligible.
-    ///
-    /// # Example
+    /// Restrict eligibility to these provider slugs.
     ///
     /// ```rust
     /// use rig_core::providers::openrouter::ProviderPreferences;
@@ -395,9 +388,7 @@ impl ProviderPreferences {
         self
     }
 
-    /// Blocklist. These provider slugs are never used.
-    ///
-    /// # Example
+    /// Exclude these provider slugs.
     ///
     /// ```rust
     /// use rig_core::providers::openrouter::ProviderPreferences;
@@ -440,9 +431,7 @@ impl ProviderPreferences {
         self
     }
 
-    /// If `true`, restrict routing to Zero Data Retention endpoints only.
-    ///
-    /// # Example
+    /// Restrict routing to Zero Data Retention endpoints when enabled.
     ///
     /// ```rust
     /// use rig_core::providers::openrouter::ProviderPreferences;
@@ -457,10 +446,7 @@ impl ProviderPreferences {
 
     /// Set the sorting strategy for providers.
     ///
-    /// If set, default load balancing is disabled and providers are tried
-    /// deterministically in the resulting order.
-    ///
-    /// # Example
+    /// Disable default load balancing and try providers in the resulting order.
     ///
     /// ```rust
     /// use rig_core::providers::openrouter::{ProviderPreferences, ProviderSortStrategy};
@@ -475,18 +461,14 @@ impl ProviderPreferences {
 
     /// Set preferred minimum throughput threshold.
     ///
-    /// Endpoints not meeting the threshold are deprioritized (moved later), not excluded.
-    ///
-    /// # Example
+    /// Endpoints below the threshold are deprioritized, not excluded.
     ///
     /// ```rust
     /// use rig_core::providers::openrouter::{ProviderPreferences, ThroughputThreshold, PercentileThresholds};
     ///
-    /// // Simple threshold
     /// let prefs = ProviderPreferences::new()
     ///     .preferred_min_throughput(ThroughputThreshold::Simple(50.0));
     ///
-    /// // Percentile threshold
     /// let prefs = ProviderPreferences::new()
     ///     .preferred_min_throughput(ThroughputThreshold::Percentile(
     ///         PercentileThresholds::new().p90(50.0)
@@ -513,9 +495,7 @@ impl ProviderPreferences {
         self
     }
 
-    /// Restrict routing to providers serving specific quantization levels.
-    ///
-    /// # Example
+    /// Restrict routing to providers serving these quantization levels.
     ///
     /// ```rust
     /// use rig_core::providers::openrouter::{ProviderPreferences, Quantization};

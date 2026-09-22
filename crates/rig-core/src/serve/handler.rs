@@ -1,4 +1,11 @@
-//! The impl side of the bus: what a handler is and how it answers.
+//! Handler dispatch, owned replies, and delivery observation.
+//!
+//! ```
+//! use rig_core::{effect::EffectId, serve::Dispatch};
+//!
+//! let dispatch = Dispatch::new(EffectId::from_raw(1), false);
+//! assert!(!dispatch.is_stream());
+//! ```
 
 use std::{
     sync::{Arc, Mutex},
@@ -18,17 +25,10 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
-/// The future the bus stores for a handler: boxed, because the driver's
-/// table holds handlers as `Arc<dyn Handler>` (an in-flight task holds its
-/// handler while the table is replaced) and the stored trait must be
-/// dyn-compatible. `Send` on native (the `WasmBoxedFuture` fork), which is
-/// what makes `BusDriver: Send`. Authors never see it: they implement
-/// [`Serve`] with an `async fn`, and the one `Box::pin` is in the blanket
-/// impl below.
+/// Boxed handler reply future, `Send` on native targets and locally polled on WASM.
 pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 
-/// Something registered on the bus that serves effects — the trait
-/// handler authors implement, with an `async fn`.
+/// A registered effect handler returning an outcome or an owned stream.
 ///
 /// Provider and tool authors do not implement this directly: the adapters
 /// in [`crate::serve::adapters`] wrap the impl-side traits (`CompletionModel`,
@@ -61,9 +61,7 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
     ) -> impl Future<Output = Reply> + WasmCompatSend + use<'_, Self>;
 }
 
-/// The dyn-compatible form the bus stores: the one erasure. Every [`Serve`]
-/// is a `Handler` through the blanket impl, which is where the boxing
-/// happens — once, here.
+/// Object-safe handler interface implemented for every [`Serve`].
 pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
@@ -103,16 +101,8 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
     }
 }
 
-/// A handler behind the bus's one erasure: what a registry stages until a
-/// bus takes it, what a registrar carries to the
-/// driver, what the driver's handler table holds.
-///
-/// On native this is `Arc<dyn Handler + Send + Sync>` (every handler is,
-/// through the `WasmCompat*` supertraits), so it is `Clone + Send + Sync +
-/// 'static`. On browser wasm the supertraits are no-op markers — a provider
-/// client there is `!Send` — and so is this: `Arc<dyn Handler>`, `!Send`,
-/// honestly. Nothing that must be `Send + Sync` on every target (the
-/// dispatcher, the typed views) holds one.
+/// Shared, type-erased handler. Clones retain the same handler allocation.
+/// Implements `Send + Sync` on native targets, but not on WASM.
 #[derive(Clone)]
 pub struct ErasedHandler(ErasedInner);
 
@@ -129,8 +119,7 @@ impl ErasedHandler {
 
     /// Wrap this handler in a [`Layer`](super::Layer): `intercept` sees
     /// every dispatch before this handler does and every answer after.
-    /// `handler.layered(a).layered(b)` puts `b` outermost — `b.before`
-    /// first, `a.after` first.
+    /// `handler.layered(a).layered(b)` calls `b.before` first and `a.after` first.
     pub fn layered(self, intercept: impl super::Intercept) -> Self {
         Self::new(super::Layer::new(self, intercept))
     }
@@ -159,8 +148,7 @@ impl std::fmt::Debug for ErasedHandler {
     }
 }
 
-/// An erased handler serves whatever it wraps: re-erasing one (nothing in
-/// the tree does) forwards through one more box.
+/// Forwards serving to the wrapped handler; re-erasure adds another boxed future.
 impl Serve for ErasedHandler {
     type Family = crate::effect::family::Dynamic;
 
@@ -237,9 +225,8 @@ fn finish_unary(
     Ok(Outcome::Completion(response))
 }
 
-/// Re-emit a completed response as the events a stream consumer expects:
-/// one block per content item, then `Final`. Used when a unary answer meets
-/// a streaming dispatch (a replayed log, a unary-only custom handler).
+/// Re-emits completion content as stream events followed by `Final`. Images
+/// become unknown payloads; serialization failures become error items.
 pub(crate) fn events_from_response(
     response: &CompletionResponse,
 ) -> Vec<Result<StreamEvent, ErrorReport>> {
@@ -334,7 +321,8 @@ impl StreamTap {
         Self::default()
     }
 
-    /// Fold one event; returns the recorded outcome at the terminal.
+    /// Folds an event, returning an outcome on `Final`, an error item, or an
+    /// accumulation failure. Callers decide whether to stop after an outcome.
     pub fn observe(
         &mut self,
         item: &Result<StreamEvent, ErrorReport>,
@@ -364,12 +352,8 @@ impl StreamTap {
     }
 }
 
-/// The report a stream that ended before its terminal record resolves to.
-/// A truncation is a transport fault, not a provider verdict: the same
-/// request is served whole on the next call, as a reset connection is, so
-/// the report is retryable and a run with budget re-issues it (rig-ecs
-/// CONTRACT §5). What was delivered stays in the stream's fold for the
-/// record; the retry starts over.
+/// Returns a retryable response error for a stream that ended before its terminal
+/// record. Retryability does not guarantee a subsequent attempt will succeed.
 pub fn stream_truncated() -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Response,

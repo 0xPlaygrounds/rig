@@ -5,8 +5,8 @@ use super::{EMBED, field_member};
 
 const EMBED_WITH: &str = "embed_with";
 
-/// Finds and returns fields with #[embed(embed_with = "...")] attribute tags only.
-/// Also returns the "..." part of the tag (ie. the custom function).
+/// Returns custom-annotated fields and their parsed function paths.
+/// Malformed attributes return spanned errors.
 pub(crate) fn custom_embed_fields(
     data_struct: &syn::DataStruct,
 ) -> syn::Result<Vec<(syn::Member, syn::ExprPath)>> {
@@ -32,17 +32,15 @@ pub(crate) fn custom_embed_fields(
 }
 
 trait CustomAttributeParser {
-    // Determine if field is tagged with an #[embed(embed_with = "...")] attribute.
+    /// Recognizes custom embedding attributes, rejecting unknown keys.
     fn is_custom(&self) -> syn::Result<bool>;
 
-    // Get the "..." part of the #[embed(embed_with = "...")] attribute.
-    // Ex: If attribute is tagged with #[embed(embed_with = "my_embed")], returns "my_embed".
+    /// Parses the custom function path from a string literal.
     fn expand_tag(&self) -> syn::Result<syn::ExprPath>;
 }
 
 impl CustomAttributeParser for syn::Attribute {
     fn is_custom(&self) -> syn::Result<bool> {
-        // Check that the attribute is a list.
         match &self.meta {
             syn::Meta::List(meta) => {
                 if meta.tokens.is_empty() {
@@ -52,13 +50,11 @@ impl CustomAttributeParser for syn::Attribute {
             _ => return Ok(false),
         };
 
-        // Check the first attribute tag (the first "embed")
         if !self.path().is_ident(EMBED) {
             return Ok(false);
         }
 
         self.parse_nested_meta(|meta| {
-            // Parse the meta attribute as an expression. Need this to compile.
             meta.value()?.parse::<syn::Expr>()?;
 
             if meta.path.is_ident(EMBED_WITH) {
@@ -77,7 +73,6 @@ impl CustomAttributeParser for syn::Attribute {
 
     fn expand_tag(&self) -> syn::Result<syn::ExprPath> {
         fn function_path(meta: &ParseNestedMeta<'_>) -> syn::Result<ExprPath> {
-            // #[embed(embed_with = "...")]
             let expr = meta.value()?.parse::<syn::Expr>()?;
             let mut value = &expr;
             while let syn::Expr::Group(e) = value {

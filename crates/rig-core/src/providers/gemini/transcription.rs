@@ -21,11 +21,8 @@ use super::completion::gemini_api_types::GenerateContentResponse;
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-/// The `generateContent` body one transcription sends: the audio inline as
-/// base64, under the preamble's system instruction.
-///
-/// The one place the bytes Gemini receives are stated: [`Transcriptions`]
-/// encodes through it.
+/// Encode audio as inline base64 with a transcription system instruction.
+/// Reject invalid generation parameters or JSON serialization failures.
 fn transcription_body(
     request: transcription::TranscriptionRequest,
 ) -> Result<Vec<u8>, TranscriptionError> {
@@ -45,8 +42,7 @@ fn transcription_body(
         role: Some(Role::Model),
     });
 
-    // Gemini needs a mime type for the blob and the filename is the only
-    // evidence the request carries; mp3 is the format the endpoint documents.
+    // The request supplies no explicit MIME type, so infer it from the filename.
     let mime_type = mime_guess::from_path(Path::new(&request.filename))
         .first()
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
@@ -84,10 +80,7 @@ fn transcription_body(
 
 /// The transcription wire: `POST /v1beta/models/{model}:generateContent`.
 ///
-/// Gemini has no dedicated transcription endpoint. The audio rides inline as
-/// base64 inside an ordinary `generateContent` request, so this wire sends
-/// JSON rather than a multipart form, and a transcript never arrives in
-/// pieces: both [`Mode`]s send the same request and read one whole reply.
+/// Both [`Mode`]s send inline audio in JSON and read a whole response.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Transcriptions {
     /// The provider this wire speaks to.
@@ -125,8 +118,6 @@ impl Wire for Transcriptions {
         _mode: Mode,
     ) -> Result<Encoded, TranscriptionError> {
         let body = transcription_body(request)?;
-        // The GenerateContent family authenticates through the `key` query
-        // parameter, appended last.
         let request = http::Request::post(format!(
             "{}/v1beta/models/{}:generateContent?key={}",
             self.provider.base_url,
@@ -145,10 +136,8 @@ impl Wire for Transcriptions {
     }
 }
 
-/// Decodes one `generateContent` reply into a transcript.
-///
-/// `project` stays at its default: this reply carries nothing beyond what the
-/// GenerateContent decoder's own projection already observes.
+/// Decode visible text from the first `generateContent` candidate.
+/// Missing candidates or visible text produce response errors.
 #[derive(Default)]
 pub struct TranscriptionsDecoder;
 
@@ -162,9 +151,6 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
         )
     }
 
-    /// The mapping — the no-candidates and no-text errors, and the usage,
-    /// model and response-id carry — is [`NormalizeTranscriptionResponse`]'s,
-    /// so this wire holds no second reading of the same reply.
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
         out.push(event.normalize(super::PROVIDER_NAME));
     }

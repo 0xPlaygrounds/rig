@@ -1,11 +1,5 @@
-//! The chat-completions wire's reply shapes.
-//!
-//! One frame type serves both replies. A streamed frame is a
-//! `chat.completion.chunk` whose choice carries a `delta`; the unary reply is
-//! a `chat.completion` whose choice carries a whole `message`. Modelling them
-//! as one [`ChatFrame`] with two choice shapes means the typed decode happens
-//! once per frame and the unary body is *converted to the stream's shape in
-//! `classify`* — there is no second content mapping to drift from the first.
+//! Chat Completions reply shapes for unary messages and streamed deltas.
+//! Unary messages are converted to delta events during classification.
 
 use serde::{Deserialize, Serialize};
 
@@ -108,10 +102,7 @@ where
 pub(crate) struct StreamingDelta {
     #[serde(default, deserialize_with = "deserialize_delta_content")]
     pub(crate) content: Option<String>,
-    /// A structured-output refusal streams here, on its own key, with
-    /// `content` held at `null` for the whole turn — the same sibling-of-
-    /// `content` spelling the unary body uses. Its deltas are the turn's
-    /// visible text, so they join the text stream (see [`delta_text`]).
+    /// Refusal text used when content is absent or empty; see [`delta_text`].
     #[serde(default)]
     pub(crate) refusal: Option<String>,
     #[serde(default)]
@@ -147,13 +138,7 @@ pub enum FinishReason {
 }
 
 impl FinishReason {
-    /// This reason in the provider's own wire spelling.
-    ///
-    /// Round-tripping through the wire form keeps `map_openai_finish_reason`
-    /// the single place the OpenAI-compatible vocabulary is interpreted, so
-    /// the streaming and unary paths cannot drift — including on the
-    /// deprecated `function_call` spelling, which this enum captures in
-    /// [`FinishReason::Other`].
+    /// Return the provider's wire spelling, preserving unknown values.
     pub(crate) fn as_wire(&self) -> &str {
         match self {
             Self::ToolCalls => "tool_calls",
@@ -165,14 +150,8 @@ impl FinishReason {
     }
 }
 
-/// The visible text a delta carries: its `content`, or — when `content` has
-/// none — its `refusal`.
-///
-/// A refusal turn streams `"content": null` beside the refusal deltas (and
-/// opens with an empty `"refusal": ""`), so preferring non-empty content
-/// keeps ordinary turns byte-identical while letting a refusal reach the
-/// caller instead of vanishing. An empty `content` string with no refusal to
-/// fall back on stays exactly as it was.
+/// Return nonempty content, falling back to nonempty refusal text.
+/// Preserve empty content when no nonempty refusal is available.
 pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
     match delta.content.as_deref() {
         Some(content) if !content.is_empty() => delta.content.clone(),
@@ -184,18 +163,9 @@ pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
     }
 }
 
-/// The accounting a chat-completions reply reports.
-///
-/// The OpenAI-compatible fields every dialect on this wire sends, plus
-/// whatever else the dialect added: a gateway's `cost`, DeepSeek's
-/// `prompt_cache_hit_tokens`, llama.cpp's `timings`. The extras ride along so
-/// [`StreamFinal::raw`] loses nothing, which is what the typed escape hatch
-/// used to provide through a per-provider `StreamingUsage` type.
-// `Default` is load-bearing, not decoration: `StreamingCompletionResponse`
-// declares `#[serde(default)] usage: Option<U>`, and serde's derive
-// propagates that as a `U: Default` bound on the generated `Deserialize`.
-// Without it a caller cannot name `ChatUsage` through the very record this
-// type's docs advertise as the typed escape hatch.
+/// Chat Completions accounting with dialect-specific fields preserved for
+/// [`StreamFinal::raw`].
+// Serde derives a U: Default bound for StreamingCompletionResponse<U>.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChatUsage {
     /// The OpenAI-compatible accounting.
@@ -292,13 +262,7 @@ impl ChatFrame {
     /// omit it entirely.
     pub(crate) fn is_whole(&self) -> bool {
         match self.object() {
-            // The tag is authoritative when the dialect sends one. It has to
-            // be: Perplexity streams a full `message` on every chunk beside
-            // its `delta`, and its terminator is tagged
-            // `chat.completion.done`, so keying on "a choice carries a
-            // message" read every one of its stream frames as the whole
-            // reply — the first frame emitted a terminal, the driver stopped,
-            // and the rest of the turn was dropped.
+            // Stream chunks may include whole messages, so an explicit tag wins.
             Some(object) => object == "chat.completion",
             // No tag: several gateways omit it, and then a choice carrying a
             // whole `message` rather than a `delta` is the unary body.
@@ -306,13 +270,7 @@ impl ChatFrame {
         }
     }
 
-    /// The frame's `object` tag, when the dialect sends one.
-    ///
-    /// Read out of the flattened metadata rather than declared as a field on
-    /// purpose: a named field would *consume* the key, and `object` would
-    /// then be missing from the terminal record's `additional_params` while
-    /// its neighbours (`service_tier`, `system_fingerprint`) survived — the
-    /// old adapter accumulated all of them.
+    /// Borrow the `object` tag without removing it from terminal metadata.
     pub(crate) fn object(&self) -> Option<&str> {
         self.additional_params
             .get("object")
@@ -367,9 +325,7 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Provider-reported model identifier, when the reply emitted one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// The transport request id from the reply's `x-request-id` header — not
-    /// part of any frame; stamped by the driver. `None` when the provider
-    /// did not report one.
+    /// Driver-supplied transport request ID from `x-request-id`, if reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
     /// Token log probabilities accumulated from all primary-choice chunks.
@@ -410,11 +366,7 @@ impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,
 {
-    /// Normalize this terminal record, attributed to `provider`.
-    ///
-    /// The provider descriptor name is an *input* rather than a constant:
-    /// this record is shared by every dialect on the wire, so baking in
-    /// `"openai"` would mislabel Groq, Together, DeepSeek and the rest.
+    /// Normalize usage and terminal metadata under `provider`, retaining `raw`.
     pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
         StreamFinal::new(
             provider,

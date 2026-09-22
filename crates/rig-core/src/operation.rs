@@ -1,13 +1,14 @@
 //! The operations a [`Wire`](crate::wire::Wire) can perform.
 //!
-//! One unit struct per operation, each declaring what goes in, what comes
-//! out event by event, and how those events fold into one response. A
-//! provider never implements an operation — it picks one.
+//! Each operation declares request, event, response, and fold types.
+//! [`Completion`] streams events; other operations fold buffered replies,
+//! including pages for [`ModelListing`] and [`ContextCache`].
 //!
-//! [`Completion`] is the only operation whose replies stream; the rest are
-//! unary, so their `Event` *is* their `Response` and the fold takes the one
-//! event ([`Take`]). [`ModelListing`] and [`ContextCache`] are unary per
-//! page and fold pages.
+//! ```
+//! use rig_core::{operation::Completion, wire::Operation};
+//!
+//! assert_eq!(Completion::NAME, "completion");
+//! ```
 
 use crate::wire::{Fold, Operation, Reply, Sink, WireError};
 
@@ -56,10 +57,8 @@ impl<Op: Operation> Sink<Op> for One<Op> {
     }
 }
 
-/// The fold of an operation whose reply is one event: take it.
-///
-/// A second event is a provider defect and the first one latches, matching
-/// the streaming rule for a repeated terminal.
+/// Retains the first event and ignores later events. Finishing without an
+/// event returns a decode error; otherwise reply metadata is stamped on the response.
 pub struct Take<Op: Operation> {
     value: Option<Op::Event>,
 }

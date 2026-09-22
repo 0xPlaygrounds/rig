@@ -16,27 +16,14 @@ use rig_core::image_generation::ImageGenerationError;
 /// the provider's own code (`ThrottlingException`).
 type Classified = (Option<String>, String, Option<String>);
 
-/// Emit a `fn(err) -> Classified` that extracts the provider-supplied
-/// message and exception type from an AWS service error.
-///
-/// Each generated fn returns `(Some(message), _, Some(type))` when the
-/// service supplied a genuine error message (which should be surfaced as a
-/// provider response body), otherwise `(None, fallback, type)` where
-/// `fallback` is Rig-authored diagnostic prose. The caller decides which arm
-/// to surface (see [`gated`]) so that Rig prose never leaks into
-/// `provider_response_body()`.
+/// Generates classifiers returning provider message, fallback diagnostic, and
+/// exception code separately. Fallback prose must not become a provider body.
 macro_rules! service_error_message {
     ($fn_name:ident, $err_ty:ty, $default:expr, { $($variant:ident => $msg:expr),+ $(,)? }) => {
         fn $fn_name(err: $err_ty) -> Classified {
             type E = $err_ty;
-            // The catch-all arm is not only "an exception we chose not to
-            // name": `SdkError::into_service_error` funnels *every*
-            // non-service failure (timeout, dispatch error, unparseable
-            // response) and every exception this SDK version does not model
-            // into `Unhandled`. Those still carry the service's own message in
-            // their error metadata, so read it before falling back to Rig
-            // prose — dropping it reported a Bedrock end-of-life notice as
-            // "verify Internet connection or AWS keys".
+            // Unhandled exceptions may retain provider metadata; preserve it
+            // before considering fallback diagnostics.
             let metadata_message =
                 ::aws_smithy_types::error::metadata::ProvideErrorMetadata::message(&err)
                     .map(str::to_string);
@@ -53,14 +40,8 @@ macro_rules! service_error_message {
     };
 }
 
-/// The raw HTTP body Bedrock answered with, when the failure carries one.
-///
-/// `SdkError::into_service_error` funnels every failure this SDK version does
-/// not model — a new exception type, or any response whose `x-amzn-errortype`
-/// the transport did not preserve — into `Unhandled`, whose *source* holds the
-/// parsed message while its `meta()` is empty. Reading the raw body recovers
-/// what the service actually said instead of reporting Bedrock's end-of-life
-/// notice as "verify Internet connection or AWS keys".
+/// Returns a trimmed, nonempty UTF-8 response body when retained by the SDK.
+/// Raw bodies preserve service diagnostics absent from parsed error metadata.
 fn raw_response_body<E, R>(error: &SdkError<E, R>) -> Option<String>
 where
     R: RawResponseBody,
@@ -108,9 +89,8 @@ impl RawResponseStatus for HttpResponse {
     }
 }
 
-/// Whether a Bedrock exception type is one the same call may reasonably be
-/// retried on when no HTTP status is at hand: the service was busy, not
-/// ready, or timed out. Everything else says the request itself is wrong.
+/// Classifies known transient exception codes when no HTTP status is available.
+/// Unlisted codes are non-transient.
 fn transient_exception(code: &str) -> bool {
     matches!(
         code,
@@ -128,8 +108,7 @@ fn transient_exception(code: &str) -> bool {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Transport {
     status: Option<StatusCode>,
-    /// The SDK's own classification: a timeout or a dispatch failure never
-    /// reached the service, so the same call may be retried.
+    /// Retry hint for SDK timeout or dispatch failures; delivery is not guaranteed.
     transient: Option<bool>,
 }
 
@@ -181,14 +160,9 @@ macro_rules! provider_reply {
 }
 provider_reply!(CompletionError, EmbeddingError, ImageGenerationError);
 
-/// Route a classified service error into an error type. A genuine provider
-/// message becomes a provider response body carrying the HTTP status the SDK
-/// saw (then the status classifies it), the exception type as its code, and
-/// — without a status — the exception type's own retry verdict. Without a
-/// message: a status the SDK saw is still the provider's reply (an empty
-/// body under that status); a timeout or dispatch failure is a transport
-/// failure, retryable like any response-less one; anything else is the
-/// Rig-authored fallback as a plain provider error.
+/// Constructs a provider response error when a message or status is available,
+/// preserving status, code, and retry hints. Otherwise uses a transport error for
+/// SDK timeout/dispatch failures or a plain fallback diagnostic.
 fn gated<E: ProviderReply>(
     (message, fallback, code): Classified,
     transport: Transport,
@@ -290,10 +264,8 @@ impl From<AwsSdkInvokeModelError> for EmbeddingError {
 
 pub struct AwsSdkConverseError(pub SdkError<ConverseError, HttpResponse>);
 
-/// Attach the AWS request id (from the SDK error's response metadata) to a
-/// preserved provider response body — the id AWS support asks for on failed
-/// calls (rig#2314). Rig-authored `ProviderError` diagnostics are left
-/// untouched: the id belongs with what the provider actually said.
+/// Attaches the AWS request ID to preserved provider response errors.
+/// Other error variants remain unchanged.
 fn attach_request_id(error: CompletionError, request_id: Option<String>) -> CompletionError {
     match error {
         CompletionError::ProviderResponse(response) => {

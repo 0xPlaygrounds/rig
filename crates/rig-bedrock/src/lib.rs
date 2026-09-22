@@ -15,8 +15,12 @@
 //! configured for the AWS SDK and a region with access to the selected Bedrock
 //! model.
 //!
-//! The root `rig` facade re-exports this crate as `rig::bedrock` when the
-//! `bedrock` feature is enabled.
+//! ```no_run
+//! use rig_bedrock::client::Client;
+//!
+//! let client = Client::from_env()?;
+//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! ```
 
 pub mod client;
 pub mod completion;

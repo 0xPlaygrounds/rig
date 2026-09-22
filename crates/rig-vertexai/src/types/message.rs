@@ -73,8 +73,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             let mut response_struct = serde_json::Map::new();
                             response_struct.insert("output".to_string(), output_value);
 
-                            // `functionResponse.name` is the executed
-                            // function's name — required data on the result.
+                            // Function responses correlate by name, not call ID.
                             let function_name = tool_result.name.clone();
                             let function_response = vertexai::model::FunctionResponse::new()
                                 .set_name(function_name)
@@ -119,10 +118,8 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             let mut part =
                                 vertexai::model::Part::new().set_function_call(function_call);
 
-                            // Echo back the Gemini `thoughtSignature` captured on the read side
-                            // (base64 → bytes). Required by thinking models on every follow-up turn.
-                            // A malformed signature is dropped (with a warning) rather than failing
-                            // the whole turn — one bad byte must not kill every other tool call.
+                            // Restore signature bytes for replay; malformed base64
+                            // is omitted with a warning rather than rejecting the turn.
                             if let Some(signature) = &tool_call.signature {
                                 match BASE64.decode(signature.as_bytes()) {
                                     Ok(bytes) => part = part.set_thought_signature(bytes),

@@ -1,8 +1,12 @@
-//! Reading a provider's configuration from the environment.
+//! Reads Unicode provider configuration values from the process environment.
 //!
-//! This is all that survives of the client layer: a wire is built from data,
-//! and the only construction step that can fail before a request is sent is
-//! reading a credential out of the environment.
+//! ```no_run
+//! use rig_core::client::env;
+//!
+//! let credential = env::required("OPENAI_API_KEY")?;
+//! # let _ = credential;
+//! # Ok::<(), env::EnvError>(())
+//! ```
 
 use std::env::VarError;
 
@@ -29,7 +33,8 @@ pub enum EnvError {
     },
 }
 
-/// Read a required environment variable.
+/// Reads a required variable, returning an error if absent or non-Unicode.
+/// Empty strings are accepted; callers validate the value.
 pub fn required(name: &'static str) -> Result<String, EnvError> {
     std::env::var(name).map_err(|source| EnvError::Variable { name, source })
 }

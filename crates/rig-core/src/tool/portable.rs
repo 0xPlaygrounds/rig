@@ -2,7 +2,15 @@
 //!
 //! Portable tools receive owned, deserialized arguments only. Runtime identity,
 //! authorization, mutable context, capability state, and lifecycle metadata
-//! remain outside this module.
+//! remain outside the typed portable call boundary.
+//!
+//! ```
+//! use rig_core::tool::{PortableDynamicTool, ToolOutput};
+//!
+//! let tool = PortableDynamicTool::new("echo", "Echo JSON", serde_json::json!({}),
+//!     |args| Box::pin(async move { Ok(ToolOutput::json(args)) }));
+//! assert!(tool.is_live());
+//! ```
 
 use std::sync::Arc;
 
@@ -63,25 +71,17 @@ pub trait PortableToolEmbedding: PortableTool {
     fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
 }
 
-/// A liveness probe: whether the tool's owner still serves it. A plain
-/// function, not a behaviour trait — it is exempt from the one-erasure
-/// rule the way `dyn Fn` is everywhere else.
-///
-/// Deregistration is lazy: a registry consults the probe on its next read
-/// (a snapshot for a request, a managed reconcile), not when the owner's
-/// transport closes. A dispatch that reaches the tool in that window fails
-/// at the transport, as the tool's own error, not as `HandlerUnavailable`.
+/// Reports whether a tool's owner still serves it. Registries check lazily on
+/// reads or reconciliation; calls before retirement may fail with a transport
+/// error rather than `HandlerUnavailable`.
 #[cfg(not(target_family = "wasm"))]
 pub type LivenessFn = Arc<dyn Fn() -> bool + Send + Sync>;
 /// A liveness probe (browser wasm: no `Send + Sync`, no threads).
 #[cfg(target_family = "wasm")]
 pub type LivenessFn = Arc<dyn Fn() -> bool>;
 
-/// A tool defined at runtime by a callback, portable across hosts: the
-/// definition plus the erased handler (the callback is the handler). An
-/// optional liveness probe lets a registry retire it when its owner (an MCP
-/// transport) goes away — the probe is deregistration, not a second
-/// execution path.
+/// Runtime-defined tool with an erased callback and optional liveness probe.
+/// The probe supports registry retirement; inline execution does not consult it.
 #[derive(Clone)]
 pub struct PortableDynamicTool {
     definition: ToolDefinition,
@@ -182,8 +182,7 @@ impl PortableDynamicTool {
         &self.handler
     }
 
-    /// The definition, the handler and the liveness probe, by value — what
-    /// a registry stages from a portable tool.
+    /// Consumes the tool into its definition, handler, and optional liveness probe.
     pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
         (self.definition, self.handler, self.liveness)
     }

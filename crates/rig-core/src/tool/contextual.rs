@@ -1,121 +1,14 @@
-//! Contextual tool authoring and the erased tool.
-//!
-//! A typed [`Tool`] implements one [`Tool::call`] method. Rig erases it
-//! once ([`ErasedTool`]) into a tool-family handler and exposes a single
-//! [`ToolResult`] view to hooks and runtime callers. [`ToolContext`] is the sole
-//! path for typed inbound context and host-only result metadata.
-//!
-//! None of this is runtime-specific: a registry that holds tools by name,
-//! pins them per turn and dispatches to them is a driver's business
-//! (`rig_agent::tool::{ToolSet, ToolCatalog}` for the futures agent); this
-//! module has only what a tool author implements and what a bus takes.
-//!
-//! # Implementing a typed tool
-//!
-//! Ordinary serializable return values are converted to canonical model output
-//! without first passing through a string.
+//! Contextual tool authoring and JSON-argument dispatch adapters.
+//! [`ToolContext`] carries typed inbound values and host-only result metadata;
+//! model-visible outputs retain their text, JSON, or multimodal representation.
 //!
 //! ```
-//! use rig_core::tool::{Tool, ToolContext};
-//! use serde::{Deserialize, Serialize};
-//! use std::convert::Infallible;
+//! use rig_core::tool::{DynamicTool, ToolOutput};
 //!
-//! #[derive(Deserialize)]
-//! struct AddArgs {
-//!     left: i64,
-//!     right: i64,
-//! }
-//!
-//! #[derive(Serialize)]
-//! struct Sum {
-//!     value: i64,
-//! }
-//!
-//! #[derive(Serialize, Deserialize)]
-//! struct AuditRecord(i64);
-//!
-//! impl rig_core::tool::ContextValue for AuditRecord {
-//!     const KEY: &'static str = "audit_record";
-//! }
-//!
-//! struct Add;
-//!
-//! impl Tool for Add {
-//!     const NAME: &'static str = "add";
-//!     type Args = AddArgs;
-//!     type Output = Sum;
-//!     type Error = Infallible;
-//!
-//!     fn description(&self) -> String {
-//!         "Add two integers".into()
-//!     }
-//!
-//!     fn parameters(&self) -> serde_json::Value {
-//!         serde_json::json!({
-//!             "type": "object",
-//!             "properties": {
-//!                 "left": { "type": "integer" },
-//!                 "right": { "type": "integer" }
-//!             },
-//!             "required": ["left", "right"]
-//!         })
-//!     }
-//!
-//!     async fn call(
-//!         &self,
-//!         context: &mut ToolContext,
-//!         args: Self::Args,
-//!     ) -> Result<Self::Output, Self::Error> {
-//!         let value = args.left + args.right;
-//!         let _ = context.insert_result(AuditRecord(value));
-//!         Ok(Sum { value })
-//!     }
-//! }
+//! let tool = DynamicTool::new("echo", "Echo JSON", serde_json::json!({}),
+//!     |_context, args| Box::pin(async move { Ok(ToolOutput::json(args)) }));
+//! assert_eq!(tool.name(), "echo");
 //! ```
-//!
-//! Return [`ToolOutput`] for explicit JSON or multimodal presentation. A
-//! [`ToolResultContent`](crate::message::ToolResultContent) or a `Vec` of
-//! content blocks can also be used directly as a typed tool output without
-//! being mistaken for ordinary JSON.
-//!
-//! ```
-//! use rig_core::{
-//!     message::{ImageMediaType, ToolResultContent},
-//!     tool::ToolOutput,
-//! };
-//!
-//! let output = ToolOutput::one(ToolResultContent::image_base64(
-//!     "iVBORw0KGgo=",
-//!     Some(ImageMediaType::PNG),
-//!     None,
-//! ));
-//! assert!(matches!(
-//!     output.as_content().first(),
-//!     Some(ToolResultContent::Image(_))
-//! ));
-//! ```
-//!
-//! Explicit [`ToolExecutionError`] constructors keep their detailed message
-//! model-visible so validation failures can tell the model how to recover. The
-//! default [`Tool::map_error`] conversion preserves an arbitrary source error
-//! for operators but exposes only safe kind-level feedback. Override
-//! [`Tool::map_error`] or use [`ToolExecutionError::with_model_output`] when a
-//! domain error has deliberate structured or actionable model feedback.
-//!
-//! # Migration from the parallel tool APIs
-//!
-//! | Removed concept | Canonical replacement |
-//! | --- | --- |
-//! | Multiple typed `call*` methods | One [`Tool::call`] method |
-//! | Public dynamic dispatch traits | [`DynamicTool`] |
-//! | Parallel error and failure types | [`ToolExecutionError`] and [`ToolErrorKind`](super::ToolErrorKind) |
-//! | Author-facing outcome enums | Ordinary `Result<T, Self::Error>` normalized at dispatch |
-//! | Separate call/result extension maps | [`ToolContext`] |
-//! | Parallel string/structured dispatch | `ToolSet::execute` and the registry handle's `execute`, both in `rig-agent` |
-//!
-//! Model-visible output remains typed throughout dispatch. Rendering to text is
-//! a terminal provider or telemetry concern; Rig does not reconstruct rich
-//! content by parsing a returned string.
 
 use std::future::Future;
 
@@ -167,9 +60,9 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
 
     /// Normalize a typed author-facing error for runtime policy and telemetry.
     ///
-    /// The default preserves the concrete source and classifies it as
-    /// [`crate::tool::ToolErrorKind::Other`]. Override this method when the domain error can
-    /// provide a more precise kind, retryability policy, or safe model output.
+    /// The default preserves concrete sources for operators and exposes safe
+    /// kind-level model feedback. An existing [`ToolExecutionError`] retains its
+    /// classification and model output. Override to supply deliberate domain feedback.
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
         ToolExecutionError::from_error(error)
     }
@@ -267,13 +160,8 @@ where
     }
 }
 
-/// Normalize one erased invocation's outcome into the canonical [`ToolResult`].
-///
-/// Output conversion happens here rather than in each [`ErasedTool::execute`] so
-/// a conversion failure and an execution failure reach the runtime as the same
-/// kind of failed result.
-/// Run a runtime-defined tool callback over raw JSON arguments: the parse
-/// and result-shaping every tool shares, for the bus's `ToolFn` handler.
+/// Parses JSON arguments and runs a contextual callback, returning parse,
+/// execution, or output-conversion failures as failed tool results.
 pub(crate) async fn execute_callback<F>(
     callback: &F,
     args: String,
@@ -420,8 +308,7 @@ impl DynamicTool {
         &self.handler
     }
 
-    /// The definition, the handler and the liveness probe, by value — what
-    /// a registry stages from a runtime-defined tool.
+    /// Consumes the tool into its definition, handler, and optional liveness probe.
     pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
         (self.definition, self.handler, self.liveness)
     }

@@ -6,12 +6,11 @@ use serde_json::{Value, json};
 
 use super::VectorizeError;
 
-/// Filter for Vectorize vector search queries.
+/// Metadata filter for Vectorize queries, supporting the `$eq`, `$ne`, `$gt`,
+/// `$lt`, `$gte`, `$lte`, `$in`, and `$nin` operators over indexed fields.
 ///
-/// Vectorize supports filtering on indexed metadata fields using operators like
-/// `$eq`, `$ne`, `$gt`, `$lt`, `$gte`, `$lte`, `$in`, and `$nin`.
-///
-/// Note: Vectorize does NOT support OR filters. Calling `or()` will return an error.
+/// Vectorize has no disjunction, so `or` produces a filter that
+/// [`VectorizeFilter::validate`] rejects.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VectorizeFilter(Value);
 
@@ -31,6 +30,7 @@ impl VectorizeFilter {
         &self.0
     }
 
+    /// Whether the filter constrains nothing.
     pub fn is_empty(&self) -> bool {
         self.0.as_object().is_none_or(serde_json::Map::is_empty)
     }
@@ -51,8 +51,9 @@ impl SearchFilter for VectorizeFilter {
         Self(json!({ key.as_ref(): { "$lt": value } }))
     }
 
+    /// Merges both filters into one object, which Vectorize evaluates as a
+    /// conjunction. Keys present in both are taken from `rhs`.
     fn and(self, rhs: Self) -> Self {
-        // Vectorize uses implicit AND by merging filter objects
         let mut merged = match self.0 {
             Value::Object(obj) => obj,
             _ => serde_json::Map::new(),
@@ -67,44 +68,43 @@ impl SearchFilter for VectorizeFilter {
         Self(Value::Object(merged))
     }
 
+    /// Discards both operands and returns a sentinel filter, since Vectorize has
+    /// no disjunction and this method cannot fail. Searching with the result
+    /// errors during validation.
     fn or(self, _rhs: Self) -> Self {
-        // Vectorize does not support OR filters.
-        // We cannot return an error from this trait method, so we log a warning
-        // and return a filter that will cause an API error.
-        // Users should check for OR support before using it.
         tracing::error!("Vectorize does not support OR filters. This filter will fail.");
         Self(json!({ "$unsupported_or": "Vectorize does not support OR filters" }))
     }
 }
 
 impl VectorizeFilter {
-    /// Creates a "not equal" filter.
+    /// Matches records whose value at `key` differs from `value`.
     pub fn ne(key: impl AsRef<str>, value: &Value) -> Self {
         Self(json!({ key.as_ref(): { "$ne": value } }))
     }
 
-    /// Creates a "greater than or equal" filter.
+    /// Matches records whose value at `key` is at least `value`.
     pub fn gte(key: impl AsRef<str>, value: &Value) -> Self {
         Self(json!({ key.as_ref(): { "$gte": value } }))
     }
 
-    /// Creates a "less than or equal" filter.
+    /// Matches records whose value at `key` is at most `value`.
     pub fn lte(key: impl AsRef<str>, value: &Value) -> Self {
         Self(json!({ key.as_ref(): { "$lte": value } }))
     }
 
-    /// Creates an "in" filter (value must be one of the provided values).
+    /// Matches records whose value at `key` is one of `values`.
     pub fn in_values(key: impl AsRef<str>, values: &[Value]) -> Self {
         Self(json!({ key.as_ref(): { "$in": values } }))
     }
 
-    /// Creates a "not in" filter (value must not be any of the provided values).
+    /// Matches records whose value at `key` is none of `values`.
     pub fn nin(key: impl AsRef<str>, values: &[Value]) -> Self {
         Self(json!({ key.as_ref(): { "$nin": values } }))
     }
 
-    /// Validates that the filter doesn't contain unsupported operations.
-    /// Returns an error if the filter contains OR operations.
+    /// Rejects filters built with a top-level disjunction. Nested disjunctions
+    /// are not detected.
     pub fn validate(&self) -> Result<(), VectorizeError> {
         if let Some(obj) = self.0.as_object()
             && obj.contains_key("$unsupported_or")

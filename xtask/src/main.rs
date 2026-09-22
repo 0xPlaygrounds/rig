@@ -9,8 +9,8 @@
 )]
 //! Workspace maintenance tasks for rig.
 //!
-//! Not part of the build and not published: the home for source-tree checks
-//! that CI runs and that need a real parser rather than a grep.
+//! Unpublished helper for the source-tree checks CI runs, which need a real
+//! parser rather than a text search.
 //!
 //! ```console
 //! cargo xtask check-packaging     # fail on stowaways, bloat and unused deps
@@ -68,9 +68,7 @@ tasks:
 ";
 
 fn workspace_root() -> PathBuf {
-    // `xtask/` sits directly under the workspace root by construction, so its
-    // parent is the root. A manifest dir with no parent is not a situation this
-    // tool can be in, but it is not worth a panic either.
+    // `xtask/` sits directly under the workspace root, so its parent is the root.
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest.parent().unwrap_or(manifest).to_path_buf()
 }

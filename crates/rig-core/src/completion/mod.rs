@@ -1,24 +1,11 @@
-//! Provider-agnostic completion and chat abstractions.
+//! Provider-agnostic completion requests, responses, and model traits.
+//! Providers translate [`CompletionRequest`] into wire requests and normalize
+//! replies as [`CompletionResponse`].
 //!
-//! This module contains the low-level request and response types used by provider
-//! implementations. [`CompletionModel`] is the provider-facing trait implemented
-//! by completion models; runtimes build orchestration on top of this boundary.
+//! ```no_run
+//! use rig_core::completion::CompletionModel;
 //!
-//! `CompletionRequest` is Rig's canonical request representation. Provider modules
-//! translate it into provider-specific request bodies and convert responses back into
-//! [`CompletionResponse`].
-//!
-//! # Example
-//!
-//! ```ignore
-//! use rig_core::{
-//!     completion::CompletionModel,
-//!     providers::openai::{self, wire::OpenAI},
-//! };
-//! use rig_reqwest::prelude::*;
-//!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
+//! # async fn run(model: &(impl CompletionModel + Clone)) -> Result<(), Box<dyn std::error::Error>> {
 //! let request = model.completion_request("What is Rig?").build();
 //! let response = model.completion(request).await?;
 //! println!("{:?}", response.choice);

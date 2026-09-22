@@ -1,12 +1,8 @@
 //! `check-wires`: inside `crates/rig-core/src/providers/`, everything is a
 //! wire.
 //!
-//! A wire is data plus an encoder and a decoder. That is not a style
-//! preference — it is what makes a provider testable from bytes, storable in
-//! a scene, and portable to a host that owns its own I/O. The moment one
-//! provider grows an `async fn`, a transport type parameter, or its own
-//! consumer-trait impl, the axis it adds multiplies against every other
-//! provider again, which is the shape this model exists to end.
+//! A wire is data plus an encoder and a decoder, which keeps providers testable
+//! from bytes and independent of the host's I/O.
 //!
 //! The rules, each with the failure it prevents:
 //!
@@ -17,22 +13,15 @@
 //! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient` | the transport parameter returning |
 //! | no consumer-trait impl | a second way to be a model |
 //!
-//! The one exception is `openai/responses_api/websocket.rs`: a session — one
-//! connection, many turns, warmup — is not a request/response exchange, so it
-//! keeps its own API and decodes every message through the shared driver.
-//! The credential exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from
-//! the `async` rules only.
+//! `openai/responses_api/websocket.rs` is exempt because a session spans many
+//! turns over one connection rather than a single exchange. The credential
+//! exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules
+//! only.
 //!
-//! Source is parsed with `syn`, so an `.await` in a doc comment or a string
-//! cannot trip the check, and a file `syn` cannot parse is an error rather
-//! than a pass. `syn` does not look inside a macro invocation's tokens,
-//! though, so the `.await` rule runs as a second pass over the file's raw
-//! token stream after the AST pass: the one place the AST cannot see is
-//! exactly where an `async_stream::stream! { … .await … }` hides.
-//!
-//! `*tests.rs` files and `tests/` directories are skipped: a test that drives
-//! a wire through a fake socket has to await something, and test code is not
-//! shipped.
+//! Source is parsed with `syn`, so awaits in comments or strings cannot trip the
+//! check and an unparsable file is an error. Because `syn` does not descend into
+//! macro invocations, the `.await` rule runs a second pass over the raw token
+//! stream. Test files and `tests/` directories are skipped.
 
 use std::path::{Path, PathBuf};
 
@@ -41,31 +30,19 @@ use quote::ToTokens;
 use syn::visit::{self, Visit};
 use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct};
 
-/// The files allowed to own something a pure `encode` structurally cannot
-/// be, each with the reason it is not a wire:
+/// Files holding a session rather than a request/response exchange, currently
+/// only the Responses websocket.
 ///
-/// - the Responses websocket is a **connection**: one socket, many turns,
-///   warmup — a session rather than a request/response exchange.
-///
-/// [`CREDENTIAL_EXCHANGES`] is the other kind, named one file at a time
-/// because every provider could otherwise claim one.
-///
-/// A session is exempt from the transport rule as well as the `async`
-/// ones: it holds the socket it is a session over, which is exactly what
-/// distinguishes it from a wire.
+/// A session is exempt from the transport rule as well as the `async` ones
+/// because it owns the socket it runs over.
 const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 
-/// The files that may hold a **conversation** — an `async fn`, an `async`
-/// block, an `.await` — because credential exchange is one: a device flow
-/// polls, an OAuth refresh round-trips, and a token cache is shared. None of
-/// that fits a pure `encode`, and none of it is a wire — it *produces* the
-/// `Secret` a wire holds. Exempt from the no-`async` rules and only from
-/// those: a credential exchange holds no socket of its own.
+/// Files performing credential exchanges, which poll device flows, refresh
+/// tokens, and share caches, and so produce the secrets wires carry.
 ///
-/// Named one file at a time rather than matched by path. A `/auth/` pattern
-/// let any provider mint a transport surface inside its wire by calling the
-/// file `auth.rs`, with no review signal; a new credential exchange is
-/// argued for, not added quietly, and `wires/tests.rs` asserts the length.
+/// Exempt from the `async` rules only, since they own no socket. Listed per file
+/// rather than matched by path so adding one is reviewable; the tests assert the
+/// list's length.
 const CREDENTIAL_EXCHANGES: &[&str] = &[
     // GitHub Copilot: device flow, API-key refresh, on-disk token cache.
     "copilot/auth/mod.rs",
@@ -79,8 +56,8 @@ const CREDENTIAL_EXCHANGES: &[&str] = &[
     "internal/auth.rs",
 ];
 
-/// The traits a consumer calls a model through. Exactly one implementation of
-/// each ships, and it is `driver::Bound` — a provider contributes a wire.
+/// The traits a consumer calls a model through. `driver::Bound` is the only
+/// implementation of each; providers contribute wires instead.
 const CONSUMER_TRAITS: &[&str] = &[
     "CompletionModel",
     "EmbeddingModel",
@@ -152,12 +129,10 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 struct Wires {
     file: String,
-    /// Whether this file may hold a conversation — `async` and `.await` —
-    /// because it is a session or a credential exchange.
+    /// Whether `async` and `.await` are allowed, as in a session or a
+    /// credential exchange.
     conversation: bool,
-    /// Whether this file may hold the socket it is a session over: the
-    /// transport parameter is allowed too. A credential exchange is not a
-    /// session; it produces the `Secret` a wire holds.
+    /// Whether a transport parameter is allowed, which holds for sessions only.
     session: bool,
     offenders: Vec<String>,
 }
@@ -177,13 +152,10 @@ impl Wires {
         self.offenders.push(format!("  {}: {what}", self.file));
     }
 
-    /// The transport-parameter rule, stated by **bound** rather than by
-    /// letter: a parameter bounded by `HttpClientExt` — in its own bound list
-    /// or through the item's `where` clause — or defaulted to
-    /// `BoxedHttpClient` is the socket, whatever it is named. A parameter
-    /// with no such bound cannot be sent through, so it is parametric data (a
-    /// `WireEvent<E>`, a reply generic over its answer shape) and needs no
-    /// allowlist — which is why there is no list of letters to maintain.
+    /// Rejects transport parameters, recognized by their bounds rather than
+    /// their names: a parameter bounded by `HttpClientExt`, whether in its own
+    /// bound list or the item's `where` clause, or defaulted to
+    /// `BoxedHttpClient`. Parameters without such a bound are ordinary data.
     fn check_type_params(&mut self, kind: &str, ident: &syn::Ident, generics: &syn::Generics) {
         if self.session {
             return;

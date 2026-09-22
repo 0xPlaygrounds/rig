@@ -1,8 +1,11 @@
-//! What a driver tells about the dispatches it serves: the seam a log
-//! recorder implements. Beside the dispatch observer because it is the same kind
-//! of thing — the handler side's view of a dispatch's life — and so that a
-//! recorder needs no runtime crate: `rig_cassette::effect_log` implements it over
-//! rig-core alone, and any driver (the bus's, an ECS schedule's) feeds one.
+//! Runtime-independent recording of handler dispatches and consumer delivery.
+//!
+//! ```
+//! use rig_core::serve::Origin;
+//!
+//! let origin = Origin::default();
+//! assert!(origin.parent.is_none());
+//! ```
 
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
@@ -11,10 +14,8 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-/// Where a dispatch came from, as data: the dispatch it was made from, if
-/// a handler made it, and the scope of the program that made it — a
-/// stable serde id of the dispatching run or agent (never a runtime
-/// handle), stamped by a scoped dispatcher. Both ride the record.
+/// Recorded parent dispatch and stable program scope identifier, without live
+/// runtime handles.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Origin {
     /// The dispatch this one was made from, if a handler made it.
@@ -56,14 +57,11 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// A dispatch begins: its id, the key it was routed to, the effect, and
     /// where it came from (its parent and scope).
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin);
-    /// A dispatch that began is not a record after all: a layer decided it
-    /// before any handler served it (a denial, a patch of the wrong
-    /// family). Decisions are program, never record — a replay re-makes
-    /// them — so the recorder forgets the slot `begin` opened.
+    /// Removes a begun dispatch decided by a layer before handler execution.
+    /// Replay reruns layer decisions rather than recording them as handler outcomes.
     fn discard(&self, id: EffectId);
-    /// A layer serves `kind` in place of the effect that began — a patch of
-    /// the same family — so the record's request is what the innermost
-    /// handler served, never what a layer saw first.
+    /// Replaces the recorded request with a same-family layer patch, so it
+    /// reflects the request served by the innermost handler.
     fn patch(&self, id: EffectId, kind: EffectKind);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;

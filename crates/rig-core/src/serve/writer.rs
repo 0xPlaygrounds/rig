@@ -1,4 +1,13 @@
-//! A co-polled stream writer with block identity and self-closing output.
+//! Co-polled streaming replies with block identity and automatic block closure.
+//!
+//! ```
+//! use rig_core::serve::Reply;
+//!
+//! let reply = Reply::written(|mut writer| async move {
+//!     let _ = writer.text("hello").await;
+//! });
+//! # let _ = reply;
+//! ```
 
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
@@ -58,9 +67,7 @@ impl StreamWriter {
         self.flush().await
     }
 
-    /// A reasoning fragment: extends the open reasoning block, or opens one
-    /// (closing an open text block — reasoning and text never interleave in
-    /// one block).
+    /// Extends or opens a reasoning block, closing any open text block first.
     pub async fn reasoning(&mut self, text: impl Into<String>) -> Result<(), SinkClosed> {
         self.output.reasoning(text);
         self.flush().await
@@ -100,7 +107,7 @@ impl StreamWriter {
         self.flush().await
     }
 
-    /// Whether the consumer is still listening.
+    /// Whether the consumer has closed the receiving side.
     pub fn is_closed(&self) -> bool {
         self.events.is_closed()
     }
