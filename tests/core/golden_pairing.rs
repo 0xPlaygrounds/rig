@@ -1,7 +1,6 @@
-//! Original golden logs have exactly one producer. Native parity checks are
-//! consumers of that original plus compact fixed scope/program expectations.
+//! Original golden logs have exactly one producer.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use std::path::Path;
 use syn::visit::{self, Visit};
@@ -31,8 +30,6 @@ fn fixtures() -> Vec<String> {
 #[derive(Default)]
 struct Sites {
     producers: BTreeMap<String, Vec<String>>,
-    native: BTreeMap<String, Vec<String>>,
-    references: BTreeMap<String, Vec<String>>,
     failures: Vec<String>,
     file: String,
 }
@@ -70,17 +67,13 @@ impl<'ast> Visit<'ast> for Sites {
                         .rev()
                         .nth(1)
                         .map(|s| s.ident.to_string());
-                    let destination = match helper.as_deref() {
-                        Some("goldens") => &mut self.producers,
-                        Some("ecs_goldens") => &mut self.native,
-                        _ => {
-                            self.failures
-                                .push(format!("{}: unknown matrix oracle", self.file));
-                            return;
-                        }
-                    };
+                    if helper.as_deref() != Some("goldens") {
+                        self.failures
+                            .push(format!("{}: unknown matrix oracle", self.file));
+                        return;
+                    }
                     for row in matrix.rows.into_iter().filter(|row| !row.ignored) {
-                        destination
+                        self.producers
                             .entry(row.golden.value())
                             .or_default()
                             .push(self.file.clone());
@@ -104,11 +97,9 @@ impl<'ast> Visit<'ast> for Sites {
             let function = parts.last().map(String::as_str);
             let destination = match (helper, function) {
                 (Some("goldens"), Some("golden_effects")) => Some(&mut self.producers),
-                (Some("ecs_goldens"), Some("golden_effects")) => Some(&mut self.native),
-                (Some("ecs_goldens"), Some("compare_to_original")) => Some(&mut self.references),
-                (_, Some("golden_effects" | "compare_to_original")) => {
+                (_, Some("golden_effects")) => {
                     self.failures.push(format!(
-                        "{}: qualify the golden helper with goldens or ecs_goldens",
+                        "{}: qualify the golden helper with goldens",
                         self.file
                     ));
                     None
@@ -166,11 +157,7 @@ fn sites() -> Sites {
     sites
 }
 
-fn pairing_problems(
-    fixtures: &[String],
-    sites: &Sites,
-    identities: &BTreeSet<String>,
-) -> Vec<String> {
+fn pairing_problems(fixtures: &[String], sites: &Sites) -> Vec<String> {
     let mut problems = sites.failures.clone();
     for name in fixtures {
         match sites.producers.get(name).map(Vec::as_slice) {
@@ -182,22 +169,10 @@ fn pairing_problems(
             None => problems.push(format!("golden `{name}` has no producer")),
         }
     }
-    for (name, locations) in sites
-        .producers
-        .iter()
-        .chain(&sites.native)
-        .chain(&sites.references)
-    {
+    for (name, locations) in &sites.producers {
         if !fixtures.contains(name) {
             problems.push(format!("{locations:?} names missing golden `{name}`"));
         }
-    }
-    let native: BTreeSet<_> = sites.native.keys().cloned().collect();
-    for missing in native.difference(identities) {
-        problems.push(format!("native `{missing}` has no identity expectation"));
-    }
-    for orphan in identities.difference(&native) {
-        problems.push(format!("native identity `{orphan}` has no consumer"));
     }
     problems
 }
@@ -206,11 +181,7 @@ fn pairing_problems(
 fn every_golden_has_exactly_one_producer_and_every_producer_a_golden() {
     let fixtures = fixtures();
     assert!(!fixtures.is_empty(), "the corpus is not empty");
-    let identities: BTreeMap<String, serde_json::Value> = serde_json::from_str(include_str!(
-        "../../test-support/rig-test-support/src/ecs_goldens/identities.json"
-    ))
-    .expect("native identity expectations");
-    let problems = pairing_problems(&fixtures, &sites(), &identities.into_keys().collect());
+    let problems = pairing_problems(&fixtures, &sites());
     assert!(
         problems.is_empty(),
         "goldens and producers are not paired:\n{}",

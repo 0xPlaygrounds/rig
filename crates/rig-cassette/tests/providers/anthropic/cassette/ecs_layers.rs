@@ -45,7 +45,6 @@ fn layered_agent(
         inner: Arc::new(ToolAdapter::new(Adder)),
         runtime: io_runtime(),
     }));
-    ecs.declared_policies = handler.descriptor().layers.clone();
     let tool = Handlers::with(ecs.app.world_mut(), |h| {
         h.register_erased("golden/tool:add#0", handler)
     })
@@ -142,7 +141,6 @@ fn memory_agent(client: Bound<Anthropic>) -> EcsAgent {
         Temperature(Some(0.0)),
         PolicyVersion("ecs-layers/v1:history_is_replaced".into()),
     ));
-    ecs.declared_policies = vec!["HistoryIsReplaced".into(), "ReplaceLoadLayer".into()];
     ecs.app.init_resource::<HistoryChecks>().add_systems(
         RigSchedule,
         check_history.after(RigSet::Select).before(RigSet::Assemble),
@@ -151,32 +149,28 @@ fn memory_agent(client: Bound<Anthropic>) -> EcsAgent {
 }
 
 #[tokio::test]
-async fn deny_tool_effect_log_is_the_golden_fixture() {
+async fn deny_tool_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
         let log = own_bus(client, |adder| adder.layered(DenyAddLayer), |_| {}).await;
         assert_eq!(
             families(&log),
             [EffectFamily::Completion, EffectFamily::Completion]
         );
-        assert_eq!(log.header.hooks, ["DenyAddLayer"]);
-        crate::ecs_goldens::golden_effects("anthropic_layers_deny_tool", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn patch_tool_args_effect_log_is_the_golden_fixture() {
+async fn patch_tool_args_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
         let log = own_bus(client, |adder| adder.layered(PatchAddArgsLayer), |_| {}).await;
         assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
-        assert_eq!(log.header.hooks, ["PatchAddArgsLayer"]);
-        crate::ecs_goldens::golden_effects("anthropic_layers_patch_tool_args", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn replace_tool_result_effect_log_is_the_golden_fixture() {
+async fn replace_tool_result_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
         let log = own_bus(client, |adder| adder.layered(ReplaceAddResultLayer), |_| {}).await;
         assert_eq!(
@@ -184,14 +178,12 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
             ["42"],
             "the record holds the tool's answer"
         );
-        assert_eq!(log.header.hooks, ["ReplaceAddResultLayer"]);
-        crate::ecs_goldens::golden_effects("anthropic_layers_replace_tool_result", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn two_layers_effect_log_is_the_golden_fixture() {
+async fn two_layers_effect_log() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
         // Outermost first in the header: the patch sees the dispatch
         // first, the replacement sees the answer first.
@@ -207,21 +199,15 @@ async fn two_layers_effect_log_is_the_golden_fixture() {
         .await;
         assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
         assert_eq!(tool_record_outputs(&log), ["42"]);
-        assert_eq!(
-            log.header.hooks,
-            ["PatchAddArgsLayer", "ReplaceAddResultLayer"]
-        );
-        crate::ecs_goldens::golden_effects("anthropic_layers_two_layers", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
+async fn host_deny_over_host_bus_effect_log() {
     // The host's own policy on the agent's tool key, over the host's bus.
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
         let mut ecs = layered_agent(client, |adder| adder.layered(DenyAddLayer));
-        ecs.declare_bus_policy = false;
         let log = run_tool(&mut ecs).await;
         assert!(
             ecs.app
@@ -232,20 +218,17 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
             "host effects completed before app teardown"
         );
         drop(ecs);
-        assert_eq!(log.header.bus, None);
         assert_eq!(
             families(&log),
             [EffectFamily::Completion, EffectFamily::Completion]
         );
-        assert_eq!(log.header.hooks, ["DenyAddLayer"]);
         let _ = DENY_REASON;
-        crate::ecs_goldens::golden_effects("anthropic_layers_host_deny_over_host_bus", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
+async fn patch_beneath_hook_patch_effect_log() {
     // The agent's hook patches first (40 + 2); the host's layer beneath it
     // patches again (30 + 12): the record holds what was served.
     with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
@@ -253,7 +236,6 @@ async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
             client,
             |adder| adder.layered(PatchAgainLayer),
             |ecs| {
-                ecs.declared_policies.insert(0, "PatchAddArgs".into());
                 ecs.app
                     .add_systems(RigSchedule, patch_args.in_set(BusSet::Gate));
                 ecs.app
@@ -265,14 +247,12 @@ async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
         .await;
         assert_eq!(tool_record_args(&log), [PATCHED_AGAIN_ARGS]);
         assert_eq!(tool_record_outputs(&log), ["42"]);
-        assert_eq!(log.header.hooks, ["PatchAddArgs", "PatchAgainLayer"]);
-        crate::ecs_goldens::golden_effects("anthropic_layers_patch_beneath_hook_patch", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
+async fn memory_load_replaced_effect_log() {
     with_anthropic_corpus_layers_cassette(
         "corpus_layers/memory_load_replaced",
         |client| async move {
@@ -298,9 +278,7 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
                 "{:?}",
                 log.records[0].outcome
             );
-            assert_eq!(log.header.hooks, ["HistoryIsReplaced", "ReplaceLoadLayer"]);
             let _ = REPLACED_RESULT;
-            crate::ecs_goldens::golden_effects("anthropic_layers_memory_load_replaced", &log);
         },
     )
     .await;

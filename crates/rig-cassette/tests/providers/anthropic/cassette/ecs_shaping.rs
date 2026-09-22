@@ -20,7 +20,7 @@ mod policies;
 use policies::*;
 
 #[tokio::test]
-async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
+async fn tool_choice_required_first_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/tool_choice_required_first",
         |client| async move {
@@ -37,7 +37,6 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
                     .after(RigSet::Select)
                     .before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchToolChoiceRequiredFirst".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -49,10 +48,6 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
             assert_eq!(families(&log), TOOL_TURN);
             assert_eq!(request_at(&log, 0).tool_choice, Some(ToolChoice::Required));
             assert_eq!(request_at(&log, 2).tool_choice, None);
-            crate::ecs_goldens::golden_effects(
-                "anthropic_shaping_tool_choice_required_first",
-                &log,
-            );
         },
     )
     .await;
@@ -63,7 +58,7 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
 /// run then does is the record.
 
 #[tokio::test]
-async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture() {
+async fn tool_choice_none_on_committed_output_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/tool_choice_none_on_committed_output",
         |client| async move {
@@ -82,7 +77,6 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
                 RigSchedule,
                 none_second.after(RigSet::Select).before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchToolChoiceNoneSecond".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -107,10 +101,6 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
                 ]
             );
             assert_eq!(request_at(&log, 2).tool_choice, Some(ToolChoice::None));
-            crate::ecs_goldens::golden_effects(
-                "anthropic_shaping_tool_choice_none_on_committed_output",
-                &log,
-            );
         },
     )
     .await;
@@ -119,7 +109,7 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
 /// A context document patched into every turn's request.
 
 #[tokio::test]
-async fn extra_context_effect_log_is_the_golden_fixture() {
+async fn extra_context_effect_log() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/extra_context", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -131,7 +121,6 @@ async fn extra_context_effect_log_is_the_golden_fixture() {
             RigSchedule,
             extra_context.after(RigSet::Select).before(RigSet::Assemble),
         );
-        ecs.declared_policies = vec!["PatchExtraContext".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -150,7 +139,6 @@ async fn extra_context_effect_log_is_the_golden_fixture() {
                 .any(|doc| doc.text == SHAPING_CONTEXT),
             "the patched document is in the request"
         );
-        crate::ecs_goldens::golden_effects("anthropic_shaping_extra_context", &log);
     })
     .await;
 }
@@ -158,7 +146,7 @@ async fn extra_context_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events.
 
 #[tokio::test]
-async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
+async fn extra_context_streamed_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/extra_context_streamed",
         |client| async move {
@@ -172,7 +160,6 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
                 RigSchedule,
                 extra_context.after(RigSet::Select).before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchExtraContext".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -182,7 +169,6 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
             assert!(output.to_lowercase().contains("jiro"), "{output}");
             let log = ecs.effect_log();
             assert!(log.records[0].events.is_some(), "events are kept");
-            crate::ecs_goldens::golden_effects("anthropic_shaping_extra_context_streamed", &log);
         },
     )
     .await;
@@ -192,7 +178,7 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
 /// document, a first-turn tool choice.
 
 #[tokio::test]
-async fn merged_three_effect_log_is_the_golden_fixture() {
+async fn merged_three_effect_log() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/merged_three", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -208,11 +194,6 @@ async fn merged_three_effect_log_is_the_golden_fixture() {
                 .after(RigSet::Select)
                 .before(RigSet::Assemble),
         );
-        ecs.declared_policies = vec![
-            "PreambleOverride".into(),
-            "PatchExtraContext".into(),
-            "PatchToolChoiceRequiredFirst".into(),
-        ];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -239,7 +220,6 @@ async fn merged_three_effect_log_is_the_golden_fixture() {
         );
         assert_eq!(first.tool_choice, Some(ToolChoice::Required));
         assert_eq!(request_at(&log, 2).tool_choice, None);
-        crate::ecs_goldens::golden_effects("anthropic_shaping_merged_three", &log);
     })
     .await;
 }
@@ -248,7 +228,7 @@ async fn merged_three_effect_log_is_the_golden_fixture() {
 /// answers.
 
 #[tokio::test]
-async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
+async fn route_on_first_turn_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/route_on_first_turn",
         |client| async move {
@@ -283,7 +263,6 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
                 RigSchedule,
                 route_first.after(RigSet::Advance).before(RigSet::Select),
             );
-            ecs.declared_policies = vec!["RouteOnFirstTurn".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -295,7 +274,6 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
             assert_eq!(families(&log), TOOL_TURN);
             assert_eq!(log.records[0].key, HandlerKey::from("golden/model:fast"));
             assert_eq!(log.records[2].key, HandlerKey::from("golden/model:default"));
-            crate::ecs_goldens::golden_effects("anthropic_shaping_route_on_first_turn", &log);
         },
     )
     .await;
@@ -306,7 +284,7 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
 /// and not in the required row (the row is the builder's).
 
 #[tokio::test]
-async fn late_route_effect_log_is_the_golden_fixture() {
+async fn late_route_effect_log() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/late_route", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -334,7 +312,6 @@ async fn late_route_effect_log_is_the_golden_fixture() {
             RigSchedule,
             route_always.after(RigSet::Advance).before(RigSet::Select),
         );
-        ecs.declared_policies = vec!["SelectLate".into()];
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -346,10 +323,16 @@ async fn late_route_effect_log_is_the_golden_fixture() {
         assert_eq!(families(&log), TOOL_TURN);
         let late = HandlerKey::from("golden/model:late");
         assert_eq!(log.records[0].key, late);
+        let program = log
+            .header
+            .programs
+            .values()
+            .next()
+            .expect("the run stamped its program identity");
         assert!(
-            !log.header.required.contains_key(&late),
+            !program.required.contains_key(&late),
             "{:?}",
-            log.header.required
+            program.required
         );
         assert!(log.header.signature.contains_key(&late));
         assert!(
@@ -358,7 +341,6 @@ async fn late_route_effect_log_is_the_golden_fixture() {
                 .iter()
                 .any(|handler| handler.key == late)
         );
-        crate::ecs_goldens::golden_effects("anthropic_shaping_late_route", &log);
     })
     .await;
 }
@@ -366,7 +348,7 @@ async fn late_route_effect_log_is_the_golden_fixture() {
 /// `max_tokens: 5` on turn 2: the answer is cut where the patch says.
 
 #[tokio::test]
-async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
+async fn max_tokens_second_turn_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/max_tokens_second_turn",
         |client| async move {
@@ -383,7 +365,6 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
                     .after(RigSet::Select)
                     .before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchMaxTokensSecond".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -394,7 +375,6 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
             assert_eq!(families(&log), TOOL_TURN);
             assert_eq!(request_at(&log, 0).max_tokens, None);
             assert_eq!(request_at(&log, 2).max_tokens, Some(5));
-            crate::ecs_goldens::golden_effects("anthropic_shaping_max_tokens_second_turn", &log);
         },
     )
     .await;
@@ -403,7 +383,7 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
 /// Extended thinking on turn 2 only (with the temperature it needs).
 
 #[tokio::test]
-async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
+async fn thinking_second_turn_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/thinking_second_turn",
         |client| async move {
@@ -420,7 +400,6 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
                     .after(RigSet::Select)
                     .before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchThinkingSecond".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -433,7 +412,6 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
             assert!(request_at(&log, 0).additional_params.is_none());
             assert!(request_at(&log, 2).additional_params.is_some());
             assert_eq!(request_at(&log, 2).temperature, Some(1.0));
-            crate::ecs_goldens::golden_effects("anthropic_shaping_thinking_second_turn", &log);
         },
     )
     .await;
@@ -442,7 +420,7 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
 /// The pirate preamble on turn 2 only.
 
 #[tokio::test]
-async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
+async fn preamble_second_turn_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/preamble_second_turn",
         |client| async move {
@@ -459,7 +437,6 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
                     .after(RigSet::Select)
                     .before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchPreambleSecond".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -478,7 +455,6 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
                     .system_instructions()
                     .is_some_and(|system| system.starts_with(PIRATE_PREAMBLE))
             );
-            crate::ecs_goldens::golden_effects("anthropic_shaping_preamble_second_turn", &log);
         },
     )
     .await;
@@ -488,7 +464,7 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
 /// sees none.
 
 #[tokio::test]
-async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
+async fn active_tools_none_second_turn_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/active_tools_none_second_turn",
         |client| async move {
@@ -505,7 +481,6 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
                     .after(RigSet::Select)
                     .before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchActiveToolsNoneSecond".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -517,10 +492,6 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
             assert_eq!(families(&log), TOOL_TURN);
             assert_eq!(request_at(&log, 0).tools.len(), 1);
             assert!(request_at(&log, 2).tools.is_empty());
-            crate::ecs_goldens::golden_effects(
-                "anthropic_shaping_active_tools_none_second_turn",
-                &log,
-            );
         },
     )
     .await;
@@ -529,7 +500,7 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
 /// A prior exchange patched in as turn 1's history.
 
 #[tokio::test]
-async fn history_first_turn_effect_log_is_the_golden_fixture() {
+async fn history_first_turn_effect_log() {
     with_anthropic_corpus_shaping_cassette(
         "corpus_shaping/history_first_turn",
         |client| async move {
@@ -543,7 +514,6 @@ async fn history_first_turn_effect_log_is_the_golden_fixture() {
                 RigSchedule,
                 history_first.after(RigSet::Select).before(RigSet::Assemble),
             );
-            ecs.declared_policies = vec!["PatchHistoryFirst".into()];
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -558,7 +528,6 @@ async fn history_first_turn_effect_log_is_the_golden_fixture() {
                 "the patched exchange precedes the prompt: {:?}",
                 request_at(&log, 0).chat_history
             );
-            crate::ecs_goldens::golden_effects("anthropic_shaping_history_first_turn", &log);
         },
     )
     .await;

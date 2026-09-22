@@ -1,8 +1,8 @@
 //! The failure rows on the OpenAI Chat Completions wire (`gpt-5-mini`): every cell of
 //! `tests/common/ecs_matrix/faults.rs` as an agent graph in a Bevy `World`,
 //! served by the real adapter over the wire's own recording (the recorded
-//! rows, against the producer's golden in `corpus_faults_chat.rs`), over a
-//! recording another cell owns (rows 9 and 13, against that cell's golden),
+//! rows, the producer's rows in `corpus_faults_chat.rs`), over a
+//! recording another cell owns (rows 9 and 13),
 //! or over the sequenced transport serving labelled frames cut or rewritten
 //! from this wire's #2501 recordings (the scripted rows, against the
 //! rig-agent runner over the same frames). This file holds the scenario
@@ -116,52 +116,43 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     }
 }
 
-crate::matrix::golden_matrix! {
-    wrapper: with_openai_cassette, wire: missing, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+crate::matrix::native_matrix! {
+    wrapper: with_openai_cassette, wire: missing, run: run_world;
     #[tokio::test]
-    setup_unary: ("corpus_faults_chat/setup_unary", SETUP_UNARY, "openai_chat_fault_setup_unary");
+    setup_unary: ("corpus_faults_chat/setup_unary", SETUP_UNARY);
     #[tokio::test]
-    setup_streamed: ("corpus_matrix_chat/error_facts_streamed", SETUP_STREAMED, "openai_chat_fault_setup_streamed");
+    setup_streamed: ("corpus_matrix_chat/error_facts_streamed", SETUP_STREAMED);
 }
 
-crate::matrix::golden_matrix! {
-    wrapper: with_openai_cassette, wire: wire, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+crate::matrix::native_matrix! {
+    wrapper: with_openai_cassette, wire: wire, run: run_world;
     #[tokio::test]
-    tool_error: ("corpus_faults_chat/tool_error", faults::TOOL_ERROR, "openai_chat_fault_tool_error");
+    tool_error: ("corpus_faults_chat/tool_error", faults::TOOL_ERROR);
     #[tokio::test]
-    tool_error_streamed: ("corpus_faults_chat/tool_error_streamed", faults::TOOL_ERROR_STREAMED, "openai_chat_fault_tool_error_streamed");
+    tool_error_streamed: ("corpus_faults_chat/tool_error_streamed", faults::TOOL_ERROR_STREAMED);
     #[tokio::test]
-    batch_second_fails: ("corpus_faults_chat/batch_second_fails", faults::BATCH_SECOND_FAILS, "openai_chat_fault_batch_second_fails");
+    batch_second_fails: ("corpus_faults_chat/batch_second_fails", faults::BATCH_SECOND_FAILS);
     #[tokio::test]
-    batch_second_fails_concurrent: ("corpus_faults_chat/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "openai_chat_fault_batch_second_fails_concurrent");
+    batch_second_fails_concurrent: ("corpus_faults_chat/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT);
 }
 
-/// Row 9 over `endings_tool_outcome_cancelled`'s recording and golden.
+/// Row 9 over `endings_tool_outcome_cancelled`'s recording.
 #[tokio::test]
 async fn stop_while_tool_runs() {
     with_openai_cassette(
         "corpus_matrix_chat/endings_tool_outcome_cancelled",
         |client| async move {
-            run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS, |log| {
-                crate::ecs_goldens::compare_to_original(
-                    "openai_chat_endings_tool_outcome_cancelled",
-                    log,
-                )
-            })
-            .await;
+            run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS).await;
         },
     )
     .await;
 }
 
-/// Row 13 over `resume_tool_turn`'s recording and golden.
+/// Row 13 over `resume_tool_turn`'s recording.
 #[tokio::test]
 async fn scene_tool_in_flight() {
     with_openai_cassette("corpus_matrix_chat/resume_tool_turn", |client| async move {
-        run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT, |log| {
-            crate::ecs_goldens::compare_to_original("openai_chat_resume_tool_turn", log)
-        })
-        .await;
+        run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT).await;
     })
     .await;
 }

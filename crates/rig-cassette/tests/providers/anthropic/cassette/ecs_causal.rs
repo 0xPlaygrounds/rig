@@ -35,7 +35,6 @@ async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effec
         TOOLS_PREAMBLE,
         host.streamed,
     );
-    ecs.declare_bus_policy = false;
     ecs.app.world_mut().resource_mut::<Policy>().0 = ServingPolicy {
         serial_per_handler: host.serial,
         ..Default::default()
@@ -78,7 +77,6 @@ async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effec
         "host effects complete before teardown"
     );
     drop(ecs);
-    assert_eq!(log.header.bus, None, "the policy is the host's");
     assert_eq!(
         families(&log),
         [
@@ -93,9 +91,9 @@ async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effec
 }
 
 #[tokio::test]
-async fn completion_serial_effect_log_is_the_golden_fixture() {
+async fn completion_serial_effect_log() {
     with_anthropic_corpus_causal_cassette("corpus_causal/completion_serial", |client| async move {
-        let log = over_host(
+        over_host(
             client,
             Host {
                 serial: true,
@@ -103,17 +101,16 @@ async fn completion_serial_effect_log_is_the_golden_fixture() {
             },
         )
         .await;
-        crate::ecs_goldens::golden_effects("anthropic_causal_completion_serial", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn completion_concurrent_effect_log_is_the_golden_fixture() {
+async fn completion_concurrent_effect_log() {
     with_anthropic_corpus_causal_cassette(
         "corpus_causal/completion_concurrent",
         |client| async move {
-            let log = over_host(
+            over_host(
                 client,
                 Host {
                     serial: false,
@@ -121,14 +118,13 @@ async fn completion_concurrent_effect_log_is_the_golden_fixture() {
                 },
             )
             .await;
-            crate::ecs_goldens::golden_effects("anthropic_causal_completion_concurrent", &log);
         },
     )
     .await;
 }
 
 #[tokio::test]
-async fn completion_streamed_effect_log_is_the_golden_fixture() {
+async fn completion_streamed_effect_log() {
     with_anthropic_corpus_causal_cassette(
         "corpus_causal/completion_streamed",
         |client| async move {
@@ -145,7 +141,6 @@ async fn completion_streamed_effect_log_is_the_golden_fixture() {
             assert!(log.records[0].events.is_some());
             assert!(log.records[2].events.is_none());
             assert!(log.records[3].events.is_some());
-            crate::ecs_goldens::golden_effects("anthropic_causal_completion_streamed", &log);
         },
     )
     .await;

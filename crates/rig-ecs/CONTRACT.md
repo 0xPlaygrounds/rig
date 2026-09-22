@@ -193,7 +193,7 @@ on to the next run in the same pass
 
 ## 6. The header
 
-`rig_cassette::ecs::identity::stamp_legacy_builder_header` records the builder configuration in the header’s `run_spec` hash (`rig_cassette::effect_log::stable_hash`, keys canonicalised). This is builder/corpus interoperability metadata. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity (§10).
+A rig-agent golden's header carries the builder configuration as its `run_spec` hash (`rig_cassette::effect_log::stable_hash`, keys canonicalised). A world writes no builder header: its log names each run's program under its scope (§10), and the two headers are never compared. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity.
 
 ```json
 {"preamble": <Preamble>, "static_context": [{"id","text",…props}], "additional_params": <AdditionalParams>,
@@ -203,9 +203,9 @@ on to the next run in the same pass
  "augment_output_preamble": true, "unhandled_invalid_tool_call": "fail"}
 ```
 
-The builder `/header/run_spec` is checked by the world interpreter (`anthropic_completion_smoke` = `171082663332529849`). It excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
+The builder `/header/run_spec` excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
 
-`required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`). `hooks`: the program’s declared hooks and layers (§10). `signature`: written by the recorder from what was dispatched.
+`required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`; a world's row is under `programs[scope].required`). `hooks`: the agent program’s declared hooks and layers (§10). `signature`: written by the recorder from what was dispatched.
 
 ## 7. Keys
 
@@ -390,7 +390,7 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 
 | what | where | pinned by |
 |---|---|---|
-| `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `rig_cassette::ecs::identity::stamp_legacy_builder_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
+| `LogHeader::hooks` | the rig-agent program's declaration — the corpus's `hook_name` list, then `layer_names`; a world has no hook stack to name and leaves it empty | every golden's `/header/hooks`, asserted by the agent producer |
 | `LogHeader::programs: BTreeMap<String, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_run` (`policy` = `stable_hash(spec_json(world, run))`), using supported effective run-over-agent settings; rig-agent's builder-only goldens carry none | `run_identity.rs`, `run_replay_policy.rs` |
 | `rig_cassette::ecs::identity::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |

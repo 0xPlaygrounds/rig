@@ -63,8 +63,8 @@ configuration, including run-over-agent overrides. That module's
 must declare a nonempty `agent::PolicyVersion` for their custom systems,
 ordering and otherwise-unhashed configuration. A missing declaration is
 reported as unverified. This declaration is not an automatic code fingerprint
-or a check of ambient credentials and external state. The builder-only
-`stamp_legacy_builder_header` remains a corpus header, not an effective compatibility check.
+or a check of ambient credentials and external state. A rig-agent golden's
+builder header is that runtime's own and is not an effective compatibility check.
 
 `check_replayable` can run in a fresh world bound to the log's replayers.
 Recorded model identity and capabilities stay authoritative, including native

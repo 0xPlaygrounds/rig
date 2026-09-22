@@ -88,28 +88,6 @@ impl EffectLogRecorder {
             .clone()
     }
 
-    /// Stamp the run spec hash into the header.
-    pub fn set_run_spec(&self, hash: u64) {
-        self.header
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .run_spec = Some(hash);
-    }
-
-    /// Stamp what names the program into the header: its hook stack, its
-    /// required effect row, and the bus policy it runs under.
-    pub fn set_program(
-        &self,
-        hooks: Vec<String>,
-        required: rig_core::effect::EffectRow,
-        bus: Option<rig_core::serve::ServingPolicy>,
-    ) {
-        let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
-        header.hooks = hooks;
-        header.required = required;
-        header.bus = bus;
-    }
-
     /// Stamp one program's identity under its scope
     /// ([`LogHeader::programs`]): a world writing several programs' effects
     /// into one log names each by its scope.

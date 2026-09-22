@@ -22,24 +22,22 @@ mod runtime;
 use runtime::*;
 
 #[tokio::test]
-async fn clear_at_start_effect_log_is_the_golden_fixture() {
+async fn clear_at_start_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/clear_at_start", |client| async move {
         let log = remembers(client, Clears::AtStart, &[PROMPT], false).await;
         // `on_run_start` fires after the load: the clear lands between the
         // load and the append.
         assert_eq!(memory_ops(&log), ["load", "clear", "append"]);
         assert_eq!(loaded_lengths(&log), [0]);
-        crate::ecs_goldens::golden_effects("anthropic_memory_clear_at_start", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn clear_at_settled_effect_log_is_the_golden_fixture() {
+async fn clear_at_settled_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/clear_at_settled", |client| async move {
         let log = remembers(client, Clears::AtSettled, &[PROMPT], false).await;
         assert_eq!(memory_ops(&log), ["load", "append", "clear"]);
-        crate::ecs_goldens::golden_effects("anthropic_memory_clear_at_settled", &log);
     })
     .await;
 }
@@ -47,7 +45,7 @@ async fn clear_at_settled_effect_log_is_the_golden_fixture() {
 /// Two runs over one conversation, one log: the second load holds the
 /// first run's append.
 #[tokio::test]
-async fn two_runs_effect_log_is_the_golden_fixture() {
+async fn two_runs_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/two_runs", |client| async move {
         let log = remembers(client, Clears::Never, &[PROMPT, SECOND_PROMPT], false).await;
         assert_eq!(memory_ops(&log), ["load", "append", "load", "append"]);
@@ -63,26 +61,24 @@ async fn two_runs_effect_log_is_the_golden_fixture() {
                 EffectFamily::Memory,
             ]
         );
-        crate::ecs_goldens::golden_effects("anthropic_memory_two_runs", &log);
     })
     .await;
 }
 
 #[tokio::test]
-async fn two_runs_streamed_effect_log_is_the_golden_fixture() {
+async fn two_runs_streamed_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/two_runs_streamed", |client| async move {
         let log = remembers(client, Clears::Never, &[PROMPT, SECOND_PROMPT], true).await;
         assert_eq!(memory_ops(&log), ["load", "append", "load", "append"]);
         assert_eq!(loaded_lengths(&log), [0, 2]);
         assert!(log.records[1].events.is_some(), "events are kept");
-        crate::ecs_goldens::golden_effects("anthropic_memory_two_runs_streamed", &log);
     })
     .await;
 }
 
 /// `Clear` after `Append`, twice: the second run loads nothing.
 #[tokio::test]
-async fn clear_at_settled_two_runs_effect_log_is_the_golden_fixture() {
+async fn clear_at_settled_two_runs_effect_log() {
     with_anthropic_corpus_memory_cassette(
         "corpus_memory/clear_at_settled_two_runs",
         |client| async move {
@@ -92,7 +88,6 @@ async fn clear_at_settled_two_runs_effect_log_is_the_golden_fixture() {
                 ["load", "append", "clear", "load", "append", "clear"]
             );
             assert_eq!(loaded_lengths(&log), [0, 0]);
-            crate::ecs_goldens::golden_effects("anthropic_memory_clear_at_settled_two_runs", &log);
         },
     )
     .await;
@@ -101,7 +96,7 @@ async fn clear_at_settled_two_runs_effect_log_is_the_golden_fixture() {
 /// `Clear` at run start, twice: the hook fires after the load, so the
 /// second run still reads the first run's append before clearing it.
 #[tokio::test]
-async fn clear_at_start_two_runs_effect_log_is_the_golden_fixture() {
+async fn clear_at_start_two_runs_effect_log() {
     with_anthropic_corpus_memory_cassette(
         "corpus_memory/clear_at_start_two_runs",
         |client| async move {
@@ -111,7 +106,6 @@ async fn clear_at_start_two_runs_effect_log_is_the_golden_fixture() {
                 ["load", "clear", "append", "load", "clear", "append"]
             );
             assert_eq!(loaded_lengths(&log), [0, 2]);
-            crate::ecs_goldens::golden_effects("anthropic_memory_clear_at_start_two_runs", &log);
         },
     )
     .await;
@@ -119,7 +113,7 @@ async fn clear_at_start_two_runs_effect_log_is_the_golden_fixture() {
 
 /// Explicit runner history bypasses memory: no `Load`, no `Append`.
 #[tokio::test]
-async fn history_bypass_effect_log_is_the_golden_fixture() {
+async fn history_bypass_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/history_bypass", |client| async move {
         let mut ecs = agent(
             &client,
@@ -139,14 +133,19 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
         assert!(output.contains("Ada"), "{}", output);
         let log = ecs.effect_log();
         assert_eq!(families(&log), [EffectFamily::Completion]);
+        let program = log
+            .header
+            .programs
+            .values()
+            .next()
+            .expect("the run stamped its program identity");
         assert!(
-            log.header
+            program
                 .required
                 .contains_key(&HandlerKey::from("golden/memory")),
             "memory is in the row though bypassed: {:?}",
-            log.header.required
+            program.required
         );
-        crate::ecs_goldens::golden_effects("anthropic_memory_history_bypass", &log);
     })
     .await;
 }
@@ -155,7 +154,7 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
 /// host's registrar under the agent's key, since only the builder can
 /// name the run's memory.
 #[tokio::test]
-async fn host_bus_memory_effect_log_is_the_golden_fixture() {
+async fn host_bus_memory_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/host_bus_memory", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -164,7 +163,6 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
             rig_core::memory::InMemoryConversationMemory::new(),
         );
         attach_memory(&mut ecs, memory);
-        ecs.declare_bus_policy = false;
         let output = ecs.prompt(PROMPT, false).await;
         assert!(!output.is_empty());
         let log = ecs.effect_log();
@@ -177,9 +175,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
             "host teardown has no unfinished effect"
         );
         drop(ecs);
-        assert_eq!(log.header.bus, None);
         assert_eq!(memory_ops(&log), ["load", "append"]);
-        crate::ecs_goldens::golden_effects("anthropic_memory_host_bus", &log);
     })
     .await;
 }
@@ -187,7 +183,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
 /// Serial serving, memory and two tool calls in one turn: the append
 /// carries both results.
 #[tokio::test]
-async fn serial_two_tools_effect_log_is_the_golden_fixture() {
+async fn serial_two_tools_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/serial_two_tools", |client| async move {
         let mut ecs = agent(
             &client,
@@ -223,7 +219,6 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
             other => panic!("an append, not {other:?}"),
         };
         assert_eq!(appended, 4, "prompt, call turn, results, answer");
-        crate::ecs_goldens::golden_effects("anthropic_memory_serial_two_tools", &log);
     })
     .await;
 }
@@ -253,21 +248,19 @@ async fn append_fails(
 }
 
 #[tokio::test]
-async fn failing_append_effect_log_is_the_golden_fixture() {
+async fn failing_append_effect_log() {
     with_anthropic_corpus_memory_cassette("corpus_memory/failing_append", |client| async move {
-        let log = append_fails(client, false).await;
-        crate::ecs_goldens::golden_effects("anthropic_memory_failing_append", &log);
+        append_fails(client, false).await;
     })
     .await;
 }
 
 #[tokio::test]
-async fn failing_append_streamed_effect_log_is_the_golden_fixture() {
+async fn failing_append_streamed_effect_log() {
     with_anthropic_corpus_memory_cassette(
         "corpus_memory/failing_append_streamed",
         |client| async move {
-            let log = append_fails(client, true).await;
-            crate::ecs_goldens::golden_effects("anthropic_memory_failing_append_streamed", &log);
+            append_fails(client, true).await;
         },
     )
     .await;

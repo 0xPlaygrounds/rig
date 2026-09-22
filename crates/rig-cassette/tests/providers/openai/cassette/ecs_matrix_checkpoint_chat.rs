@@ -18,49 +18,33 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 crate::matrix::resume_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: crate::ecs_matrix::checkpoint_world::run_world;
     #[tokio::test]
-    multi_turn_unary: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, None, golden_openai_chat_checkpoint_multi_turn_unary);
+    multi_turn_unary: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, None);
     #[tokio::test]
-    multi_turn_unary_cut_1: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(1), golden_openai_chat_checkpoint_multi_turn_unary);
+    multi_turn_unary_cut_1: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(1));
     #[tokio::test]
-    multi_turn_unary_cut_2: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(2), golden_openai_chat_checkpoint_multi_turn_unary);
+    multi_turn_unary_cut_2: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(2));
     #[tokio::test]
-    multi_turn_unary_cut_3: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(3), golden_openai_chat_checkpoint_multi_turn_unary);
+    multi_turn_unary_cut_3: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(3));
     #[tokio::test]
-    multi_turn_unary_cut_final: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(usize::MAX), golden_openai_chat_checkpoint_multi_turn_unary);
+    multi_turn_unary_cut_final: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(usize::MAX));
     #[tokio::test]
-    multi_turn_streamed: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, None, golden_openai_chat_checkpoint_multi_turn_streamed);
+    multi_turn_streamed: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, None);
     #[tokio::test]
-    multi_turn_streamed_cut_1: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(1), golden_openai_chat_checkpoint_multi_turn_streamed);
+    multi_turn_streamed_cut_1: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(1));
     #[tokio::test]
-    multi_turn_streamed_cut_2: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(2), golden_openai_chat_checkpoint_multi_turn_streamed);
+    multi_turn_streamed_cut_2: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(2));
     #[tokio::test]
-    multi_turn_streamed_cut_3: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(3), golden_openai_chat_checkpoint_multi_turn_streamed);
+    multi_turn_streamed_cut_3: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(3));
     #[tokio::test]
-    multi_turn_streamed_cut_final: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(usize::MAX), golden_openai_chat_checkpoint_multi_turn_streamed);
+    multi_turn_streamed_cut_final: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(usize::MAX));
     #[tokio::test]
-    parallel_batch: ("checkpoint_matrix_chat/parallel_batch", checkpoint::PARALLEL_BATCH, None, golden_openai_chat_checkpoint_parallel_batch);
+    parallel_batch: ("checkpoint_matrix_chat/parallel_batch", checkpoint::PARALLEL_BATCH, None);
     #[tokio::test]
-    parallel_batch_cut_final: ("checkpoint_matrix_chat/parallel_batch", checkpoint::PARALLEL_BATCH, Some(usize::MAX), golden_openai_chat_checkpoint_parallel_batch);
+    parallel_batch_cut_final: ("checkpoint_matrix_chat/parallel_batch", checkpoint::PARALLEL_BATCH, Some(usize::MAX));
     #[tokio::test]
-    large_result: ("checkpoint_matrix_chat/large_result", checkpoint::LARGE_RESULT, None, golden_openai_chat_checkpoint_large_result);
+    large_result: ("checkpoint_matrix_chat/large_result", checkpoint::LARGE_RESULT, None);
     #[tokio::test]
-    large_result_cut_final: ("checkpoint_matrix_chat/large_result", checkpoint::LARGE_RESULT, Some(usize::MAX), golden_openai_chat_checkpoint_large_result);
-}
-
-fn golden_openai_chat_checkpoint_multi_turn_unary(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("openai_chat_checkpoint_multi_turn_unary", log);
-}
-
-fn golden_openai_chat_checkpoint_multi_turn_streamed(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("openai_chat_checkpoint_multi_turn_streamed", log);
-}
-
-fn golden_openai_chat_checkpoint_parallel_batch(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("openai_chat_checkpoint_parallel_batch", log);
-}
-
-fn golden_openai_chat_checkpoint_large_result(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("openai_chat_checkpoint_large_result", log);
+    large_result_cut_final: ("checkpoint_matrix_chat/large_result", checkpoint::LARGE_RESULT, Some(usize::MAX));
 }
 
 /// Negative matcher evidence only; fresh-world continuation uses the native tests above.

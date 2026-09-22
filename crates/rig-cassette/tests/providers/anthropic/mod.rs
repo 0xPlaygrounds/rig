@@ -20,7 +20,7 @@ mod cassette {
     mod corpus_shaping;
     mod default_max_turns;
     mod document_file_id;
-    mod ecs_agent_goldens;
+    mod ecs_agent_smoke;
     mod ecs_causal;
     mod ecs_concurrency;
     mod ecs_endings;

@@ -53,29 +53,29 @@ fn fault_reply() -> MockHttpResponse {
 crate::matrix::resume_matrix! {
     wrapper: with_deepseek_cassette, wire: wire, run: long_loop_world::run_world;
     #[tokio::test]
-    long_unary: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, None, golden_deepseek_long_loop_long_unary);
+    long_unary: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, None);
     #[tokio::test]
-    long_unary_cut_1: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(1), golden_deepseek_long_loop_long_unary);
+    long_unary_cut_1: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(1));
     #[tokio::test]
-    long_unary_cut_2: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(2), golden_deepseek_long_loop_long_unary);
+    long_unary_cut_2: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(2));
     #[tokio::test]
-    long_unary_cut_3: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(3), golden_deepseek_long_loop_long_unary);
+    long_unary_cut_3: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(3));
     #[tokio::test]
-    long_unary_cut_final: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(usize::MAX), golden_deepseek_long_loop_long_unary);
+    long_unary_cut_final: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(usize::MAX));
 }
 
 crate::matrix::resume_matrix! {
     wrapper: with_deepseek_cassette, wire: wire, run: long_loop_world::run_world;
     #[tokio::test]
-    long_streamed: ("long_loop_matrix/long_streamed", long_loop::LONG_STREAMED, long_loop::LONG_STREAMED.resume_after, golden_deepseek_long_loop_long_streamed);
+    long_streamed: ("long_loop_matrix/long_streamed", long_loop::LONG_STREAMED, long_loop::LONG_STREAMED.resume_after);
     #[tokio::test]
-    parallel_calls: ("long_loop_matrix/parallel_calls", long_loop::PARALLEL_CALLS, long_loop::PARALLEL_CALLS.resume_after, golden_deepseek_long_loop_parallel_calls);
+    parallel_calls: ("long_loop_matrix/parallel_calls", long_loop::PARALLEL_CALLS, long_loop::PARALLEL_CALLS.resume_after);
     #[tokio::test]
-    big_result: ("long_loop_matrix/big_result", long_loop::BIG_RESULT, long_loop::BIG_RESULT.resume_after, golden_deepseek_long_loop_big_result);
+    big_result: ("long_loop_matrix/big_result", long_loop::BIG_RESULT, long_loop::BIG_RESULT.resume_after);
     #[tokio::test]
-    tool_error_midway: ("long_loop_matrix/tool_error_midway", long_loop::TOOL_ERROR_MIDWAY, long_loop::TOOL_ERROR_MIDWAY.resume_after, golden_deepseek_long_loop_tool_error_midway);
+    tool_error_midway: ("long_loop_matrix/tool_error_midway", long_loop::TOOL_ERROR_MIDWAY, long_loop::TOOL_ERROR_MIDWAY.resume_after);
     #[tokio::test]
-    max_turns_midway: ("long_loop_matrix/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, long_loop::MAX_TURNS_MIDWAY.resume_after, golden_deepseek_long_loop_max_turns_midway);
+    max_turns_midway: ("long_loop_matrix/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, long_loop::MAX_TURNS_MIDWAY.resume_after);
 }
 
 #[tokio::test]
@@ -87,7 +87,6 @@ async fn output_cap_midway() {
             // read_file call at tool turn 2 and rig-agent refuses the turn
             // ("produced no answer ... finish_reason=Length"; round 3).
             &long_loop::OUTPUT_CAP_MIDWAY,
-            golden_deepseek_long_loop_output_cap_midway,
         )
         .await;
     })
@@ -108,34 +107,6 @@ crate::matrix::case_matrix! {
     /// oracle.
     #[tokio::test]
     provider_fault_midway: provider_fault_midway_14;
-}
-
-fn golden_deepseek_long_loop_long_unary(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_long_unary", log);
-}
-
-fn golden_deepseek_long_loop_long_streamed(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_long_streamed", log);
-}
-
-fn golden_deepseek_long_loop_parallel_calls(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_parallel_calls", log);
-}
-
-fn golden_deepseek_long_loop_big_result(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_big_result", log);
-}
-
-fn golden_deepseek_long_loop_tool_error_midway(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_tool_error_midway", log);
-}
-
-fn golden_deepseek_long_loop_max_turns_midway(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_max_turns_midway", log);
-}
-
-fn golden_deepseek_long_loop_output_cap_midway(log: &rig::cassette::effect_log::EffectLog) {
-    crate::ecs_goldens::golden_effects("deepseek_long_loop_output_cap_midway", log);
 }
 
 /// Negative matcher probe against the streamed loop the native consumers

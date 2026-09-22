@@ -159,12 +159,8 @@ macro_rules! wire_matrix_case {
                 &long_loop::PROVIDER_FAULT_MIDWAY,
                 Some(fault_reply()),
             );
-            long_loop_world::run_world(
-                &scripted_unary(replies),
-                &long_loop::PROVIDER_FAULT_MIDWAY,
-                |_| {},
-            )
-            .await;
+            long_loop_world::run_world(&scripted_unary(replies), &long_loop::PROVIDER_FAULT_MIDWAY)
+                .await;
         }
     };
     ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, batch_held_call_approved_by_removing_held_15) => {
@@ -198,12 +194,7 @@ macro_rules! wire_matrix_case {
         $(#[$attribute])*
         async fn $name() {
             $wrapper($scenario, |client| async move {
-                run_world(
-                    &reasoning_wire(&client),
-                    &cells::SHAPING_THINKING_SECOND_TURN,
-                    |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
-                )
-                .await;
+                run_world(&reasoning_wire(&client), &cells::SHAPING_THINKING_SECOND_TURN).await;
             })
             .await;
         }
@@ -212,12 +203,7 @@ macro_rules! wire_matrix_case {
         $(#[$attribute])*
         async fn $name() {
             $wrapper($scenario, |client| async move {
-                run_world(
-                    &reasoning_wire(&client),
-                    &cells::REASONING_TOOL_UNARY,
-                    |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
-                )
-                .await;
+                run_world(&reasoning_wire(&client), &cells::REASONING_TOOL_UNARY).await;
             })
             .await;
         }
@@ -226,12 +212,7 @@ macro_rules! wire_matrix_case {
         $(#[$attribute])*
         async fn $name() {
             $wrapper($scenario, |client| async move {
-                run_world(
-                    &reasoning_wire(&client),
-                    &cells::REASONING_TOOL_STREAMED,
-                    |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
-                )
-                .await;
+                run_world(&reasoning_wire(&client), &cells::REASONING_TOOL_STREAMED).await;
             })
             .await;
         }
@@ -240,10 +221,7 @@ macro_rules! wire_matrix_case {
         $(#[$attribute])*
         async fn $name() {
             $wrapper($scenario, |client| async move {
-                run_world(&reasoning_wire(&client), &cells::REASONING_OFF, |_| {
-                    panic!("unrecorded reasoning scenario: see this test\'s ignore disposition")
-                })
-                .await;
+                run_world(&reasoning_wire(&client), &cells::REASONING_OFF).await;
             })
             .await;
         }
@@ -297,7 +275,7 @@ macro_rules! wire_matrix_case {
                 ..faults::STATUS_503_RETRIED
             };
             let replies = || (0..4).map(|_| reply(503, false)).collect();
-            run_world(&scripted_unary(replies()), &cell, |_| {}).await;
+            run_world(&scripted_unary(replies()), &cell).await;
         }
     };
 }

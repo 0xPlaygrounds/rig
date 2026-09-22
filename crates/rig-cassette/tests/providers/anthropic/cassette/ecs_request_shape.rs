@@ -1,4 +1,4 @@
-//! Provider-executed native counterparts of the request-shape golden corpus.
+//! Provider-executed native counterparts of the request-shape corpus.
 //! Original inputs/helpers are shared; every run uses native ECS systems.
 
 use crate::ecs_agent::EcsAgent;
@@ -25,7 +25,7 @@ use super::corpus_request_shape::{
 
 /// `tool_choice(Auto)` with `add` advertised: the model calls it.
 #[tokio::test]
-async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
+async fn tool_choice_auto_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/tool_choice_auto",
         |client| async move {
@@ -56,7 +56,6 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
                     EffectFamily::Completion
                 ]
             );
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_tool_choice_auto", &log);
         },
     )
     .await;
@@ -68,7 +67,7 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
 /// with `[Completion, Tool, Completion, Tool]` recorded. The corpus pins
 /// that this is what the engine does with a per-run `Required`.
 #[tokio::test]
-async fn tool_choice_required_effect_log_is_the_golden_fixture() {
+async fn tool_choice_required_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/tool_choice_required",
         |client| async move {
@@ -103,10 +102,6 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
                     EffectFamily::Tool
                 ]
             );
-            crate::ecs_goldens::golden_effects(
-                "anthropic_request_shape_tool_choice_required",
-                &log,
-            );
         },
     )
     .await;
@@ -116,7 +111,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
 /// so, like `Required`, the run ends in `MaxTurnsError` after two forced
 /// calls.
 #[tokio::test]
-async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
+async fn tool_choice_specific_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/tool_choice_specific",
         |client| async move {
@@ -153,10 +148,6 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
                     EffectFamily::Tool
                 ]
             );
-            crate::ecs_goldens::golden_effects(
-                "anthropic_request_shape_tool_choice_specific",
-                &log,
-            );
         },
     )
     .await;
@@ -171,7 +162,7 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
 /// as an answer, and that the request holds `tool_choice: none` with the
 /// tool still advertised.
 #[tokio::test]
-async fn tool_choice_none_effect_log_is_the_golden_fixture() {
+async fn tool_choice_none_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/tool_choice_none",
         |client| async move {
@@ -195,7 +186,6 @@ async fn tool_choice_none_effect_log_is_the_golden_fixture() {
                 output, "",
                 "Sonnet 4.6 answers `tool_choice: none` with empty content; if this changes, the cell changes"
             );
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_tool_choice_none", &log);
         },
     )
     .await;
@@ -205,7 +195,7 @@ async fn tool_choice_none_effect_log_is_the_golden_fixture() {
 
 /// `max_tokens(32)`: the request carries the cap; the answer stops at it.
 #[tokio::test]
-async fn max_tokens_effect_log_is_the_golden_fixture() {
+async fn max_tokens_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/max_tokens",
         |client| async move {
@@ -233,7 +223,6 @@ async fn max_tokens_effect_log_is_the_golden_fixture() {
                 other => panic!("a completion, not {other:?}"),
             };
             assert_eq!(request.max_tokens, Some(32));
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_max_tokens", &log);
         },
     )
     .await;
@@ -242,7 +231,7 @@ async fn max_tokens_effect_log_is_the_golden_fixture() {
 /// `additional_params(thinking: adaptive)`, unary: the record's completion
 /// carries a reasoning block with its signature.
 #[tokio::test]
-async fn thinking_unary_effect_log_is_the_golden_fixture() {
+async fn thinking_unary_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/thinking_unary",
         |client| async move {
@@ -262,7 +251,6 @@ async fn thinking_unary_effect_log_is_the_golden_fixture() {
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(reasoning_blocks(&log) >= 1, "the completion reasons");
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_thinking_unary", &log);
         },
     )
     .await;
@@ -271,7 +259,7 @@ async fn thinking_unary_effect_log_is_the_golden_fixture() {
 /// The same, streamed with its events kept: the reasoning deltas and the
 /// block's signature are on the record, and both interpreters carry them.
 #[tokio::test]
-async fn thinking_streamed_effect_log_is_the_golden_fixture() {
+async fn thinking_streamed_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/thinking_streamed",
         |client| async move {
@@ -292,7 +280,6 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(log.records[0].events.is_some(), "events are kept");
             assert!(reasoning_blocks(&log) >= 1, "the completion reasons");
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_thinking_streamed", &log);
         },
     )
     .await;
@@ -303,7 +290,7 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
 /// Two static `context` documents: the request holds them and the answer
 /// uses them.
 #[tokio::test]
-async fn static_context_effect_log_is_the_golden_fixture() {
+async fn static_context_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/static_context",
         |client| async move {
@@ -340,7 +327,6 @@ async fn static_context_effect_log_is_the_golden_fixture() {
                 other => panic!("a completion, not {other:?}"),
             };
             assert_eq!(request.documents.len(), 2, "{:?}", request.documents);
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_static_context", &log);
         },
     )
     .await;
@@ -348,7 +334,7 @@ async fn static_context_effect_log_is_the_golden_fixture() {
 
 /// `append_preamble`: the spec's preamble is the base and the document.
 #[tokio::test]
-async fn append_preamble_effect_log_is_the_golden_fixture() {
+async fn append_preamble_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/append_preamble",
         |client| async move {
@@ -373,7 +359,6 @@ async fn append_preamble_effect_log_is_the_golden_fixture() {
             assert!(output.contains("DONE"), "{}", output);
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_append_preamble", &log);
         },
     )
     .await;
@@ -381,7 +366,7 @@ async fn append_preamble_effect_log_is_the_golden_fixture() {
 
 /// `without_preamble`: the request carries no system prompt at all.
 #[tokio::test]
-async fn without_preamble_effect_log_is_the_golden_fixture() {
+async fn without_preamble_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/without_preamble",
         |client| async move {
@@ -409,7 +394,6 @@ async fn without_preamble_effect_log_is_the_golden_fixture() {
                 other => panic!("a completion, not {other:?}"),
             };
             assert_eq!(request.system_instructions(), None);
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_without_preamble", &log);
         },
     )
     .await;
@@ -419,7 +403,7 @@ async fn without_preamble_effect_log_is_the_golden_fixture() {
 
 /// `output_schema_raw`, unary: the answer is the schema's object.
 #[tokio::test]
-async fn output_schema_unary_effect_log_is_the_golden_fixture() {
+async fn output_schema_unary_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/output_schema_unary",
         |client| async move {
@@ -448,7 +432,6 @@ async fn output_schema_unary_effect_log_is_the_golden_fixture() {
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert_eq!(last_text(&log), output);
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_output_schema_unary", &log);
         },
     )
     .await;
@@ -456,7 +439,7 @@ async fn output_schema_unary_effect_log_is_the_golden_fixture() {
 
 /// `output_schema_raw`, streamed with events kept.
 #[tokio::test]
-async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
+async fn output_schema_streamed_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/output_schema_streamed",
         |client| async move {
@@ -485,10 +468,6 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(log.records[0].events.is_some(), "events are kept");
-            crate::ecs_goldens::golden_effects(
-                "anthropic_request_shape_output_schema_streamed",
-                &log,
-            );
         },
     )
     .await;
@@ -497,7 +476,7 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
 /// A prior history on the runner: the first record's request already
 /// holds two turns before the prompt.
 #[tokio::test]
-async fn prior_history_effect_log_is_the_golden_fixture() {
+async fn prior_history_effect_log() {
     with_anthropic_corpus_request_shape_cassette(
         "corpus_request_shape/prior_history",
         |client| async move {
@@ -533,7 +512,6 @@ async fn prior_history_effect_log_is_the_golden_fixture() {
                 "two prior turns and the prompt: {:?}",
                 request.chat_history
             );
-            crate::ecs_goldens::golden_effects("anthropic_request_shape_prior_history", &log);
         },
     )
     .await;

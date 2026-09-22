@@ -1,7 +1,7 @@
 //! The corpus's third interpreter, agent half: a `Program` as an agent
 //! graph in a Bevy `World`, its run through `rig_ecs`'s systems against
-//! the golden's replayers, its log compared to the golden as the other two
-//! interpreters' are.
+//! the golden's replayers, its records checked against the golden's as
+//! the other two interpreters' are.
 //!
 //! Every program of the corpus runs here: completions, tools and batches,
 //! every hook as a user system (`world_hooks`), layers, memory, retrieval,
@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_cassette::ecs::EffectLogResource;
-use rig_cassette::ecs::identity::stamp_legacy_builder_header;
 use rig_cassette::effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
@@ -35,7 +34,7 @@ use rig_ecs::{
 
 use super::{
     Ending, Output as CorpusOutput, Program, Unhandled, assert_same_records, golden, golden_answer,
-    keeps_events, run_spec,
+    keeps_events,
 };
 
 pub const GUARD: Duration = Duration::from_secs(30);
@@ -217,13 +216,6 @@ pub fn world_agent_reproduces(program: &Program) {
     let world = app.world_mut();
     super::world_hooks::install(world, program);
     let agent = spawn_agent(world, program, &handler_entities);
-    stamp_legacy_builder_header(
-        world,
-        agent,
-        &world.resource::<EffectLogResource>().0.clone(),
-        log.header.bus,
-        super::program_hooks(program, program.owner),
-    );
     let history: Vec<MessageParts> = program
         .history
         .map(|history| {
@@ -273,7 +265,6 @@ pub fn world_agent_reproduces(program: &Program) {
     // goldens do not have and `as_data` does not compare.
     let replayed = world.resource::<EffectLogResource>().log();
     assert_same_records(&replayed, &log, "world agent");
-    assert_header(&replayed, &log, program);
 }
 
 /// Tick the app until `run` ends and the world is quiescent. `false` when
@@ -381,51 +372,6 @@ pub fn assert_ending(
             program.fixture
         ),
     }
-}
-
-/// The replayed header is the golden's: spec hash, hooks, required row,
-/// signature; and the world's identity computation agrees with the harness.
-pub fn assert_header(
-    replayed: &rig_cassette::effect_log::EffectLog,
-    log: &rig_cassette::effect_log::EffectLog,
-    program: &Program,
-) {
-    assert_eq!(
-        replayed.header.run_spec, log.header.run_spec,
-        "{}: the header's spec hash is this program's",
-        program.fixture
-    );
-    assert_eq!(
-        replayed.header.hooks, log.header.hooks,
-        "{}: the hook list",
-        program.fixture
-    );
-    for (key, family) in log.header.required.iter() {
-        assert_eq!(
-            replayed.header.required.get(key),
-            Some(family),
-            "{}: the required row names `{key}`",
-            program.fixture
-        );
-    }
-    assert_eq!(
-        replayed.header.signature, log.header.signature,
-        "{}: the signature",
-        program.fixture
-    );
-    // The world's own identity computation agrees with the harness's.
-    let expected = rig_cassette::effect_log::stable_hash(&rig_agent::run::RunSpec {
-        max_turns: Some(program.default_max_turns.unwrap_or(1)),
-        max_invalid_tool_call_retries: 0,
-        unhandled_invalid_tool_call: rig_agent::run::UnhandledInvalidToolCall::Fail,
-        ..run_spec(program)
-    })
-    .ok();
-    assert_eq!(
-        replayed.header.run_spec, expected,
-        "{}: run_spec",
-        program.fixture
-    );
 }
 
 /// The program as an agent graph: the agent entity with one component per

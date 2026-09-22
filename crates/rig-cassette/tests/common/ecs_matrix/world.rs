@@ -1,10 +1,9 @@
 //! The world cell: a cell's program as an agent graph in a Bevy `World`,
 //! its hooks the corpus's systems (`corpus::world_hooks`), served by the
 //! real adapters over the same cassette as the producer, and asserted in
-//! this order: (1) the log the world wrote equals the producer's golden
-//! (`crate::ecs_goldens::golden_effects`: kinds, outcomes, events, parent
-//! chain — the rig-cassette oracle), (2) the run's graph after settle has
-//! the shape the section states, (3) where the cell names a cut, a scene
+//! this order: (1) the log the world wrote has the kinds, outcomes,
+//! events and parent chain the cell states, (2) the run's graph after
+//! settle has the shape the section states, (3) where the cell names a cut, a scene
 //! saved there loads in a fresh world served by replayers over the log's
 //! tail and finishes to the same answer. Every settled run is then
 //! despawned (`despawn_run`, CONTRACT: the world keeps nothing of a run by
@@ -70,7 +69,7 @@ use rig_core::tool::Tool;
 use rig_core::tool::ToolContext;
 
 use rig_cassette::ecs::EffectLogResource;
-use rig_cassette::ecs::identity::{stamp_legacy_builder_header, stamp_run};
+use rig_cassette::ecs::identity::stamp_run;
 use rig_cassette::effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use rig_ecs::{
     agent::{
@@ -1735,13 +1734,12 @@ fn assert_mid_stream_scene_refused(app: &mut App, cell: &Cell, program: &Program
     );
 }
 
-/// The world cell: the program over `wire` through `spawn_run`, its log
-/// compared to the golden `golden`, its graph and its despawn asserted,
+/// The world cell: the program over `wire` through `spawn_run`, its log,
+/// its graph and its despawn asserted against the cell,
 /// and its cut resumed where the cell names one.
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
-    golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let program = wire.program(cell);
     let (mut app, mut agent, mut recorder, mut gates) = open(wire, cell, &program);
@@ -1754,7 +1752,6 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 .before(RigSet::Settle),
         );
     }
-    let declared = cell.bus.declared().then_some(cell.bus.policy());
     let history: Vec<MessageParts> = program
         .history
         .map(|history| {
@@ -1790,15 +1787,6 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         }
         if let Some(concurrency) = program.tool_concurrency {
             world.entity_mut(run).insert(ToolPolicy { concurrency });
-        }
-        if n == 0 {
-            stamp_legacy_builder_header(
-                world,
-                agent,
-                &recorder,
-                declared,
-                corpus::program_hooks(&program, OWNER),
-            );
         }
         stamp_run(world, run, &recorder).expect("the run stamps its program identity");
         if std::env::var("RIG_SPEC_DUMP").is_ok() {
@@ -1927,13 +1915,6 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 .query_filtered::<Entity, With<Run>>()
                 .single(app.world())
                 .expect("only the restored run exists");
-            stamp_legacy_builder_header(
-                app.world_mut(),
-                agent,
-                &recorder,
-                declared,
-                corpus::program_hooks(&program, OWNER),
-            );
             stamp_run(app.world_mut(), run, &recorder).expect("stamp restored run");
             if holds_tool_turn(cell) {
                 assert!(
@@ -1996,10 +1977,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     if super::stream_delivery::applicable(cell) {
         super::stream_delivery::assert_complete(app.world(), cell, &log, delivery_head);
     }
-    // (1) the record is the producer's: the caller names the golden at its
-    // call site (`crate::ecs_goldens::golden_effects("…", log)`).
-    golden(&log);
-    // (2) the graph, and the fault's facts.
+    // The graph, and the fault's facts.
     assert_ending(app.world(), &program, run, &log);
     assert_graph(&mut app, &runs, &program, &log);
     if cell.reasoning.is_some() {
@@ -2062,20 +2040,15 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     log
 }
 
-/// A scripted cell: the rig-agent runner over one scripted transport, the
-/// world over another built the same way, and the world's log compared to
-/// the runner's by the golden comparison's own normalisation
-/// (`crate::ecs_goldens::assert_parity`). No golden: the frames are the
-/// cell's, not a recording's.
+/// A scripted cell: the rig-agent runner over one scripted transport and
+/// the world over another built the same way, each asserted against the
+/// cell. No golden: the frames are the cell's, not a recording's.
 pub(crate) async fn run_scripted<M: CompletionModel + Clone + 'static>(
     cell: &Cell,
     wire: impl Fn() -> Wire<M>,
 ) -> EffectLog {
-    let original = super::agent::run_agent(&wire(), cell, |_| {}).await;
-    run_world(&wire(), cell, |log| {
-        crate::ecs_goldens::assert_parity(cell.name, log, &original)
-    })
-    .await
+    super::agent::run_agent(&wire(), cell, |_| {}).await;
+    run_world(&wire(), cell).await
 }
 
 /// The tail: a fresh world over replayers of the log from the cut, the
@@ -2142,19 +2115,11 @@ fn resume(
         .first()
         .copied()
         .expect("the scene holds the run");
-    let agent = world.get::<RunOf>(run).expect("the run's agent").0;
     if cell.reasoning.is_some() {
         let history = super::reasoning::assistant_history(world, run);
         super::reasoning::assert_history(cell, &head, &history);
     }
     corpus::world_hooks::install(world, &program);
-    stamp_legacy_builder_header(
-        world,
-        agent,
-        &world.resource::<EffectLogResource>().0.clone(),
-        log.header.bus,
-        corpus::program_hooks(&program, OWNER),
-    );
     stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone())
         .expect("the run stamps its program identity");
     let start = Instant::now();

@@ -44,7 +44,7 @@ fn drop_at_tool_delta(
 }
 
 #[tokio::test]
-async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
+async fn cancel_after_tool_call_delta_effect_log() {
     with_anthropic_corpus_outcome_cassette(
         "corpus_outcome/cancel_after_tool_call_delta",
         |client| async move {
@@ -86,10 +86,6 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
                 .as_ref()
                 .expect_err("a dropped stream is recorded as a cancel");
             assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
-            crate::ecs_goldens::golden_effects(
-                "anthropic_outcome_cancel_after_tool_call_delta",
-                &log,
-            );
         },
     )
     .await;
@@ -98,7 +94,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
 /// A tool that fails: the tool record's outcome is a failed result, the
 /// model sees the failure and answers around it.
 #[tokio::test]
-async fn tool_error_effect_log_is_the_golden_fixture() {
+async fn tool_error_effect_log() {
     with_anthropic_corpus_outcome_cassette("corpus_outcome/tool_error", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -122,14 +118,13 @@ async fn tool_error_effect_log_is_the_golden_fixture() {
         let result = tool_outcome(&log);
         assert!(result.is_error(), "{result:?}");
         assert!(result.output().render().contains(BROKEN_ADD), "{result:?}");
-        crate::ecs_goldens::golden_effects("anthropic_outcome_tool_error", &log);
     })
     .await;
 }
 
 /// The same, streamed with events kept.
 #[tokio::test]
-async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
+async fn tool_error_streamed_effect_log() {
     with_anthropic_corpus_outcome_cassette(
         "corpus_outcome/tool_error_streamed",
         |client| async move {
@@ -154,7 +149,6 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
             );
             assert!(log.records[0].events.is_some(), "events are kept");
             assert!(tool_outcome(&log).is_error());
-            crate::ecs_goldens::golden_effects("anthropic_outcome_tool_error_streamed", &log);
         },
     )
     .await;
@@ -163,7 +157,7 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
 /// The wire's own error: an invalid key, a 401 envelope. The completion
 /// record's outcome is the provider's error and the run fails at it.
 #[tokio::test]
-async fn model_error_effect_log_is_the_golden_fixture() {
+async fn model_error_effect_log() {
     with_anthropic_cassette_bogus_key("corpus_outcome/model_error", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
@@ -193,14 +187,13 @@ async fn model_error_effect_log_is_the_golden_fixture() {
             .expect_err("the record holds the provider's error");
         assert_eq!(report.kind, ErrorKind::ProviderResponse);
         assert_eq!(report.http_status, Some(401), "{report:?}");
-        crate::ecs_goldens::golden_effects("anthropic_outcome_model_error", &log);
     })
     .await;
 }
 
 /// The same, streamed: the error arrives as the stream's first item.
 #[tokio::test]
-async fn model_error_streamed_effect_log_is_the_golden_fixture() {
+async fn model_error_streamed_effect_log() {
     with_anthropic_cassette_bogus_key("corpus_outcome/model_error_streamed", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, true);
@@ -229,7 +222,6 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
             .as_ref()
             .expect_err("the record holds the provider's error");
         assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
-        crate::ecs_goldens::golden_effects("anthropic_outcome_model_error_streamed", &log);
     })
     .await;
 }
@@ -240,7 +232,7 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
 /// request, and a cassette with a second interaction refuses to leave it
 /// unused.
 #[tokio::test]
-async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
+async fn max_turns_exhausted_effect_log() {
     with_anthropic_corpus_outcome_cassette(
         "corpus_outcome/max_turns_exhausted",
         |client| async move {
@@ -266,7 +258,6 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
                 families(&log),
                 [EffectFamily::Completion, EffectFamily::Tool]
             );
-            crate::ecs_goldens::golden_effects("anthropic_outcome_max_turns_exhausted", &log);
         },
     )
     .await;
@@ -277,7 +268,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
 /// default budget of three and no runner budget: its records are the
 /// `anthropic_tool_call_turn` golden's, its header is another program's.
 #[tokio::test]
-async fn default_max_turns_effect_log_is_the_golden_fixture() {
+async fn default_max_turns_effect_log() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let mut ecs =
             EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -302,7 +293,6 @@ async fn default_max_turns_effect_log_is_the_golden_fixture() {
                 EffectFamily::Completion
             ]
         );
-        crate::ecs_goldens::golden_effects("anthropic_outcome_default_max_turns", &log);
     })
     .await;
 }

@@ -36,9 +36,14 @@ fn qualified_matrix_invocations_in_modules_claim_only_recorded_rows() {
                 #[tokio::test] first: ("first", CELL, "first_golden");
                 #[tokio::test] #[ignore = "unrecorded"] ignored: ("absent", CELL, "absent_golden");
             }
+            crate::matrix::native_matrix! {
+                wrapper: super::with_cassette, wire: wire, run: run;
+                #[tokio::test] native: ("first", CELL);
+                #[tokio::test] #[ignore = "unrecorded"] absent: ("absent", CELL);
+            }
             crate::matrix::resume_matrix! {
                 wrapper: with_cassette, wire: wire, run: run;
-                #[tokio::test] resume: ("first", CELL, Some(1), oracle);
+                #[tokio::test] resume: ("first", CELL, Some(1));
             }
             crate::matrix::case_matrix! {
                 family: wire_matrix_case;
@@ -53,7 +58,7 @@ fn qualified_matrix_invocations_in_modules_claim_only_recorded_rows() {
     "#;
     assert_eq!(
         cassette_scenarios(source, WRAPPERS).expect("matrix rows"),
-        ["first", "first", "tools"]
+        ["first", "first", "first", "tools"]
     );
 }
 
@@ -75,7 +80,8 @@ fn comments_strings_and_macro_definitions_are_not_invocations() {
 fn malformed_matrix_rows_fail_instead_of_vanishing() {
     for source in [
         "golden_matrix! { wrapper: with_cassette, wire: wire, run: run, oracle: golden; #[tokio::test] a: (dynamic(), CELL, \"golden\"); }",
-        "resume_matrix! { wrapper: with_cassette, wire: wire, run: run; a: (\"scenario\", CELL, None, golden); }",
+        "native_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL, \"golden\"); }",
+        "resume_matrix! { wrapper: with_cassette, wire: wire, run: run; a: (\"scenario\", CELL, None); }",
         "case_matrix! { family: wire_matrix_case; missing_attribute: truncation; }",
         "case_matrix! { wrapper: with_cassette, family: family; #[tokio::test] a: (\"a\", row); #[tokio::test] a: (\"b\", row); }",
     ] {

@@ -13,7 +13,6 @@ use rig_test_support::cassettes;
 use rig_test_support::ecs_agent;
 #[path = "common/ecs_extractor.rs"]
 mod ecs_extractor;
-use rig_test_support::ecs_goldens;
 #[path = "common/ecs_lifecycle.rs"]
 mod ecs_lifecycle;
 #[path = "common/ecs_observation.rs"]

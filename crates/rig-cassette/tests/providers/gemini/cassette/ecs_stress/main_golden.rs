@@ -74,14 +74,6 @@ pub(super) async fn run(
     tool(&mut app, agent, add, 0);
     tool(&mut app, agent, subtract, 1);
     let run = app.world_mut().spawn_run(agent, &[], prompt, true, Some(6));
-    let bus = app.world().resource::<rig_ecs::bus::Policy>().0;
-    rig_cassette::ecs::identity::stamp_legacy_builder_header(
-        app.world_mut(),
-        agent,
-        &recorder,
-        Some(bus),
-        vec![],
-    );
     rig_cassette::ecs::identity::stamp_run(app.world_mut(), run, &recorder)
         .expect("the run stamps its program identity");
     let saw_final = tokio::time::timeout(Duration::from_secs(30), async {

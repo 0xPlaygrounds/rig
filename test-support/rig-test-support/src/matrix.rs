@@ -20,12 +20,33 @@ macro_rules! golden_matrix {
 
 pub use golden_matrix;
 
+/// Emit registered native rows: a world cell asserted against its own
+/// program, with no golden to compare to.
+#[macro_export]
+macro_rules! native_matrix {
+    (
+        wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
+        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path); )*
+    ) => {
+        $(
+            $(#[$attribute])*
+            async fn $name() {
+                $wrapper($scenario, |client| async move {
+                    $run(&$wire(&client), &$cell).await;
+                }).await;
+            }
+        )*
+    };
+}
+
+pub use native_matrix;
+
 /// Emit registered test rows with the shared execution body.
 #[macro_export]
 macro_rules! resume_matrix {
     (
         wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $oracle:path); )*
+        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr); )*
     ) => {
         $(
             $(#[$attribute])*
@@ -33,7 +54,7 @@ macro_rules! resume_matrix {
                 $wrapper($scenario, |client| async move {
                     let mut cell = $cell;
                     cell.resume_after = $resume;
-                    $run(&$wire(&client), &cell, $oracle).await;
+                    $run(&$wire(&client), &cell).await;
                 }).await;
             }
         )*
