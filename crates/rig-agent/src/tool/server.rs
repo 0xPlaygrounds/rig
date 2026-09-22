@@ -1,23 +1,15 @@
-//! The runtime tool registry an agent advertises from and dispatches
-//! through.
+//! Mutable tool registries that publish registrations to attached buses and pin
+//! request snapshots with generation leases.
 //!
-//! A [`ToolServerHandle`] is the definition/advertisement surface: it owns
-//! the [`ToolSet`] (descriptors plus staged handlers) and publishes every
-//! registration onto the buses attached to it — each agent built with the
-//! handle attaches its bus at build time, and later additions, removals and
-//! MCP reconciles are pushed to every attached bus as they happen. A
-//! request's snapshot ([`ToolCatalog`]) pins the *generation* of each tool:
-//! registrations are served under owner- and generation-qualified keys
-//! (`<owner>/tool:<name>#<n>`, the owner being the registry's label —
-//! `tools#<m>` by default, [`ToolServer::owner`] to name it), a replacement
-//! registers a new generation, and a generation is deregistered from the
-//! buses when the last snapshot referencing it drops (or, failing that, on
-//! the next registry read). A registration that carries its own key (a
-//! replayer's recorded key, a host's own) is served under that key as
-//! given. Reusing an explicit key replaces its bus binding, even across
-//! tool names; only the latest binding's lease controls its removal.
-//! Execution during a run goes through the bus; the inline
-//! `execute` here serves the standalone use (no agent, no bus).
+//! Generated keys preserve older handlers until their snapshots are released.
+//! Explicit keys are used verbatim; reuse replaces their bus binding, whose
+//! removal is controlled only by the latest lease. Direct execution is inline.
+//!
+//! ```
+//! use rig_agent::tool::server::ToolServer;
+//! let registry = ToolServer::new().owner("assistant").run();
+//! assert!(registry.snapshot().is_empty());
+//! ```
 
 use std::collections::HashMap;
 use std::sync::{
@@ -46,9 +38,6 @@ use crate::{
 /// The per-process counter behind a registry's default owner label.
 static NEXT_REGISTRY: AtomicU64 = AtomicU64::new(0);
 
-/// The per-request snapshot of the registry: a [`ToolCatalog`].
-pub type ToolRegistrySnapshot = ToolCatalog;
-
 /// A retrieval index registered for tool retrieval: its bus key and how
 /// many tools to sample.
 #[derive(Clone)]
@@ -66,10 +55,8 @@ struct PendingRetrievalIndex {
     handler: rig_core::serve::ErasedHandler,
 }
 
-/// The lease a live registration hands to every snapshot that pins it.
-/// Dropping the last clone after the generation was retired sweeps the
-/// registry, so the retired key leaves the buses when the last request
-/// that could dispatch to it is gone — not on the next registry read.
+/// Snapshot lease for a registration generation. Final drop attempts retirement
+/// cleanup immediately; lock contention defers cleanup to a later registry access.
 struct LeaseToken {
     registry: Weak<RwLock<ToolServerState>>,
 }
@@ -348,10 +335,8 @@ impl ToolServer {
         self
     }
 
-    /// Add retrievable tools chosen per request by `handler` — any
-    /// retrieval-family handler answering `TopNIds`, such as a replayer
-    /// answering a recorded index from an effect log — under the same key
-    /// [`retrieved_tools`](Self::retrieved_tools) would give an index.
+    /// Add tools selected per request by a retrieval-family handler answering
+    /// `TopNIds`, registered under a generated retrieval index key.
     pub fn retrieved_tools_handler(
         mut self,
         sample: usize,
@@ -601,7 +586,7 @@ impl ToolServerHandle {
     }
 
     /// The always-exposed registrations, pinned.
-    pub fn snapshot(&self) -> ToolRegistrySnapshot {
+    pub fn snapshot(&self) -> ToolCatalog {
         let (tools, leases) = self.with_registry(|state| snapshot_registered_tools(state, &[]));
         ToolCatalog::from_registered(tools).with_leases(leases)
     }
@@ -617,7 +602,8 @@ impl ToolServerHandle {
         self.with_registry(|state| state.toolset.clone())
     }
 
-    /// The definitions a request with `prompt` advertises.
+    /// Retrieve advertised definitions for `prompt`, returning retrieval failures
+    /// or incompatible result shapes as definition errors.
     pub async fn tool_defs(
         &self,
         prompt: Option<String>,
@@ -625,12 +611,7 @@ impl ToolServerHandle {
         Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
     }
 
-    /// The `Retrieve` effects a request with `prompt` needs answered before
-    /// its dynamic tools can be advertised: one `TopNIds` query per
-    /// retrieval index, under the key the index is registered on every
-    /// attached bus. The engine dispatches them at the boundary and hands
-    /// the ids back to [`ToolServerHandle::snapshot_with_dynamic`].
-    /// The keys of every retrieval index this registry serves.
+    /// Return registered retrieval index keys in registration order.
     pub fn retrieval_keys(&self) -> Vec<HandlerKey> {
         self.state()
             .retrieval_indexes
@@ -639,7 +620,9 @@ impl ToolServerHandle {
             .collect()
     }
 
-    /// The retrieval effects the server would dispatch for a request.
+    /// Build one `TopNIds` effect per retrieval index for the supplied prompt.
+    /// Returns no effects without a prompt; pass returned IDs to
+    /// [`Self::snapshot_with_dynamic`] after dispatch.
     pub fn retrieval_effects(
         &self,
         prompt: Option<String>,
@@ -670,9 +653,9 @@ impl ToolServerHandle {
             .collect()
     }
 
-    /// The registrations a request advertises: the always-exposed ones plus
-    /// the retrieved tools named by `dynamic_tool_ids`.
-    pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolRegistrySnapshot {
+    /// Pin retrieved tools in ID order, then always-exposed tools in registration
+    /// order. Deduplicates names and skips missing registrations.
+    pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolCatalog {
         let (tools, leases) =
             self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids));
         ToolCatalog::from_registered(tools).with_leases(leases)
@@ -685,7 +668,7 @@ impl ToolServerHandle {
     pub(crate) async fn snapshot_tool_defs(
         &self,
         prompt: Option<String>,
-    ) -> Result<ToolRegistrySnapshot, ToolServerError> {
+    ) -> Result<ToolCatalog, ToolServerError> {
         let retrieval_indexes = {
             let state = self.state();
             state.retrieval_indexes.clone()
@@ -798,7 +781,7 @@ fn snapshot_registered_tools(
 const _: () = {
     const fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<ToolSet>();
-    assert_send_sync_static::<ToolRegistrySnapshot>();
+    assert_send_sync_static::<ToolCatalog>();
     assert_send_sync_static::<ToolServerHandle>();
 };
 

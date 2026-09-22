@@ -1,0 +1,5175 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 15
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 13
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 10
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 13,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 30,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 31,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 33,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 35,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 37,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 41,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 42,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 45,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 48,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 50,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 52,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 57,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 59,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 61,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 66,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 68,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 81,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 98,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 99,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 100,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 101,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 102,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 104,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 105,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 107,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 107,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 108,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 124,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 125,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 126,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 127,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 128,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 129,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 130,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 131,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 132,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 133,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 134,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 135,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 136,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 137,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 138,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 139,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 140,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 141,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 142,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 143,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 144,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 145,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 146,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 150,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 151,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 153,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 163,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 163,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 164,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 176,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 177,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 178,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 179,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 180,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 181,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 182,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 183,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 184,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 185,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 186,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 187,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 188,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 189,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 190,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 191,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 192,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 193,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 194,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 195,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 196,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 200,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 202,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 203,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 204,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 205,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 206,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 207,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 208,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 209,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 210,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 211,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 212,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 215,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 223,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 223,
+        "id": 8,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "ping_empty",
+          "description": "Return EMPTY-OK. This tool takes no arguments.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "inspect_manifest",
+          "description": "Validate a nested deployment manifest.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "flags": {
+                "type": "object",
+                "properties": {
+                  "critical": {
+                    "type": "boolean"
+                  },
+                  "retries": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "critical",
+                  "retries"
+                ]
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "weight": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "weight"
+                  ]
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "project",
+              "flags",
+              "steps",
+              "note"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#2",
+        "family": {
+          "family": "tool",
+          "name": "join_labels",
+          "description": "Join label strings with the requested separator.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "separator": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "labels",
+              "separator"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#3",
+        "family": {
+          "family": "tool",
+          "name": "escape_echo",
+          "description": "Echo a string containing escaping-sensitive characters.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool",
+      "parity/tool#2": "tool",
+      "parity/tool#3": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool",
+          "parity/tool#2": "tool",
+          "parity/tool#3": "tool"
+        },
+        "policy": 16132150053142680601
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1",
+                "item_id": "fc_REDACTED_1"
+              },
+              "function": {
+                "name": "ping_empty",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 745,
+            "output_tokens": 518,
+            "total_tokens": 1263,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 513
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 745,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "output_tokens": 518,
+              "output_tokens_details": {
+                "reasoning_tokens": 513
+              },
+              "total_tokens": 1263
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_1",
+            "model": "grok-4.3"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_1",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " task"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Run"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " production"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-read"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "iness"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " scenario"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " note"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " `"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ";"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " two"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " says"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "hello"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " path"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " C"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "rig"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\\x"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ai"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "`."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " escaped"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " `"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "I can't follow those instructions because they conflict with my core guidelines."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_1",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_1",
+            "content": [
+              {
+                "type": "summary",
+                "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:fc_REDACTED_1",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "ping_empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:fc_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "fc_REDACTED_1",
+            "name": "ping_empty",
+            "arguments": {},
+            "call_id": "call_REDACTED_1",
+            "on_unparseable": "drop"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_1"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_1",
+              "item_id": "fc_REDACTED_1"
+            },
+            "function": {
+              "name": "ping_empty",
+              "arguments": {}
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 745,
+            "output_tokens": 518,
+            "total_tokens": 1263,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 513
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "req_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 745,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "output_tokens": 518,
+              "output_tokens_details": {
+                "reasoning_tokens": 513
+              },
+              "total_tokens": 1263
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_1",
+            "model": "grok-4.3"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "ping_empty",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "EMPTY-OK"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_2",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2",
+                "item_id": "fc_REDACTED_2"
+              },
+              "function": {
+                "name": "inspect_manifest",
+                "arguments": {
+                  "project": "rig-xai",
+                  "flags": {
+                    "critical": true,
+                    "retries": 2
+                  },
+                  "steps": [
+                    {
+                      "name": "plan",
+                      "weight": 1
+                    },
+                    {
+                      "name": "verify",
+                      "weight": 2
+                    }
+                  ],
+                  "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 759,
+            "output_tokens": 407,
+            "total_tokens": 1166,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 329
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 759,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "output_tokens": 407,
+              "output_tokens_details": {
+                "reasoning_tokens": 329
+              },
+              "total_tokens": 1166
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_2",
+            "model": "grok-4.3"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_2",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " instruction"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " For"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " production"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-read"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "iness"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " scenario"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " exactly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " tool"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " time"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " this"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " order"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ping"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "_empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " an"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " JSON"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " object"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " inspect"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "_manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " project"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " rig"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-x"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ai"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " flags"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_2",
+          "delta": {
+            "delta": "reasoning",
+            "text": " criti..."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_2",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_2",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_2",
+            "content": [
+              {
+                "type": "summary",
+                "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:fc_REDACTED_2",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_2",
+          "delta": {
+            "delta": "tool_name",
+            "name": "inspect_manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:fc_REDACTED_2",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "fc_REDACTED_2",
+            "name": "inspect_manifest",
+            "arguments": {
+              "project": "rig-xai",
+              "flags": {
+                "critical": true,
+                "retries": 2
+              },
+              "steps": [
+                {
+                  "name": "plan",
+                  "weight": 1
+                },
+                {
+                  "name": "verify",
+                  "weight": 2
+                }
+              ],
+              "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+            },
+            "call_id": "call_REDACTED_2",
+            "on_unparseable": "drop"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_2"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_2",
+              "item_id": "fc_REDACTED_2"
+            },
+            "function": {
+              "name": "inspect_manifest",
+              "arguments": {
+                "project": "rig-xai",
+                "flags": {
+                  "critical": true,
+                  "retries": 2
+                },
+                "steps": [
+                  {
+                    "name": "plan",
+                    "weight": 1
+                  },
+                  {
+                    "name": "verify",
+                    "weight": 2
+                  }
+                ],
+                "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 759,
+            "output_tokens": 407,
+            "total_tokens": 1166,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 329
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "req_REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 759,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "output_tokens": 407,
+              "output_tokens_details": {
+                "reasoning_tokens": 329
+              },
+              "total_tokens": 1166
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_2",
+            "model": "grok-4.3"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 3,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "inspect_manifest",
+        "args": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-xai",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_3",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction is to call exactly one tool at a time in this order:\n"
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3",
+                "item_id": "fc_REDACTED_3"
+              },
+              "function": {
+                "name": "join_labels",
+                "arguments": {
+                  "labels": [
+                    "north",
+                    "beta gamma",
+                    "quote:\"delta\"",
+                    "slash\\path"
+                  ],
+                  "separator": "|"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 843,
+            "output_tokens": 181,
+            "total_tokens": 1024,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 151
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_3",
+          "provider_request_id": "req_REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 843,
+              "input_tokens_details": {
+                "cached_tokens": 832
+              },
+              "output_tokens": 181,
+              "output_tokens_details": {
+                "reasoning_tokens": 151
+              },
+              "total_tokens": 1024
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_3",
+            "model": "grok-4.3"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_3",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_3"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " instruction"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " exactly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " tool"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " time"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " this"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": " order"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_3",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_3",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_3",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction is to call exactly one tool at a time in this order:\n"
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_3",
+            "content": [
+              {
+                "type": "summary",
+                "content": "The instruction is to call exactly one tool at a time in this order:\n"
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:fc_REDACTED_3",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_3",
+          "delta": {
+            "delta": "tool_name",
+            "name": "join_labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:fc_REDACTED_3",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "fc_REDACTED_3",
+            "name": "join_labels",
+            "arguments": {
+              "labels": [
+                "north",
+                "beta gamma",
+                "quote:\"delta\"",
+                "slash\\path"
+              ],
+              "separator": "|"
+            },
+            "call_id": "call_REDACTED_3",
+            "on_unparseable": "drop"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_3"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_3",
+              "item_id": "fc_REDACTED_3"
+            },
+            "function": {
+              "name": "join_labels",
+              "arguments": {
+                "labels": [
+                  "north",
+                  "beta gamma",
+                  "quote:\"delta\"",
+                  "slash\\path"
+                ],
+                "separator": "|"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 843,
+            "output_tokens": 181,
+            "total_tokens": 1024,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 151
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "req_REDACTED_3",
+          "provider_request_id": "req_REDACTED_3",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 843,
+              "input_tokens_details": {
+                "cached_tokens": 832
+              },
+              "output_tokens": 181,
+              "output_tokens_details": {
+                "reasoning_tokens": 151
+              },
+              "total_tokens": 1024
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_3",
+            "model": "grok-4.3"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 5,
+      "key": "parity/tool#2",
+      "kind": {
+        "effect": "tool_call",
+        "name": "join_labels",
+        "args": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-xai",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_3",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is to call exactly one tool at a time in this order:\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_4",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instructions say: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4",
+                "item_id": "fc_REDACTED_4"
+              },
+              "function": {
+                "name": "escape_echo",
+                "arguments": {
+                  "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 892,
+            "output_tokens": 110,
+            "total_tokens": 1002,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 82
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_4",
+          "provider_request_id": "req_REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 892,
+              "input_tokens_details": {
+                "cached_tokens": 832
+              },
+              "output_tokens": 110,
+              "output_tokens_details": {
+                "reasoning_tokens": 82
+              },
+              "total_tokens": 1002
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_4",
+            "model": "grok-4.3"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_4",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " instructions"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " say"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " exactly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " tool"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " time"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " this"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " order"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ping"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "_empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "..."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " inspect"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "_manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "..."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "3"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " join"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "_labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "..."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": " escape"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "_echo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_4",
+          "delta": {
+            "delta": "reasoning",
+            "text": "...\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_4",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_4",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instructions say: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_4",
+            "content": [
+              {
+                "type": "summary",
+                "content": "The instructions say: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:fc_REDACTED_4",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_4",
+          "delta": {
+            "delta": "tool_name",
+            "name": "escape_echo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:fc_REDACTED_4",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "fc_REDACTED_4",
+            "name": "escape_echo",
+            "arguments": {
+              "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+            },
+            "call_id": "call_REDACTED_4",
+            "on_unparseable": "drop"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_4"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_4",
+              "item_id": "fc_REDACTED_4"
+            },
+            "function": {
+              "name": "escape_echo",
+              "arguments": {
+                "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 892,
+            "output_tokens": 110,
+            "total_tokens": 1002,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 82
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "req_REDACTED_4",
+          "provider_request_id": "req_REDACTED_4",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 892,
+              "input_tokens_details": {
+                "cached_tokens": 832
+              },
+              "output_tokens": 110,
+              "output_tokens_details": {
+                "reasoning_tokens": 82
+              },
+              "total_tokens": 1002
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "response_id": "req_REDACTED_4",
+            "model": "grok-4.3"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 7,
+      "key": "parity/tool#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "escape_echo",
+        "args": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 8,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1I can't follow those instructions because they conflict with my core guidelines."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-xai",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_3",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is to call exactly one tool at a time in this order:\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_4",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instructions say: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4",
+                    "item_id": "fc_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "escape_echo",
+                    "arguments": {
+                      "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4",
+                    "item_id": "fc_REDACTED_4"
+                  },
+                  "name": "escape_echo",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_5",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instructions specify: After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.\n"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK."
+            }
+          ],
+          "usage": {
+            "input_tokens": 946,
+            "output_tokens": 155,
+            "total_tokens": 1101,
+            "cached_input_tokens": 896,
+            "reasoning_tokens": 132
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "req_REDACTED_5",
+          "provider_request_id": "req_REDACTED_5",
+          "finish_reason": "stop",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 946,
+              "input_tokens_details": {
+                "cached_tokens": 896
+              },
+              "output_tokens": 155,
+              "output_tokens_details": {
+                "reasoning_tokens": 132
+              },
+              "total_tokens": 1101
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "req_REDACTED_5",
+            "model": "grok-4.3"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_5",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_5"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " instructions"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " specify"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " After"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " all"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " tool"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " results"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " are"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " available"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " answer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " short"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sentence"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " includes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " EMPTY"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " MAN"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "IFEST"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " LABEL"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "S"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ESC"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "APE"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_5",
+          "delta": {
+            "delta": "reasoning",
+            "text": ".\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_5",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_5",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instructions specify: After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.\n"
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_5",
+            "content": [
+              {
+                "type": "summary",
+                "content": "The instructions specify: After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.\n"
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "All"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " checks"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " passed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " EMPTY"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " MAN"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "IFEST"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " LABEL"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "S"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ESC"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "APE"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "message"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 946,
+            "output_tokens": 155,
+            "total_tokens": 1101,
+            "cached_input_tokens": 896,
+            "reasoning_tokens": 132
+          },
+          "finish_reason": "stop",
+          "message_id": "msg_REDACTED_1",
+          "response_id": "req_REDACTED_5",
+          "provider_request_id": "req_REDACTED_5",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "usage": {
+              "input_tokens": 946,
+              "input_tokens_details": {
+                "cached_tokens": 896
+              },
+              "output_tokens": 155,
+              "output_tokens_details": {
+                "reasoning_tokens": 132
+              },
+              "total_tokens": 1101
+            },
+            "reasoning_metadata": {
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "req_REDACTED_5",
+            "model": "grok-4.3"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

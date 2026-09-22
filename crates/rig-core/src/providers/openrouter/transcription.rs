@@ -5,6 +5,12 @@
 //! transcription decoder reads the reply; the gateway's own usage fields
 //! (audio seconds, cost) stay readable on
 //! [`TranscriptionResponse::raw`](crate::transcription::TranscriptionResponse::raw).
+//!
+//! ```no_run
+//! use rig_core::providers::{openrouter, openai::wire::{OPENROUTER, OpenAI}};
+//! let wire = OpenAI::from_env_with(&OPENROUTER)?.transcriptions(openrouter::WHISPER_1);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 /// The `openai/whisper-1` model.
 pub const WHISPER_1: &str = "openai/whisper-1";

@@ -138,6 +138,45 @@ pub fn trace_json(target: LogTarget, label: &str, value: &impl serde::Serialize)
     }
 }
 
+/// Serde for a dialect that is a registered `const`: the name is the whole
+/// wire format, so a host storing a wire cannot reconstitute a dialect
+/// with somebody else's base URL, and an unknown name is an error rather
+/// than a silent default.
+pub(crate) mod named_dialect {
+    /// Write the dialect's name, refusing a value that is not the registered
+    /// constant of that name: writing only its name would silently lose
+    /// its payload.
+    pub(crate) fn serialize<S: serde::Serializer>(
+        serializer: S,
+        family: &str,
+        name: &str,
+        registered: bool,
+    ) -> Result<S::Ok, S::Error> {
+        if !registered {
+            return Err(serde::ser::Error::custom(format!(
+                "an unregistered or modified {family} dialect cannot be persisted by name; \
+                 use configuration overrides"
+            )));
+        }
+        serializer.serialize_str(name)
+    }
+
+    /// Read a name and look the dialect up among the family's constants.
+    pub(crate) fn deserialize<'de, D, T>(
+        deserializer: D,
+        family: &str,
+        by_name: impl FnOnce(&str) -> Option<T>,
+    ) -> Result<T, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let name = <String as serde::Deserialize>::deserialize(deserializer)?;
+        by_name(&name).ok_or_else(|| {
+            serde::de::Error::custom(format!("`{name}` is not a registered {family} dialect"))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

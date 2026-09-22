@@ -62,7 +62,11 @@ fn every_event_round_trips_through_serde() {
             end: BlockClose::Text,
             block: None,
         },
-        StreamEvent::Final(StreamFinal::new("mock", Usage::default())),
+        StreamEvent::Final(StreamFinal::new(
+            "mock",
+            Usage::default(),
+            serde_json::json!({}),
+        )),
         StreamEvent::Unknown(UnknownPayload::new(
             serde_json::json!({"type": "web_search_call"}),
         )),

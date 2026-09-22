@@ -65,7 +65,12 @@ impl Serve for Scripted {
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
-                let response = CompletionResponse::new(self.next(), Usage::default(), "scripted");
+                let response = CompletionResponse::new(
+                    self.next(),
+                    Usage::default(),
+                    "scripted",
+                    serde_json::json!({}),
+                );
                 Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
@@ -102,7 +107,7 @@ impl Serve for Scripted {
                             provider_request_id: None,
                             provider: "scripted".to_owned(),
                             model: None,
-                            raw: serde_json::Value::Null,
+                            raw: serde_json::json!({ "provider": "scripted" }),
                         })
                         .await;
                 })

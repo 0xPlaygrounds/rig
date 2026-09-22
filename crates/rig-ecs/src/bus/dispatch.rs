@@ -1,4 +1,10 @@
-//! `BusSet::Dispatch`: the one system that takes pending effects.
+//! Ordered dispatch of pending effects with bounded intake and serial-key checks.
+//!
+//! ```
+//! use rig_ecs::bus::dispatch::handler_unavailable;
+//! let report = handler_unavailable(&"missing".into());
+//! assert_eq!(report.kind, rig_core::error::ErrorKind::HandlerUnavailable);
+//! ```
 
 use std::{
     collections::{HashMap, HashSet},
@@ -47,23 +53,13 @@ pub type CandidateView = (
     Option<&'static ServedBy>,
 );
 
-/// The dispatch system. In one pass, in ascending [`Seq`]:
+/// Dispatch eligible effects in [`Seq`] order up to the serving policy's intake
+/// bound. Busy serial keys wait; reentrant effects, missing handlers, and exhausted
+/// IDs receive errors without opening records.
 ///
-/// - stops at the tick's intake bound ([`Policy`]'s `command_capacity`);
-///   the rest stay `PendingEffect`, nobody is blocked;
-/// - under serial serving, leaves an effect whose key is in flight for a
-///   later pass, and refuses — `Request`, no record — one whose ancestor
-///   is in flight on its own key (it could only wait for itself);
-/// - answers `HandlerUnavailable`, no record, when no handler entity is
-///   bound to the key;
-/// - otherwise issues the id ([`Reserved`] or minted), opens the record
-///   (`parent` from the nearest issued ancestor, `scope` from the nearest
-///   [`Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
-///   dispatch context), and starts one initial task, owned by the entity
-///   as [`Serving`](super::Serving), with an empty [`Streamed`] for a streaming consumer;
-///   for a handler that is a system, puts
-///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
-///   entity is the question); then marks it [`InFlight`].
+/// Accepted effects use reserved or fresh IDs and inherit the nearest issued
+/// parent and scope. Task-served effects own their execution; world-served effects
+/// await system answers. Tool inputs and publication slots travel beside requests.
 pub fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,

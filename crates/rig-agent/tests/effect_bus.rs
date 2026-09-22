@@ -2,6 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
+use rig_cassette::agent::AgentReplayExt;
 use std::{
     sync::{
         Arc, Mutex, OnceLock,
@@ -1154,11 +1155,12 @@ impl AgentHook for DefaultObserver {
 #[tokio::test]
 async fn internal_families_are_observe_only_unless_a_hook_opts_in() {
     let observer = DefaultObserver::default();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("done"))
         .memory(rig_core::memory::InMemoryConversationMemory::new())
         .conversation("c-1")
         .add_hook(observer.clone())
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let response = within(agent.prompt("go").run()).await.expect("run");
     assert_eq!(response.output, "done");
@@ -1167,7 +1169,7 @@ async fn internal_families_are_observe_only_unless_a_hook_opts_in() {
         strings(&["on_dispatch(completion)", "on_outcome(completion)"]),
         "memory dispatches did not reach a hook that did not opt in"
     );
-    let log = agent.effect_log().expect("recording");
+    let log = agent.stamp(recorder.log());
     assert_eq!(
         log.iter()
             .map(|record| record.kind.name().to_owned())
@@ -1293,7 +1295,7 @@ impl Tool for Tag {
 #[tokio::test]
 async fn two_agents_on_one_host_bus_keep_their_own_keys() {
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    let recorder = rig_effect_log::EffectLogRecorder::new();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     for label in ["left-host", "right-host"] {
         driver
@@ -1682,8 +1684,9 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
 
 #[tokio::test]
 async fn recording_survives_into_parts() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("recorded"))
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let parts = agent
         .into_parts()
@@ -1697,7 +1700,7 @@ async fn recording_survives_into_parts() {
     let task = tokio::spawn(driver);
     let response = within(agent.prompt("hello").run()).await.expect("run");
     assert_eq!(response.output, "recorded");
-    let log = agent.effect_log().expect("the agent still records");
+    let log = agent.stamp(recorder.log());
     assert_eq!(
         log.len(),
         1,
@@ -1801,7 +1804,9 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     while let Some(item) = within(stream.next()).await {
         item.expect("a clean stream");
     }
-    let streamed = stream.finish();
+    let streamed = stream
+        .finish()
+        .expect("the stream produced a terminal record");
     assert_eq!(
         streamed.provider, unary.provider,
         "the terminal record names the provider"

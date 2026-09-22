@@ -173,6 +173,7 @@ fn normalized_response_round_trips_through_serde() {
             reasoning_tokens: Some(1),
         },
         "example",
+        serde_json::json!({}),
     )
     .with_message_id("msg_123")
     .with_finish_reason(FinishReason::Stop)
@@ -197,6 +198,7 @@ fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
         tool_call_choice(),
         Usage::default(),
         "example",
+        serde_json::json!({}),
     ))
     .expect("serialize response");
     encoded["finish_reason"] = serde_json::json!("stop");
@@ -215,6 +217,7 @@ fn deserializing_empty_identifiers_yields_none() {
         vec![AssistantContent::text("hello")],
         Usage::default(),
         "example",
+        serde_json::json!({}),
     ))
     .expect("serialize response");
     encoded["message_id"] = serde_json::json!("");
@@ -240,8 +243,13 @@ fn unknown_finish_reason_survives_a_serde_round_trip_verbatim() {
 
 #[test]
 fn stop_with_a_tool_call_reconciles_to_tool_calls() {
-    let response = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
-        .with_finish_reason(FinishReason::Stop);
+    let response = CompletionResponse::new(
+        tool_call_choice(),
+        Usage::default(),
+        "example",
+        serde_json::json!({}),
+    )
+    .with_finish_reason(FinishReason::Stop);
 
     assert_eq!(response.finish_reason, Some(FinishReason::ToolCalls));
 }
@@ -251,10 +259,20 @@ fn stop_with_a_tool_call_reconciles_to_tool_calls() {
 /// have to choose between ergonomics and correctness.
 #[test]
 fn optional_setter_reconciles_exactly_like_the_plain_setter() {
-    let via_option = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
-        .with_optional_finish_reason(Some(FinishReason::Stop));
-    let via_plain = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
-        .with_finish_reason(FinishReason::Stop);
+    let via_option = CompletionResponse::new(
+        tool_call_choice(),
+        Usage::default(),
+        "example",
+        serde_json::json!({}),
+    )
+    .with_optional_finish_reason(Some(FinishReason::Stop));
+    let via_plain = CompletionResponse::new(
+        tool_call_choice(),
+        Usage::default(),
+        "example",
+        serde_json::json!({}),
+    )
+    .with_finish_reason(FinishReason::Stop);
 
     assert_eq!(via_option.finish_reason, Some(FinishReason::ToolCalls));
     assert_eq!(via_option.finish_reason, via_plain.finish_reason);
@@ -269,8 +287,13 @@ fn reconciliation_only_upgrades_a_natural_stop() {
         FinishReason::ContentFilter,
         FinishReason::Other("provider_specific".to_owned()),
     ] {
-        let response = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
-            .with_finish_reason(reason.clone());
+        let response = CompletionResponse::new(
+            tool_call_choice(),
+            Usage::default(),
+            "example",
+            serde_json::json!({}),
+        )
+        .with_finish_reason(reason.clone());
 
         assert_eq!(response.finish_reason, Some(reason));
     }
@@ -282,6 +305,7 @@ fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
         vec![AssistantContent::text("done")],
         Usage::default(),
         "example",
+        serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
 
@@ -363,9 +387,9 @@ fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
 }
 
 /// The deserialization mirror carries `raw`: a response with a captured
-/// payload survives serialize → deserialize with the payload intact, an
-/// unset `raw` is not written, and a response written without the field
-/// (which is what an unset `raw` serializes to) loads with `raw` unset.
+/// payload survives serialize → deserialize with the payload intact, and a
+/// response written without the field is refused rather than loaded with
+/// `raw` invented.
 #[test]
 fn normalized_response_raw_round_trips_through_serde_mirror() {
     let payload = serde_json::json!({
@@ -377,9 +401,9 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         vec![AssistantContent::text("hello")],
         Usage::default(),
         "example",
+        payload.clone(),
     )
-    .with_response_id("chatcmpl-1")
-    .with_raw(payload.clone());
+    .with_response_id("chatcmpl-1");
 
     let encoded = serde_json::to_value(&response).expect("serialize response");
     assert_eq!(encoded["raw"], payload);
@@ -397,17 +421,9 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         "usage": serde_json::to_value(Usage::default()).unwrap(),
         "provider": "example"
     });
-    let decoded: CompletionResponse =
-        serde_json::from_value(without_raw).expect("loads without `raw`");
-    assert!(decoded.raw.is_null());
-
-    let bare = serde_json::to_value(CompletionResponse::new(
-        vec![AssistantContent::text("hello")],
-        Usage::default(),
-        "example",
-    ))
-    .unwrap();
-    assert!(bare.get("raw").is_none());
+    let error = serde_json::from_value::<CompletionResponse>(without_raw)
+        .expect_err("a response without `raw` is refused");
+    assert!(error.to_string().contains("raw"), "{error}");
 }
 
 fn test_document(id: &str, text: &str) -> Document {

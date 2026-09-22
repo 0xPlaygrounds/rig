@@ -73,6 +73,7 @@ impl Serve for Capturing {
                     vec![AssistantContent::text(&self.answer)],
                     Usage::default(),
                     "capturing",
+                    serde_json::json!({ "provider": "capturing" }),
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
@@ -121,6 +122,7 @@ pub fn app() -> App {
         rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
             .ambiguity_detection(LogLevel::Error),
     );
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     app.finish();
     app.cleanup();
     app
@@ -273,7 +275,12 @@ impl Serve for Scripted {
                     .expect("turns")
                     .pop_front()
                     .unwrap_or_else(|| vec![AssistantContent::text("done")]);
-                let response = CompletionResponse::new(choice, Usage::default(), "scripted");
+                let response = CompletionResponse::new(
+                    choice,
+                    Usage::default(),
+                    "scripted",
+                    serde_json::json!({}),
+                );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(

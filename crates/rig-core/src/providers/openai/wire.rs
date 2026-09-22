@@ -582,6 +582,8 @@ pub struct ResponsesQuirks {
     pub system_instructions: SystemInstructionsPlacement,
     /// Which contract this dialect's endpoint speaks.
     pub contract: ResponsesContract,
+    /// Whether newly constructed Responses wires normalize tools for strict validation.
+    pub strict_tools_by_default: bool,
 }
 
 impl ResponsesQuirks {
@@ -591,9 +593,53 @@ impl ResponsesQuirks {
             path: "/responses",
             system_instructions: SystemInstructionsPlacement::Instructions,
             contract: ResponsesContract::OpenAi,
+            strict_tools_by_default: false,
         }
     }
 }
+
+/// Optional executable extensions to the shared OpenAI dialect.
+///
+/// Store this value in a `static`: equality means the same extension definition,
+/// not equality of function addresses (which code generation can merge or duplicate).
+/// This lets named dialect persistence reject replaced hooks without interpreting
+/// their behavior or pretending arbitrary callbacks can be serialized.
+#[derive(Debug)]
+pub struct DialectHooks {
+    /// Derive a default endpoint from a credential. `None` uses the dialect's
+    /// static URL. Called only at construction, never on credential replacement.
+    pub default_endpoint: Option<fn(&str) -> Option<String>>,
+    /// Select the default route for a model, unless configuration chose a route.
+    pub model_route: Option<fn(&str) -> Route>,
+    /// Apply the completion envelope after shared authentication and identity.
+    /// Called once by either completion encoder; builder errors remain attached
+    /// and are returned when the encoder finishes the request.
+    pub completion_envelope: Option<CompletionEnvelope>,
+    /// Stamp the envelope every modality request (embeddings, listing,
+    /// verification, transcription, images, speech) carries, on the finished
+    /// request. Runs after shared authentication, so a hook may replace the
+    /// credential header rather than add a second one.
+    pub modality_envelope: Option<ModalityEnvelope>,
+}
+
+/// A dialect's modality-request headers, applied to the built request.
+pub type ModalityEnvelope =
+    fn(&OpenAI, &mut http::Request<crate::wire::Body>) -> Result<(), http::Error>;
+
+/// A dialect's completion headers, applied to the authenticated request builder.
+pub type CompletionEnvelope = fn(
+    &OpenAI,
+    &crate::completion::CompletionRequest,
+    http::request::Builder,
+) -> http::request::Builder;
+
+impl PartialEq for DialectHooks {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+impl Eq for DialectHooks {}
 
 /// Everything about a dialect that is not its identity: paths, capability
 /// flags, and the one body rewrite it needs.
@@ -603,6 +649,8 @@ impl ResponsesQuirks {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Quirks {
+    /// Provider-owned extensions for defaults and completion headers.
+    pub hooks: Option<&'static DialectHooks>,
     /// How the dialect authenticates.
     pub auth: Auth,
     /// How the dialect addresses a model.
@@ -640,7 +688,7 @@ pub struct Quirks {
     /// schema arrives beside the tools, so the schema waits for the first
     /// tool result. OpenRouter's own client never deferred it and the
     /// gateway honours both at once —
-    /// `tests/cassettes/openrouter/typed_prompt_tools/
+    /// `crates/rig-cassette/fixtures/cassettes/openrouter/typed_prompt_tools/
     /// prompt_typed_with_tool_call_roundtrip.yaml` record 1 carries
     /// `tools` and `response_format` together, then calls the tool.
     pub response_format_with_tools: bool,
@@ -736,6 +784,7 @@ impl Quirks {
     /// are the fields OpenAI itself states.
     pub const fn openai() -> Self {
         Self {
+            hooks: None,
             auth: Auth::Bearer,
             routing: Routing::Path,
             completion_route: Route::Chat,
@@ -839,18 +888,21 @@ impl Dialect {
 /// all, and two dialects that agreed on every field but one would still be
 /// two different providers. So the name is the whole wire format, and a name
 /// this build does not know is an error rather than a silently
-/// half-constructed provider.
+/// half-constructed provider. Serialization likewise refuses unregistered or
+/// modified definitions: writing only their name would silently lose their payload.
 impl Serialize for Dialect {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.name)
+        let registered = dialects::by_name(self.name) == Some(self);
+        crate::providers::internal::named_dialect::serialize(
+            serializer, "OpenAI", self.name, registered,
+        )
     }
 }
 
 impl<'de> Deserialize<'de> for Dialect {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        dialects::by_name(&name).copied().ok_or_else(|| {
-            serde::de::Error::custom(format!("unknown OpenAI-compatible dialect `{name}`"))
+        crate::providers::internal::named_dialect::deserialize(deserializer, "OpenAI", |name| {
+            dialects::by_name(name).copied()
         })
     }
 }
@@ -931,9 +983,15 @@ impl OpenAI {
     /// the instructions and caller identity its gateway expects, if any.
     pub fn with_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
         let quirks = &dialect.quirks;
+        let api_key = api_key.into();
+        let base_url = quirks
+            .hooks
+            .and_then(|hooks| hooks.default_endpoint)
+            .and_then(|endpoint| endpoint(api_key.expose()))
+            .unwrap_or_else(|| dialect.base_url.to_owned());
         Self {
-            api_key: api_key.into(),
-            base_url: dialect.base_url.to_owned(),
+            api_key,
+            base_url,
             dialect: *dialect,
             route: None,
             // Azure carries an `api-version` on every route, and formatting
@@ -1138,16 +1196,17 @@ impl OpenAI {
         self
     }
 
-    /// The completion endpoint this configuration serves: the dialect's
-    /// flagship unless [`with_route`](Self::with_route) chose otherwise.
+    /// The configured route or dialect's static default. A model-route hook
+    /// may refine the default when a completion wire is constructed.
     pub fn completion_route(&self) -> Route {
         self.route.unwrap_or(self.dialect.quirks.completion_route)
     }
 
     /// The completion wire for `model` on this configuration's
     /// [`completion_route`](Self::completion_route): Responses for OpenAI,
-    /// xAI and ChatGPT, Chat Completions for every compatible gateway,
-    /// unless [`with_route`](Self::with_route) chose the other one.
+    /// xAI and ChatGPT, model-dependent routing when a dialect supplies it, and
+    /// Chat Completions for other compatible gateways, unless
+    /// [`with_route`](Self::with_route) chose the other one.
     pub fn completion(&self, model: impl Into<String>) -> OpenAiWire {
         OpenAiWire::new(self.clone(), model)
     }
@@ -1197,6 +1256,23 @@ impl OpenAI {
     #[cfg(feature = "audio")]
     pub fn speech(&self, model: impl Into<String>) -> Speech {
         Speech::new(self.clone(), model)
+    }
+
+    pub(crate) fn completion_headers(
+        &self,
+        request: &crate::completion::CompletionRequest,
+        builder: http::request::Builder,
+    ) -> http::request::Builder {
+        let builder = self.headers(builder);
+        match self
+            .dialect
+            .quirks
+            .hooks
+            .and_then(|hooks| hooks.completion_envelope)
+        {
+            Some(envelope) => envelope(self, request, builder),
+            None => builder,
+        }
     }
 
     /// Resolve `path` against the base URL, applying Azure's

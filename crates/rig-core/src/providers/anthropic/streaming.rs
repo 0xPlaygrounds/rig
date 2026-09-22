@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::completion::{Content, Usage, anthropic_usage_totals, map_finish_reason};
+use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
 use crate::completion::CompletionError;
 use crate::message::ReasoningContent;
+use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink,
-    WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink, WireFrame,
 };
 use std::collections::HashMap;
 
@@ -44,16 +44,17 @@ pub enum StreamingEvent {
     MessageStart {
         /// Anthropic-compatible relays (Bedrock's Messages passthrough) can
         /// emit `message_start` with a null `message`; `None` is a no-op
-        /// rather than a corrupt frame.
+        /// rather than a corrupt frame. The nested message is the same
+        /// document the unary reply is, so it decodes as the same type.
         #[serde(default)]
-        message: Option<MessageStart>,
+        message: Option<CompletionResponse>,
     },
     /// The whole message: what the endpoint answers when not streaming.
     /// Its fields are exactly `message_start`'s, plus the stop reason and
     /// usage a stream delivers on `message_delta`.
     Message {
         #[serde(flatten)]
-        message: MessageStart,
+        message: CompletionResponse,
     },
     ContentBlockStart {
         index: usize,
@@ -80,7 +81,7 @@ pub enum StreamingEvent {
     ///
     /// The nested `error` object is required, and that requirement is the
     /// whole of the wire's shape check: every Anthropic error body recorded
-    /// under `tests/cassettes/anthropic/` nests it, and the flattened
+    /// under `crates/rig-cassette/fixtures/cassettes/anthropic/` nests it, and the flattened
     /// `{"type":"error","message":"…"}` form appears in no recorded traffic.
     Error {
         /// Decoding it is the whole point — it proves the body is the
@@ -99,17 +100,6 @@ pub enum StreamingEvent {
         #[serde(skip)]
         raw: String,
     },
-}
-
-#[derive(Debug, Deserialize)]
-pub struct MessageStart {
-    pub id: String,
-    pub role: String,
-    pub content: Vec<Content>,
-    pub model: String,
-    pub stop_reason: Option<String>,
-    pub stop_sequence: Option<String>,
-    pub usage: Usage,
 }
 
 #[derive(Debug)]
@@ -581,7 +571,7 @@ impl MessagesDecoder {
     /// the only code that assembles a buffered one, so the two cannot
     /// disagree about text, citations, tool arguments, thinking signatures
     /// or server tool use.
-    fn interpret_whole_message(&mut self, message: MessageStart, out: &mut AdapterOutput) {
+    fn interpret_whole_message(&mut self, message: CompletionResponse, out: &mut AdapterOutput) {
         self.input_tokens = message.usage.input_tokens;
         self.cache_creation
             .clone_from(&message.usage.cache_creation);
@@ -736,7 +726,7 @@ impl Decoder<Completion> for MessagesDecoder {
                 //
                 // Anthropic proper sends the count on *both* frames and they
                 // agree (every recorded cassette under
-                // `tests/cassettes/anthropic/` reporting it on the delta reports
+                // `crates/rig-cassette/fixtures/cassettes/anthropic/` reporting it on the delta reports
                 // the same value on the start), so the preference is what runs
                 // there and the fallback is inert. The fallback covers the
                 // reverse split — a delta that omits the count, leaving the one
@@ -869,13 +859,7 @@ impl Decoder<Completion> for MessagesDecoder {
         let response_id = id.map(|v| sink.scrub(&v));
         sink.provider(verdict, response_id);
         if let Some(error) = payload.error {
-            sink.emit(AdapterEvent::ErrorEnvelope {
-                error: AdapterErrorEnvelope {
-                    code: None,
-                    status: error.kind.map(|v| sink.scrub(&v)),
-                    message: error.message.map(|v| sink.scrub(&v)),
-                },
-            });
+            error.emit(sink);
         }
     }
 
@@ -916,13 +900,6 @@ struct ObservedUsage {
 #[derive(Deserialize)]
 struct ObservedDelta {
     stop_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ObservedError {
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    message: Option<String>,
 }
 
 /// Anthropic's own terminal stream record.
@@ -976,14 +953,15 @@ fn terminal_record(
     provider: &str,
     response: &StreamingCompletionResponse,
 ) -> Result<StreamFinal, CompletionError> {
-    Ok(
-        StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
-            .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
-            .with_optional_message_id(response.message_id.clone())
-            .with_optional_provider_request_id(response.provider_request_id.clone())
-            .with_optional_model(response.model.clone())
-            .with_raw(serde_json::to_value(response)?),
+    Ok(StreamFinal::new(
+        provider,
+        crate::completion::Usage::from(&response.usage),
+        serde_json::to_value(response)?,
     )
+    .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
+    .with_optional_message_id(response.message_id.clone())
+    .with_optional_provider_request_id(response.provider_request_id.clone())
+    .with_optional_model(response.model.clone()))
 }
 
 #[cfg(test)]

@@ -1,71 +1,14 @@
-//! A sans-IO, steppable, serializable state machine for the agent prompt loop.
+//! Serializable, sans-I/O state machine for model turns, tool recovery, and history.
 //!
-//! [`AgentRun`] owns every *decision* the agent loop makes — turn counting,
-//! tool-call validation, invalid tool-call recovery, chat-history threading,
-//! usage aggregation and final response construction — without performing any
-//! IO itself. A driver advances the machine by calling [`AgentRun::next_step`]
-//! and acting on the returned [`AgentRunStep`]:
+//! Drivers act on [`AgentRunStep`] and supply responses or tool results before
+//! advancing. A run owns no models, tools, memory backends, or hooks; drivers
+//! provide those services and lifecycle policy.
 //!
-//! - [`AgentRunStep::CallModel`]: send a completion request to the model and
-//!   feed the result back via [`AgentRun::model_response`].
-//! - [`AgentRunStep::CallTools`]: execute the listed tool calls (with whatever
-//!   concurrency the driver chooses) and feed the results back via
-//!   [`AgentRun::tool_results`].
-//! - [`AgentRunStep::Done`]: the run is complete.
-//!
-//! Because the machine never awaits anything, it is runtime-agnostic and the
-//! whole run state is `Serialize + Deserialize`: a driver can serialize a run
-//! between steps (for example while tool calls are pending), persist it, and
-//! resume it later in another process. Note that serialized run state embeds
-//! the full conversation accumulated so far *and* every completed call's
-//! provider response ([`CompletionCall::raw`], the value the model's raw
-//! method would have returned, serialized) — persisting it inherits whatever
-//! sensitivity the conversation content has and grows with each provider
-//! body; a driver that does not want the raw payloads persisted clears
-//! `raw` on its own copy before writing — and the serialization format
-//! carries no cross-version stability guarantee yet: resume with the same rig
-//! version that suspended the run.
-//!
-//! `AgentRun` deliberately contains no model, tool registry, memory backend, or
-//! hook stack. Hand-driving it is a low-level provider integration: the caller
-//! owns all IO and any lifecycle policy. To execute a configured `Agent`
-//! with its hooks, tools, retrieval, and memory, use
-//! `Agent::prompt`; constructing an `AgentRun`
-//! directly is not an alternate way to execute an `Agent`.
-//!
-//! `Prompt::prompt` and
-//! `Agent::prompt` drive this machine internally;
-//! the same machine can be driven by hand for custom provider control flow.
-//! A host that does so (an ECS schedule, a job system) depends on `rig-agent`
-//! with default features off — that graph carries no async runtime, transport
-//! or MCP client (guarded), only rig-core and the futures vocabulary — and
-//! `tests/fixtures/agent_run_stepper` is that host in miniature:
-//!
-//! ```rust,no_run
-//! use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-//!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! ```
+//! use rig_agent::run::{AgentRun, AgentRunStep};
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);
-//! loop {
-//!     match run.next_step()? {
-//!         AgentRunStep::CallModel { prompt, history, .. } => {
-//!             // Send `prompt` + `history` to a model, then:
-//!             // run.model_response(ModelTurn { ... })?;
-//!             # let _ = (prompt, history);
-//!             # break;
-//!         }
-//!         AgentRunStep::CallTools { calls } => {
-//!             // Execute `calls`, then: run.tool_results(results)?;
-//!             # let _ = calls;
-//!         }
-//!         AgentRunStep::Done(response) => {
-//!             println!("{}", response.output);
-//!             break;
-//!         }
-//!     }
-//! }
-//! # Ok(())
-//! # }
+//! assert!(matches!(run.next_step()?, AgentRunStep::CallModel { turn: 1, .. }));
+//! # Ok::<(), rig_agent::run::PromptError>(())
 //! ```
 
 pub mod output;
@@ -113,11 +56,7 @@ pub use streamed::{
     StreamedTurnAssembler, StreamedTurnEvent,
 };
 
-/// Build the canonical "the model called a tool that isn't available" error.
-/// The identical shape is raised from every recovery-rejection path
-/// (`resolve_invalid_tool_call`, `resolve_streamed_invalid_tool_call`) and the
-/// streamed fail-fast in `streamed_turn`; this collapses the copied struct
-/// literal to one place while leaving each caller's control flow untouched.
+/// Build an unknown-tool error with advertised names and diagnostic history.
 fn unknown_tool_call_error(
     tool_name: String,
     available_tools: Vec<String>,
@@ -151,10 +90,7 @@ impl InvalidToolCallDiagnostic<'_> {
         )
     }
 
-    /// The fail-fast error for the call as rejected: an unknown name is
-    /// `UnknownToolCall`; malformed arguments reproduce the provider-side
-    /// report that would have ended the run before rig#2447, so a `Fail`
-    /// resolution is byte-for-byte what a consumer saw previously.
+    /// Report the rejected call as an unknown tool or malformed-input response error.
     fn unknown_current(&self) -> PromptError {
         match self.reason {
             InvalidToolCallReason::UnknownTool => {
@@ -171,9 +107,7 @@ impl InvalidToolCallDiagnostic<'_> {
     }
 }
 
-/// The report the provider stream raised for malformed tool input,
-/// rebuilt from the diagnostic call so `Fail` and a rejected `Repair`
-/// surface the same error a pre-#2447 run did.
+/// Reconstruct a malformed-input response report from the diagnostic call.
 fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::ErrorReport {
     rig_core::error::ErrorReport::new(
         rig_core::error::ErrorKind::Response,
@@ -190,10 +124,7 @@ enum ValidatedInvalidToolCallAction {
     Skip { reason: String },
 }
 
-/// What a driver must do next to advance an [`AgentRun`].
-///
-/// Deliberately exhaustive: a driver must handle every step, so adding a
-/// variant is a breaking change by design.
+/// Required driver action to advance an [`AgentRun`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentRunStep {
     /// Send a completion request to the model and feed the result back via
@@ -226,12 +157,9 @@ pub struct PendingToolCall {
     /// recovery. When set, the driver must return this content as the tool
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
-    /// The stream block this call arrived under — equal on the call's
-    /// deltas, its execution commit and its result. Buffered turns assign
-    /// independent completion-local minted tool keys; `tool_call.id` remains
-    /// the durable correlation identity. Required in
-    /// persisted run state: a resumed process keeps emitting the id its
-    /// consumers already saw, never a re-minted one.
+    /// Block ID shared by deltas, execution commit, and result. Buffered turns
+    /// mint completion-local keys independently of durable `tool_call.id`.
+    /// Persist this ID unchanged across resume.
     pub block_id: BlockId,
 }
 
@@ -252,36 +180,15 @@ pub struct ModelTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
     pub allowed_tool_names: BTreeSet<String>,
-    /// Why the model stopped generating on this turn, when the provider
-    /// reported it. Carried so the blocking surface records the same terminal
-    /// reason the streamed surface does (rig#2322).
-    #[serde(default)]
+    /// Provider-reported terminal reason for this attempt, when available.
     pub finish_reason: Option<FinishReason>,
-    /// The provider's own response for this attempt — see
-    /// `CompletionResponse::raw`. Carried so the blocking
-    /// surface records the same payload on its [`CompletionCall`] that the
-    /// streamed surface records via
-    /// [`AgentRun::record_streamed_completion_call`]. `default` because
-    /// persisted run state predates the field; `Value::Null` for a turn built
-    /// without a provider response behind it.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    /// This attempt's decoded provider response, recorded on its [`CompletionCall`].
     pub raw: serde_json::Value,
 }
 
 impl ModelTurn {
-    /// The one blessed conversion from a provider response to a protocol
-    /// turn, given the [`PreparedRequest`]
-    /// the call was prepared from.
-    ///
-    /// Every driver — rig-agent's futures runner and any external systems
-    /// driver — must build its turns through this (or
-    /// [`from_response_parts`](Self::from_response_parts) when it holds the
-    /// tool-name sets rather than the prepared request); hand-assembly is how
-    /// drivers drift. The subtle inputs it settles: the tool-name sets come
-    /// from the *prepared request*, never re-derived from the spec, and the
-    /// finish reason is the response's normalized
-    /// [`finish_reason()`](CompletionResponse::finish_reason) accessor, never
-    /// a raw provider field.
+    /// Convert a response using the same attempt's prepared tool sets and the
+    /// response's normalized finish reason. `prepared` must describe this call.
     pub fn from_response(resp: &CompletionResponse, prepared: &prepare::PreparedRequest) -> Self {
         Self::from_response_parts(
             resp,
@@ -305,20 +212,22 @@ impl ModelTurn {
             resp.usage,
             executable_tool_names,
             allowed_tool_names,
+            resp.raw.clone(),
         )
         .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
         .with_finish_reason(resp.finish_reason())
-        .with_raw(resp.raw.clone())
     }
 
-    /// Create a model turn from response parts and the tool names advertised
-    /// for the turn.
+    /// Create a model turn from response parts, the tool names advertised
+    /// for the turn, and the provider's own response `raw` (see
+    /// [`Self::raw`]).
     pub fn new(
         message_id: Option<String>,
         choice: Vec<AssistantContent>,
         usage: Usage,
         executable_tool_names: BTreeSet<String>,
         allowed_tool_names: BTreeSet<String>,
+        raw: serde_json::Value,
     ) -> Self {
         Self {
             message_id,
@@ -329,7 +238,7 @@ impl ModelTurn {
             executable_tool_names,
             allowed_tool_names,
             finish_reason: None,
-            raw: serde_json::Value::Null,
+            raw,
         }
     }
 
@@ -349,19 +258,9 @@ impl ModelTurn {
         self.finish_reason = finish_reason;
         self
     }
-
-    /// Attach the provider's own response this attempt produced.
-    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
-        self.raw = raw;
-        self
-    }
 }
 
-/// Result of feeding a model turn (or an invalid tool-call resolution) into
-/// the machine.
-///
-/// Deliberately exhaustive: a driver must handle every outcome, so adding a
-/// variant is a breaking change by design.
+/// Driver action after ingesting a model turn or resolving an invalid call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelTurnOutcome {
     /// The turn was accepted. Unless `response_hook_suppressed` is set, the
@@ -399,11 +298,8 @@ struct ResolvingState {
     next_index: usize,
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
-    /// Synthetic tool results for skipped tool calls, keyed by the call's
-    /// position in `items` — never by the tool-call id, which is empty for
-    /// every call on id-less wires (older ollama daemons) and would collide
-    /// two skipped calls (and hand a non-skipped id-less call a preresolved
-    /// result it never earned).
+    /// Synthetic results keyed by content position so repeated call IDs cannot
+    /// assign a skipped result to a different call.
     skipped: BTreeMap<usize, UserContent>,
     recovered: bool,
     any_skipped: bool,
@@ -440,7 +336,6 @@ struct TurnState {
     skipped: BTreeMap<usize, UserContent>,
     /// `(tool_call_id, block_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
-    #[serde(default)]
     block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
 }
 
@@ -468,29 +363,30 @@ enum RunState {
 
 /// The sans-IO agent loop state machine. See the [module docs](self) for the
 /// driving protocol.
+/// The persisted envelope is versioned: [`RUN_FORMAT`] is written on every
+/// serialization and checked on every deserialization, and an unknown key
+/// is refused. State written by another format is refused by name rather
+/// than loaded with defaults filled in.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AgentRun {
+    /// The envelope format ([`RUN_FORMAT`]).
+    #[serde(deserialize_with = "run_format")]
+    format: u32,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
     /// See [`RunSpec::unhandled_invalid_tool_call`].
-    #[serde(default)]
     unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     tool_choice: Option<ToolChoice>,
-    /// Name of the synthetic output tool when the agent uses Tool output mode
-    /// (see #1928). A model turn calling this tool finalizes the run with the
-    /// call's arguments as the response, instead of executing it as a tool.
-    #[serde(default)]
+    /// Synthetic output-tool name. Its first call finalizes with arguments as
+    /// output instead of executing tools.
     output_tool_name: Option<String>,
-    /// JSON schema the Tool-mode output must satisfy, used to re-prompt on
-    /// missing required fields before finalizing best-effort (#1928).
-    #[serde(default)]
+    /// Schema whose top-level required fields are checked before finalization.
     output_schema: Option<serde_json::Value>,
     /// Budget for re-prompting the model in Tool output mode when it finalizes
     /// without calling the output tool, or calls it with arguments missing
     /// required fields. Exhausting it finalizes best-effort.
-    #[serde(default)]
     max_output_retries: usize,
-    #[serde(default)]
     output_retries: usize,
     chat_history: Option<Vec<Message>>,
     new_messages: Vec<Message>,
@@ -501,12 +397,10 @@ pub struct AgentRun {
     invalid_tool_call_retries: usize,
     /// Set while a streamed turn rollback awaits its completion-call record;
     /// see [`AgentRun::record_streamed_completion_call`].
-    #[serde(default)]
     rollback_pending: bool,
     /// Set once the current streamed model turn's completion call has been
     /// recorded, rejecting duplicate records; reset when the next
     /// [`AgentRunStep::CallModel`] is emitted.
-    #[serde(default)]
     streamed_completion_call_recorded: bool,
     /// The model behind the run's preceding issued completion attempt, as
     /// the driver advances it immediately before the attempt is issued
@@ -514,51 +408,51 @@ pub struct AgentRun {
     /// error still counts). Persisted so a resumed run's model-selection
     /// hook sees the model the run last asked, as a fresh run's would,
     /// rather than a run that has asked none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_model: Option<rig_core::completion::ModelRef>,
     /// The tool definitions the driver advertised to the model for a turn,
     /// recorded with [`AgentRun::advertise_tools`]. Protocol data, so a second
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     turn_tools: Option<TurnTools>,
-    /// Hook- and driver-appended records — see [`RunEntry`]. Protocol data
-    /// like [`TurnTools`]: append-only, stored verbatim, never interpreted by
-    /// the run and never part of a provider request. Vec order is append
-    /// order, which is also the replay order.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Append-only host records, stored verbatim and excluded from provider requests.
     entries: Vec<RunEntry>,
     state: RunState,
 }
 
-/// One hook- or driver-appended record in an [`AgentRun`]'s log.
-///
-/// Protocol data like [`TurnTools`]: the run stores it verbatim and never
-/// interprets it, and it never reaches a provider request — state in the
-/// record is invisible to the model. Durability holds by construction:
-/// whatever the run's serialized form is, the entries appended so far are in
-/// it, and a driver rebuilds hook state on resume by replaying them (the
-/// usual pattern is *snapshot + last-wins*: append a full state snapshot per
-/// change, read back the most recent one with [`AgentRun::last_entry_of`]).
+/// The [`AgentRun`] envelope format this crate writes and reads.
+pub const RUN_FORMAT: u32 = 1;
+
+/// Deserialize the envelope's `format`, refusing any other than
+/// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
+/// with defaults filled in.
+fn run_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    let format = u32::deserialize(deserializer)?;
+    if format == RUN_FORMAT {
+        Ok(format)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "resume refused: the run is format {format}, this rig reads format {RUN_FORMAT}"
+        )))
+    }
+}
+
+/// Host record stored verbatim in serialized run state and excluded from provider
+/// requests. The driver reconstructs hook state from entries on resume.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunEntry {
     /// Hook-chosen namespace (e.g. `"approval"`, `"retry_budget"`).
     /// Unregistered and unvalidated: the kind string is the whole contract
     /// and the collision boundary, so hooks should pick specific names.
     pub kind: String,
-    /// One-based model-call index current when the entry was appended
-    /// (0 before the first call). Deliberately not a wall-clock timestamp:
-    /// [`AgentRun`] is deterministic, serializable state — no clocks in
-    /// the protocol. A host that wants timestamps puts them in [`value`](Self::value).
+    /// Model-call index at append time: zero before the first call, then one-based.
+    /// Hosts may place timestamps in [`value`](Self::value).
     pub turn: usize,
     /// The appended value, verbatim JSON. `Value::Null` marker entries are
     /// legitimate.
     pub value: serde_json::Value,
 }
 
-/// The tools advertised to the model for one turn — what the request carried,
-/// as data. Recorded by the driver with [`AgentRun::advertise_tools`] just
-/// before the model call; dispatch of the resulting calls is still the
-/// driver's IO, but *which* tools were offered is part of the run's record.
+/// Tool definitions advertised for one model call, recorded by the driver before
+/// execution. Recording definitions does not bind or execute tools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TurnTools {
     /// One-based model-call index the definitions were advertised for
@@ -580,6 +474,7 @@ impl AgentRun {
     /// budget, and no invalid tool-call retries.
     pub fn new(prompt: impl Into<Message>) -> Self {
         Self {
+            format: RUN_FORMAT,
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
@@ -638,8 +533,7 @@ impl AgentRun {
         }
     }
 
-    /// Append one [`RunEntry`] to the run's record. Append-only: the log has
-    /// no removal or mutation API — the log is the record.
+    /// Append one host record without interpreting or validating its contents.
     pub fn append_entry(&mut self, entry: RunEntry) {
         self.entries.push(entry);
     }
@@ -654,8 +548,7 @@ impl AgentRun {
         self.entries.iter().filter(move |entry| entry.kind == kind)
     }
 
-    /// The most recent entry of `kind`, if any — the read for the
-    /// snapshot-and-read-the-last pattern that most durable state uses.
+    /// The most recently appended entry of `kind`, if present.
     pub fn last_entry_of(&self, kind: &str) -> Option<&RunEntry> {
         self.entries.iter().rev().find(|entry| entry.kind == kind)
     }
@@ -691,10 +584,9 @@ impl AgentRun {
         self
     }
 
-    /// Configure Tool output-mode validation (#1928): the JSON schema the
-    /// output-tool arguments should satisfy, and how many times to re-prompt the
-    /// model — when it finalizes without calling the output tool, or calls it
-    /// with arguments missing required fields — before finalizing best-effort.
+    /// Set the output schema and retry budget for missing output-tool calls or
+    /// required fields. Validation checks only top-level required field presence;
+    /// exhausting either the output or model-call budget finalizes best-effort.
     pub fn with_output_validation(
         mut self,
         output_schema: Option<serde_json::Value>,
@@ -728,9 +620,8 @@ impl AgentRun {
             .collect()
     }
 
-    /// Whether `text` already parses as a JSON object satisfying the output
-    /// schema's required fields — i.e. it is acceptable structured output even
-    /// though the model returned it as plain text instead of an output-tool call.
+    /// Whether text parses as JSON with no missing top-level required fields.
+    /// With no required fields, non-object JSON also passes.
     fn text_satisfies_output_schema(&self, text: &str) -> bool {
         serde_json::from_str::<serde_json::Value>(text.trim())
             .ok()
@@ -751,7 +642,7 @@ impl AgentRun {
         self.output_retries < self.max_output_retries && self.current_turn < self.max_turns
     }
 
-    /// Roll the run back to re-prompt for valid output (#1928). The caller must
+    /// Roll the run back to re-prompt for valid output. The caller must
     /// have already appended the assistant turn and the corrective feedback
     /// message to the history. Consumes one output-retry, then emits the retry
     /// [`AgentRunStep::CallModel`].
@@ -784,7 +675,7 @@ impl AgentRun {
         self
     }
 
-    /// Set the synthetic output-tool name for Tool output mode (see #1928).
+    /// Set the synthetic output-tool name for Tool output mode.
     /// When a model turn calls this tool, the run finalizes with the call's
     /// arguments (serialized JSON) as the response.
     pub fn with_output_tool_name(mut self, name: impl Into<String>) -> Self {
@@ -810,7 +701,7 @@ impl AgentRun {
 
     /// The synthetic output-tool name committed for this run, if any. The driver
     /// passes this back when preparing later turns so Tool output mode stays
-    /// pinned even if the per-turn tool set changes (see #1928).
+    /// pinned even if the per-turn tool set changes.
     pub fn output_tool_name(&self) -> Option<&str> {
         self.output_tool_name.as_deref()
     }
@@ -825,9 +716,7 @@ impl AgentRun {
         self.current_turn
     }
 
-    /// Details for each completed model call so far.
-    /// The model behind the run's preceding issued completion attempt, if
-    /// any: what a model-selection hook is shown as `previous_model`.
+    /// Model of the preceding issued attempt, as recorded by the driver.
     pub fn previous_model(&self) -> Option<&rig_core::completion::ModelRef> {
         self.previous_model.as_ref()
     }
@@ -855,22 +744,14 @@ impl AgentRun {
             return None;
         };
 
-        // Deliberately not `non_empty(turn.items.clone())`: the helper takes
-        // the list by value, so it would pay the clone even when the turn is
-        // empty and the copy is discarded. Check first, clone only on the
-        // path that keeps it.
         if turn.items.is_empty() {
             return None;
         }
         Some(turn.items.clone())
     }
 
-    /// Replace the accepted model turn's content while it is parked — what a
-    /// completion outcome hook's
-    /// [`OutcomeAction::Replace`](crate::agent::OutcomeAction::Replace) lands as. The turn has not
-    /// entered history yet, so the replacement is what history keeps. Like a
-    /// retry, this does not support tool-bearing turns: neither the parked
-    /// turn nor the replacement may carry tool calls.
+    /// Replace accepted content before it enters history. Returns a cancellation
+    /// error without an accepted turn or if either turn contains tool calls.
     pub fn replace_accepted_turn_choice(
         &mut self,
         choice: Vec<AssistantContent>,
@@ -932,13 +813,8 @@ impl AgentRun {
         match request {
             RetryRequest::Repeat => {}
             RetryRequest::Feedback(feedback) => {
-                // The rejected turn may legitimately have carried nothing — that
-                // is often *why* a hook rejected it. Cancelling here was
-                // unreachable while the streaming accumulator padded empty turns
-                // with a fabricated empty-text part; without that padding it
-                // would fail exactly the runs a feedback retry exists to rescue.
-                // The `is_empty_assistant_turn` check immediately below is what
-                // keeps a content-less turn out of history.
+                // Feedback may retry an empty answer, but empty assistant messages
+                // must not enter provider history.
                 let content = turn.items;
                 if !is_empty_assistant_turn(&content) {
                     self.new_messages.push(Message::Assistant {
@@ -1054,10 +930,8 @@ impl AgentRun {
                     skipped,
                     mut block_ids,
                 } = turn_state;
-                // Tool output mode (#1928): a call to the synthetic output tool
-                // finalizes the run with the call's arguments as the response,
-                // instead of executing it as a tool. First match wins; any
-                // sibling tool calls in the same turn are dropped.
+                // The first output-tool call is the answer, not executable work;
+                // sibling calls must not run after finalization.
                 if has_tool_calls
                     && let Some(output_tool_name) = self.output_tool_name.clone()
                     && let Some(tool_call) = items.iter().find_map(|item| match item {
@@ -1081,9 +955,6 @@ impl AgentRun {
                     let tool_call_id = tool_call.id.clone();
                     let output = json_utils::serialize_json_value(&args);
 
-                    // Validate the output against the schema's required fields and
-                    // re-prompt while budget remains, so a model that omits fields
-                    // gets a chance to fix it before we finalize best-effort.
                     let missing = self.missing_required_output_fields(&args);
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages.push(Message::Assistant {
@@ -1103,11 +974,8 @@ impl AgentRun {
                         return self.reprompt_for_output();
                     }
 
-                    // Finalize. The turn is persisted as the assistant's final
-                    // *text* (keeping any reasoning, dropping every tool call)
-                    // rather than the raw output-tool call. Otherwise the saved
-                    // history would carry an unanswered tool_use, which providers
-                    // reject when the conversation is replayed on a later turn.
+                    // Store output as text without tool calls so resumed history
+                    // cannot contain unanswered calls.
                     let mut final_items: Vec<AssistantContent> = items
                         .iter()
                         .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
@@ -1122,52 +990,15 @@ impl AgentRun {
                     return Ok(self.finish(output, final_items, output_tool_calls));
                 }
 
-                // rig#2322 — an empty turn the provider *cut short* is a lost
-                // turn, and finishing it as a successful empty answer is how
-                // a truncated response reached users as an unexplained blank.
-                // Decided before anything is committed: the run ends in
-                // `Err`, and a reasoning-only turn nobody can answer around is
-                // not history (CONTRACT §4; rig-ecs keeps nothing either). The
-                // blocking Gemini path already rejects a content-less
-                // candidate with a `ResponseError` naming the finish reason;
-                // this makes the agent surface agree.
-                //
-                // The predicate is `turn_delivered_no_answer`, **not**
-                // `is_empty_assistant_turn`: they diverge on a reasoning-only
-                // turn, which belongs in history (pushed below, when the turn
-                // is not lost) but answered nothing. That divergence is the
-                // common case, not a corner — Gemini counts thinking tokens
-                // against `maxOutputTokens`, so a truncated thinking turn
-                // typically carries reasoning and no text, and gating on
-                // "empty" let exactly that shape finalize as a successful `""`.
-                //
-                // Deliberately narrow, so it cannot regress the case above:
-                //   - nothing delivered **and** truncated → error;
-                //   - reasoning only **and** truncated → error (nothing was
-                //     answered; the thinking is not the answer);
-                //   - nothing delivered but `Stop`/`ToolCalls`/`Other` →
-                //     unchanged, still a successful empty turn;
-                //   - any real text, or tool calls, **then** truncated →
-                //     unchanged, still valid, and the reason is on the
-                //     `CompletionCall` for a caller that wants to act on it.
+                // Reasoning alone is not an answer. Reject answerless truncated turns
+                // before committing history, but retain valid empty non-truncated turns.
                 if turn_delivered_no_answer(&items)
                     && let Some(reason) = self.truncating_finish_reason()
                 {
-                    // The wording is rig-core's (`FinishReason::no_answer_message`),
-                    // shared with rig-ecs so both runtimes fail the same way.
-                    //
-                    // No `PromptResponse` is built on this path — the run ends
-                    // in `Err` — so the message must not send the caller to
-                    // `completion_calls` for the reason.
                     return Err(CompletionError::ResponseError(reason.no_answer_message()).into());
                 }
 
-                // An empty turn is not, on its own, a lost turn. Cancelling on
-                // every textless turn would fail runs that previously
-                // succeeded: with the fabricated empty-text padding gone, a
-                // tool-call-only turn whose calls were all dropped arrives
-                // honestly empty. `is_empty_assistant_turn` does the right
-                // thing: keep the turn out of history and carry on.
+                // Empty turns may succeed but cannot form provider history entries.
                 if !is_empty_assistant_turn(&items) {
                     self.new_messages.push(Message::Assistant {
                         id: message_id,
@@ -1176,10 +1007,7 @@ impl AgentRun {
                 }
 
                 if has_tool_calls {
-                    // The model is making progress with real tools, so reset the
-                    // output-retry budget: it is per finalization attempt, not a
-                    // single per-run allowance an early stray turn could burn
-                    // before the model genuinely needs to produce output (#1928).
+                    // Output retries are budgeted per finalization attempt, not per run.
                     self.output_retries = 0;
                     // Allocate assembly keys independently of durable tool identities.
                     // Advance for every content position, matching buffered re-emission.
@@ -1214,16 +1042,8 @@ impl AgentRun {
                     self.state = RunState::ExecutingTools(calls.clone());
                     Ok(AgentRunStep::CallTools { calls })
                 } else {
-                    // Tool output mode (#1928): the model produced a final text
-                    // answer without calling the output tool. Re-prompt while
-                    // budget remains so it returns structured output; the
-                    // assistant text was already appended above, so just add the
-                    // corrective feedback. Empty turns finalize best-effort.
-                    //
-                    // But if the text already *is* valid output (parses as JSON
-                    // with every required field), accept it rather than wasting a
-                    // turn — the model answered correctly, just via the wrong
-                    // channel.
+                    // Accept schema-compatible JSON text without requiring a tool call;
+                    // other nonempty answers may consume an output retry.
                     if let Some(output_tool_name) = self.output_tool_name.clone()
                         && !is_empty_assistant_turn(&items)
                         && self.can_reprompt_for_output()
@@ -1320,26 +1140,8 @@ impl AgentRun {
         self.advance_resolution()
     }
 
-    /// Record one provider completion call: assign it the next call index,
-    /// push it, and aggregate its usage into the run total. The single home for
-    /// this accounting arithmetic, shared by the non-streamed and streamed
-    /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
-    /// guard/flag; this helper never touches it, so it cannot be mistaken for
-    /// "a completion call happened" and re-introduce a double count.
-    /// The most recent completion call's terminal reason, when it describes a
-    /// turn the provider **cut short** rather than one that ended on its own.
-    ///
-    /// [`FinishReason::Length`] and [`FinishReason::ContentFilter`] are
-    /// truncating: the model was stopped with more to say.
-    /// [`FinishReason::Other`] is deliberately excluded — it carries a
-    /// provider's own wire spelling with no normalized meaning, so treating it
-    /// as truncation would fail runs on benign provider-specific stops.
-    ///
-    /// The set is [`FinishReason::truncated_output`]'s, and deliberately so:
-    /// the reasons a provider may hand back an *answerless* turn are exactly
-    /// the reasons this layer has a remedy for. Sharing the predicate keeps a
-    /// normalizer that tolerates an empty turn and an agent that explains one
-    /// from ever disagreeing about which turns those are.
+    /// Latest call's reason when [`FinishReason::truncated_output`] identifies
+    /// truncation. Unknown provider reasons do not imply truncation.
     fn truncating_finish_reason(&self) -> Option<&FinishReason> {
         self.completion_calls
             .last()?
@@ -1355,10 +1157,9 @@ impl AgentRun {
         finish_reason: Option<FinishReason>,
         raw: serde_json::Value,
     ) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage)
+        let call = CompletionCall::new(self.completion_call_index, usage, raw)
             .with_identity(identity)
-            .with_finish_reason(finish_reason)
-            .with_raw(raw);
+            .with_finish_reason(finish_reason);
         self.completion_call_index += 1;
         self.completion_calls.push(call.clone());
         self.usage += usage;
@@ -1546,17 +1347,9 @@ impl AgentRun {
         }
     }
 
-    /// Discard the pending invalid tool call without marking the turn as
-    /// recovered.
-    ///
-    /// This is the extractor driver's fallback after every invalid-tool hook
-    /// has declined to act. Keeping it distinct from [`InvalidToolCallAction::Skip`]
-    /// preserves the extractor's legacy response semantics: unrelated calls
-    /// disappear, a sibling output call can still finalize the turn, and
-    /// response observers still receive the canonical response fields.
-    /// Resolve the pending invalid tool call the way the run's
-    /// [`unhandled_invalid_tool_call`](RunSpec::unhandled_invalid_tool_call)
-    /// policy says, for a driver whose hooks all declined to resolve it.
+    /// Apply the configured unhandled-call policy after hooks decline resolution.
+    /// `Fail` reports the invalid call; `Ignore` removes it without suppressing
+    /// response hooks or sibling calls. Errors without a pending invalid call.
     pub fn resolve_unhandled_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         match self.unhandled_invalid_tool_call {
             UnhandledInvalidToolCall::Fail => {
@@ -1582,21 +1375,15 @@ impl AgentRun {
 
         resolving.items.remove(resolving.next_index);
         resolving.has_tool_calls = has_tool_calls(&resolving.items);
-        // Dropping the last item leaves the turn empty, which is now
-        // representable. This used to push a fabricated empty-text part so the
-        // content type stayed satisfied; `is_empty_assistant_turn` keeps such a
-        // turn out of history further along.
         self.state = RunState::ResolvingToolCalls(resolving);
         self.advance_resolution()
     }
 
     /// Feed the tool results for the pending [`AgentRunStep::CallTools`].
     ///
-    /// Results may be in any order; they are appended as a single user
-    /// message, matching what providers expect for parallel tool calls. Each
-    /// result must be a tool result answering one of the pending calls, and
-    /// every pending call must be answered — exactly what providers require
-    /// to accept the next request.
+    /// Results may arrive in any order and are appended as one user message.
+    /// Each must answer a pending call, with exactly one result per occurrence
+    /// of its ID. Invalid or incomplete batches return a cancellation error.
     pub fn tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
         let RunState::ExecutingTools(pending) = &self.state else {
             return Err(
@@ -1716,24 +1503,13 @@ impl AgentRun {
         })
     }
 
-    // ── Streamed-turn entry points ──────────────────────────────────────
-    // Paired with [`streamed::StreamedTurnAssembler`]; see that module's
-    // docs for the full driving protocol.
-
-    /// Record one provider completion call for a streamed turn.
+    /// Record a streamed attempt's terminal metadata and aggregate its usage.
+    /// All arguments must come from that attempt's final event; do not record a
+    /// stream that ended without one. All-`None` counters mean unreported usage.
     ///
-    /// Streamed turns learn usage from the provider's final stream event —
-    /// including for turns abandoned by invalid tool-call recovery, where the
-    /// stream is drained for usage after the rollback — so recording is
-    /// decoupled from turn ingestion. Valid while a model response is pending
-    /// or between a turn rollback and the next [`AgentRunStep::CallModel`];
-    /// aggregates `usage` into the run total. Usage whose counters are all
-    /// `None` means the provider reported no usage metrics.
-    ///
-    /// `raw` is the stream's terminal record as carried on `StreamFinal::raw`
-    /// — read off the same terminal the driver reads `identity` and
-    /// `finish_reason` from, so the recorded call carries *this* attempt's
-    /// payload; `Value::Null` when no terminal record arrived.
+    /// Allowed once while awaiting a model response, or after a streamed rollback
+    /// before the next model step. Other states and duplicate records return a
+    /// cancellation error. Abandoned streams must still be drained for usage.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
@@ -1782,11 +1558,9 @@ impl AgentRun {
 
     /// Resolve an invalid tool call surfaced mid-stream.
     ///
-    /// Applies the same recovery semantics as
-    /// [`AgentRun::resolve_invalid_tool_call`], but rollback messages are
-    /// assembled from the partial streamed turn — exactly what the model has
-    /// produced so far — and a successful retry or skip abandons the turn
-    /// (see [`StreamedResolution`]) instead of finishing it.
+    /// Uses buffered-turn recovery policy with rollback messages from the partial
+    /// turn. Retry and skip abandon the stream; repair changes only the name and
+    /// rejects malformed arguments. Errors without a pending model step.
     pub fn resolve_streamed_invalid_tool_call(
         &mut self,
         partial: &PartialStreamedTurn,
@@ -1846,11 +1620,9 @@ impl AgentRun {
         }
     }
 
-    /// Drop a streamed invalid call and go on with the turn without it —
-    /// [`UnhandledInvalidToolCall::Ignore`] on the streaming surface, the
-    /// counterpart of [`ignore_invalid_tool_call`](Self::ignore_invalid_tool_call).
-    /// The call never enters the run; the assembler drops its pending
-    /// state on [`StreamedResolution::Ignored`].
+    /// Resolve a streamed call as ignored. The driver must apply the returned
+    /// resolution to the assembler so the call does not enter the turn.
+    /// Errors without a pending model step.
     pub fn ignore_streamed_invalid_tool_call(&mut self) -> Result<StreamedResolution, PromptError> {
         if !matches!(self.state, RunState::AwaitingModel) {
             return Err(self.protocol_violation(
@@ -1893,39 +1665,20 @@ impl AgentRun {
     /// Feed the assembled streamed turn for the pending
     /// [`AgentRunStep::CallModel`].
     ///
-    /// Remaining tool calls are validated fail-fast — mid-stream resolution
-    /// already had recovery-hook access — and the turn then advances through
-    /// [`AgentRun::next_step`] exactly like a non-streamed one.
+    /// Rejects remaining disallowed tool names without further recovery. Requires
+    /// a pending model step and exactly one prior call to
+    /// [`AgentRun::record_streamed_completion_call`] for this attempt; otherwise
+    /// returns a protocol error. Accepted turns await [`AgentRun::next_step`].
     pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<(), PromptError> {
         if !matches!(self.state, RunState::AwaitingModel) {
             return Err(
                 self.protocol_violation("streamed_turn called without a pending CallModel step")
             );
         }
-
-        // Guarantee exactly one CompletionCall per model call: drivers that
-        // never learned usage (no record before the turn completed) still get
-        // the call recorded, with no reported usage.
         if !self.streamed_completion_call_recorded {
-            // `Usage::default()` is the additive identity for `Usage`'s `AddAssign`,
-            // so routing the no-usage fallback through `record_completion_call`
-            // leaves the run total unchanged while unifying the accounting.
-            // Identity carries the turn's message id — the same value written
-            // into run history below — so `completion_calls` and `messages()`
-            // agree even for a hand-driven driver that never recorded usage.
-            self.record_completion_call(
-                Usage::default(),
-                ResponseIdentity {
-                    message_id: turn.message_id.clone(),
-                    ..ResponseIdentity::default()
-                },
-                turn.finish_reason,
-                // A streamed turn's raw lives on the terminal record, which
-                // this fallback never saw; the driver records it via
-                // `record_streamed_completion_call` when it has one.
-                serde_json::Value::Null,
-            );
-            self.streamed_completion_call_recorded = true;
+            return Err(self.protocol_violation(
+                "streamed_turn called before record_streamed_completion_call recorded the turn's completion call",
+            ));
         }
 
         let has_tool_calls = has_tool_calls(&turn.choice);

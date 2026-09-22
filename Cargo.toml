@@ -9,17 +9,51 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # Examples now live in their own packages under `examples/*`; don't auto-discover
 # them as examples of this crate.
 autoexamples = false
-# This package's own `src/` is ~12 KiB of re-exports, but the manifest sits at the
-# repo root, so every sibling path is swept into the published tarball, including
-# the 1,100+ provider cassettes. They grew the crate from 6.66 MiB at 0.39.0 to
-# 9.51 MiB today, against a crates.io upload limit of 10 MiB: the next release was
-# on track to be rejected outright. That limit is enforced server-side, so no
-# amount of `cargo publish --dry-run` surfaces it. Excluding the cassettes drops
-# the tarball to 3.33 MiB. They are replay fixtures the test binaries read at
-# runtime from `CARGO_MANIFEST_DIR`, never embedded with `include_*!`, so nothing
-# in the package needs them to compile.
-exclude = [
-    "tests/cassettes/**",
+# The published tarball no longer sweeps the provider cassettes: they live with
+# the engine that reads them (`crates/rig-cassette/fixtures/cassettes`), which
+# Cargo skips here because it is its own package.
+#
+# This manifest is both the workspace root and the `rig` facade package, so the
+# package directory is the whole repository and `cargo package` sweeps it: CI
+# workflows, README artwork, the Nix flake, release tooling, `examples/` data
+# and a `tests/` tree that cannot compile from the tarball at all, since its
+# `rig-test-support` dev dependency is path-only and Cargo strips it when
+# publishing. The facade's own source is one file of re-exports.
+#
+# An allowlist, not an exclude list (#2349): "not shipped" is the safe default,
+# so this does not need extending every time the repository grows a directory,
+# and it is the only form that keeps out untracked-but-unignored files - cargo
+# packages whatever happens to be lying next to the manifest at publish time.
+#
+# NOTE: this is [package].include and must stay ABOVE the [workspace] header.
+# Below it, it parses as `workspace.include` and is ignored with only an
+# unused-key warning. The `exclude` further down is [workspace].exclude, which
+# is member discovery - a different key. `include` and `exclude` cannot coexist
+# on [package]: `include` wins and `exclude` goes inert.
+#
+# Patterns need the leading `/`. Cargo's globs are gitignore-style and match at
+# any depth, so an unanchored "README.md" would also pull in
+# `examples/README.md` and `tests/README.md`.
+#
+# LICENSE must be listed explicitly: `license = "MIT"` is an SPDX expression,
+# not `license-file`, so cargo does not add the file on its own.
+#
+# Packaging emits a `warning: ignoring test 'x'` line per test target. Do NOT
+# silence those with `autotests = false`: that stops local discovery too and
+# recreates the "tests run in no CI job" hole in the `default-members` comment
+# below (#2258). `cargo xtask check-packaging` gates the result.
+include = [
+    "/src/**",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/MIGRATING.md",
+    # Referenced by README.md, which registries render from the tarball. The
+    # other five img/ files are referenced by nothing and stay out.
+    "/img/rig-rebranded-logo-white.svg",
+    "/img/rig-rebranded-logo-black.svg",
+    "/img/built-by-playgrounds.svg",
+    "/img/ryzome-bg.png",
 ]
 
 [package.metadata.docs.rs]
@@ -30,6 +64,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 resolver = "3"
 members = [
     "crates/*",
+    "crates/rig-cassette/tests/minimal",
     "examples/*",
     "xtask",
     "test-support/service-tests",
@@ -51,11 +86,12 @@ members = [
 # `cargo test -p rig-core --test macro_hygiene` step. Both are required for
 # this exclusion to stay honest: until the first existed, every test in
 # rig-derive ran nowhere.
+# The nested cassette runner is selected separately by bus-verification and
+# ecs-parity: default-member feature unification defeats its minimal JSON graph.
 default-members = [
     ".",
     "crates/rig-core",
     "crates/rig-cassette",
-    "crates/rig-effect-log",
     "crates/rig-agent",
     "crates/rig-ecs",
     "crates/rig-reqwest",
@@ -64,7 +100,6 @@ default-members = [
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
-    "crates/rig-verify",
     "test-support/service-tests",
     "test-support/rig-test-support",
 ]
@@ -141,7 +176,7 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
-rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
+rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", default-features = false }
 anyhow = "1"
 arrow-array = "58"
 as-any = "0.3"
@@ -278,7 +313,7 @@ workspace = true
 [dependencies]
 rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.42.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
-rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
+rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", default-features = false }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }
@@ -321,21 +356,12 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optiona
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }
-# The repository census checks Bedrock binary fixtures even in default suites.
-rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", features = ["bedrock"] }
-rig-ecs = { path = "crates/rig-ecs" }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
-# The ECS contract matrix (`tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as rig-verify's world interpreter does.
+# The ECS contract matrix (`crates/rig-cassette/tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as the cassette crate's world interpreter does.
 bevy_tasks = { workspace = true }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
-async-stream = { workspace = true }
-aws-config = { workspace = true }
-aws-sdk-bedrockruntime = { workspace = true }
-aws-smithy-eventstream = { workspace = true }
-aws-smithy-runtime-api = { workspace = true }
-aws-smithy-types = { workspace = true }
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false, features = [
   "test-utils",
 ] }
@@ -344,24 +370,13 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0", default-features = 
 ] }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tokio-test = { workspace = true }
-serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
-reqwest-retry = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
-reqwest-middleware = { workspace = true, features = [
-  "json",
-  "multipart",
-  "charset",
-  "http2",
-  "rustls",
-] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-sha2 = { workspace = true }
 # float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
 # (e.g. embedding vectors): without it, parse→print can oscillate between two
 # representations of the same decimal and the recorded YAML never stabilizes.
@@ -370,8 +385,6 @@ sha2 = { workspace = true }
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
-thiserror = { workspace = true }
-hyper-util = { workspace = true, features = ["service", "server"] }
 rmcp = { workspace = true, features = [
   "client",
   "macros",
@@ -382,17 +395,12 @@ rmcp = { workspace = true, features = [
   "transport-streamable-http-server",
   "transport-worker",
 ] }
-axum = { workspace = true }
-opentelemetry = { workspace = true }
-opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
-opentelemetry-otlp = { workspace = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
-url = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
-agent = ["dep:rig-agent"]
+agent = ["dep:rig-agent", "rig-cassette/agent"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # Internal: opt in to the slow nested-`cargo check` facade build tests
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's

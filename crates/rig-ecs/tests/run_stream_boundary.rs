@@ -54,6 +54,7 @@ impl Serve for FinishingName {
                     ..ProviderUsage::default()
                 },
                 "boundary",
+                serde_json::json!({}),
             ))));
         };
 
@@ -93,6 +94,7 @@ impl Serve for FinishingName {
                         total_tokens: Some(7),
                         ..ProviderUsage::default()
                     },
+                    serde_json::json!({}),
                 )))
                 .await
                 .expect("stream open");

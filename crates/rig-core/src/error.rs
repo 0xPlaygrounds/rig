@@ -673,7 +673,7 @@ impl From<RerankError> for ErrorReport {
 
 impl From<&VectorStoreError> for ErrorReport {
     fn from(error: &VectorStoreError) -> Self {
-        let (kind, http_status) = match error {
+        let (kind, provider_response) = match error {
             VectorStoreError::EmbeddingError(inner) => {
                 return Self {
                     message: error.to_string(),
@@ -687,30 +687,44 @@ impl From<&VectorStoreError> for ErrorReport {
                 (ErrorKind::Request, None)
             }
             VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),
+            VectorStoreError::Http(crate::http_client::Error::InvalidStatusCodeWithDetails {
+                status,
+                body,
+                headers,
+            }) => (
+                ErrorKind::ProviderResponse,
+                Some(
+                    crate::provider_response::ProviderResponseError::new(*status, body.clone())
+                        .with_headers(Some(headers.clone())),
+                ),
+            ),
             VectorStoreError::Http(_) => (ErrorKind::Http, None),
             // A store's own non-2xx reply: the server answered, so the status
             // classifies it and its retryability, like any provider reply.
-            VectorStoreError::ExternalAPIError(status, _) => {
-                (ErrorKind::ProviderResponse, Some(status.as_u16()))
-            }
+            VectorStoreError::ExternalAPIError(status, body) => (
+                ErrorKind::ProviderResponse,
+                Some(crate::provider_response::ProviderResponseError::new(
+                    *status,
+                    body.clone(),
+                )),
+            ),
         };
+        let http_status = provider_response
+            .as_ref()
+            .and_then(|response| response.status.map(|status| status.as_u16()));
         let retryable = match error {
             VectorStoreError::Http(inner) => transient_transport(inner),
             VectorStoreError::ExternalAPIError(..) => retryable_status(http_status),
             _ => false,
         };
-        // The store's reply travels with the report like any provider's.
-        let provider_response = match error {
-            VectorStoreError::ExternalAPIError(status, body) => Some(
-                crate::provider_response::ProviderResponseError::new(*status, body.clone()),
-            ),
-            _ => None,
-        };
+        let code = provider_response
+            .as_ref()
+            .and_then(|response| response.machine_code());
         ErrorReport {
             kind,
             retryable,
             message: error.to_string(),
-            code: None,
+            code,
             http_status,
             refusal: provider_response.as_ref().is_some_and(|r| r.refusal),
             source_chain: source_chain(error),

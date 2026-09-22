@@ -120,6 +120,7 @@ fn response_parsing_returns_first_non_thought_inline_image() {
         }),
         model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
         response_id: "response-id".to_string(),
+        error: None,
     };
 
     let parsed = response
@@ -155,6 +156,7 @@ fn response_parsing_rejects_text_only_response() {
         usage_metadata: None,
         model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
         response_id: "response-id".to_string(),
+        error: None,
     };
 
     let err = response
@@ -183,7 +185,7 @@ fn a_blocked_prompt_reply_parses_as_a_candidate_less_response() {
 }
 
 /// The 200 reply recorded in
-/// `tests/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
+/// `crates/rig-cassette/fixtures/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
 /// verbatim except for `inlineData.data`: the recorded PNG is 1 MB of base64,
 /// so only its first four base64 groups — the PNG signature and the start of
 /// the `IHDR` chunk — are kept here.

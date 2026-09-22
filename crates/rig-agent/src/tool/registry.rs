@@ -1,11 +1,10 @@
-//! The tool registry: a registration, an ordered set of them, and canonical
-//! dispatch by name.
+//! Ordered tool registrations, request catalogs, and inline dispatch by name.
 //!
-//! A typed [`Tool`] erases once (`ErasedTool`) in rig-core; this module is
-//! what a driver does with the erasure: stores it in an ordered [`ToolSet`],
-//! executes it through one structured path ([`execute_tool`]), and pins a
-//! per-turn [`ToolCatalog`]. The futures agent's live registry
-//! ([`ToolServer`](super::server::ToolServer)) is layered over these types.
+//! ```
+//! use rig_agent::tool::ToolSet;
+//! let tools = ToolSet::default();
+//! assert!(tools.catalog().is_empty());
+//! ```
 
 use std::collections::HashMap;
 
@@ -64,8 +63,8 @@ impl RegisteredTool {
         )
     }
 
-    /// Register a retrievable tool: its embedding context rides on the
-    /// descriptor.
+    /// Register a retrievable tool with embedding context in its descriptor.
+    /// Returns an error if the context cannot be serialized.
     pub fn from_retrievable<T>(tool: T) -> Result<Self, serde_json::Error>
     where
         T: ToolEmbedding + 'static,
@@ -90,9 +89,8 @@ impl RegisteredTool {
         Self::from_parts(definition, None, handler, liveness)
     }
 
-    /// Register any tool-family handler under the key its descriptor names
-    /// — a replayer answering a recorded tool from the effect log, a host's
-    /// own handler. Fails when the handler is not of the tool family.
+    /// Register a handler under its descriptor's key.
+    /// Returns `HandlerUnavailable` if the descriptor is not tool-family.
     pub fn from_handler(handler: impl Serve + 'static) -> Result<Self, ErrorReport> {
         let descriptor = handler.descriptor();
         let FamilyDescriptor::Tool {
@@ -198,19 +196,14 @@ impl RegisteredTool {
         self.liveness.as_ref().is_none_or(|probe| probe())
     }
 
-    /// Run the tool here, without a bus, publishing its result metadata
-    /// into `context` — the inline path of a standalone tool set.
-    ///
-    /// The tool runs on a dispatch snapshot of `context` (its inbound values,
-    /// no result metadata); only what it published lands back, replacing
-    /// `context`'s result metadata. That holds for every ending — a result,
-    /// a failed result, a handler that answered nothing usable — and for a
-    /// future dropped mid-call, which leaves `context` exactly as it was:
-    /// the caller's inbound values are never moved out or mutated.
+    /// Execute inline on a dispatch snapshot of inbound context. On completion,
+    /// replace result metadata with what the tool published, or an empty result
+    /// map if nothing was published. Inbound values remain unchanged; dropping
+    /// the future mid-call leaves the caller's entire context unchanged.
+    /// Handler errors and wrong-family outcomes become failed tool results.
     pub async fn execute(&self, args: String, context: &mut ToolContext) -> ToolResult {
         let name = self.definition.name.clone();
-        // The context travels beside the call, never in it (format 5): the
-        // inline sink carries a snapshot and the slot the tool publishes into.
+        // Context travels outside the serializable effect payload.
         let published = rig_core::tool::PublishedContext::new();
         let outcome = rig_core::serve::serve_inline_with(
             &self.handler,
@@ -295,9 +288,8 @@ pub async fn execute_tool(
     }
 }
 
-/// A named set of tool registrations: the definition and advertisement
-/// surface. Execution goes through the registrations' handlers — over a bus
-/// once one has taken them, inline until then.
+/// Insertion-ordered named tool registrations and their advertisement policy.
+/// Direct execution is inline; hosts may install the registrations on a bus.
 #[derive(Clone, Default)]
 pub struct ToolSet {
     pub(crate) tools: IndexMap<String, ToolRegistration>,

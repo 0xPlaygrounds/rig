@@ -6,6 +6,24 @@ use serde_json::Value;
 use crate::types::json::AwsDocument;
 
 #[test]
+fn smithy_objects_have_stable_recursive_json_order() {
+    for _ in 0..32 {
+        let document = Document::Object(HashMap::from([
+            ("z".into(), Document::Bool(true)),
+            (
+                "a".into(),
+                Document::Object(HashMap::from([
+                    ("y".into(), Document::Number(Number::PosInt(5))),
+                    ("x".into(), Document::Number(Number::PosInt(2))),
+                ])),
+            ),
+        ]));
+        let value: Value = AwsDocument(document).into();
+        assert_eq!(value.to_string(), r#"{"a":{"x":2,"y":5},"z":true}"#);
+    }
+}
+
+#[test]
 fn unsigned_json_numbers_round_trip_without_precision_loss() {
     let value = serde_json::json!(u64::MAX);
     let document: AwsDocument = value.clone().into();

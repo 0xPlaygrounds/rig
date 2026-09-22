@@ -10,9 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::json_utils;
-use crate::providers::internal::openai_chat_completions_compatible::{
-    CompatibleTerminal, CompatibleToolCallChunk,
-};
+use crate::providers::internal::tool_call_bridge::ToolCallSlot;
 use crate::providers::openai::completion::{Message, Usage, joined_text_parts};
 use crate::streaming::StreamFinal;
 
@@ -39,14 +37,52 @@ pub(crate) struct StreamingToolCall {
     pub(crate) function: StreamingFunction,
 }
 
-impl From<&StreamingToolCall> for CompatibleToolCallChunk {
-    fn from(value: &StreamingToolCall) -> Self {
-        Self {
-            index: value.index,
-            id: value.id.clone(),
-            name: value.function.name.clone(),
-            arguments: value.function.arguments.clone(),
+impl StreamingToolCall {
+    fn has_nonempty_name(&self) -> bool {
+        self.function
+            .name
+            .as_ref()
+            .is_some_and(|name| !name.is_empty())
+    }
+
+    fn starts_new_tool_call(&self) -> bool {
+        self.has_nonempty_name()
+            && self
+                .function
+                .arguments
+                .as_ref()
+                .is_none_or(String::is_empty)
+    }
+
+    /// Whether this one fragment carries a whole call: the shape
+    /// llama.cpp-based servers emit.
+    pub(crate) fn is_complete_single_chunk(&self) -> bool {
+        self.has_nonempty_name()
+            && self
+                .function
+                .arguments
+                .as_ref()
+                .is_some_and(|arguments| !arguments.is_empty())
+    }
+
+    /// Whether this fragment belongs to a different call than the one open
+    /// at its index. Some gateways stream two distinct calls under one
+    /// `index`: a new id plus either a different name or an argument-less
+    /// opening fragment is a second call; anything else continues the call
+    /// already open.
+    pub(crate) fn evicts(&self, existing: &ToolCallSlot) -> bool {
+        if let Some(new_id) = &self.id
+            && !new_id.is_empty()
+            && let Some(new_name) = &self.function.name
+            && self.has_nonempty_name()
+            && !existing.id.is_empty()
+            && existing.id != *new_id
+            && !existing.name.is_empty()
+        {
+            return existing.name != *new_name || self.starts_new_tool_call();
         }
+
+        false
     }
 }
 
@@ -295,6 +331,13 @@ impl ChatFrame {
             .iter()
             .find(|choice| choice.index.is_none_or(|index| index == 0))
     }
+
+    /// The primary candidate, taken out of the frame.
+    pub(crate) fn into_primary(self) -> Option<ChatChoice> {
+        self.choices
+            .into_iter()
+            .find(|choice| choice.index.is_none_or(|index| index == 0))
+    }
 }
 
 /// The provider's own terminal record for one chat-completions reply.
@@ -361,21 +404,6 @@ impl<U> StreamingCompletionResponse<U> {
             additional_params: None,
         }
     }
-
-    /// Build the terminal record from the decoder's terminal state.
-    pub(crate) fn from_terminal(terminal: CompatibleTerminal<U>) -> Self {
-        Self {
-            usage: terminal.usage,
-            finish_reason: terminal.finish_reason,
-            response_id: terminal.response_id,
-            model: terminal.model,
-            // Stamped by the driver; the decoder never sees connection
-            // headers.
-            provider_request_id: None,
-            logprobs: terminal.logprobs.map(Into::into),
-            additional_params: terminal.additional_params,
-        }
-    }
 }
 
 impl<U> StreamingCompletionResponse<U>
@@ -387,11 +415,18 @@ where
     /// The provider descriptor name is an *input* rather than a constant:
     /// this record is shared by every dialect on the wire, so baking in
     /// `"openai"` would mislabel Groq, Together, DeepSeek and the rest.
-    pub fn into_stream_final(self, provider: &str) -> StreamFinal {
-        StreamFinal::new(provider, self.usage.map(Into::into).unwrap_or_default())
-            .with_optional_finish_reason(self.finish_reason)
-            .with_optional_response_id(self.response_id)
-            .with_optional_provider_request_id(self.provider_request_id)
-            .with_optional_model(self.model)
+    pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
+        StreamFinal::new(
+            provider,
+            self.usage.map(Into::into).unwrap_or_default(),
+            raw,
+        )
+        .with_optional_finish_reason(self.finish_reason)
+        .with_optional_response_id(self.response_id)
+        .with_optional_provider_request_id(self.provider_request_id)
+        .with_optional_model(self.model)
     }
 }
+
+#[cfg(test)]
+mod tests;

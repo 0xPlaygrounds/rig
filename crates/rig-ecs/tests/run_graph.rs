@@ -13,6 +13,8 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::EffectKind,
     message::{Message, UserContent},
@@ -22,10 +24,9 @@ use rig_ecs::{
         Context, DocumentId, DocumentText, Grant, MessageParts, RunResult, Settled, UsesModel,
         Utterance,
     },
-    bus::{EffectLogResource, PendingEffect, RigSchedule},
+    bus::{PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -236,15 +237,18 @@ fn a_patch_system_rewrites_the_folded_request_and_the_record_holds_it() {
 
 fn shout_the_prompt(
     utterances: Query<&rig_ecs::agent::Role, With<Utterance>>,
-    mut parts: Query<(&ChildOf, &mut rig_ecs::agent::content::parts::TextPart)>,
+    mut parts: Query<(&ChildOf, &mut rig_ecs::agent::content::parts::ContentPart)>,
 ) {
-    for (parent, mut text) in &mut parts {
+    for (parent, mut part) in &mut parts {
+        let rig_ecs::agent::content::parts::ContentPart::Text(text) = &mut *part else {
+            continue;
+        };
         if utterances
             .get(parent.parent())
             .is_ok_and(|role| *role == rig_ecs::agent::Role::User)
-            && !text.0.text.ends_with('!')
+            && !text.text.ends_with('!')
         {
-            text.0.text.push('!');
+            text.text.push('!');
         }
     }
 }

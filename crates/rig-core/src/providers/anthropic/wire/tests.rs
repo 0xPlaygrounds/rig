@@ -1,7 +1,7 @@
 //! The Messages wire, driven from recorded bytes and no socket.
 //!
 //! The unary and streamed bodies below are the two cells of
-//! `tests/cassettes/anthropic/raw_completion_parity_matrix/` — the same turn
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/raw_completion_parity_matrix/` — the same turn
 //! recorded both ways. Folding them through the same decoder is the property
 //! this port exists for, and it is checked here without a transport so a
 //! failure names the decoder rather than the harness.

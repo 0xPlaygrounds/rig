@@ -68,11 +68,14 @@ fn entries_round_trip_through_serialization_in_append_order() {
 }
 
 #[test]
-fn runs_serialized_without_entries_still_deserialize() {
+fn runs_serialize_empty_entries_explicitly() {
     let run = AgentRun::new("p");
-    let mut value = serde_json::to_value(&run).expect("serializes");
-    let object = value.as_object_mut().expect("object");
-    assert!(!object.contains_key("entries"), "absent when empty");
+    let value = serde_json::to_value(&run).expect("serializes");
+    assert_eq!(
+        value["entries"],
+        json!([]),
+        "present, and empty, when empty"
+    );
     let restored: AgentRun = serde_json::from_value(value).expect("deserializes");
     assert!(restored.entries().is_empty());
 }
@@ -142,12 +145,12 @@ fn from_response_matches_hand_assembly_field_for_field() {
         vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
         usage(11, 7),
         "openai",
+        json!({"provider": "payload"}),
     )
     .with_message_id("msg_1".to_string())
     .with_response_id("chatcmpl_1".to_string())
     .with_provider_request_id("req_1".to_string())
-    .with_finish_reason(FinishReason::ToolCalls)
-    .with_raw(json!({"provider": "payload"}));
+    .with_finish_reason(FinishReason::ToolCalls);
 
     let executable = tool_names(&["add"]);
     let allowed = tool_names(&["add", "final_output"]);
@@ -159,10 +162,10 @@ fn from_response_matches_hand_assembly_field_for_field() {
         resp.usage,
         executable,
         allowed,
+        resp.raw.clone(),
     )
     .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
-    .with_finish_reason(resp.finish_reason())
-    .with_raw(resp.raw.clone());
+    .with_finish_reason(resp.finish_reason());
 
     assert_eq!(turn.message_id, expected.message_id);
     assert_eq!(turn.response_id, expected.response_id);
@@ -188,13 +191,24 @@ fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
     }
 }
 
+/// The provider document of a turn these tests build by hand: there is no
+/// provider behind it, so the document names the test as its origin.
+fn hand_raw() -> serde_json::Value {
+    json!({"origin": "hand-built test turn"})
+}
+
 fn text_turn(text: &str) -> ModelTurn {
+    text_turn_with_raw(text, hand_raw())
+}
+
+fn text_turn_with_raw(text: &str, raw: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
         None,
         vec![AssistantContent::text(text)],
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
+        raw,
     )
 }
 
@@ -220,12 +234,17 @@ fn id_less_call(index: u64, name: &str) -> AssistantContent {
 }
 
 fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
+    tool_call_turn_with_raw(id, name, hand_raw())
+}
+
+fn tool_call_turn_with_raw(id: &str, name: &str, raw: serde_json::Value) -> ModelTurn {
     ModelTurn::new(
         None,
         vec![tool_call(id, name)],
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
+        raw,
     )
 }
 
@@ -485,6 +504,7 @@ fn parallel_tool_calls_surface_in_emission_order() {
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
+        hand_raw(),
     );
     expect_continue(
         run.model_response(turn)
@@ -734,6 +754,7 @@ fn invalid_tool_call_skip_suppresses_all_peer_executions() {
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
+        hand_raw(),
     );
     expect_needs_resolution(
         run.model_response(turn)
@@ -767,6 +788,7 @@ fn id_less_calls_keep_distinct_skip_results() {
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
+        hand_raw(),
     );
     expect_needs_resolution(
         run.model_response(turn)
@@ -826,6 +848,7 @@ fn skip_under_tool_choice_none_fails() {
             Usage::default(),
             tool_names(&["add"]),
             BTreeSet::new(),
+            hand_raw(),
         ))
         .expect("model_response should succeed"),
     );
@@ -886,7 +909,7 @@ fn model_response_rejected_after_streamed_completion_call_record() {
         Usage::default(),
         ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        hand_raw(),
     )
     .expect("record should succeed");
 
@@ -1000,25 +1023,38 @@ fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,
     // and the run advances to the next model call after results arrive.
-    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15},"completion_calls":[{"call_index":0,"usage":{}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
+    let mut suspended = AgentRun::new("add things").max_turns(2);
+    expect_call_model(&mut suspended);
+    expect_continue(
+        suspended
+            .model_response(tool_call_turn("call_1", "add"))
+            .expect("model_response should succeed"),
+    );
+    expect_call_tools(&mut suspended);
+    let fixture = serde_json::to_string(&suspended).expect("suspended run should serialize");
 
-    let legacy = fixture.replace(
+    let bare_ids = fixture.replace(
         r#""id":{"origin":"explicit","id":"call_1"}"#,
         r#""id":"call_1""#,
     );
-    assert_ne!(legacy, fixture);
+    assert_ne!(bare_ids, fixture);
     assert!(
-        serde_json::from_str::<AgentRun>(&legacy).is_err(),
-        "legacy bare IDs must not be silently reinterpreted"
+        serde_json::from_str::<AgentRun>(&bare_ids).is_err(),
+        "bare IDs must not be silently reinterpreted"
     );
 
     let mut restored: AgentRun =
-        serde_json::from_str(fixture).expect("suspended run should deserialize");
+        serde_json::from_str(&fixture).expect("suspended run should deserialize");
     assert_eq!(restored.completion_calls()[0].usage, Usage::default());
 
     let calls = expect_call_tools(&mut restored);
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].block_id, BlockId::wire("call_1"));
+    // A buffered turn's calls carry completion-local minted block keys; the
+    // durable identity stays on the tool call's own id.
+    assert_eq!(
+        calls[0].block_id,
+        BlockId::minted(rig_core::streaming::MintKind::Tool, 0)
+    );
     restored
         .tool_results(vec![tool_result("call_1", "2")])
         .expect("tool_results should succeed");
@@ -1137,6 +1173,7 @@ fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add", name]),
+        hand_raw(),
     )
 }
 
@@ -1150,6 +1187,7 @@ fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add", name]),
+        hand_raw(),
     )
 }
 
@@ -1260,6 +1298,7 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add", "final_result"]),
+        hand_raw(),
     );
     expect_continue(
         run.model_response(turn)
@@ -1463,6 +1502,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
             Usage::default(),
             tool_names(&["add"]),
             tool_names(&["add"]),
+            hand_raw(),
         ))
         .expect("model_response");
     expect_continue(outcome);
@@ -1515,10 +1555,8 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
 // the drivers hand `AgentRun` the payload they read off the provider
 // response (blocking) or the stream terminal (streamed); the run must
 // record it per call, and persisted run state must carry it across a
-// suspend/resume boundary — while state written before the field existed
-// still loads. A `Value::Null` here means the turn was built without a provider
-// response behind it (hand-built, or persisted before the field existed),
-// never that capture was declined.
+// suspend/resume boundary. There is no absent payload: a turn is built from
+// the document that produced it, and a record without one is refused on load.
 // ---------------------------------------------------------------------
 
 fn raw_payload(attempt: &str) -> serde_json::Value {
@@ -1536,7 +1574,7 @@ fn model_turn_raw_is_recorded_on_the_completion_call() {
 
     expect_call_model(&mut run);
     expect_continue(
-        run.model_response(tool_call_turn("call_1", "add").with_raw(first.clone()))
+        run.model_response(tool_call_turn_with_raw("call_1", "add", first.clone()))
             .expect("model_response should succeed"),
     );
     expect_call_tools(&mut run);
@@ -1544,7 +1582,7 @@ fn model_turn_raw_is_recorded_on_the_completion_call() {
         .expect("tool_results should succeed");
     expect_call_model(&mut run);
     expect_continue(
-        run.model_response(text_turn("done").with_raw(second.clone()))
+        run.model_response(text_turn_with_raw("done", second.clone()))
             .expect("model_response should succeed"),
     );
 
@@ -1559,20 +1597,6 @@ fn model_turn_raw_is_recorded_on_the_completion_call() {
         [first, second],
         "each call carries its own turn's payload"
     );
-}
-
-/// A `ModelTurn` built without `with_raw` has no provider response behind
-/// it, so its record carries `Value::Null` — the only way a record ends up
-/// without a payload.
-#[test]
-fn model_turn_without_raw_records_null() {
-    let mut run = AgentRun::new("hello");
-    expect_call_model(&mut run);
-    expect_continue(
-        run.model_response(text_turn("hi"))
-            .expect("model_response should succeed"),
-    );
-    assert_eq!(run.completion_calls()[0].raw, serde_json::Value::Null);
 }
 
 #[test]
@@ -1590,22 +1614,6 @@ fn streamed_completion_call_record_carries_raw() {
         .expect("record should succeed");
     assert_eq!(call.raw, raw);
     assert_eq!(run.completion_calls()[0].raw, raw);
-
-    let mut run = AgentRun::new("hello");
-    expect_call_model(&mut run);
-    let call = run
-        .record_streamed_completion_call(
-            usage(3, 4),
-            ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("record should succeed");
-    assert_eq!(
-        call.raw,
-        serde_json::Value::Null,
-        "a terminal with no payload behind it records Value::Null"
-    );
 }
 
 /// A suspended run's recorded payloads survive the serialize/resume
@@ -1617,7 +1625,7 @@ fn recorded_raw_survives_serde_round_trip() {
     let mut run = AgentRun::new("add things").max_turns(2);
     expect_call_model(&mut run);
     expect_continue(
-        run.model_response(tool_call_turn("call_1", "add").with_raw(raw.clone()))
+        run.model_response(tool_call_turn_with_raw("call_1", "add", raw.clone()))
             .expect("model_response should succeed"),
     );
     expect_call_tools(&mut run);
@@ -1630,14 +1638,13 @@ fn recorded_raw_survives_serde_round_trip() {
     assert_eq!(restored.completion_calls(), run.completion_calls());
 }
 
-/// `ModelTurn` carries `raw` through its own serde round trip, and a
-/// turn serialized before the field existed (no `raw` key) still loads
-/// with `raw` as `Value::Null`.
+/// `ModelTurn` and `CompletionCall` carry `raw` through their serde round
+/// trips, and a record without the key is refused rather than loaded with
+/// a payload invented.
 #[test]
-fn model_turn_raw_round_trips_and_missing_key_loads_as_null() {
+fn raw_round_trips_and_a_missing_key_is_refused() {
     let raw = raw_payload("turn");
-    let turn = text_turn("hi").with_raw(raw.clone());
-
+    let turn = text_turn_with_raw("hi", raw.clone());
     let value = serde_json::to_value(&turn).expect("turn should serialize");
     assert_eq!(value["raw"], raw);
     let restored: ModelTurn =
@@ -1650,34 +1657,51 @@ fn model_turn_raw_round_trips_and_missing_key_loads_as_null() {
         .expect("turn serializes as an object")
         .remove("raw")
         .expect("the raw key was present");
-    let legacy: ModelTurn =
-        serde_json::from_value(without_raw).expect("a turn without a raw key still loads");
-    assert_eq!(legacy.raw, serde_json::Value::Null);
-    assert_eq!(legacy.choice, turn.choice);
+    let error = serde_json::from_value::<ModelTurn>(without_raw)
+        .expect_err("a turn without a raw key is refused");
+    assert!(error.to_string().contains("raw"), "{error}");
+
+    let call = CompletionCall::new(0, usage(1, 2), raw_payload("call"));
+    let mut value = serde_json::to_value(&call).expect("call should serialize");
+    assert_eq!(value["raw"], raw_payload("call"));
+    let restored: CompletionCall =
+        serde_json::from_value(value.clone()).expect("call should deserialize");
+    assert_eq!(restored, call);
+    value
+        .as_object_mut()
+        .expect("call serializes as an object")
+        .remove("raw")
+        .expect("the raw key was present");
+    let error = serde_json::from_value::<CompletionCall>(value)
+        .expect_err("a call without a raw key is refused");
+    assert!(error.to_string().contains("raw"), "{error}");
 }
 
-/// The same for a persisted `CompletionCall`: `raw` is skipped when `Value::Null`
-/// (state written before the field is byte-identical), and a record
-/// without the key loads with `raw` as `Value::Null`.
+/// The persisted envelope is versioned: a run written under another format
+/// number is refused by name, and an unknown key is refused rather than
+/// ignored, so state from another rig is never loaded with defaults
+/// filled in.
 #[test]
-fn completion_call_raw_round_trips_and_missing_key_loads_as_null() {
-    let raw = raw_payload("call");
-    let call = CompletionCall::new(0, usage(1, 2)).with_raw(raw.clone());
+fn a_run_of_another_format_or_with_an_unknown_key_is_refused() {
+    let run = AgentRun::new("hello");
+    let mut value = serde_json::to_value(&run).expect("run should serialize");
+    assert_eq!(value["format"], RUN_FORMAT);
 
-    let value = serde_json::to_value(&call).expect("call should serialize");
-    assert_eq!(value["raw"], raw);
-    let restored: CompletionCall = serde_json::from_value(value).expect("call should deserialize");
-    assert_eq!(restored, call);
-
-    let unset =
-        serde_json::to_value(CompletionCall::new(0, usage(1, 2))).expect("call should serialize");
-    assert!(
-        unset.get("raw").is_none(),
-        "a Value::Null raw is not written, so pre-field state is unchanged"
+    value["format"] = serde_json::json!(RUN_FORMAT + 1);
+    let error =
+        serde_json::from_value::<AgentRun>(value.clone()).expect_err("another format is refused");
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "resume refused: the run is format {}, this rig reads format {RUN_FORMAT}",
+            RUN_FORMAT + 1
+        )
     );
-    let legacy: CompletionCall =
-        serde_json::from_value(unset).expect("a call without a raw key still loads");
-    assert_eq!(legacy.raw, serde_json::Value::Null);
+
+    value["format"] = serde_json::json!(RUN_FORMAT);
+    value["retired_field"] = serde_json::json!(true);
+    let error = serde_json::from_value::<AgentRun>(value).expect_err("an unknown key is refused");
+    assert!(error.to_string().contains("retired_field"), "{error}");
 }
 
 #[test]
@@ -1748,6 +1772,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
         Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
+        hand_raw(),
     )
     .with_finish_reason(Some(FinishReason::Length));
     // The turn is accepted into resolution; the run fails when it is read.

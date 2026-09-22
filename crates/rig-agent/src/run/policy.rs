@@ -1,15 +1,17 @@
-//! Decisions as data for invalid tool-call recovery: what the run tells a
-//! driver about a call it could not accept, and what the driver answers.
+//! Invalid tool-call diagnostics and recovery decisions exchanged with drivers.
+//!
+//! ```
+//! use rig_agent::run::policy::InvalidToolCallAction;
+//! let action = InvalidToolCallAction::retry("Use an advertised tool name.");
+//! assert!(matches!(action, InvalidToolCallAction::Retry { .. }));
+//! ```
 
 use rig_core::message::{Message, ToolChoice};
 use rig_core::streaming::BlockId;
 use serde::{Deserialize, Serialize};
 
-/// Why a model-emitted tool call could not be accepted.
-///
-/// The recovery vocabulary ([`InvalidToolCallAction`]) is shared, but not
-/// every action fits every reason: a name can be repaired, argument bytes
-/// cannot. Hooks branch on this; the run enforces it.
+/// Why a model-emitted tool call was rejected. Name repair is permitted for
+/// unknown tools, not malformed argument bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "reason", rename_all = "snake_case")]
 pub enum InvalidToolCallReason {
@@ -17,9 +19,8 @@ pub enum InvalidToolCallReason {
     /// tool choice does not allow it.
     #[default]
     UnknownTool,
-    /// The wire delivered a complete call whose arguments are not JSON
-    /// (rig#2447). `error` is the parser's description; the raw text is on
-    /// [`InvalidToolCallContext::args`].
+    /// A complete call has non-JSON arguments. `error` is the parser's description;
+    /// [`InvalidToolCallContext::args`] retains the raw text.
     MalformedArguments {
         /// What the JSON parser rejected.
         error: String,
@@ -51,7 +52,6 @@ pub struct InvalidToolCallContext {
     /// Whether the call came from the streaming path.
     pub is_streaming: bool,
     /// Why the call was rejected.
-    #[serde(default)]
     pub reason: InvalidToolCallReason,
 }
 

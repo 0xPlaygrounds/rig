@@ -1749,20 +1749,20 @@ use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Mode, Wire};
 use futures::StreamExt;
 
-/// `tests/cassettes/gemini/turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/gemini/turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap.yaml`
 const CEDAR_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"cedar"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":24}}"#;
 
-/// `tests/cassettes/gemini/turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/gemini/turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap.yaml`
 /// — the same turn, streamed. Gemini delivered it as one event.
 const CEDAR_STREAM: &str = concat!(
     r#"data: {"candidates":[{"content":{"parts":[{"text":"cedar"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":24}}"#,
     "\r\n\r\n",
 );
 
-/// `tests/cassettes/gemini/thought_text_matrix/blocking_keeps_a_trailing_thought_signature.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/blocking_keeps_a_trailing_thought_signature.yaml`
 const SIGNED_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"289","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":59}}"#;
 
-/// `tests/cassettes/gemini/thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature.yaml`
 /// — the same turn, streamed across two events, the signature riding a
 /// trailing part that carries no `thought` flag.
 const SIGNED_STREAM: &str = concat!(
@@ -1840,7 +1840,9 @@ async fn streamed(model: &str, body: &'static str) -> crate::completion::Complet
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");
     }
-    stream.finish()
+    stream
+        .finish()
+        .expect("the stream produced a terminal record")
 }
 
 #[tokio::test]
@@ -1904,7 +1906,7 @@ async fn both_transports_place_a_trailing_thought_signature_the_same_way() {
 /// (`MISSING_THOUGHT_SIGNATURE`), so a turn replayed from the streamed view
 /// of these bytes sent it back in a different place than one replayed from
 /// the unary view. Recorded in the effect corpus
-/// (`crates/rig-verify/fixtures/gemini_tool_call_turns.effects.json`), which
+/// (`crates/rig-cassette/fixtures/effects/gemini_tool_call_turns.effects.json`), which
 /// is why this is a fixture-bearing contract and not a curiosity.
 const SIGNED_ONE_PART: &str = r#"{"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#;
 
@@ -1997,7 +1999,7 @@ fn the_wire_keeps_its_span_names() {
 /// the bytes Gemini sent.
 ///
 /// Shape taken from
-/// `tests/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
+/// `crates/rig-cassette/fixtures/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
 /// whose recorded `data` is a 1 MB PNG; the payload here is shortened
 /// because only its survival is under test.
 #[tokio::test]

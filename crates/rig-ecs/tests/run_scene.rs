@@ -14,6 +14,9 @@ use std::{any::type_name, time::Instant};
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
     agent::{
@@ -22,18 +25,16 @@ use rig_ecs::{
         UsesModel, Utterance,
     },
     bus::{
-        EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect,
-        Replay, Reserved, RigSchedule,
+        EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect, Reserved, RigSchedule,
     },
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use run_support::{GUARD, NeverAnswers};
 
 fn golden(name: &str) -> EffectLog {
     let path = format!(
-        "{}/../rig-verify/fixtures/{name}.effects.json",
+        "{}/../rig-cassette/fixtures/effects/{name}.effects.json",
         env!("CARGO_MANIFEST_DIR")
     );
     serde_json::from_str(&std::fs::read_to_string(path).expect("the golden is committed"))
@@ -46,6 +47,7 @@ fn world_with(log: &EffectLog) -> (App, Entity) {
         rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
             .ambiguity_detection(LogLevel::Error),
     );
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     app.finish();
     app.cleanup();
     let key = HandlerKey::from("golden/model:default");
@@ -166,7 +168,8 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
     let saved = Checkpoint::from_json(&json).expect("serde");
     let (mut app, _model) = world_with(&log.tail(1));
     app.world_mut().resource_mut::<IdCounter>().0 = 2;
-    let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
+    let loaded =
+        load_world(&saved, app.world_mut(), RestoreMode::Strict, []).expect("the model is bound");
     let run = loaded.with::<Run>(app.world())[0];
     let start = Instant::now();
     loop {
@@ -289,14 +292,15 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
     // from the record, and the run settles on the golden's answer.
     let saved = Checkpoint::from_json(&json).expect("serde");
     let mut app = run_support::app();
-    Handlers::with(app.world_mut(), |handlers| {
-        Replay::default()
-            .register(handlers, &log)
-            .expect("the golden's replayers")
-    })
-    .expect("a bus");
+    Replay::default()
+        .register(app.world_mut(), &log)
+        .expect("the golden's replayers");
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
+    // The saved descriptor is the never-answering model's; the golden's
+    // replayer advertises the recorded model instead. Same family, a
+    // deliberately different implementation, so the change is declared.
+    let loaded =
+        load_world(&saved, app.world_mut(), RestoreMode::Replace, []).expect("the model is bound");
     let run = loaded.with::<Run>(app.world())[0];
     let effect = loaded.with::<PendingEffect>(app.world())[0];
     let turn = app
@@ -450,7 +454,7 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
     drop(app);
 
     let (mut app, _, _) = world(true);
-    let loaded = load_world(&saved, app.world_mut()).expect("bound");
+    let loaded = load_world(&saved, app.world_mut(), RestoreMode::Strict, []).expect("bound");
     let run = loaded.with::<Run>(app.world())[0];
     run_support::tick_until(&mut app, "the resumed run", |world| {
         world.get::<Settled>(run).is_some()
@@ -498,7 +502,8 @@ fn an_effect_under_a_run_loads_under_the_loaded_run_with_its_saved_id() {
     drop(world);
 
     let (mut restored, _) = run_support::open_model_world();
-    let loaded = load_world(&saved, &mut restored).expect("the model is bound");
+    let loaded =
+        load_world(&saved, &mut restored, RestoreMode::Strict, []).expect("the model is bound");
     let run = loaded.with::<Run>(&restored)[0];
     let effects = loaded.with::<PendingEffect>(&restored);
     assert_eq!(effects.len(), 1);
@@ -596,7 +601,7 @@ fn malformed_run_graph_is_rejected_before_spawning() {
         }
         let (mut destination, _) = run_support::open_model_world();
         let initial = destination.entities().len();
-        let error = load_world(&bad, &mut destination).expect_err(fault);
+        let error = load_world(&bad, &mut destination, RestoreMode::Strict, []).expect_err(fault);
         assert_eq!(error.kind, rig_core::error::ErrorKind::Request, "{fault}");
         assert_eq!(
             destination.entities().len(),

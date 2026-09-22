@@ -99,7 +99,7 @@ fn explicit_execution_binding_can_serve_an_unadvertised_tool() {
 
 #[test]
 fn permission_and_binding_changes_affect_replay_identity_and_required_row() {
-    use rig_ecs::replay::{required_row, spec_hash};
+    use rig_cassette::ecs::identity::{required_row, spec_hash};
     let mut app = app();
     let (model, _) = Capturing::new("model", "ok");
     let model = register(&mut app, "model", model);
@@ -179,7 +179,7 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
 fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     use rig_ecs::{
         agent::{Outputs, Run},
-        checkpoint::{Checkpoint, load_world, save_world},
+        checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     };
     let mut first = app();
     let (model, _) = Capturing::new("model", "unused");
@@ -209,14 +209,14 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
         allowed: Some(BTreeSet::new()),
         ..Default::default()
     });
-    let row = rig_ecs::replay::required_row(first.world_mut(), run);
+    let row = rig_cassette::ecs::identity::required_row(first.world_mut(), run);
     let checkpoint = save_world(first.world_mut()).expect("save graph");
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().expect("encode")).expect("decode");
     drop(first);
     let mut restored = app();
     let (model, _) = Capturing::new("model", "unused");
     register(&mut restored, "model", model);
-    load_world(&checkpoint, restored.world_mut()).expect("restore graph");
+    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).expect("restore graph");
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()
@@ -231,7 +231,7 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     assert_eq!(outputs.stream_validated, 4);
     assert!(outputs.usage_recorded);
     assert_eq!(
-        rig_ecs::replay::required_row(restored.world_mut(), run),
+        rig_cassette::ecs::identity::required_row(restored.world_mut(), run),
         row
     );
     let mut expected = rig_core::effect::EffectRow::new();

@@ -20,7 +20,7 @@
 //! ```
 //! use rig_core::completion::{CompletionError, CompletionRequest};
 //! use rig_core::driver::Bound;
-//! use rig_core::operation::{Completion, CompletionEvent};
+//! use rig_core::operation::Completion;
 //! use rig_core::streaming::{StreamEvent, StreamFinal};
 //! use rig_core::wire::{
 //!     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Wire, WireEvent, WireFrame,
@@ -123,6 +123,7 @@
 //!                 out.final_record(StreamFinal::new(
 //!                     EXAMPLE.name,
 //!                     rig_core::completion::Usage::default(),
+//!                     serde_json::json!({ "stop": true }),
 //!                 ));
 //!             }
 //!         }
@@ -174,7 +175,7 @@
 //!
 //! // Decoding is testable from bytes alone, with no socket at all — and the
 //! // unary body folds to the same events as the stream that says the same.
-//! fn events(frames: &[&str]) -> Vec<CompletionEvent> {
+//! fn events(frames: &[&str]) -> Vec<StreamEvent> {
 //!     let mut decoder = ExampleDecoder;
 //!     let mut out = Output::<Completion>::new();
 //!     for frame in frames {

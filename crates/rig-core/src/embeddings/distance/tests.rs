@@ -43,6 +43,21 @@ fn test_angular_distance() {
 }
 
 #[test]
+fn angular_distance_handles_rounded_cosine_endpoints() {
+    let vector = Embedding {
+        document: "same".into(),
+        vec: vec![1.0, 1.0, 1.0],
+    };
+    let opposite = Embedding {
+        document: "opposite".into(),
+        vec: vec![-1.0, -1.0, -1.0],
+    };
+
+    assert_eq!(vector.angular_distance(&vector, false), 0.0);
+    assert_eq!(vector.angular_distance(&opposite, false), 1.0);
+}
+
+#[test]
 fn test_euclidean_distance() {
     let (embedding_1, embedding_2) = embeddings();
 

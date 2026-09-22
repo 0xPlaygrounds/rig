@@ -1,9 +1,12 @@
-//! Handlers are entities: a [`Bound`] component (the key and the
-//! descriptor, serde) and the erased handler as a [`Handler`] component on
-//! the same entity. The registry is a query over `Bound`; [`HandlerIndex`]
-//! is the key → entity map its hooks maintain; registration spawns,
-//! deregistration despawns. An effect names the entity serving it with the
-//! [`ServedBy`] relationship, resolved once from the index.
+//! Handler registration and lookup through world entities and bound descriptors.
+//!
+//! Erased handlers live in non-send storage for WASM compatibility. [`Bound`]
+//! hooks maintain the key index, while [`ServedBy`] links effects to handlers.
+//!
+//! ```
+//! let index = rig_ecs::bus::HandlerIndex::default();
+//! assert!(index.is_empty());
+//! ```
 
 use bevy_reflect::Reflect;
 use std::{
@@ -25,11 +28,9 @@ use serde::{Deserialize, Serialize};
 
 use super::effect::{Answer, Asked, WorldEffect};
 
-/// What a handler entity is bound to: its key and its descriptor. The serde
-/// twin of the handler; what a scene saves and what a typed key is checked
-/// against. One per handler entity; a key is bound to at most one entity.
-/// Immutable: every change is an insert, so the hooks see every one and
-/// [`HandlerIndex`] is exact.
+/// A handler's saved key and descriptor, used for typed-key validation.
+/// Each key must identify at most one entity. The immutable component requires
+/// replacement through insertion so hooks keep [`HandlerIndex`] current.
 #[derive(Component, Debug, Clone, Serialize, Deserialize, Reflect)]
 #[component(immutable, on_insert = index_bound, on_discard = unindex_bound)]
 #[reflect(Component)]
@@ -127,7 +128,7 @@ pub enum Served {
     /// adapter and every replayer.
     Task(ErasedHandler),
     /// By a system: the dispatch stays on its entity, `InFlight`, and a
-    /// user system answers it — through [`Asked<E>`] and [`Answer<E>`] for
+    /// user system answers it through [`Asked<E>`] and [`Answer<E>`] for
     /// a [`WorldHandler`], or by submitting a [`super::WorldOutcome`]
     /// for a key bound with [`Handlers::register_open`].
     World(WorldServe),
@@ -143,7 +144,7 @@ pub struct WorldServe {
     pub family: FamilyDescriptor,
     /// What the dispatch lands as: for a [`WorldHandler`], deserialize the
     /// payload and insert `Asked<E>` on the effect entity (or say why the
-    /// payload is not an `E`); for an open key, nothing — the effect
+    /// payload is not an `E`); for an open key, nothing is inserted and the effect
     /// entity itself is the question.
     pub ask: fn(&mut EntityCommands<'_>, &EffectKind) -> Result<(), ErrorReport>,
 }
@@ -232,8 +233,7 @@ pub fn answered<E: WorldEffect>(
 ) {
     let entity = added.event().entity;
     let Ok(answer) = answers.get(entity) else {
-        // An answer with no question — a second answer, or one on an effect
-        // a task is serving — is dropped, never an outcome.
+        // Unsolicited or duplicate answers must not become effect outcomes.
         commands.entity(entity).remove::<Answer<E>>();
         return;
     };
@@ -264,8 +264,23 @@ pub struct HandlerTable {
     served: HashMap<Entity, Served>,
 }
 
-/// A `Handler` component removed — a deregistration, a despawn — takes the
-/// handler out of the table with it.
+impl HandlerTable {
+    pub(crate) fn contains(&self, entity: Entity) -> bool {
+        self.served.contains_key(&entity)
+    }
+
+    /// Installation after checkpoint preflight, without deferred commands or
+    /// a second fallible validation step halfway through the transaction.
+    pub(crate) fn install(world: &mut World, entity: Entity, handler: ErasedHandler) {
+        world
+            .non_send_mut::<Self>()
+            .served
+            .insert(entity, Served::Task(handler));
+        world.entity_mut(entity).insert(Handler);
+    }
+}
+
+/// Remove the stored handler when its [`Handler`] component is removed.
 pub fn unbound(removed: On<Remove, Handler>, mut table: NonSendMut<HandlerTable>) {
     table.served.remove(&removed.event().entity);
 }
@@ -299,23 +314,8 @@ pub struct Handlers<'w, 's> {
 pub struct WorldKinds(HashSet<TypeId>);
 
 impl Handlers<'_, '_> {
-    /// Install or clear the world's validated replay delivery plan.
-    pub fn replay_delivery(&mut self, delivery: Option<super::delivery::ReplayDelivery>) {
-        self.commands
-            .remove_resource::<super::delivery::ReplayFailure>();
-        match delivery {
-            Some(delivery) => {
-                self.commands.insert_resource(delivery);
-            }
-            None => {
-                self.commands
-                    .remove_resource::<super::delivery::ReplayDelivery>();
-            }
-        }
-    }
-
-    /// Run `f` with a `Handlers` over `world` and apply what it did: for a
-    /// host that registers from outside a system (a test, a scene load).
+    /// Run `f` with this world's registry, apply its deferred commands, and return
+    /// its result. Return an error when required bus resources are unavailable.
     pub fn with<T>(
         world: &mut World,
         f: impl FnOnce(&mut Handlers<'_, '_>) -> T,
@@ -334,10 +334,9 @@ impl Handlers<'_, '_> {
         Ok(out)
     }
 
-    /// Register `handler` under `key`: a new handler entity, or — when the
-    /// key is bound to a handler of the same family — the bound entity
-    /// re-served. A key never changes family while bound; a handler of
-    /// another family is refused, as the bus refuses it.
+    /// Register `handler` under `key` and return its entity, replacing an existing
+    /// handler of the same family. Return an error if the bound key has a different
+    /// family; deregister it before changing families.
     pub fn register(
         &mut self,
         key: impl Into<HandlerKey>,
@@ -346,7 +345,8 @@ impl Handlers<'_, '_> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
 
-    /// Register an already-erased handler.
+    /// Register an erased handler with its descriptor key normalized to `key`.
+    /// Return its entity, or an error if the key is bound to another family.
     pub fn register_erased(
         &mut self,
         key: impl Into<HandlerKey>,
@@ -362,8 +362,8 @@ impl Handlers<'_, '_> {
         self.bind(key, descriptor, Served::Task(handler))
     }
 
-    /// [`register`](Self::register), returning a [`Key`] carrying the
-    /// family the handler proved by its descriptor.
+    /// Register a handler and return a typed [`Key`]. Return an error if its
+    /// descriptor does not match `F` or the key is bound to another family.
     pub fn register_typed<F: Family>(
         &mut self,
         key: impl Into<HandlerKey>,
@@ -387,7 +387,8 @@ impl Handlers<'_, '_> {
     }
 
     /// Bind `key` to a handler that is a system for `E`: see
-    /// [`WorldHandler`]. Installs the answer observer for `E` once.
+    /// [`WorldHandler`]. Installs the answer observer for `E` once and returns
+    /// an error if the key is bound to another family.
     pub fn register_world<E: WorldEffect>(
         &mut self,
         key: impl Into<HandlerKey>,
@@ -401,14 +402,10 @@ impl Handlers<'_, '_> {
         Ok(entity)
     }
 
-    /// Bind `key` to the world itself, as `family`: a dispatch to it is
-    /// taken (`Issued`, `InFlight`, the record opened) and left on its
-    /// entity for a user system with any `World` access to answer by
-    /// submitting a [`super::WorldOutcome`] — of any family, `family` being what
-    /// the key is advertised as (a tool's definition, a model's
-    /// capabilities). What the system dispatches on the way is a
-    /// `PendingEffect` it spawns `ChildOf` the effect it serves. Serial
-    /// serving keeps the key busy until the outcome lands. Unary only.
+    /// Bind `key` to a world system with advertised `family`, returning its entity
+    /// or an error if already bound to another family. The system must submit a
+    /// unary [`super::WorldOutcome`]; serial serving stays busy until collection.
+    /// The advertised family does not constrain incoming effect kinds.
     pub fn register_open(
         &mut self,
         key: impl Into<HandlerKey>,

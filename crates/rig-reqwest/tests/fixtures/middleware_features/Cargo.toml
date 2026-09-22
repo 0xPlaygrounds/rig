@@ -1,0 +1,17 @@
+[package]
+name = "rig-middleware-feature-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+rig-reqwest = { path = "../../..", default-features = false }
+reqwest = { version = "0.13", default-features = false }
+reqwest-middleware = { version = "0.5", default-features = false }
+
+[features]
+native-tls = ["rig-reqwest/reqwest-middleware-native-tls"]
+rustls = ["rig-reqwest/reqwest-middleware-rustls"]
+generic = ["rig-reqwest/reqwest-middleware"]

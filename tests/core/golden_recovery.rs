@@ -7,11 +7,12 @@
 //! No existing cassette has an engine-driven invalid call, so this golden
 //! is scripted from the mock model rather than a cassette — the only one in
 //! the corpus that is. It still holds the corpus contract: recorded once by
-//! this producer, replayed by rig-verify with nothing behind the keys.
+//! this producer, replayed by rig-cassette with nothing behind the keys.
 
 use rig::agent::AgentBuilder;
 use rig::test_utils::{MockCompletionModel, MockTurn};
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
+use rig_cassette::agent::AgentReplayExt;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -52,12 +53,13 @@ pub(crate) fn script() -> MockCompletionModel {
 
 #[tokio::test]
 async fn invalid_tool_call_recovery_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(script())
         .name("golden")
         .preamble("Use the add tool.")
         .tool(Add)
         .add_hook(crate::goldens::RetryUnknownTool)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let response = agent
         .prompt("What is 2 + 3?")
@@ -66,7 +68,7 @@ async fn invalid_tool_call_recovery_effect_log_is_the_golden_fixture() {
         .await
         .expect("the retry recovers");
     assert_eq!(response.output, "2 + 3 = 5");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         log.records
             .iter()

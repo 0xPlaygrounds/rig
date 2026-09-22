@@ -25,6 +25,10 @@ pub enum VertexAiClientError {
         "Google Cloud project is required. Set it via `ClientBuilder::with_project()` or `GOOGLE_CLOUD_PROJECT`"
     )]
     MissingProject,
+    #[error(
+        "construct Vertex ADC credentials inside a Tokio runtime context; the host must retain and drive that runtime"
+    )]
+    RuntimeRequired,
     #[error("failed to build source credentials: {0}")]
     SourceCredentials(String),
     #[error("failed to build impersonated credentials: {0}")]
@@ -32,19 +36,29 @@ pub enum VertexAiClientError {
     #[error("failed to build Vertex AI prediction service: {0}")]
     PredictionService(String),
     #[error(
-        "Vertex AI uses Application Default Credentials (ADC). Use `Client::from_env()` for default credentials or `Client::builder().with_credentials(...).build()` for explicit credentials."
+        "a supplied `PredictionService` already carries its own credentials; drop either `ClientBuilder::with_credentials()` or `ClientBuilder::with_prediction_service()`"
     )]
-    InvalidInput,
+    ConflictingCredentials,
 }
 
 /// Helper function to build credentials with optional service account impersonation.
+///
+/// Every Application Default Credentials branch (`mds`, `service_account`,
+/// `user_account`, `external_account`, `impersonated`) wraps its token
+/// provider in `google-cloud-auth`'s token cache, and that cache calls
+/// `tokio::spawn` for its refresh task while it is being constructed. So this
+/// function must run inside a Tokio runtime context, and the runtime that
+/// accepted the spawn has to stay alive and driven for as long as the
+/// credentials are used — see [`Client::from_env`].
 fn build_credentials(
     explicit_creds: Option<Credentials>,
 ) -> Result<Credentials, VertexAiClientError> {
     if let Some(creds) = explicit_creds {
         Ok(creds)
     } else {
-        // Build default credentials
+        // ADC construction spawns refresh work; refuse before reading any
+        // credential source when the host has supplied no runtime context.
+        tokio::runtime::Handle::try_current().map_err(|_| VertexAiClientError::RuntimeRequired)?;
         let source_credentials = credentials::Builder::default()
             .build()
             .map_err(|e| VertexAiClientError::SourceCredentials(e.to_string()))?;
@@ -66,6 +80,7 @@ pub struct ClientBuilder {
     project: Option<String>,
     location: Option<String>,
     credentials: Option<Credentials>,
+    prediction_service: Option<vertexai::client::PredictionService>,
 }
 
 impl ClientBuilder {
@@ -74,6 +89,7 @@ impl ClientBuilder {
             project: None,
             location: None,
             credentials: None,
+            prediction_service: None,
         }
     }
 
@@ -103,9 +119,49 @@ impl ClientBuilder {
         self
     }
 
+    /// Use a Vertex AI prediction service the host already built.
+    ///
+    /// The SDK client carries its own endpoint, credentials, transport,
+    /// retry and universe-domain settings: this crate takes it as given and
+    /// never rebuilds it, resolves Application Default Credentials for it, or
+    /// picks an endpoint of its own. `project` and `location` still have to be
+    /// configured here (explicitly or from the environment), because they name
+    /// the model resource in the request rather than the connection.
+    ///
+    /// Combining this with [`Self::with_credentials`] is a contradiction —
+    /// the supplied client's credentials are already fixed — and
+    /// [`Self::build`] rejects it with
+    /// [`VertexAiClientError::ConflictingCredentials`].
+    ///
+    /// ```no_run
+    /// # use google_cloud_aiplatform_v1::client::PredictionService;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let service = PredictionService::builder()
+    ///     .with_endpoint("https://us-central1-aiplatform.googleapis.com")
+    ///     .build()
+    ///     .await?;
+    /// let client = rig_vertexai::Client::builder()
+    ///     .with_project("my-project")
+    ///     .with_location("us-central1")
+    ///     .with_prediction_service(service)
+    ///     .build()?;
+    /// # let _ = client;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_prediction_service(
+        mut self,
+        prediction_service: vertexai::client::PredictionService,
+    ) -> Self {
+        self.prediction_service = Some(prediction_service);
+        self
+    }
+
     /// Build the client with the configured values, falling back to environment variables where not set.
     ///
-    /// The Vertex AI client is built lazily on first use via `inner()`.
+    /// Without a supplied prediction service this resolves credentials now
+    /// (see [`Client::from_env`] for the runtime that entails) and builds the
+    /// Vertex AI client lazily on first use via [`Client::inner`].
     pub fn build(self) -> Result<Client, VertexAiClientError> {
         let project = self
             .project
@@ -117,13 +173,23 @@ impl ClientBuilder {
             .or_else(|| std::env::var("GOOGLE_CLOUD_LOCATION").ok())
             .unwrap_or_else(|| DEFAULT_LOCATION.to_string());
 
-        let credentials = build_credentials(self.credentials)?;
+        let service = match self.prediction_service {
+            Some(prediction_service) => {
+                if self.credentials.is_some() {
+                    return Err(VertexAiClientError::ConflictingCredentials);
+                }
+                PredictionServiceSource::Supplied(prediction_service)
+            }
+            None => PredictionServiceSource::Deferred {
+                credentials: build_credentials(self.credentials)?,
+                client: Arc::new(OnceCell::new()),
+            },
+        };
 
         Ok(Client {
             project,
             location,
-            credentials,
-            vertex_client: Arc::new(OnceCell::new()),
+            service,
         })
     }
 }
@@ -134,13 +200,33 @@ impl Default for ClientBuilder {
     }
 }
 
+/// Where this client's Vertex AI prediction service comes from.
+///
+/// The two cases are genuinely different owners, so they are different
+/// variants rather than a pre-filled cell: a supplied client is already built
+/// by the host and has nothing left for Rig to initialize. Construction alone
+/// does not verify connectivity or authenticate a request.
+#[derive(Clone, Debug)]
+enum PredictionServiceSource {
+    /// Rig resolved the credentials and builds the SDK client on first use,
+    /// on whichever runtime drives that first completion. The result — error
+    /// included — is shared permanently by every clone of the client. Correct
+    /// invalid construction settings by building a fresh client; this cell is
+    /// not a request-retry policy.
+    Deferred {
+        credentials: Credentials,
+        client: Arc<OnceCell<Result<vertexai::client::PredictionService, VertexAiClientError>>>,
+    },
+    /// The host built the SDK client and owns its lifetime, endpoint and
+    /// credentials. Cancelling one completion never touches it.
+    Supplied(vertexai::client::PredictionService),
+}
+
 #[derive(Clone, Debug)]
 pub struct Client {
     project: String,
     location: String,
-    credentials: Credentials,
-    pub(crate) vertex_client:
-        Arc<OnceCell<Result<vertexai::client::PredictionService, VertexAiClientError>>>,
+    service: PredictionServiceSource,
 }
 
 impl Client {
@@ -190,6 +276,22 @@ impl Client {
     /// - `GOOGLE_CLOUD_PROJECT` (required)
     /// - `GOOGLE_CLOUD_LOCATION` (optional, defaults to "global")
     /// - `GOOGLE_CLOUD_SERVICE_ACCOUNT` (optional, for service account impersonation)
+    ///
+    /// # Runtime
+    ///
+    /// Resolving Application Default Credentials constructs
+    /// `google-cloud-auth`'s token cache, which `tokio::spawn`s a refresh task
+    /// as part of construction. Call this from inside a Tokio runtime context
+    /// — otherwise this returns [`VertexAiClientError::RuntimeRequired`] — and keep that runtime alive and driven
+    /// for as long as the client is used: the refresh task belongs to the
+    /// runtime that accepted it, not to any one completion, and dropping the
+    /// runtime drops it. A host that builds the client on a temporary runtime
+    /// and then completes on another will find the credentials un-refreshable.
+    ///
+    /// Hosts that would rather own that lifetime themselves can build a
+    /// [`google_cloud_aiplatform_v1::client::PredictionService`] and pass it to
+    /// [`ClientBuilder::with_prediction_service`], which resolves no
+    /// credentials here at all.
     pub fn from_env() -> Result<Self, VertexAiClientError> {
         Client::new()
     }
@@ -209,20 +311,28 @@ impl Client {
         &self.location
     }
 
+    /// The underlying Vertex AI prediction service, built on first use unless
+    /// the host supplied one. A completed initialization error is cached across
+    /// all clones; correct construction settings by building a new client.
+    /// Request retry policy remains owned by the SDK.
     pub async fn inner(&self) -> Result<&vertexai::client::PredictionService, VertexAiClientError> {
-        let credentials = self.credentials.clone();
-        self.vertex_client
-            .get_or_init(|| async {
-                let mut builder = vertexai::client::PredictionService::builder();
-                builder = builder.with_credentials(credentials);
-                builder
-                    .build()
-                    .await
-                    .map_err(|error| VertexAiClientError::PredictionService(error.to_string()))
-            })
-            .await
-            .as_ref()
-            .map_err(Clone::clone)
+        match &self.service {
+            PredictionServiceSource::Supplied(service) => Ok(service),
+            PredictionServiceSource::Deferred {
+                credentials,
+                client,
+            } => client
+                .get_or_init(|| async {
+                    vertexai::client::PredictionService::builder()
+                        .with_credentials(credentials.clone())
+                        .build()
+                        .await
+                        .map_err(|error| VertexAiClientError::PredictionService(error.to_string()))
+                })
+                .await
+                .as_ref()
+                .map_err(Clone::clone),
+        }
     }
 }
 

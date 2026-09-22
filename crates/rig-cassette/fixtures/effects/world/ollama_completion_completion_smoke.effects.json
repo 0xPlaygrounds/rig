@@ -1,0 +1,126 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 4383930577075784428
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "think": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "We are to explain Rust in one or two sentences and why memory safety matters.\n Rust is a systems programming language focused on safety, speed, and concurrency. It ensures memory safety without a garbage collector by using ownership and borrowing concepts.\n Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races that lead to crashes and security vulnerabilities.\n\n Let's write concisely:\n\n \"Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs such as buffer overflows and data races that cause crashes and security vulnerabilities.\""
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs like buffer overflows and data races that cause crashes and security vulnerabilities."
+            }
+          ],
+          "usage": {
+            "input_tokens": 42,
+            "output_tokens": 177,
+            "total_tokens": 219
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": "stop",
+          "provider": "ollama",
+          "model": "qwen3:4b",
+          "raw": {
+            "created_at": "1970-01-01T00:00:00Z",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 177,
+            "eval_duration": 2487882251,
+            "load_duration": 79447084,
+            "message": {
+              "content": "We are to explain Rust in one or two sentences and why memory safety matters.\n Rust is a systems programming language focused on safety, speed, and concurrency. It ensures memory safety without a garbage collector by using ownership and borrowing concepts.\n Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races that lead to crashes and security vulnerabilities.\n\n Let's write concisely:\n\n \"Rust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs such as buffer overflows and data races that cause crashes and security vulnerabilities.\"\n</think>\n\nRust is a systems programming language that guarantees memory safety and concurrency without a garbage collector, using ownership and borrowing. Memory safety matters because it prevents critical bugs like buffer overflows and data races that cause crashes and security vulnerabilities.",
+              "role": "assistant"
+            },
+            "model": "qwen3:4b",
+            "prompt_eval_count": 42,
+            "prompt_eval_duration": 1033218875,
+            "total_duration": 4009483084
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

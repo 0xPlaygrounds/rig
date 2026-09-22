@@ -2,12 +2,14 @@
 
 use crate::bus_support;
 
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::effect::CustomEffect;
 use rig_ecs::{
-    bus::{Answer, Asked, EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay},
-    checkpoint::load_world,
+    bus::{Answer, Asked, EffectOutcome, Handlers, PendingEffect},
+    checkpoint::{RestoreMode, load_world},
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -86,11 +88,9 @@ where
     let saved = bus_support::checkpoint(&mut live);
 
     let mut replay = bus_support::app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::default()
+        .register(replay.world_mut(), &log)
+        .unwrap();
     let replayed = Replay::load(replay.world_mut(), &log)[0];
     bus_support::tick_until(&mut replay, "replayed answer", |world| {
         world.get::<EffectOutcome>(replayed).is_some()
@@ -106,7 +106,14 @@ where
     );
 
     let mut restored = bus_support::app();
-    let loaded = load_world(&saved, restored.world_mut()).unwrap();
+    // `echo` was served by a system, so the destination binds it the same way
+    // rather than being handed a task handler.
+    Handlers::with(restored.world_mut(), |handlers| {
+        handlers.register_world::<E>("echo")
+    })
+    .unwrap()
+    .unwrap();
+    let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let loaded = loaded.with::<PendingEffect>(restored.world())[0];
     restored.update();
     assert_eq!(

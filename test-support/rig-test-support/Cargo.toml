@@ -16,8 +16,7 @@ rig-core = { path = "../../crates/rig-core", default-features = false, features 
 rig-agent = { path = "../../crates/rig-agent", default-features = false, features = ["test-utils"] }
 rig-reqwest = { path = "../../crates/rig-reqwest", default-features = false }
 rig-ecs = { path = "../../crates/rig-ecs" }
-rig-effect-log = { path = "../../crates/rig-effect-log" }
-rig-cassette = { path = "../../crates/rig-cassette", features = ["bedrock"] }
+rig-cassette = { path = "../../crates/rig-cassette", features = ["agent", "ecs", "bedrock"] }
 anyhow.workspace = true
 bevy_app.workspace = true
 bevy_ecs.workspace = true

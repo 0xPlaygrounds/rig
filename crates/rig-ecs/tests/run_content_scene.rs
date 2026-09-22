@@ -10,7 +10,7 @@ use rig_core::{
 };
 use rig_ecs::agent::content::{binary::*, parts::*};
 use rig_ecs::agent::{MessageParts, Utterance};
-use rig_ecs::checkpoint::{Checkpoint, load_world, save_world};
+use rig_ecs::checkpoint::{Checkpoint, RestoreMode, load_world, save_world};
 
 /// A world with one utterance of two texts and two images (one base64,
 /// one raw) of the same byte.
@@ -69,7 +69,7 @@ fn refused_without_touching_destination(checkpoint: &Checkpoint, what: &str) {
     destination.remove_resource::<BinaryAssets>();
     let sentinel = destination.spawn_empty().id();
     let before = destination.entities().len();
-    let error = load_world(checkpoint, &mut destination).expect_err(what);
+    let error = load_world(checkpoint, &mut destination, RestoreMode::Strict, []).expect_err(what);
     assert_eq!(error.kind, ErrorKind::Request, "{what}: {error:?}");
     assert_eq!(destination.entities().len(), before, "{what}");
     assert!(destination.get_entity(sentinel).is_ok(), "{what}");
@@ -95,7 +95,7 @@ fn checkpoints_save_payload_once_and_remap_every_child() {
     for _ in 0..17 {
         restored.spawn_empty();
     }
-    let loaded = load_world(&saved, &mut restored).unwrap();
+    let loaded = load_world(&saved, &mut restored, RestoreMode::Strict, []).unwrap();
     let utterance = loaded.with::<Utterance>(&restored)[0];
     assert_eq!(read_message(&restored, utterance).unwrap(), parts);
     assert_eq!(restored.resource::<BinaryAssets>().byte_len(), 1);
@@ -131,6 +131,17 @@ fn corrupt_hash_missing_handle_and_bad_parent_leave_destination_untouched() {
 }
 
 #[test]
+fn old_component_checkpoint_format_is_explicitly_refused() {
+    let (mut world, _, _) = fixture();
+    let mut checkpoint = save_world(&mut world).unwrap();
+    checkpoint.format = 1;
+    let error = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap_err();
+    assert!(error.message.contains("format 1"));
+    assert!(error.message.contains("reads format 2"));
+    refused_without_touching_destination(&checkpoint, "the old component format");
+}
+
+#[test]
 fn load_merges_with_live_assets_and_enforces_destination_limits() {
     let (mut source, _, _) = fixture();
     let saved = round_trip(&save_world(&mut source).unwrap());
@@ -143,7 +154,7 @@ fn load_merges_with_live_assets_and_enforces_destination_limits() {
     let existing = assets.insert(b"x".to_vec()).unwrap();
     destination.insert_resource(assets);
     let count = destination.entities().len();
-    let error = load_world(&saved, &mut destination).unwrap_err();
+    let error = load_world(&saved, &mut destination, RestoreMode::Strict, []).unwrap_err();
     assert_eq!(error.kind, ErrorKind::Request);
     assert_eq!(destination.entities().len(), count);
     assert_eq!(
@@ -204,7 +215,7 @@ fn a_run_with_two_spellings_of_one_image_round_trips_with_one_payload() {
         "the wire form is lossless"
     );
     let (mut restored, _) = crate::run_support::open_model_world();
-    let loaded = load_world(&decoded, &mut restored).unwrap();
+    let loaded = load_world(&decoded, &mut restored, RestoreMode::Strict, []).unwrap();
     let run = loaded.with::<Run>(&restored)[0];
     let utterance = crate::run_support::first_utterance(&mut restored, run);
     assert_eq!(read_message(&restored, utterance).unwrap(), expected);

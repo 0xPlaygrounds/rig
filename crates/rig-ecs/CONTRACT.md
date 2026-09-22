@@ -6,6 +6,13 @@ tests; they do not establish equivalence for arbitrary application systems.
 The provider comparison harness and its narrower observation boundaries are
 explained in [the test guide](../../tests/ecs_parity/README.md).
 
+Concrete log interpretation lives in `rig-cassette` with its `ecs` feature:
+`rig_cassette::ecs::{Replay, ReplayDelivery, ReplayFailure, EffectLogResource}`
+and `rig_cassette::ecs::identity`. Add its `ReplayPlugin` after the runtime,
+then call `Replay::register(&mut World, &EffectLog)` before replaying effects.
+The runtime owns scheduling, observation and reflected world checkpoints;
+it has no normal dependency on cassette or the classic agent runtime.
+
 ## 1. The request: a walk over the graph
 
 `CompletionRequest` fields are serialized in the effect request (`record_telemetry_content` never appears in a recorded request). Each is derived by `policy::fold_request` from one source in the graph, in one order. Source entities and components are `rig_ecs::agent`'s.
@@ -57,12 +64,14 @@ content. Pinned by the `*_image_*` goldens
 the image in the second request and after a checkpoint load; `inline_followup`: the
 image loaded from memory, once, before a text-only prompt).
 
-Content entities live in `agent::content::parts`: `TextPart`, `ImagePart`,
-`AudioPart`, `VideoPart`, `DocumentPart`, `ToolCallPart`, `ReasoningPart`, and
-`ToolResultPart`. A tool result owns ordered `TextPart`, `ImagePart`, or `JsonPart`
-children. `Role` and the assistant's `MessageId` belong to the utterance. Sibling
-orders are local indices; duplicate orders, conflicting part types, missing
-required components, and invalid role/content combinations are rejected.
+Content entities carry one reflected `agent::content::parts::ContentPart` enum:
+`Text`, `Image`, `Audio`, `Video`, `Document`, `ToolCall`, `Reasoning`, `ToolResult`,
+or `Json`. Query the component and match its variant; media metadata structs
+are fields, not independent components. A `ToolResult` owns ordered `Text`,
+`Image`, or `Json` child entities. `Role` and the assistant's `MessageId` belong
+to the utterance. Sibling order is `Children` order. Conflicting payload types
+are unrepresentable; missing required components, children on leaf parts,
+nested tool results, and invalid role/content combinations are rejected.
 `read_message` and the `ContentGraph` system parameter reconstruct transport DTOs
 at conversion boundaries. `write_message` replaces persistent utterance content;
 it does not implement a request-only patch. Individual component edits affect
@@ -184,7 +193,7 @@ on to the next run in the same pass
 
 ## 6. The header
 
-`replay::stamp_legacy_builder_header` records the builder configuration in the header’s `run_spec` hash (`rig_effect_log::stable_hash`, keys canonicalised). This is builder/corpus interoperability metadata. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity (§10).
+A rig-agent golden's header carries the builder configuration as its `run_spec` hash (`rig_cassette::effect_log::stable_hash`, keys canonicalised). A world writes no builder header: its log names each run's program under its scope (§10), and the two headers are never compared. The world corpus at `crates/rig-cassette/fixtures/effects/world/` pins the world's own header and scoped program identities. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity.
 
 ```json
 {"preamble": <Preamble>, "static_context": [{"id","text",…props}], "additional_params": <AdditionalParams>,
@@ -194,13 +203,13 @@ on to the next run in the same pass
  "augment_output_preamble": true, "unhandled_invalid_tool_call": "fail"}
 ```
 
-The builder `/header/run_spec` is checked by the world interpreter (`anthropic_completion_smoke` = `171082663332529849`). It excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
+The builder `/header/run_spec` excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
 
-`required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`). `hooks`: the program’s declared hooks and layers (§10). `signature`: written by the recorder from what was dispatched.
+`required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`; a world's row is under `programs[scope].required`). `hooks`: the agent program’s declared hooks and layers (§10). `signature`: written by the recorder from what was dispatched.
 
 ## 7. Keys
 
-`<owner>/model:<label>` (`golden/model:default`), `<owner>/tool:<name>#<n>` (`golden/tool:add#0`), `<owner>/memory`. `replay::{model_key, tool_key}`; `HandlerKey::parts()` reads them.
+`<owner>/model:<label>` (`golden/model:default`), `<owner>/tool:<name>#<n>` (`golden/tool:add#0`), `<owner>/memory`. `rig_cassette::ecs::identity::{model_key, tool_key}`; `HandlerKey::parts()` reads them.
 
 ## 8. Tools and batches
 
@@ -224,7 +233,7 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | the output tool's call in a turn beside a granted tool's call | unpinned: no golden; the batch runs and the output tool's call is read when it lands | (none) |
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
-| the status, as data | beside each `ToolResultPart` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
+| the status, as data | beside each `ContentPart::ToolResult` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
 | the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `gather_turn` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
@@ -289,7 +298,7 @@ A tool served by a system (a world-served handler) answers by submitting `WorldO
 
 ## 9. Steering: every hook is a system
 
-No hook trait: a user system writes a component at a set boundary and a library system reads it later. The cases in `crates/rig-verify/tests/corpus/world_hooks.rs` exercise the boundaries below. The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
+No hook trait: a user system writes a component at a set boundary and a library system reads it later. The cases in `crates/rig-cassette/tests/corpus/world_hooks.rs` exercise the boundaries below. The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
 
 ### 9.1 Stopping: `Cancelled(reason)` on the run
 
@@ -315,7 +324,7 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 `content::parts::RequestPartEdit` adds entity targeting: spawn a link
 `(RequestPartEdit, EditTarget(part), ChildOf(fresh_turn))` before Assemble.
-`Text` replaces only a TextPart's text, preserving annotations; `Remove` omits the
+`Text` replaces only a `ContentPart::Text`'s text, preserving annotations; `Remove` omits the
 part and its nested result items from this request. Stored history and siblings
 are unchanged. Edits run in sibling (`Children`) order; the last edit to a
 target wins. A removed parent takes precedence over edits to its children.
@@ -364,7 +373,7 @@ A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its 
 
 ### 9.6 Layers
 
-A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a recording observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for every task-served handler — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
+A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as the corpus runner's `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a recording observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for every task-served handler — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
 
 | cell | records | pinned by |
 |---|---|---|
@@ -379,11 +388,13 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 
 ## 10. Identity as data
 
+The world corpus at `crates/rig-cassette/fixtures/effects/world/` pins native headers, including every run's `programs[scope]`, independently of the agent corpus.
+
 | what | where | pinned by |
 |---|---|---|
-| `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `replay::stamp_legacy_builder_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
+| `LogHeader::hooks` | the rig-agent program's declaration — the corpus's `hook_name` list, then `layer_names`; a world has no hook stack to name and leaves it empty | every golden's `/header/hooks`, asserted by the agent producer |
 | `LogHeader::programs: BTreeMap<String, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_run` (`policy` = `stable_hash(spec_json(world, run))`), using supported effective run-over-agent settings; rig-agent's builder-only goldens carry none | `run_identity.rs`, `run_replay_policy.rs` |
-| `replay::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
+| `rig_cassette::ecs::identity::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
 `ToolResultLimit` (§8.1) is request shaping, like `RequestPatch`: it is
@@ -426,8 +437,8 @@ pass. Later continuation systems can advance through multiple passes, raising
 `Wake`, before minting that effect. Queued intake and held requests can await
 another update or host input. A refusal installs `ReplayFailure`; subsequent
 recorded effects also fail instead of falling through to ordinary collection
-and exposing unpaced successful answers. `BusPlugin` runs
-`bus::delivery::diagnose_idle_replay` in `RigEnd` (after `RigSchedule` in
+and exposing unpaced successful answers. Cassette's `ReplayPlugin` installs
+idle replay diagnosis in the runtime's `RigEnd` (after `RigSchedule` in
 `MainScheduleOrder`) while a `ReplayDelivery` plan is installed; a host
 driving `RigSchedule` by hand runs `RigEnd` after it. The two host systems in
 `tests/bus_delivery.rs` show a policy signalling `Wake` while it deliberates.
@@ -480,89 +491,32 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
-### 12.1 A model bound as data
+### 12.1 Host assembly, runtime execution
 
-A `bus::ProviderBinding` component is the data half of a provider-served
-key: `key`, a `provider` ([`ProviderRef`], rig-core's), `label` (the
-`ModelRef` the descriptor advertises; the reference's model id unless set)
-and a `credential` *reference* (a name the host's resolver knows — never a
-secret). It holds nothing executable, and it holds no provider vocabulary of
-its own: `ProviderKind`, the `base_url` override and the `extra_params` bag
-are gone.
+The host constructs an HTTP or SDK `CompletionModel`, wraps it in a
+`CompletionAdapter`, and installs the erased handler under a dispatch key.
+ECS stores the live handler and its `Bound` descriptor, not provider launch
+configuration. It performs no provider discovery, credential resolution,
+transport selection or SDK preparation.
 
-A `ProviderRef` is either a **registered selection** —
-`vendor/format:model`, whose configuration is the registry's preset — or an
-explicit **configuration** plus a model. `format` is a protocol family
-(`openai`, `anthropic`, `gemini`), never a route: the OpenAI family covers
-both Chat Completions and the Responses endpoint, and which one a
-configuration serves is its own `route` field. Persisted registered
-references are always qualified (`deepseek:x` read, `deepseek/openai:x`
-written); an explicit configuration is written as an object and keeps every
-non-secret host, route and option it names. Anything a provider
-configuration can express, a binding can express — including a gateway
-(Venice, Together, OpenRouter, …) that never had a `ProviderKind` variant.
+For declarative HTTP launching, the host may use rig-core's bounded
+`providers::registry::{ProviderRef, ProviderConfig}` constructors. They are
+optional host utilities, not ECS components or a universal SDK recipe. The
+host retains launch settings separately and reapplies explicit endpoint,
+authentication, proxy/redirect/TLS and runtime policy on live reconstruction.
+An explicitly selected default-looking endpoint remains explicit.
 
-The executable half is built on the host's word:
-`materialize_bindings(world)` (or the `materialize` system, which leaves a
-refusal in `MaterializeFailed`) reads the host-installed `Materializer`
-resource — a credential resolver and a transport factory, both host
-closures; rig-ecs reads no environment variable and picks no transport —
-builds the reference's configuration with the resolved credential, asks it
-for the completion wire for every binding nothing serves yet, binds it to
-the host's transport and registers a `CompletionAdapter` under the binding's
-key through `Handlers::register_erased`, on the binding's own entity, so the
-bound `HandlerDescriptor` is the one a hand-registered adapter produces and
-the policy hash (§10) is unchanged by how the key came to be served. A
-binding changes no `HandlerDescriptor`: every golden is unchanged. Secrets
-never enter the world: the resolver returns a `Secret` whose `Debug` is
-redacted, a configuration's credential is redacted in its serialized form
-and empty when read back, the secret lives only inside the built client, and
-the binding's `Debug`, JSON and every `MaterializeError` name the reference
-alone.
+A dispatch key, a model label and a connection are different facts.
+`HandlerDescriptor` advertises execution metadata; equality does not attest
+endpoint, credential, tenant or transport policy. Catalog membership likewise
+does not prove launch readiness. SDK credential refresh and its runtime are
+host/client-lifetime resources, not per-effect tasks.
 
-Precedence and refusals, all or nothing per call — every credential
-resolved, every client built and every registration checked before the
-first registration: a key is registered only when it is free or bound on
-the binding's own entity with the descriptor about to be registered, so
-`Handlers::bind` (which refuses only a key bound to another family) cannot
-refuse one, and every error leaves the handlers as they were. Should a
-registration nonetheless be refused, what the call registered before it is
-unserved again and every `Bound` the call inserted is taken out or put back
-as saved (`Register`):
-
-| the world holds | `materialize_bindings` |
-|---|---|
-| a binding on an entity nothing serves, no `Bound` | built, `Bound` inserted, served: `materialized` |
-| a binding beside a `Bound` nothing serves (a checkpoint load) | built; the built descriptor must equal the saved one, else `DescriptorDrift`; served: `materialized` |
-| a binding beside a `Bound` something serves (a hand-registered handler, an earlier materialization, a replayer) | left alone: `kept` — the existing handler wins, no credential resolved, no transport built |
-| a binding whose key another entity's `Bound` holds — served there (a hand registration made before the binding's own `Bound` was spawned, a replayer) or not, and whether or not the binding carries a `Bound` of its own | left alone: `kept` — the existing handler wins, the binding's own `Bound` untouched |
-| two binding entities with one key | `DuplicateKey` |
-| a binding beside a `Bound` of another key | `KeyMismatch` |
-| no `Materializer` | `NoMaterializer` |
-| a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
-
-A selection this build does not register, an ambiguous shorthand, an unknown
-dialect or a misspelled typed option is refused by the *reader*, before
-anything is spawned — which is why there is no materialization variant for
-any of them. Pinned by `run_binding.rs`; the harness
-(`tests/common/ecs_matrix/world.rs`) binds `golden/model:default` this way
-on every ungated cassette wire, with a resolver that maps the reference
-`cassette` to the cassette's key and a factory that hands out the cassette
-transport, and every cell's request is the byte-identical one a
-hand-registered adapter sent.
-
-`bus::provider_diagnostics(&World)` reports the same state, read-only: the
-selections this build registers with their credential guidance (an
-environment variable, and whether it is required — an optional-auth
-selection such as `llamacpp/openai` is a hint), and every binding with its
-entity, key, model, canonical `vendor/format` label, credential reference
-and whether *another* entity serves its key. It never exposes a `Secret` or
-a whole configuration, it spawns and resolves nothing, and it shares the
-"served elsewhere" predicate with materialization, so a binding's own stale
-`Bound` — what a checkpoint load leaves — is not counted as somebody else
-serving its key.
-
-[`ProviderRef`]: https://docs.rs/rig-core/latest/rig_core/providers/registry/struct.ProviderRef.html
+`ProviderBinding`, `Materializer`, credential-reference reflection and
+provider-specific ECS diagnostics are removed. Old checkpoints containing
+those unregistered component paths are refused, not silently stripped. The
+host must explicitly migrate launch data out of such checkpoints before
+resuming them. Execution diagnostics remain on their existing runtime paths.
 
 ## 13. Resume is a checkpoint load; two runs
 
@@ -571,14 +525,16 @@ serving its key.
 the effects, the handlers' `Bound`s, a host's own components once the host
 registers the type with `#[reflect(Component)]` in the world's
 `AppTypeRegistry` — parents before children, siblings in `Children` order,
-each component under its type path, an `Entity` in a component as the index
-of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
+each component under its Bevy reflected `TypePath`, an `Entity` in a component
+as the index of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
 `binaries` (the binary store, every retained payload once per content hash).
-`save_world(&mut World)` takes it; `load_world(&Checkpoint, &mut World)`
-spawns it and returns `Loaded` (the entities by checkpoint index;
+`save_world(&mut World)` takes it;
+`load_world(&Checkpoint, &mut World, RestoreMode, handlers)` validates its
+complete implementation set, spawns it and returns `Loaded` (the entities by checkpoint index;
 `Loaded::with::<C>` filters them). `Checkpoint::{to_json, from_json}` are the
 wire form. `checkpoint::register_types` registers every component and wrapper
-of the crate; `RigPlugin` calls it.
+of the crate; `RigPlugin` calls it. The envelope's `format` is 2; format 1's
+separate content payload components are refused without compatibility adapters.
 
 In-flight state (`Serving`, `Streaming`, `Handler`, the cache views) is not
 reflected and never saved; relationship targets (`Children`, `Serves`, …) are
@@ -589,15 +545,39 @@ a saved type path the loading world has not registered is refused
 (`missing_registration_and_invalid_payload_are_refused_before_spawning`).
 Resources, system-local and external state are host-owned.
 
+Each supplied `(HandlerKey, ErasedHandler)` pair authorizes the dispatch key
+where that implementation is installed. `load_world` normalizes the supplied
+descriptor key to that key; `Strict` compares every remaining field against
+the original saved contract, including family, model label, capabilities and
+layer order. Saved `Bound.key` and descriptor key must agree in both restore
+modes. `Replace` permits changed metadata within the same effect family.
+Equal descriptors still install the supplied implementation (including rotated
+credentials); omitted handlers retain matching installed implementations in
+`Strict`. Destination operations already running retain their captured handlers.
+Current component lookup uses reflected type identity. Removed provider component
+paths remain frozen historical wire identifiers for named migration refusals.
+
 Loading validates the whole checkpoint in a scratch world first — the binary
 store merged with the destination's under the destination's limits, every
 utterance readable, content parents and part components well formed, request
 edits linking a turn to a part, `Ready` and `Prompt` on runs only, batch holds
-with their barrier, owner and slot — so a refusal leaves the destination
-untouched; `run_content_scene` exercises this with populated destination
+with their barrier, owner and slot, and an original saved `Bound` contract for
+every unfinished effect — so a refusal leaves the destination untouched; `run_content_scene` exercises this with populated destination
 worlds and shared payloads (hash mismatches, missing handles, invalid parents).
 Part sources reference payloads by SHA-256 identity; the store retains the
 asset-count and decoded-byte limits from section 1.
+
+Saving captures data, not proof of resumability: an unfinished streamed effect
+without a continuation cursor, or an unfinished effect whose handler was never
+registered or was removed before saving, can still be saved for inspection but
+cannot resume. A destination binding cannot invent the absent saved contract.
+Register required handlers before saving resumable work, or settle unsupported
+effects before saving. An offline migration must explicitly author any missing
+contract and validate the resulting graph; `Replace` is not a validation bypass.
+This deliberately moves missing-contract failure ahead of resumed dispatch,
+rather than silently converting an incomplete checkpoint into new execution.
+Open world handlers retain their ability to inspect arbitrary input kinds;
+their advertised family is not an input validation rule.
 
 
 A checkpoint preserves consumed effect ids even when their entities have been
@@ -630,22 +610,32 @@ mid-flight forking.
 Insertion observers/change detection can fire on load; install application
 observers afterward or guard restoration.
 
-Provider bindings (§12.1) are checkpoint data like any other component: a
-`ProviderBinding` rides on its entity, beside the `Bound` the handler held
-when saved (none for one never materialized). Loading is data only — no
-credential is resolved, no transport built, no client made: the entity is
-spawned as it was, bound under its saved descriptor so the graph's links to
-the key resolve, and left unserved (a dispatch to it is `HandlerUnavailable`)
-until the host calls `materialize_bindings`, which must then build the saved
-descriptor exactly. A checkpoint entity whose `Bound` names a key the loading
-world already serves merges into that entity — the existing handler wins,
-every link to the checkpoint's handler resolves to it, and a later
-materialization reports it `kept` — so a world over the log's replayers loads
-the same checkpoint unchanged; a key served here by another family is
-refused before any spawn. Pinned by `run_binding.rs`
-(`a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
-`a_checkpoint_load_validates_its_bindings`) and by every world-resume cell
-whose restored world materializes `golden/model:default` from the checkpoint.
+`Checkpoint::requirements()` exposes the original saved descriptors;
+`Checkpoint::validate(&World)` validates saved data before the host performs
+side-effectful construction. Loading accepts `(HandlerKey, ErasedHandler)`
+pairs already constructed by the host and an explicit `RestoreMode`:
+
+| mode/input | contract |
+|---|---|
+| `Strict` | every supplied or retained implementation matches the original saved descriptor before aliasing |
+| `Replace` | the host explicitly accepts descriptor changes within the same effect family |
+| supplied key | installs that implementation even when its descriptor matches, so credential rotation is real |
+| omitted key | retains the destination's already-serving implementation; an unserved or absent key refuses the whole load |
+| duplicate, extraneous or mismatched key | refuses before state or handler installation |
+
+Every saved handler requirement must be satisfied before any resumed state
+is installed. A failed batch leaves destination state and handlers unchanged.
+Aliasing reuses destination entities, but cannot erase the original descriptor
+before strict comparison. Existing operations retain their captured handlers;
+replacement applies to new dispatches. The host chooses whether to cancel or
+drain existing work before replacement.
+
+Replay selects and installs recorded handlers before this boundary, without
+credential lookup, secret collection, SDK initialization or live transport
+construction. It can load strictly over matching preinstalled replayers with
+an empty supplied set. Logical effects, HTTP recordings, execution checkpoints
+and host launch settings remain separate products. Pinned by `run_binding.rs`
+and the cassette world's resume/replay matrix.
 
 The binding's saved shape changed with the provider vocabulary, and there is
 no legacy reader: a checkpoint written before the cutover does not load.
@@ -678,7 +668,7 @@ external deduplication or reconciliation is the host's responsibility.
 | what | how | pinned by |
 |---|---|---|
 | a run saved after its first tool turn's results (the head), resumed in a fresh world over the log's tail | `checkpoint::save_world` the pass after `land_batch` put the run back in `Assembling` (one schedule pass per `update`); a fresh world binds the tail's replayers (positional per key, as the corpus's resumed engine does), `load_world`s the checkpoint, installs its hooks after the load (no run-start observer fires), ticks to the ending: the head's records are the golden's to the cut, the tail's from it, the answer the golden's | every `corpus_resume.rs` row (18) as `world_resumed`; every `corpus_checkpoint.rs` program (14) as `world_payload`, `world_hash`, `world_full_log_refused` |
-| the log's `Checkpoint::state` | the world's `Checkpoint` itself: `rig_effect_log::Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<rig_ecs::checkpoint::Checkpoint>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); it is a cut of the log beside the world, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs`, `corpus/world_resume.rs` |
+| the log's `Checkpoint::state` | the world's `Checkpoint` itself: `rig_cassette::effect_log::Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<rig_ecs::checkpoint::Checkpoint>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); it is a cut of the log beside the world, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs`, `corpus/world_resume.rs` |
 | a resumed run loads nothing and appends | the loaded utterances are `Remembered` in the checkpoint; the append is the resumed run's (the world keeps its state, the agent driver restores its serialized state) | `anthropic_serving_serial_memory_tools` resumed: `[Load, C, Tool, C, Append]` with the append in the tail |
 | durable execution | the same property as `durable_execution.rs`: nothing of the first world survives but two JSON strings — the head's log and the checkpoint (the world as its `state`) — and the second world resumes to the same answer and the same tail | every world resume cell round-trips both |
 | an effect in flight at the cut | saved as intent, re-issued in the second world under its saved id, answered by the tail's replayer there: a note an outcome hook dispatched just before the cut is the tail's first record | `anthropic_host_custom_at_outcome{,_streamed}` resumed |

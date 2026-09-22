@@ -13,7 +13,9 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
 use crate::model::{Model, ModelList, ModelListingError};
+pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
+use crate::providers::internal::named_dialect;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -124,16 +126,14 @@ impl Dialect {
 
 impl Serialize for Dialect {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.name)
+        let registered = Self::by_name(self.name).as_ref() == Some(self);
+        named_dialect::serialize(serializer, "Anthropic", self.name, registered)
     }
 }
 
 impl<'de> Deserialize<'de> for Dialect {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        Self::by_name(&name).ok_or_else(|| {
-            serde::de::Error::custom(format!("`{name}` is not an Anthropic-format provider"))
-        })
+        named_dialect::deserialize(deserializer, "Anthropic", Self::by_name)
     }
 }
 
@@ -705,7 +705,8 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 }
 
-/// The credential-check wire: `GET /v1/models`, status only.
+/// The credential-check wire: `GET /v1/models`, status only, decoded by
+/// the shared [`VerifyDecoder`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Verify {
     /// The provider this wire speaks to.
@@ -736,29 +737,6 @@ impl Wire for Verify {
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         VerifyDecoder
-    }
-}
-
-/// A success status is the whole answer; the body is not read for meaning.
-pub struct VerifyDecoder;
-
-impl Decoder<VerifyOp> for VerifyDecoder {
-    type Event = ();
-
-    fn classify(&self, _frame: WireFrame) -> WireEvent<Self::Event> {
-        WireEvent::Known(())
-    }
-
-    fn interpret(&mut self, _event: Self::Event, out: &mut Output<VerifyOp>) {
-        out.push(Ok(()));
-    }
-
-    /// A 2xx with no body at all still verifies: the driver only reaches
-    /// `finish` when nothing framed, and the status already said yes.
-    fn finish(&mut self, out: &mut Output<VerifyOp>) {
-        if out.items().is_empty() {
-            out.push(Ok(()));
-        }
     }
 }
 

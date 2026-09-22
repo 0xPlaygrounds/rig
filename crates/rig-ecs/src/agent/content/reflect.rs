@@ -1,4 +1,9 @@
 //! Reflection wrappers for shared transport DTOs; typed ECS part fields remain visible.
+//!
+//! ```
+//! let mut registry = bevy_reflect::TypeRegistry::default();
+//! registry.register::<rig_ecs::agent::content::reflect::TextPartReflect>();
+//! ```
 
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use rig_core::message;

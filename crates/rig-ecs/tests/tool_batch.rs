@@ -18,6 +18,8 @@ use crate::run_support;
 use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -29,10 +31,9 @@ use rig_ecs::{
         Failed, Failure, Grant, InvalidCall, InvalidCalls, Resolution, RunResult, Settled,
         ToolPolicy,
     },
-    bus::{BusSet, EffectLogResource, EffectOutcome, Issued, PendingEffect, RigSchedule},
+    bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -1013,7 +1014,7 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
 fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
     use rig_ecs::{
         bus::{Held, acquire_hold, release_hold},
-        checkpoint::{Checkpoint, load_world, save_world},
+        checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
         systems::BatchHeld,
     };
     use std::any::type_name;
@@ -1070,13 +1071,14 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                 let (mut destination, _, _, _) = tooling(vec![]);
                 let before = destination.world().entities().len();
                 assert!(
-                    load_world(&malformed, destination.world_mut()).is_err(),
+                    load_world(&malformed, destination.world_mut(), RestoreMode::Strict, [])
+                        .is_err(),
                     "accepted a batch hold without {missing}"
                 );
                 assert_eq!(destination.world().entities().len(), before);
             }
             let (mut restored, _, adder, _) = tooling(vec![vec![AssistantContent::text("done")]]);
-            let loaded = load_world(&saved, restored.world_mut()).unwrap();
+            let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
             let run = loaded.with::<rig_ecs::agent::Run>(restored.world())[0];
             let effects = loaded.with::<PendingEffect>(restored.world());
             if policy_held {
@@ -1167,7 +1169,12 @@ fn approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consis
         assert!(app.world().get::<Settled>(run).is_some(), "{route}");
         let saved = rig_ecs::checkpoint::save_world(app.world_mut()).expect("saves");
         let (mut fresh, _, _, _) = tooling(vec![vec![AssistantContent::text("done")]]);
-        rig_ecs::checkpoint::load_world(&saved, fresh.world_mut())
-            .unwrap_or_else(|error| panic!("{route}: the checkpoint loads: {error}"));
+        rig_ecs::checkpoint::load_world(
+            &saved,
+            fresh.world_mut(),
+            rig_ecs::checkpoint::RestoreMode::Strict,
+            [],
+        )
+        .unwrap_or_else(|error| panic!("{route}: the checkpoint loads: {error}"));
     }
 }

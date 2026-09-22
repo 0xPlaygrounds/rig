@@ -20,20 +20,44 @@ macro_rules! golden_matrix {
 
 pub use golden_matrix;
 
+/// Emit native cells with their own world golden assertions.
+#[macro_export]
+macro_rules! native_matrix {
+    (
+        wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
+        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $golden:literal); )*
+    ) => {
+        $(
+            $(#[$attribute])*
+            async fn $name() {
+                $crate::goldens::capture_world_programs(async {
+                    $wrapper($scenario, |client| async move {
+                        $run(&$wire(&client), &$cell, |log| $crate::goldens::world_golden_effects($golden, log)).await;
+                    }).await;
+                }).await;
+            }
+        )*
+    };
+}
+
+pub use native_matrix;
+
 /// Emit registered test rows with the shared execution body.
 #[macro_export]
 macro_rules! resume_matrix {
     (
         wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $oracle:path); )*
+        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $golden:literal); )*
     ) => {
         $(
             $(#[$attribute])*
             async fn $name() {
-                $wrapper($scenario, |client| async move {
-                    let mut cell = $cell;
-                    cell.resume_after = $resume;
-                    $run(&$wire(&client), &cell, $oracle).await;
+                $crate::goldens::capture_world_programs(async {
+                    $wrapper($scenario, |client| async move {
+                        let mut cell = $cell;
+                        cell.resume_after = $resume;
+                        $run(&$wire(&client), &cell, |log| $crate::goldens::world_golden_effects($golden, log)).await;
+                    }).await;
                 }).await;
             }
         )*
@@ -47,10 +71,10 @@ pub use resume_matrix;
 macro_rules! case_matrix {
     (
         family: $family:ident;
-        $( $(#[$attribute:meta])* $name:ident: $case:ident; )*
+        $( $(#[$attribute:meta])* $name:ident: $case:ident $(=> $golden:literal)?; )*
     ) => {
         $(
-            $crate::matrix::$family!($(#[$attribute])* $name, $case);
+            $crate::matrix::$family!($(#[$attribute])* $name, $case $(, $golden)?);
         )*
     };
     (

@@ -2,7 +2,7 @@ use super::interactions_api_types::InteractionUsage;
 use crate::completion::Usage;
 
 /// Shape taken verbatim from a committed cassette
-/// (`tests/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`).
+/// (`crates/rig-cassette/fixtures/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`).
 /// Note that input + output is 48 while the provider's own total is 270 —
 /// the missing 222 is thinking, reported beside the pair rather than inside
 /// it.

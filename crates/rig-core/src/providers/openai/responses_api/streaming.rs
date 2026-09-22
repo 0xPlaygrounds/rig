@@ -116,13 +116,12 @@ fn terminal_record(
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
     Ok(
-        StreamFinal::new(provider, crate::completion::Usage::from(&response))
+        StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
             .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_model(response.model)
-            .with_raw(raw),
+            .with_optional_model(response.model),
     )
 }
 
@@ -266,14 +265,9 @@ pub struct RawChoiceAccumulator {
     /// Copilot stream this exact wire shape, so it is an input rather than
     /// a baked-in `"openai"`.
     provider: String,
-    final_usage: Option<ResponsesUsage>,
-    reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
-    reasoning_context: Option<String>,
-    status: Option<ResponseStatus>,
-    incomplete_details: Option<IncompleteDetailsReason>,
-    message_id: Option<String>,
-    response_id: Option<String>,
-    model: Option<String>,
+    /// The terminal record under assembly: what the terminal event says
+    /// about the turn, filled in as the stream reports it.
+    terminal: StreamingCompletionResponse,
     /// Buffered tool-call ends for calls delivered whole by
     /// `output_item.done`, flushed at the terminal (or before a terminal
     /// error) as `BlockEnd`s keyed by the slot's assembly id. Assembly and
@@ -334,14 +328,7 @@ impl RawChoiceAccumulator {
     pub fn new(provider: impl Into<String>, initial_usage: Option<ResponsesUsage>) -> Self {
         Self {
             provider: provider.into(),
-            final_usage: initial_usage,
-            reasoning_metadata: None,
-            reasoning_context: None,
-            status: None,
-            incomplete_details: None,
-            message_id: None,
-            response_id: None,
-            model: None,
+            terminal: StreamingCompletionResponse::new(initial_usage),
             tool_calls: Vec::new(),
             saw_terminal: false,
             reasoning_slots: std::collections::HashMap::new(),
@@ -642,26 +629,26 @@ impl RawChoiceAccumulator {
                 // turn ended, which model answered, and which assistant message
                 // (`msg_...`, not the response's `resp_...`) carried the output.
                 if let Some(message_id) = message_id_from_response(&response) {
-                    self.message_id = Some(message_id);
+                    self.terminal.message_id = Some(message_id);
                 }
                 if !response.id.is_empty() {
-                    self.response_id = Some(response.id.clone());
+                    self.terminal.response_id = Some(response.id.clone());
                 }
                 if !response.model.is_empty() {
-                    self.model = Some(response.model.clone());
+                    self.terminal.model = Some(response.model.clone());
                 }
-                self.status = Some(response.status);
+                self.terminal.status = Some(response.status);
                 if response.incomplete_details.is_some() {
-                    self.incomplete_details = response.incomplete_details;
+                    self.terminal.incomplete_details = response.incomplete_details;
                 }
                 if response.usage.is_some() {
-                    self.final_usage = response.usage;
+                    self.terminal.usage = response.usage;
                 }
                 if response.reasoning_metadata.is_some() {
-                    self.reasoning_metadata = response.reasoning_metadata;
+                    self.terminal.reasoning_metadata = response.reasoning_metadata;
                 }
                 if response.reasoning_context.is_some() {
-                    self.reasoning_context = response.reasoning_context;
+                    self.terminal.reasoning_context = response.reasoning_context;
                 }
                 Ok(())
             }
@@ -799,7 +786,7 @@ impl RawChoiceAccumulator {
                 // id is the durable handle the next turn has to replay.
                 // Copilot's Responses route answers a tool-calling turn
                 // with `{"id":…,"summary":[]}` and then requires it back —
-                // `tests/cassettes/copilot/typed_prompt_tools/
+                // `crates/rig-cassette/fixtures/cassettes/copilot/typed_prompt_tools/
                 // prompt_typed_with_tool_call_roundtrip.yaml` — and without
                 // it turn two's `input` is missing an element the provider
                 // sent. An item with no id at all still says nothing at the
@@ -946,19 +933,7 @@ impl RawChoiceAccumulator {
         if !self.saw_terminal {
             return;
         }
-        let native = StreamingCompletionResponse {
-            usage: self.final_usage,
-            // The transport stamps the normalized record.
-            provider_request_id: None,
-            reasoning_metadata: self.reasoning_metadata,
-            reasoning_context: self.reasoning_context,
-            status: self.status,
-            incomplete_details: self.incomplete_details,
-            message_id: self.message_id,
-            response_id: self.response_id,
-            model: self.model,
-        };
-        match terminal_record(&self.provider, native) {
+        match terminal_record(&self.provider, self.terminal) {
             Ok(record) => out.final_record(record),
             Err(error) => out.error(error),
         }
@@ -1165,7 +1140,7 @@ impl ResponsesDecoder {
     /// Seed the terminal's usage for a replayed body whose frames may not
     /// carry one (the unary Responses body's own `usage`).
     pub fn with_initial_usage(mut self, usage: Option<ResponsesUsage>) -> Self {
-        self.accumulator.final_usage = usage;
+        self.accumulator.terminal.usage = usage;
         self
     }
 

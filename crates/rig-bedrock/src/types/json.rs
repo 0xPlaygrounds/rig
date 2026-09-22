@@ -9,7 +9,11 @@ impl From<AwsDocument> for Value {
     fn from(value: AwsDocument) -> Self {
         match value.0 {
             Document::Object(obj) => {
-                let documents = obj
+                // Smithy objects are hash maps. Stable insertion order also
+                // stabilizes JSON strings used as tool arguments.
+                let mut entries: Vec<_> = obj.into_iter().collect();
+                entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+                let documents = entries
                     .into_iter()
                     .map(|(k, v)| (k, AwsDocument(v).into()))
                     .collect::<Map<_, _>>();

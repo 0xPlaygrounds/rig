@@ -8,14 +8,15 @@
 //! under five thousand kept events on one key beside two hundred other
 //! records (L2). Mock-scripted: the decision, the wire form and the
 //! recorder are the cells, not the provider. The enumeration and the
-//! replays live in `crates/rig-verify/tests/corpus_leftovers.rs`.
+//! replays live in `crates/rig-cassette/tests/corpus_leftovers.rs`.
 
 use rig::agent::AgentBuilder;
 use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::serve::ErasedHandler;
 use rig::test_utils::{MockCompletionModel, MockTurn};
-use rig_effect_log::{EffectLog, EffectLogRecorder};
+use rig_cassette::agent::AgentReplayExt;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::json;
 
 use crate::goldens::{
@@ -61,6 +62,7 @@ fn tool_result_texts(log: &EffectLog) -> Vec<String> {
 #[tokio::test]
 async fn denied_tool_effect_log_is_the_golden_fixture() {
     let server = add_tool_under(|adder| adder.layered(DenyAllLayer));
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "add", json!({"x": 17, "y": 25})),
         MockTurn::text("I could not add them."),
@@ -69,7 +71,7 @@ async fn denied_tool_effect_log_is_the_golden_fixture() {
     .preamble(TOOLS_PREAMBLE)
     .temperature(0.0)
     .tool_server_handle(server)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(ADD_PROMPT)
@@ -77,7 +79,7 @@ async fn denied_tool_effect_log_is_the_golden_fixture() {
         .await
         .expect("the model sees the skipped result and answers");
     assert_eq!(response.output, "I could not add them.");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
@@ -133,13 +135,14 @@ async fn denied_memory_load_effect_log_is_the_golden_fixture() {
         rig::memory::InMemoryConversationMemory::new(),
     ))
     .layered(DenyAllLayer);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("never asked"))
         .name("golden")
         .preamble(BASIC_PREAMBLE)
         .temperature(0.0)
         .memory_handler(memory)
         .conversation(CONVERSATION)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let error = agent
         .prompt(PROMPT)
@@ -153,7 +156,7 @@ async fn denied_memory_load_effect_log_is_the_golden_fixture() {
         ),
         "{error:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert!(log.records.is_empty(), "no record for a denied load");
     assert_eq!(log.header.hooks, ["DenyAllLayer"]);
     crate::goldens::golden_effects("mock_leftovers_denied_memory_load", &log);

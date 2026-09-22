@@ -19,10 +19,8 @@ prost = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tokio-stream = { workspace = true }
 tonic = { workspace = true, features = ["transport", "tls-ring", "tls-webpki-roots", "zstd", "gzip"] }
 tonic-prost = { workspace = true }
-tracing = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }
@@ -35,4 +33,5 @@ rig-agent.workspace = true
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
     "test-utils",
 ] }
+tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

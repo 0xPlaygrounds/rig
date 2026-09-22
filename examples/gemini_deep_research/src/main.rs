@@ -43,21 +43,24 @@ fn deep_research_request(
 ) -> Result<CompletionRequest> {
     // Deep Research is selected by `agent`, which suppresses `model` in the
     // outgoing body — matching the official Gemini Deep Research examples.
-    let mut params = json!({
-        "agent": agent.into(),
-        "background": true,
-    });
+    let mut params = serde_json::Map::from_iter([
+        ("agent".to_owned(), json!(agent.into())),
+        ("background".to_owned(), json!(true)),
+    ]);
 
     if stream {
         // The Gemini docs recommend enabling thinking summaries for Deep
         // Research streams; otherwise a stream may only include final text.
-        params["agent_config"] = serde_json::to_value(AgentConfig::DeepResearch {
-            thinking_summaries: Some(ThinkingSummaries::Auto),
-        })?;
+        params.insert(
+            "agent_config".to_owned(),
+            serde_json::to_value(AgentConfig::DeepResearch {
+                thinking_summaries: Some(ThinkingSummaries::Auto),
+            })?,
+        );
     }
 
     Ok(CompletionRequestBuilder::unbound(prompt.into())
-        .additional_params(params)
+        .additional_params(serde_json::Value::Object(params))
         .build())
 }
 

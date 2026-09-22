@@ -26,9 +26,9 @@
 //! - [`TemplateCompactor`] — zero-dependency reference [`Compactor`] that
 //!   produces a textual rollup without calling an LLM.
 //!
-//! All sliding policies drop a leading orphan tool-result message when the
-//! preceding assistant tool call has been truncated, since most providers
-//! reject unpaired tool results.
+//! Both window policies demote the leading prefix through any tool-result
+//! messages whose assistant calls were truncated, including mixed-content
+//! messages, since most providers reject unpaired tool results.
 //!
 //! # Example
 //!
@@ -173,10 +173,11 @@ impl MemoryPolicy for NoopMemoryPolicy {
 
 /// A [`MemoryPolicy`] that retains only the most recent `max_messages` entries.
 ///
-/// When the window starts mid-conversation, a leading orphan tool-result
-/// message (a [`Message::User`] whose first content is a tool result without
-/// its preceding [`Message::Assistant`] tool call) is dropped to preserve the
-/// tool-call/result pairing required by most providers.
+/// When the window starts mid-conversation, tool results before its first
+/// [`Message::Assistant`] have lost their calls. The prefix through the last
+/// such [`Message::User`] is demoted, including any accompanying text or
+/// intervening system messages. Whole messages remain in original order in
+/// `(kept, demoted)`; paired results later in the window are left untouched.
 #[derive(Debug, Clone, Copy)]
 pub struct SlidingWindowMemory {
     max_messages: usize,
@@ -209,20 +210,31 @@ impl MemoryPolicy for SlidingWindowMemory {
 
 /// Split `messages` at `keep_from` into `(window, demoted)`.
 ///
-/// A window that opens on a tool result has lost the assistant call it
-/// answers, which providers reject; that orphan joins the demoted set rather
-/// than being dropped, so the demotion hook still observes it end-to-end even
-/// though the model never sees it again.
+/// Results before the first retained assistant have lost their calls. Scan
+/// all content blocks, including past system messages (which canonical
+/// validation allows between calls and results). Demote the entire prefix
+/// through those results to preserve the delivery-watermark contract without
+/// modifying messages or repairing unrelated history later in the window.
 fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<Message>) {
     let mut iter = messages.into_iter();
     let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
     let mut window: Vec<Message> = iter.collect();
 
-    if let Some(Message::User { content }) = window.first()
-        && matches!(content.first(), Some(UserContent::ToolResult(_)))
-    {
-        demoted.push(window.remove(0));
+    let mut orphan_prefix_len = 0;
+    for (index, message) in window.iter().enumerate() {
+        match message {
+            Message::Assistant { .. } => break,
+            Message::User { content }
+                if content
+                    .iter()
+                    .any(|item| matches!(item, UserContent::ToolResult(_))) =>
+            {
+                orphan_prefix_len = index + 1;
+            }
+            _ => {}
+        }
     }
+    demoted.extend(window.drain(..orphan_prefix_len));
 
     (window, demoted)
 }
@@ -417,9 +429,9 @@ impl TokenCounter for HeuristicTokenCounter {
 /// Messages are walked from newest to oldest, accumulating token counts
 /// produced by a [`TokenCounter`]. Once including a message would exceed
 /// `max_tokens`, the walk stops and the included messages are returned in
-/// original (oldest-first) order. As with [`SlidingWindowMemory`], a leading
-/// orphan tool-result is dropped when its paired assistant tool call has
-/// been truncated.
+/// original (oldest-first) order. As with [`SlidingWindowMemory`], the leading
+/// prefix through any tool results whose assistant calls were truncated is
+/// demoted, including mixed-content messages.
 pub struct TokenWindowMemory {
     max_tokens: usize,
     counter: Arc<dyn TokenCounter>,

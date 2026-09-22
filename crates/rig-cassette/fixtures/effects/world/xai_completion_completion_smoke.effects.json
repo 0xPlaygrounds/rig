@@ -1,0 +1,195 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 4727343276591671112
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The question is: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\"\n"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety enforced at compile time without a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++."
+            }
+          ],
+          "usage": {
+            "input_tokens": 222,
+            "output_tokens": 287,
+            "total_tokens": 509,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 226
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "req_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "background": false,
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "req_REDACTED_1",
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_REDACTED_1"
+            },
+            "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_REDACTED_1",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "The question is: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\"\n",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety enforced at compile time without a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": "low",
+              "summary": "detailed"
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.7,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 0.95,
+            "truncation": "disabled",
+            "usage": {
+              "context_details": {
+                "input_tokens": 222,
+                "output_tokens": 288
+              },
+              "cost_in_usd_ticks": 7934000,
+              "input_tokens": 222,
+              "input_tokens_details": {
+                "cached_tokens": 192
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 287,
+              "output_tokens_details": {
+                "reasoning_tokens": 226
+              },
+              "total_tokens": 509
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

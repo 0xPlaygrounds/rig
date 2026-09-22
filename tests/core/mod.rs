@@ -1,6 +1,6 @@
 //! The root package's own tests: guards that scan the source tree and the
 //! fixture runners, which need the repository root. Behaviour of the bus and
-//! the agent over it is verified in `crates/rig-verify`; provider behaviour
+//! the agent over it is verified in `crates/rig-cassette`; provider behaviour
 //! in `tests/providers`; anything needing crate-private types stays a unit
 //! test in its crate.
 
@@ -31,5 +31,8 @@ mod rig_tool_facade;
 mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;
+#[allow(dead_code)]
+#[path = "../../xtask/src/verify/checks.rs"]
+mod verification_checks;
 
 mod pull_parser;

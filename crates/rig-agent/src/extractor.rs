@@ -1,30 +1,15 @@
-//! Typed extraction: an [`Agent`] configured to answer through a `submit`
-//! tool whose arguments are the value to extract, run as a
-//! [`TypedRun`].
+//! Typed extraction through an agent's `submit` output tool, with configurable retries.
 //!
-//! The target type must implement `serde::Deserialize`, `serde::Serialize`,
-//! and `schemars::JsonSchema`; all three derive.
-//!
-//! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
 //! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_reqwest::prelude::*;
-//!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai = OpenAI::new("your-open-ai-api-key").bound()?;
-//!
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-//! struct Person {
-//!    name: Option<String>,
-//!    age: Option<u8>,
-//!    profession: Option<String>,
-//! }
-//!
-//! let extractor = openai.extractor::<Person>(openai::GPT_4O).retries(2).build();
-//!
-//! // `.await` gives a `TypedPromptResponse<Person>`; `.output` is the value.
-//! let person = extractor.extract("John Doe is a 30 year old doctor.").await?.output;
+//! struct Person { name: String, age: u8 }
+//! let provider = OpenAI::from_env()?.bound()?;
+//! let extractor = provider.extractor::<Person>(openai::GPT_4O).retries(2).build();
+//! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())
 //! # }
 //! ```
@@ -86,9 +71,8 @@ where
 
     /// Extract structured data from `text`.
     ///
-    /// The returned run can be configured further — `.history(..)` for chat
-    /// context, `.using_model(..)` for a per-run default model, `.retries(..)`
-    /// to override the extractor's budget — and `.await`ed for a
+    /// The returned run supports history, a per-run model, and retry overrides,
+    /// and can be awaited for a
     /// [`TypedPromptResponse<T>`](crate::agent::TypedPromptResponse). The
     /// model must call the `submit` tool; a run in which it does not is an
     /// empty response and, within the retry budget, is retried from scratch.
@@ -115,10 +99,7 @@ where
     retries: Option<u64>,
 }
 
-/// Generate the `ExtractorBuilder` setters that forward verbatim to the inner
-/// [`AgentBuilder`] method of the same name. Doc comments live at each
-/// invocation; `preamble` (which wraps its argument) and `retries`
-/// (builder-local) stay hand-written.
+/// Generate setters forwarding to the matching inner [`AgentBuilder`] methods.
 macro_rules! forward_agent_builder {
     ($( $(#[$attr:meta])* $name:ident $([$gen:ident : $($bound:tt)+])?
         ( $($arg:ident : $ty:ty),* );)+) => {$(
@@ -144,7 +125,8 @@ where
         Self::from_agent_builder(AgentBuilder::new(model))
     }
 
-    /// Create an extractor builder from an opaque runtime model handle.
+    /// Configure an agent builder for extraction of `T`, replacing its preamble,
+    /// output schema, tool choice, and output mode.
     pub fn from_agent_builder(builder: AgentBuilder) -> Self {
         Self {
             agent_builder: builder

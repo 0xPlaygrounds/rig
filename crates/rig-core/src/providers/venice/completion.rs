@@ -1,50 +1,32 @@
-//! Venice's model identifiers, its own request block, and its own view of a
-//! reply.
+//! Venice chat model identifiers, request extensions, and response metadata.
 //!
-//! Venice is an OpenAI chat-completions dialect, so it has no client and no
-//! completion model of its own:
-//! [`openai::wire::VENICE`] carries
-//! the base URL, the `VENICE_API_KEY`/`VENICE_BASE_URL` variables, and the
-//! native `/image/generate` path.
-//!
-//! What remains here is data: the model identifiers, [`VeniceParameters`] —
-//! Venice's own request block (web search, thinking control, characters),
-//! which reaches the body through
-//! [`additional_params`](crate::completion::CompletionRequest::additional_params)
-//! — and [`CompletionResponse`], the typed read of Venice's own reply
-//! document, which a completion carries verbatim on
-//! [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
-//! The response type is not a second mapping: the normalized response is
-//! produced by the wire's decoder, and this is how a caller reads the blocks
-//! that mapping does not name — the resolved [`VeniceParametersEcho`], where
-//! web-search citations arrive, and the per-request [`Cost`].
+//! ```
+//! use rig_core::providers::venice::{VeniceParameters, WebSearchMode};
+//! let params = VeniceParameters::new()
+//!     .enable_web_search(WebSearchMode::Auto)
+//!     .into_additional_params();
+//! assert!(params.get("venice_parameters").is_some());
+//! ```
 
 use serde::{Deserialize, Serialize};
 
 use crate::providers::openai;
 
-// ================================================================
-// Venice Completion Models
-// ================================================================
-// A non-exhaustive selection; the authoritative list is `GET /models`, which
-// also reports per-model capabilities (`supportsFunctionCalling`,
-// `supportsVision`, `supportsReasoning`, `supportsResponseSchema`, …).
-
-/// `zai-org-glm-4.7` — Venice's `default` and `function_calling_default` model.
+/// Identifier for `zai-org-glm-4.7`.
 pub const GLM_4_7: &str = "zai-org-glm-4.7";
 /// `zai-org-glm-5-2`
 pub const GLM_5_2: &str = "zai-org-glm-5-2";
-/// `qwen3-5-9b` — small, tool-capable, and vision-capable.
+/// Identifier for `qwen3-5-9b`.
 pub const QWEN3_5_9B: &str = "qwen3-5-9b";
 /// `qwen3-5-397b-a17b`
 pub const QWEN3_5_397B_A17B: &str = "qwen3-5-397b-a17b";
-/// `qwen3-235b-a22b-thinking-2507` — Venice's `default_reasoning` model.
+/// Identifier for `qwen3-235b-a22b-thinking-2507`.
 pub const QWEN3_235B_A22B_THINKING: &str = "qwen3-235b-a22b-thinking-2507";
-/// `qwen3-vl-235b-a22b` — Venice's `default_vision` model.
+/// Identifier for `qwen3-vl-235b-a22b`.
 pub const QWEN3_VL_235B_A22B: &str = "qwen3-vl-235b-a22b";
-/// `qwen3-coder-480b-a35b-instruct-turbo` — Venice's `default_code` model.
+/// Identifier for `qwen3-coder-480b-a35b-instruct-turbo`.
 pub const QWEN3_CODER_480B: &str = "qwen3-coder-480b-a35b-instruct-turbo";
-/// `venice-uncensored-1-2` — Venice's `most_uncensored` model.
+/// Identifier for `venice-uncensored-1-2`.
 pub const VENICE_UNCENSORED_1_2: &str = "venice-uncensored-1-2";
 /// `gemini-3-6-flash`
 pub const GEMINI_3_6_FLASH: &str = "gemini-3-6-flash";
@@ -54,10 +36,6 @@ pub const GROK_4_6: &str = "grok-4-6";
 pub const MISTRAL_SMALL_2603: &str = "mistral-small-2603";
 /// `mistral-small-3-2-24b-instruct`
 pub const MISTRAL_SMALL_3_2_24B: &str = "mistral-small-3-2-24b-instruct";
-
-// ================================================================
-// Venice-specific request parameters
-// ================================================================
 
 /// How Venice's web search behaves for a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,10 +51,8 @@ pub enum WebSearchMode {
 
 /// Venice's `venice_parameters` request block.
 ///
-/// Venice accepts this alongside the OpenAI chat-completions body. Rig passes
-/// it through [`additional_params`](crate::completion::CompletionRequest),
-/// which is the same merge path every other provider's dialect extras use, so
-/// there is no separate request abstraction to keep in sync:
+/// Merge into [`additional_params`](crate::completion::CompletionRequest::additional_params)
+/// using [`Self::into_additional_params`]:
 ///
 /// ```no_run
 /// use rig_core::completion::CompletionRequestBuilder;
@@ -210,10 +186,6 @@ impl VeniceParameters {
     }
 }
 
-// ================================================================
-// Venice completion response
-// ================================================================
-
 /// A web-search source Venice consulted for a completion.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WebSearchCitation {
@@ -259,12 +231,8 @@ pub struct Cost {
     pub diem: f64,
 }
 
-/// Venice's chat-completions payload: OpenAI's response plus the
-/// `venice_parameters` echo and the request's `cost`.
-///
-/// Normalization and telemetry delegate to the OpenAI payload — the wire
-/// shape of `choices`/`usage` is OpenAI's — so the Venice-only blocks are
-/// read out of `CompletionResponse::raw` without forking the conversion.
+/// Typed chat payload including resolved parameters and request cost. Deserialize
+/// from [`crate::completion::CompletionResponse::raw`] to inspect these fields.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     /// The OpenAI-compatible portion of the payload.

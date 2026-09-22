@@ -1,13 +1,9 @@
-//! Ollama API integration
+//! Ollama configuration, model identifiers, message conversion, and NDJSON decoding.
 //!
-//! # Example
 //! ```no_run
 //! use rig_core::providers::ollama;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // The local daemon, unauthenticated; `from_env()` reads
-//! // `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` when a proxied daemon
-//! // needs them.
 //! let provider = ollama::Ollama::new();
 //!
 //! let qwen = provider.chat("qwen2.5:14b");
@@ -16,9 +12,8 @@
 //! # }
 //! ```
 //!
-//! A wire says what to send and how to read the reply; `.bind(transport)`
-//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
-//! implements the consumer-facing model traits.
+//! Bind a wire to a transport to execute it. `Ollama::from_env` reads
+//! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
 use crate::completion::Usage;
 use crate::message::DocumentSourceKind;
 use crate::model::Model;
@@ -42,10 +37,6 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
 const PROVIDER_NAME: &str = "ollama";
-
-// ---------- Embedding API ----------
-
-// Model names follow <https://ollama.com/library>.
 
 /// The `all-minilm` embedding model.
 pub const ALL_MINILM: &str = "all-minilm";
@@ -82,8 +73,6 @@ pub struct EmbeddingResponse {
     #[serde(default)]
     pub prompt_eval_count: Option<u64>,
 }
-
-// ---------- Completion API ----------
 
 /// The `llama3.2` model.
 pub const LLAMA3_2: &str = "llama3.2";
@@ -169,10 +158,8 @@ fn ollama_usage(prompt_eval_count: Option<u64>, eval_count: Option<u64>) -> Usag
     }
 }
 
-/// Older reasoning models served by Ollama sometimes returned their reasoning
-/// in `content` instead of `thinking`. Qwen can also omit the opening marker
-/// because its chat template prefills it. Only split a leading, terminated
-/// reasoning block so ordinary mentions of the marker remain untouched.
+/// Split a leading, terminated reasoning block from content. When allowed,
+/// recognize the Qwen prefilled-start boundary; preserve ordinary marker mentions.
 fn split_legacy_thinking(content: &str, permits_omitted_start: bool) -> (Option<&str>, &str) {
     let trimmed = content.trim_start();
     let split = if let Some(reasoning_start) = trimmed.strip_prefix("<think>") {
@@ -222,7 +209,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
-        // Build up the order of messages.
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
         // Ollama tool messages are name-keyed: cross-provider ingested
@@ -255,9 +241,8 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         let base_options = Value::Object(base_options);
 
         let options = if let Some(mut extra) = req.additional_params {
-            // Extract top-level parameters that should not be in `options`
+            // These controls belong at the request root, not in model options.
             if let Some(obj) = extra.as_object_mut() {
-                // Extract `think` parameter
                 if let Some(think_val) = obj.remove("think") {
                     think = Some(match think_val {
                         Value::Bool(think) => Think::Bool(think),
@@ -281,7 +266,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                     });
                 }
 
-                // Extract `keep_alive` parameter
                 if let Some(keep_alive_val) = obj.remove("keep_alive") {
                     keep_alive = Some(
                         keep_alive_val
@@ -335,8 +319,6 @@ enum Level {
     Max,
 }
 
-// ---------- CompletionModel Implementation ----------
-
 /// Ollama's terminal stream record: the `done: true` line's counters as rig
 /// parsed them, serialized onto [`StreamFinal::raw`] by the adapter's
 /// terminal mapping.
@@ -361,31 +343,20 @@ impl From<&StreamingCompletionResponse> for Usage {
 
 /// The adapter's terminal mapping: Ollama's `done: true` record as a
 /// normalized [`StreamFinal`] (the caller attaches `raw`).
-fn stream_final(response: StreamingCompletionResponse) -> StreamFinal {
+fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -> StreamFinal {
     // Ollama's `/api/chat` stream assigns no message identifier, so the
     // normalized `message_id` stays unset.
-    StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
+    StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
         .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
         .with_model(response.model)
 }
 
-/// The Ollama NDJSON wire's decoder, serving both replies.
-///
-/// Ollama answers `/api/chat` with the same record shape either way — a
-/// stream is a sequence of them and a whole reply is one with `done: true`
-/// — so the unary body needs no second variant here, and the two paths
-/// cannot drift. Frame-triage policy (in-band `Err` on `Corrupt`, so a
-/// later genuine `done: true` record can still complete the stream) lives
-/// in the driver, not here.
+/// Decode unary or streaming `/api/chat` records. Only `done: true` emits a
+/// terminal record; EOF alone does not. The driver handles corrupt-frame policy.
 pub struct OllamaDecoder {
-    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
-    /// accumulate under the per-reply minted key, and the boundary end
-    /// this wire never announces is derived, not hand-rolled here.
+    /// Accumulates reasoning under one reply-local key and derives its close.
     reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Per-reply minter for id-less tool-call keys. Counted across the
-    /// whole reply, not per record — a per-record enumeration would hand
-    /// two id-less calls in separate records the same `Minted(Tool, 0)`
-    /// key, and one would silently swallow the other downstream.
+    /// Reply-wide ID generator so id-less calls in separate records remain distinct.
     tool_ids: crate::streaming::SyntheticIds,
 }
 
@@ -401,8 +372,7 @@ impl Default for OllamaDecoder {
 }
 
 impl OllamaDecoder {
-    /// Interpret one `/api/chat` record: its content, its tool calls, and —
-    /// when it says `done` — the terminal it carries.
+    /// Emit record content and calls, plus terminal metadata when `done` is true.
     fn interpret_record(
         &mut self,
         response: CompletionResponse,
@@ -417,11 +387,8 @@ impl OllamaDecoder {
             ..
         } = response.message
         {
-            // A daemon-issued call id keys the reply and travels as the
-            // durable id; an id-less call (older daemons) keys by a
-            // distinct minted identity and its durable id stays absent —
-            // never the tool name, which would collide two same-tool calls
-            // in one turn.
+            // Id-less calls need distinct minted keys, not tool names; only daemon
+            // IDs may be treated as provider-issued durable identity.
             let mut tool_events = crate::operation::AdapterOutput::new();
             for tool_call in tool_calls {
                 let key = match tool_call
@@ -440,12 +407,8 @@ impl OllamaDecoder {
                 tool_events.tool_call(key, end);
             }
 
-            // Older reasoning models put their reasoning in `content`
-            // instead of `thinking`. Splitting it out needs the WHOLE
-            // content, so only a record that completes the turn is a
-            // candidate: a streamed delta carries a fragment, where a
-            // leading `<think>` has no terminator yet and the content is
-            // left alone (issue #1926 keeps the reasoning either way).
+            // Split embedded reasoning only in terminal content without explicit
+            // thinking; partial deltas may lack the closing marker.
             let (reasoning, text) = match thinking.as_deref() {
                 None | Some("") if done => {
                     let permits_omitted_think_start = model.to_ascii_lowercase().contains("qwen3");
@@ -456,8 +419,6 @@ impl OllamaDecoder {
                 _ => (thinking, content),
             };
 
-            // Declare what the record carried; the shared lifecycle derives
-            // the canonical sequence (boundary end included).
             self.reasoning.emit_chunk(
                 internal::chunk_lifecycle::ChunkParts {
                     reasoning,
@@ -473,9 +434,7 @@ impl OllamaDecoder {
             );
         }
 
-        // Only a `done: true` record counts as the provider completing the
-        // turn; the driver stops consuming after the terminal record, and
-        // the span is the driver's to record.
+        // Nonterminal counters do not establish successful turn completion.
         if done {
             let native = StreamingCompletionResponse {
                 model,
@@ -488,7 +447,7 @@ impl OllamaDecoder {
                 done_reason: response.done_reason,
             };
             match serde_json::to_value(&native) {
-                Ok(raw) => out.final_record(stream_final(native).with_raw(raw)),
+                Ok(raw) => out.final_record(stream_final(native, raw)),
                 Err(err) => out.error(err.into()),
             }
         }
@@ -531,8 +490,6 @@ impl crate::wire::Decoder<Completion> for OllamaDecoder {
     fn finish(&mut self, _out: &mut crate::operation::AdapterOutput) {}
 }
 
-// ---------- Model Listing  ----------
-
 /// The reply of `GET /api/tags`: every model the daemon has pulled.
 #[derive(Debug, Deserialize)]
 pub struct ListModelsResponse {
@@ -555,13 +512,11 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-// ---------- Tool Definition Conversion ----------
-
 /// Ollama-required tool definition format.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     #[serde(rename = "type")]
-    pub type_field: String, // Fixed as "function"
+    pub type_field: String,
     pub function: completion::ToolDefinition,
 }
 
@@ -581,11 +536,8 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
-    /// The daemon-issued call id (`"id":"call_..."`), present on modern
-    /// Ollama daemons and absent on older ones. Read when present — it is
-    /// the durable handle that distinguishes two same-tool calls in one
-    /// turn — but never serialized back: Ollama's request schema correlates
-    /// tool messages by `tool_name`, and replayed histories predate the id.
+    /// Optional daemon-issued call ID. Read but never serialized because request
+    /// tool messages correlate by `tool_name`.
     #[serde(default, skip_serializing)]
     pub id: Option<String>,
     #[serde(default, rename = "type")]
@@ -603,8 +555,6 @@ pub struct Function {
     pub name: String,
     pub arguments: Value,
 }
-
-// ---------- Provider Message Definition ----------
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
@@ -643,9 +593,8 @@ pub enum Message {
     },
 }
 
-/// -----------------------------
-/// Provider Message Conversions
-/// -----------------------------
+/// Combine text and supported image/document content into one user message.
+/// Reject unsupported media sources and tool results.
 fn user_message_from_content(
     content: Vec<crate::message::UserContent>,
 ) -> Result<Message, crate::message::MessageError> {
@@ -700,8 +649,8 @@ fn user_message_from_content(
     })
 }
 
-/// Conversion from an internal Rig message (crate::message::Message) to a provider Message.
-/// (Only User and Assistant variants are supported.)
+/// Convert system, user, and assistant messages. User tool results become
+/// separate name-keyed messages; unsupported media returns a conversion error.
 impl TryFrom<crate::message::Message> for Vec<Message> {
     type Error = crate::message::MessageError;
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
@@ -723,7 +672,6 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             content,
                             ..
                         }) => {
-                            // The executed tool's name travels as required data.
                             let function_name = name;
                             if !pending_user_content.is_empty() {
                                 messages.push(user_message_from_content(std::mem::take(
@@ -788,11 +736,6 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     }
                 }
 
-                // Both fields may be empty. This used to lean on the non-empty
-                // content type to argue that at least one of them was populated;
-                // content is a `Vec` now, so an assistant turn that carried
-                // nothing renders as an Ollama message with empty text and no
-                // tool calls, which is what such a turn actually was.
                 Ok(vec![Message::Assistant {
                     content: text_content.join(" "),
                     thinking,
@@ -819,8 +762,6 @@ impl Message {
     }
 }
 
-// ---------- Additional Message Types ----------
-
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
@@ -835,10 +776,6 @@ impl From<crate::message::ToolCall> for ToolCall {
         }
     }
 }
-
-// =================================================================
-// Tests
-// =================================================================
 
 #[cfg(test)]
 mod tests;

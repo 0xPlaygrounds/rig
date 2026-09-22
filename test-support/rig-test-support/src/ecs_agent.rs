@@ -14,6 +14,7 @@ use std::{
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     completion::CompletionModel,
     effect::{EffectKind, HandlerDescriptor},
@@ -31,7 +32,6 @@ use rig_ecs::{
     bus::{Handlers, Recording},
     systems::RunCommands,
 };
-use rig_effect_log::EffectLogRecorder;
 
 /// Transport runtime driven independently of the test's `app.update()` loop.
 ///
@@ -108,10 +108,6 @@ pub struct EcsAgent {
     tool_count: u64,
     recorder: EffectLogRecorder,
     golden_identity: bool,
-    /// Policy names stamped into the legacy producer's recorder header.
-    pub declared_policies: Vec<String>,
-    /// Whether the producer declares the bus policy as agent-owned metadata.
-    pub declare_bus_policy: bool,
 }
 
 impl EcsAgent {
@@ -158,6 +154,7 @@ impl EcsAgent {
             EffectLogRecorder::new()
         };
         Recording::install(app.world_mut(), recorder.clone());
+        crate::goldens::attach_world_recorder(&recorder);
         setup(app.world_mut());
         let model = Handlers::with(app.world_mut(), |handlers| {
             handlers.register(
@@ -181,6 +178,7 @@ impl EcsAgent {
             .world_mut()
             .spawn((
                 Owner(if golden_identity { "golden" } else { "parity" }.into()),
+                rig_ecs::agent::PolicyVersion("ecs-native/v1".into()),
                 Preamble(Some(preamble.into())),
                 DefaultMaxTurns(if golden_identity { None } else { Some(turns) }),
                 MaxTurns(turns),
@@ -193,8 +191,6 @@ impl EcsAgent {
             tool_count: 0,
             recorder,
             golden_identity,
-            declared_policies: vec![],
-            declare_bus_policy: true,
         }
     }
 
@@ -250,7 +246,7 @@ impl EcsAgent {
     }
 
     /// Return the recorder's current effect-log snapshot.
-    pub fn effect_log(&self) -> rig_effect_log::EffectLog {
+    pub fn effect_log(&self) -> rig_cassette::effect_log::EffectLog {
         self.recorder.log()
     }
 
@@ -298,18 +294,9 @@ impl EcsAgent {
 
     /// Drive a run until settlement or failure, panicking after the 30-second deadline.
     pub async fn wait_for_outcome(&mut self, run: Entity) -> Result<String, Failure> {
-        if self.golden_identity {
-            let bus = self.app.world().resource::<rig_ecs::bus::Policy>().0;
-            rig_ecs::replay::stamp_legacy_builder_header(
-                self.app.world_mut(),
-                self.agent,
-                &self.recorder,
-                self.declare_bus_policy.then_some(bus),
-                self.declared_policies.clone(),
-            );
-            rig_ecs::replay::stamp_run(self.app.world_mut(), run, &self.recorder)
-                .expect("the run stamps its program identity");
-        }
+        rig_cassette::ecs::identity::stamp_run(self.app.world_mut(), run, &self.recorder)
+            .expect("the run stamps its program identity");
+        crate::goldens::capture_world_program(self.app.world_mut(), run, &self.recorder.log());
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 self.app.update();

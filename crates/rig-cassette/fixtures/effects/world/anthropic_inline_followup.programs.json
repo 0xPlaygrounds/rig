@@ -1,0 +1,485 @@
+{
+  "golden/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/memory",
+            "descriptor": {
+              "key": "golden/memory",
+              "family": {
+                "family": "memory"
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": 2048,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a concise assistant. Answer directly.",
+          "rig_ecs::agent::Remembers": 0,
+          "rig_ecs::agent::Temperature": 0.0,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 1
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Remembering": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "LoadingMemory",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Image": {
+              "source": {
+                "Binary": {
+                  "id": [
+                    250,
+                    206,
+                    131,
+                    181,
+                    197,
+                    54,
+                    195,
+                    238,
+                    153,
+                    81,
+                    41,
+                    117,
+                    16,
+                    69,
+                    118,
+                    231,
+                    118,
+                    54,
+                    97,
+                    126,
+                    155,
+                    103,
+                    54,
+                    242,
+                    168,
+                    209,
+                    103,
+                    116,
+                    248,
+                    74,
+                    80,
+                    204
+                  ],
+                  "encoding": {
+                    "Base64": {
+                      "padding": 0,
+                      "last_symbol": null
+                    }
+                  }
+                }
+              },
+              "media_type": "png",
+              "additional_params": null,
+              "detail": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Describe the dominant non-background color of this image in one short sentence."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::bus::effect::Seq": 0
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": [
+        {
+          "id": "face83b5c536c3ee99512975104576e77636617e9b6736f2a8d16774f84a50cc",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+        }
+      ]
+    }
+  ],
+  "golden/run#1": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/memory",
+            "descriptor": {
+              "key": "golden/memory",
+              "family": {
+                "family": "memory"
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": 2048,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a concise assistant. Answer directly.",
+          "rig_ecs::agent::Remembers": 0,
+          "rig_ecs::agent::Temperature": 0.0,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 1
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::Cursor": {
+            "turn": 1
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::MemoryAppendScheduled": {},
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Remembering": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunResult": "The dominant non-background color is **bright red**.",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::Settled": {},
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {
+            "input_tokens": 47,
+            "output_tokens": 14,
+            "total_tokens": 61,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0
+          },
+          "rig_ecs::agent::UsesModel": 1,
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Image": {
+              "source": {
+                "Binary": {
+                  "id": [
+                    250,
+                    206,
+                    131,
+                    181,
+                    197,
+                    54,
+                    195,
+                    238,
+                    153,
+                    81,
+                    41,
+                    117,
+                    16,
+                    69,
+                    118,
+                    231,
+                    118,
+                    54,
+                    97,
+                    126,
+                    155,
+                    103,
+                    54,
+                    242,
+                    168,
+                    209,
+                    103,
+                    116,
+                    248,
+                    74,
+                    80,
+                    204
+                  ],
+                  "encoding": {
+                    "Base64": {
+                      "padding": 0,
+                      "last_symbol": null
+                    }
+                  }
+                }
+              },
+              "media_type": "png",
+              "additional_params": null,
+              "detail": null
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Describe the dominant non-background color of this image in one short sentence."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "memory",
+              "memory": "loaded",
+              "messages": []
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "The dominant non-background color is **bright red**."
+              }
+            ],
+            "message_id": "msg_REDACTED_1",
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {},
+            "allowed": []
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 8,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is **bright red**."
+                }
+              ],
+              "usage": {
+                "input_tokens": 47,
+                "output_tokens": 14,
+                "total_tokens": 61,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0
+              },
+              "message_id": "msg_REDACTED_1",
+              "response_id": null,
+              "provider_request_id": "req_REDACTED_1",
+              "finish_reason": "stop",
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "raw": {
+                "container": null,
+                "content": [
+                  {
+                    "text": "The dominant non-background color is **bright red**.",
+                    "type": "text"
+                  }
+                ],
+                "id": "msg_REDACTED_1",
+                "model": "claude-sonnet-4-6",
+                "role": "assistant",
+                "stop_details": null,
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "type": "message",
+                "usage": {
+                  "cache_creation": {
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  },
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "inference_geo": "global",
+                  "input_tokens": 47,
+                  "output_tokens": 14,
+                  "service_tier": "standard"
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": "msg_REDACTED_1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 10,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "The dominant non-background color is **bright red**."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "memory",
+              "memory": "appended"
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 2
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Remembering": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "LoadingMemory",
+          "rig_ecs::agent::RunSeq": 1,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 13,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 14,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "What shape did the image I sent earlier contain? Answer in one short sentence."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 13,
+          "rig_ecs::bus::effect::Seq": 3
+        }
+      ],
+      "counters": {
+        "next_run": 2,
+        "next_id": 3
+      },
+      "binaries": [
+        {
+          "id": "face83b5c536c3ee99512975104576e77636617e9b6736f2a8d16774f84a50cc",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,8 @@ use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     completion::Message,
     effect::{CustomEffect, EffectId, EffectKind, FamilyDescriptor, HandlerKey, Outcome},
@@ -25,10 +27,9 @@ use rig_core::{
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::bus::{
-    Answer, Asked, BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued,
-    PendingEffect, RigSchedule,
+    Answer, Asked, BusSet, EffectOutcome, Handlers, Held, InFlight, Issued, PendingEffect,
+    RigSchedule,
 };
-use rig_effect_log::EffectLogRecorder;
 
 /// A question the world answers.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

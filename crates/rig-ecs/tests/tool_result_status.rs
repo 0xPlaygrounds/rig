@@ -1,4 +1,4 @@
-//! A tool result's status is graph data beside `ToolResultPart` (CONTRACT
+//! A tool result's status is graph data beside `ContentPart::ToolResult` (CONTRACT
 //! §8.1): the batch lands it, a checkpoint keeps it, and the DTO never shows it.
 //!
 //! | claim | test |
@@ -12,6 +12,8 @@ use crate::run_support;
 use std::{any::type_name, collections::BTreeMap, sync::Mutex};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -22,13 +24,12 @@ use rig_core::{
 use rig_ecs::{
     agent::{
         Grant, InvalidCall, InvalidCalls, Resolution, Run, RunSeq, Settled,
-        content::parts::{TextPart, ToolResultPart, ToolResultStatus, read_message},
+        content::parts::{ContentPart, ToolResultStatus, read_message},
     },
-    bus::{EffectLogResource, RigSchedule},
-    checkpoint::{Checkpoint, load_world, save_world},
+    bus::RigSchedule,
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -113,9 +114,9 @@ fn results(world: &mut World) -> Vec<(Entity, String, Option<ToolResultStatus>)>
                 .flat_map(|children| children.iter())
                 .collect();
             for part in parts {
-                if let Some(result) = world.get::<ToolResultPart>(part) {
+                if let Some(ContentPart::ToolResult { name, .. }) = world.get::<ContentPart>(part) {
                     let status = world.get::<ToolResultStatus>(part).copied();
-                    found.push((utterance, result.name.clone(), status));
+                    found.push((utterance, name.clone(), status));
                 }
             }
         }
@@ -311,7 +312,7 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
     );
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     // Loaded beside the original, into the world its handlers are bound in.
-    let loaded = load_world(&checkpoint, app.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, []).unwrap();
     let after: Vec<_> = results(app.world_mut())
         .into_iter()
         .filter(|(utterance, _, _)| loaded.entities.contains(utterance))
@@ -338,11 +339,15 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
     let text = misplaced
         .entities
         .iter_mut()
-        .find(|entity| entity.contains_key(type_name::<TextPart>()))
+        .find(|entity| {
+            entity
+                .get(type_name::<ContentPart>())
+                .is_some_and(|part| part.get("Text").is_some())
+        })
         .unwrap();
     text.insert(type_name::<ToolResultStatus>().to_owned(), status);
     let count = app.world().entities().len();
-    let error = load_world(&misplaced, app.world_mut()).unwrap_err();
+    let error = load_world(&misplaced, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
     assert!(
         error.message.contains("tool result status"),
         "{}",

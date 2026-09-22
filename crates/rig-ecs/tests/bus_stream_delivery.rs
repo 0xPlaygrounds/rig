@@ -59,6 +59,7 @@ impl Serve for WithErrors {
             Ok(StreamEvent::Final(StreamFinal::new(
                 "mock",
                 Usage::default(),
+                serde_json::json!({}),
             ))),
             Err(ErrorReport::new(ErrorKind::Provider, "after final")),
         ])))
@@ -116,11 +117,12 @@ fn independent_consumers_preserve_interleaved_errors_without_a_recorder() {
 }
 #[test]
 fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none() {
-    use rig_ecs::{
-        bus::{EffectLogResource, Handlers, Replay},
-        checkpoint::load_world,
-    };
-    use rig_effect_log::EffectLogRecorder;
+    use rig_cassette::ecs::EffectLogResource;
+    use rig_cassette::ecs::Replay;
+    use rig_cassette::effect_log::EffectLogRecorder;
+    use rig_cassette::effect_log::EffectLogReplayer;
+    use rig_core::serve::ErasedHandler;
+    use rig_ecs::checkpoint::{RestoreMode, load_world};
     let mut live = bus_support::app();
     let recorder = EffectLogRecorder::keeping_stream_events();
     EffectLogResource::install(live.world_mut(), recorder.clone());
@@ -128,11 +130,9 @@ fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none()
     run(&mut live);
     let mut replay = bus_support::app();
     let replayed = observe(&mut replay);
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::policy_visible().register(handlers, &recorder.log())
-    })
-    .unwrap()
-    .unwrap();
+    Replay::policy_visible()
+        .register(replay.world_mut(), &recorder.log())
+        .unwrap();
     let effect = spawn_stream(&mut replay, "model");
     bus_support::tick_until(&mut replay, "replayed stream", |world| {
         world.get::<EffectOutcome>(effect).is_some()
@@ -142,7 +142,15 @@ fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none()
     drop(replay);
     let mut restored = bus_support::app();
     let restored_trace = observe(&mut restored);
-    load_world(&saved, restored.world_mut()).unwrap();
+    // The saved handler is the replayer that answered the stream; the restored
+    // world is served by the same recorded implementation, supplied here
+    // rather than assembled live. No delivery plan travels with it.
+    let log = recorder.log();
+    let replayers = EffectLogReplayer::for_log_by_id(&log)
+        .unwrap()
+        .into_iter()
+        .map(|replayer| (replayer.key().clone(), ErasedHandler::new(replayer)));
+    load_world(&saved, restored.world_mut(), RestoreMode::Strict, replayers).unwrap();
     restored.update();
     assert!(restored_trace.lock().unwrap().is_empty());
     assert_eq!(
@@ -264,6 +272,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
         .unbounded_send(Ok(StreamEvent::Final(StreamFinal::new(
             "mock",
             Usage::default(),
+            serde_json::json!({}),
         ))))
         .unwrap();
     drop(sender);
@@ -321,8 +330,8 @@ fn burst_delivery_is_bounded_and_does_not_starve_another_effect() {
 }
 #[test]
 fn live_visibility_is_independent_of_recorder_event_retention() {
-    use rig_ecs::bus::EffectLogResource;
-    use rig_effect_log::EffectLogRecorder;
+    use rig_cassette::ecs::EffectLogResource;
+    use rig_cassette::effect_log::EffectLogRecorder;
     let mut expected = None;
     for keep in [false, true] {
         let recorder = if keep {
@@ -430,6 +439,7 @@ fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
         let terminal = Ok(StreamEvent::Final(StreamFinal::new(
             "mock",
             Usage::default(),
+            serde_json::json!({}),
         )));
         sender.unbounded_send(terminal.clone()).unwrap();
         drop(sender);
@@ -474,7 +484,11 @@ impl Serve for RetryingStream {
                 .unwrap();
             if !first {
                 writer
-                    .finish(StreamFinal::new("mock", Usage::default()))
+                    .finish(StreamFinal::new(
+                        "mock",
+                        Usage::default(),
+                        serde_json::json!({}),
+                    ))
                     .await
                     .unwrap();
             }
@@ -537,8 +551,9 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
 #[test]
 fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effect() {
     use futures::StreamExt;
-    use rig_ecs::bus::{EffectLogResource, Handlers, Replay, Streaming};
-    use rig_effect_log::EffectLogRecorder;
+    use rig_cassette::ecs::{EffectLogResource, Replay};
+    use rig_cassette::effect_log::EffectLogRecorder;
+    use rig_ecs::bus::Streaming;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     struct ReadyStream {
@@ -638,11 +653,9 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
     let mut replay = bus_support::app();
     let replay_recorder = EffectLogRecorder::keeping_stream_events();
     EffectLogResource::install(replay.world_mut(), replay_recorder.clone());
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::policy_visible().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::policy_visible()
+        .register(replay.world_mut(), &log)
+        .unwrap();
     let effects: Vec<_> = ["a", "b"]
         .into_iter()
         .map(|key| spawn_stream(&mut replay, key))
@@ -657,7 +670,7 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
     assert!(
         !replay
             .world()
-            .contains_resource::<rig_ecs::bus::ReplayFailure>()
+            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
     );
     assert_eq!(*original[0].lock().unwrap(), *replayed[0].lock().unwrap());
     assert_eq!(*replayed[0].lock().unwrap(), *replayed[1].lock().unwrap());

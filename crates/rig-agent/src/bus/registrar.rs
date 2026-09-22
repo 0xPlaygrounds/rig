@@ -1,5 +1,9 @@
-//! The impl half's handle: `Registrar`, and the mailbox that carries
-//! handlers to the driver.
+//! Live handler registration and the driver's registration mailbox.
+//!
+//! ```
+//! let (dispatcher, registrar, driver) = rig_agent::bus::Bus::channel();
+//! assert!(registrar.keys().is_empty());
+//! ```
 
 use std::{
     collections::VecDeque,
@@ -58,10 +62,8 @@ struct MailboxInner {
     closed: bool,
 }
 
-/// Registrations posted by [`Registrar`]s and taken by the driver on its
-/// next poll. Carries handlers, so it is exactly as `Send + Sync` as
-/// [`ErasedHandler`] is: natively yes, on browser wasm no — by type, with
-/// nothing written by hand.
+/// Queued registrations consumed on the driver's next poll. Handler ownership
+/// makes this thread-safe on native targets but not on browser WASM.
 pub(super) struct Mailbox {
     inner: Mutex<MailboxInner>,
 }
@@ -149,31 +151,10 @@ impl Mailbox {
     }
 }
 
-/// The impl half's handle to a live bus: install, replace and remove the
-/// handlers the driver serves.
-///
-/// A registration writes the handler's descriptor into the bus's shared
-/// descriptor table **synchronously** —
-/// [`Dispatcher::descriptor`](super::Dispatcher::descriptor) sees it and
-/// [`Dispatcher::handle`](super::Dispatcher::handle) binds to it at once —
-/// and posts the handler
-/// to the driver, which installs it on its next poll, before it serves
-/// anything dispatched after the registration. A handler is therefore
-/// callable one driver poll after `register`; nothing that drives the bus
-/// can observe the gap.
-///
-/// `Registrar` carries handlers, so it is exactly as `Send + Sync` as they
-/// are: natively `Send + Sync` (every handler is, through the `WasmCompat*`
-/// supertraits); on browser wasm neither, since a provider client there is
-/// `!Send`. That is the whole reason it is a separate type from the
-/// `Send + Sync` [`Dispatcher`](super::Dispatcher): the value that carries
-/// a handler shares the handler's thread affinity, and nothing hands a
-/// registrar out through a `Send` value. In a Bevy host it is a `NonSend`
-/// resource on every target — one spelling, natively and in the browser.
-///
-/// **Whoever holds the driver registers**: the registrar is minted from the
-/// driver ([`BusDriver::registrar`](super::BusDriver::registrar)) or
-/// alongside it ([`Bus::channel`](super::Bus::channel)).
+/// Install, replace, and remove handlers on a bus. Descriptors update synchronously;
+/// the driver installs handlers on its next poll before serving later dispatches.
+/// Obtained from the driver or bus constructors, not from dispatchers.
+/// Carries handlers, so it is `Send + Sync` natively but neither on browser WASM.
 #[derive(Clone)]
 pub struct Registrar {
     pub(super) shared: Arc<Shared>,
@@ -237,7 +218,7 @@ impl Registrar {
         self.mailbox.deregister(&self.shared, key)
     }
 
-    /// The descriptor of the handler serving `key` — the same snapshot
+    /// The descriptor of the handler serving `key`, from the same snapshot
     /// [`Dispatcher::descriptor`](super::Dispatcher::descriptor) reads.
     pub fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
         self.shared.descriptor(key)
@@ -248,7 +229,7 @@ impl Registrar {
         self.shared.keys()
     }
 
-    /// Every registered descriptor, in key order — the same snapshot
+    /// Every registered descriptor, in key order, from the same snapshot
     /// [`Dispatcher::descriptors`](super::Dispatcher::descriptors) reads.
     pub fn descriptors(&self) -> Vec<HandlerDescriptor> {
         self.shared.descriptors()
@@ -261,17 +242,14 @@ impl Registrar {
     }
 }
 
-// The registrar is as `Send + Sync` as the handlers it carries: natively,
-// always.
+// Native registrars must remain shareable across host threads.
 #[cfg(not(target_family = "wasm"))]
 const _: () = {
     const fn assert_send_sync<T: Clone + Send + Sync + 'static>() {}
     assert_send_sync::<Registrar>();
 };
 
-// On browser wasm the registrar carries `!Send` handlers: the type-level
-// claim, compiled on that target only (the markers are no-ops there, so a
-// handler holding an `Rc` satisfies `Handler`).
+// Browser handlers must accept local state without imposing native thread bounds.
 #[cfg(target_family = "wasm")]
 const _: fn(&Registrar) = |registrar| {
     struct Local(std::rc::Rc<std::cell::Cell<usize>>);

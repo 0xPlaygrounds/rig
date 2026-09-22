@@ -21,7 +21,7 @@ use bytes::Bytes;
 /// dependency, and never written.
 fn cassette_body(path: &str, section: &str) -> String {
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cassettes/copilot")
+        .join("../rig-cassette/fixtures/cassettes/copilot")
         .join(path);
     let text = std::fs::read_to_string(&file)
         .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));
@@ -72,7 +72,7 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 }
 
 /// The request one `encode` produced, for the envelope assertions.
-fn encoded(wire: &CopilotWire) -> http::Request<Body> {
+fn encoded(wire: &impl Wire<Op = Completion>) -> http::Request<Body> {
     let mut encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -80,10 +80,110 @@ fn encoded(wire: &CopilotWire) -> http::Request<Body> {
     encoded.requests.remove(0)
 }
 
+#[test]
+fn dedicated_and_catalog_construction_encode_identical_requests() {
+    use crate::providers::registry::{ProviderConfig, ProviderId};
+    let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
+    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
+        let dedicated = Copilot::new(token).completion(model);
+        let ProviderConfig::OpenAi(preset) = ProviderId::resolve("copilot").unwrap().config(token)
+        else {
+            panic!("Copilot is an OpenAI-family preset")
+        };
+        let generic = preset.completion(model);
+        assert_eq!(dedicated.wire, generic);
+        assert_same_requests(encoded(&dedicated), encoded(&generic));
+        let explicit = match &generic {
+            OpenAiWire::Chat(_) => encoded(&preset.chat(model)),
+            OpenAiWire::Responses(_) => encoded(&preset.responses(model)),
+        };
+        assert_same_requests(encoded(&generic), explicit);
+    }
+}
+
+fn assert_same_requests(mut direct: http::Request<Body>, mut catalog: http::Request<Body>) {
+    assert_eq!(direct.uri(), catalog.uri());
+    // Each encode creates its own transport request id.
+    for request in [&mut direct, &mut catalog] {
+        assert!(
+            !request
+                .headers_mut()
+                .remove("x-request-id")
+                .unwrap()
+                .is_empty()
+        );
+    }
+    assert_eq!(direct.headers(), catalog.headers());
+    let (Body::Bytes(direct), Body::Bytes(catalog)) = (direct.into_body(), catalog.into_body())
+    else {
+        panic!("JSON request bodies")
+    };
+    assert_eq!(direct, catalog);
+}
+
+#[test]
+fn explicit_routes_keep_the_session_envelope_and_configuration() {
+    use crate::providers::openai::Route;
+    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
+        for route in [Route::Chat, Route::Responses] {
+            let provider = OpenAI::with_key(&DIALECT, "session-token")
+                .with_base_url("https://gateway.invalid/copilot")
+                .with_route(route)
+                .with_system_instructions_placement(SystemInstructionsPlacement::Instructions);
+            let selected = provider.completion(model);
+            let explicit = match route {
+                Route::Chat => encoded(&provider.chat(model)),
+                Route::Responses => {
+                    assert!(provider.responses(model).strict_tools);
+                    encoded(&provider.responses(model))
+                }
+            };
+            assert_same_requests(encoded(&selected), explicit);
+        }
+    }
+}
+
+#[test]
+fn a_manual_copilot_wrapper_keeps_its_envelope_after_deserialization() {
+    let provider = OpenAI::new("manual-token");
+    for shared in [
+        provider.chat("model").into(),
+        provider.responses("model").into(),
+    ] {
+        let wire = CopilotWire {
+            wire: shared,
+            intent: CopilotIntent::Edits,
+        };
+        let mut reloaded: CopilotWire =
+            serde_json::from_value(serde_json::to_value(&wire).unwrap()).unwrap();
+        match &mut reloaded.wire {
+            OpenAiWire::Chat(wire) => wire.provider.api_key = "manual-token".into(),
+            OpenAiWire::Responses(wire) => wire.provider.api_key = "manual-token".into(),
+        }
+        for wire in [&wire, &reloaded] {
+            let request = encoded(wire);
+            assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
+            assert_eq!(request.headers()["openai-intent"], "conversation-edits");
+            assert_eq!(
+                request.headers()[http::header::AUTHORIZATION],
+                "Bearer manual-token"
+            );
+            assert_eq!(
+                request
+                    .headers()
+                    .get_all(http::header::AUTHORIZATION)
+                    .iter()
+                    .count(),
+                1
+            );
+        }
+    }
+}
+
 // ── routing ─────────────────────────────────────────────────────────────
 
 /// The route is a property of the model, and the choice is made in one
-/// place. `tests/cassettes/copilot/routing/` records both halves: a Codex
+/// place. `crates/rig-cassette/fixtures/cassettes/copilot/routing/` records both halves: a Codex
 /// model answered by `/responses`, every other model by `/chat/completions`.
 #[test]
 fn the_model_chooses_the_route() {
@@ -205,7 +305,7 @@ async fn registry_request(
         .config("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
         .completion_handler(
             "copilot",
-            &reference.model,
+            reference.model(),
             BoxedHttpClient::new(transport.clone()),
         );
     let mut request = prompt();
@@ -288,7 +388,8 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
                 .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
         ),
         super::super::GPT_4O,
-    );
+    )
+    .unwrap();
     let saved = serde_json::to_string(&reference).expect("configuration serializes");
     let loaded = serde_json::from_str(&saved).expect("configuration reloads");
     let request =
@@ -351,7 +452,7 @@ async fn the_responses_route_folds_its_recorded_turn() {
 /// Copilot's Responses route answers a tool-calling turn with a
 /// *contentless* reasoning item — empty `content`, empty `summary`, no
 /// encrypted payload, just an id. The next turn has to replay it verbatim:
-/// `tests/cassettes/copilot/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/copilot/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml`
 /// records `{"id":"id_REDACTED_1","summary":[],"type":"reasoning"}` ahead of
 /// the tool result in its second request, so the block has to survive the
 /// fold or the replayed history is missing an item the provider sent.
@@ -548,4 +649,179 @@ fn the_base_url_comes_from_the_token_unless_overridden() {
         Copilot::new("tid=abc;proxy-ep=evil.invalid;").base_url,
         "https://api.githubcopilot.com"
     );
+}
+
+/// A rejecting synthetic hook proves single envelope ownership before transport.
+#[test]
+fn wrapper_owns_the_envelope_even_when_the_shared_dialect_has_a_hook() {
+    static OTHER_HOOKS: DialectHooks = DialectHooks {
+        default_endpoint: None,
+        model_route: None,
+        completion_envelope: Some(|_, _, _| panic!("the wrapper must replace this envelope")),
+        modality_envelope: None,
+    };
+    let dialect = Dialect {
+        quirks: Quirks {
+            hooks: Some(&OTHER_HOOKS),
+            ..Quirks::openai()
+        },
+        ..Dialect::gateway("custom", "https://explicit.invalid", "UNUSED_KEY")
+    };
+    let provider = OpenAI::with_key(&dialect, "manual-token");
+    for shared in [
+        provider.chat("model").into(),
+        provider.responses("model").into(),
+    ] {
+        let wire = CopilotWire {
+            wire: shared,
+            intent: CopilotIntent::Edits,
+        };
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let encoded = wire.encode(prompt(), mode).unwrap();
+            let [request] = encoded.requests.as_slice() else {
+                panic!("one request")
+            };
+            assert_eq!(request.uri().host(), Some("explicit.invalid"));
+            assert_eq!(request.headers()["openai-intent"], "conversation-edits");
+            assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
+            assert_eq!(
+                request.headers()[http::header::AUTHORIZATION],
+                "Bearer manual-token"
+            );
+            assert_eq!(request.headers().get_all("x-request-id").iter().count(), 1);
+        }
+    }
+}
+
+/// Persistence must refuse callbacks it cannot restore; this is a local data contract.
+#[test]
+fn named_dialect_persistence_rejects_replaced_hook_definitions() {
+    // Even a copied callback set is not the registered static definition.
+    // Function addresses cannot establish whether a custom definition is reloadable.
+    static REPLACEMENT: DialectHooks = DialectHooks {
+        default_endpoint: HOOKS.default_endpoint,
+        model_route: HOOKS.model_route,
+        completion_envelope: HOOKS.completion_envelope,
+        modality_envelope: None,
+    };
+    let changed = Dialect {
+        quirks: Quirks {
+            hooks: Some(&REPLACEMENT),
+            ..DIALECT.quirks
+        },
+        ..DIALECT
+    };
+    assert_ne!(changed, DIALECT);
+    assert!(serde_json::to_value(changed).is_err());
+    let restored: Dialect = serde_json::from_value(serde_json::to_value(DIALECT).unwrap()).unwrap();
+    assert_eq!(restored, DIALECT);
+    assert!(std::ptr::eq(restored.quirks.hooks.unwrap(), &HOOKS));
+}
+
+/// Synthetic credentials and explicit hosts exercise construction precedence, not server behavior.
+/// Recorded reply normalization is covered by the registry and direct-route tests above.
+#[test]
+fn configured_outbound_endpoints_remain_explicit_after_rotation() {
+    use crate::providers::registry::{ProviderConfig, ProviderId, ProviderRef};
+
+    let keys = [
+        "tid=1;proxy-ep=proxy.individual.githubcopilot.com;",
+        "tid=2;proxy-ep=proxy.business.githubcopilot.com;",
+    ];
+    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
+        for base in [
+            "https://api.githubcopilot.com",
+            "https://api.individual.githubcopilot.com",
+            "https://explicit.invalid/copilot",
+        ] {
+            for route in [Route::Chat, Route::Responses] {
+                let reference = ProviderRef::configured(
+                    ProviderConfig::OpenAi(
+                        OpenAI::with_key(&DIALECT, keys[0])
+                            .with_base_url(base)
+                            .with_route(route),
+                    ),
+                    model,
+                )
+                .unwrap();
+                let restored: ProviderRef =
+                    serde_json::from_value(serde_json::to_value(reference).unwrap()).unwrap();
+                for key in keys {
+                    let ProviderConfig::OpenAi(provider) = restored.config(key) else {
+                        panic!("OpenAI family")
+                    };
+                    let request = encoded(&provider.completion(model));
+                    let path = match route {
+                        Route::Chat => "/chat/completions",
+                        Route::Responses => "/responses",
+                    };
+                    assert_eq!(request.uri().to_string(), format!("{base}{path}"));
+                    assert_eq!(
+                        request.headers()[http::header::AUTHORIZATION],
+                        format!("Bearer {key}")
+                    );
+                    assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
+                    assert_same_requests(
+                        encoded(&CopilotWire {
+                            wire: Copilot::new(key)
+                                .with_base_url(base)
+                                .openai()
+                                .with_route(route)
+                                .completion(model),
+                            intent: CopilotIntent::default(),
+                        }),
+                        request,
+                    );
+                }
+            }
+        }
+        let registered =
+            ProviderRef::registered(ProviderId::resolve("copilot").unwrap(), model).unwrap();
+        for (key, host) in keys.into_iter().zip([
+            "api.individual.githubcopilot.com",
+            "api.business.githubcopilot.com",
+        ]) {
+            let ProviderConfig::OpenAi(provider) = registered.config(key) else {
+                panic!("OpenAI family")
+            };
+            let request = encoded(&provider.completion(model));
+            assert_eq!(request.uri().host(), Some(host));
+            assert_same_requests(encoded(&Copilot::new(key).completion(model)), request);
+        }
+    }
+}
+
+/// The local envelope depends on input history before either codec consumes it; no reply is needed.
+#[test]
+fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
+    use crate::message::{DocumentSourceKind, Image, UserContent};
+    let mut request = prompt();
+    request.chat_history = vec![
+        Message::assistant("send an image"),
+        Message::User {
+            content: vec![UserContent::Image(Image {
+                data: DocumentSourceKind::Url("https://image.invalid/example.png".into()),
+                ..Image::default()
+            })],
+        },
+    ];
+    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
+        let direct = copilot().completion(model).with_edits_intent();
+        let generic = copilot().openai().completion(model);
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let direct = direct.encode(request.clone(), mode).unwrap();
+            let generic = generic.encode(request.clone(), mode).unwrap();
+            for (encoded, intent) in [
+                (direct, "conversation-edits"),
+                (generic, "conversation-panel"),
+            ] {
+                let [request] = encoded.requests.as_slice() else {
+                    panic!("one request")
+                };
+                assert_eq!(request.headers()["x-initiator"], "agent");
+                assert_eq!(request.headers()["copilot-vision-request"], "true");
+                assert_eq!(request.headers()["openai-intent"], intent);
+            }
+        }
+    }
 }

@@ -96,6 +96,9 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
+        // The provider's own document, captured before the output is
+        // consumed into normalized content.
+        let raw = serde_json::to_value(&value.0)?;
         let message: RigMessage = value
             .clone()
             .0
@@ -133,7 +136,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let provider_request_id = value.0.request_id().map(str::to_string);
 
         Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
                 .with_optional_provider_request_id(provider_request_id)
                 .with_finish_reason(finish_reason),
         )

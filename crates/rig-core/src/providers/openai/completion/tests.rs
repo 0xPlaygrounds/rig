@@ -1521,7 +1521,7 @@ fn output_length_drops_a_tool_call_with_no_argument_tokens() {
 /// still pass through untouched.
 ///
 /// The `"null"` spelling is not hypothetical: every zero-argument call in
-/// `tests/cassettes/groq/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/groq/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml`
 /// carries it, so folding it to `{}` is what keeps the truncation sentinel
 /// from swallowing a real call.
 #[test]

@@ -11,6 +11,7 @@ use rig::agent::AgentBuilder;
 use rig::completion::PromptError;
 use rig::effect::EffectFamily;
 use rig::test_utils::{MockCompletionModel, MockTurn};
+use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
@@ -18,6 +19,7 @@ use crate::goldens::families;
 
 #[tokio::test]
 async fn outcome_invalid_call_unhandled_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
         "call-1",
         "multiply",
@@ -26,7 +28,7 @@ async fn outcome_invalid_call_unhandled_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble("Use the add tool.")
     .tool(Add)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let error = agent
         .prompt("What is 2 * 3?")
@@ -37,7 +39,7 @@ async fn outcome_invalid_call_unhandled_effect_log_is_the_golden_fixture() {
         matches!(error, PromptError::UnknownToolCall { ref tool_name, .. } if tool_name == "multiply"),
         "{error:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_outcome_invalid_call_unhandled", &log);
 }

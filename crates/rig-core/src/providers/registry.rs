@@ -1,76 +1,15 @@
-//! Naming a provider as data: one vocabulary for "which provider, which
-//! protocol, which model".
+//! Serializable provider selections, explicit configurations, and model references.
 //!
-//! A host that stores a model choice in a config file, a scene or a database
-//! row needs two different things, and conflating them is what this module
-//! exists to prevent:
-//!
-//! - a **registered selection** — [`ProviderId`], a validated
-//!   `(vendor, format)` pair such as `deepseek/openai` or `zai/anthropic`.
-//!   It names a provider this build ships and nothing else: its preset
-//!   configuration follows the provider's defaults today.
-//! - a **configuration** — [`ProviderConfig`], one of the crate's existing
-//!   provider configuration types. It carries explicit choices: the host, the
-//!   route, the API version, the beta flags, where system instructions go.
-//!
-//! [`ProviderRef`] is either of those plus a model identifier, and is the one
-//! type a host persists.
-//!
-//! # Syntax
-//!
-//! A reference reads as `vendor[/format]:model`. Shorthand is an *input*
-//! convenience: a bare vendor resolves when this build registers exactly one
-//! protocol family for it, and every write is qualified.
+//! [`ProviderRef`] pairs a nonempty model ID with a registered preset or an
+//! explicit configuration. References discard credentials and require a
+//! self-describing serialization format; hosts supply credentials at execution.
 //!
 //! ```
-//! use rig_core::providers::registry::{Format, ProviderRef};
-//!
-//! // Shorthand in, qualified out.
+//! use rig_core::providers::registry::ProviderRef;
 //! let reference = ProviderRef::parse("deepseek:deepseek-chat")?;
 //! assert_eq!(reference.to_string(), "deepseek/openai:deepseek-chat");
-//!
-//! // A vendor with two doors must name one.
-//! assert!(ProviderRef::parse("zai:glm-4.6").is_err());
-//! let zai = ProviderRef::parse("zai/anthropic:glm-4.6")?;
-//! assert_eq!(zai.id().format(), Format::Anthropic);
-//!
-//! // A model identifier may contain `:` and `/`; only the first `:` splits.
-//! let local = ProviderRef::parse("llamacpp/openai:qwen3:4b")?;
-//! assert_eq!(local.model, "qwen3:4b");
 //! # Ok::<(), rig_core::providers::registry::RefError>(())
 //! ```
-//!
-//! # Persistence
-//!
-//! A registered reference serializes as its canonical string; an explicit
-//! configuration serializes as a structured object, losing nothing but the
-//! credential (see [`Secret`]). Deserialization dispatches on the shape, so
-//! the serialized form requires a self-describing format — JSON in this
-//! repository.
-//!
-//! Canonicalization is intentional: reading `deepseek:deepseek-chat` and
-//! saving it writes `deepseek/openai:deepseek-chat`. A round trip preserves
-//! meaning, not input bytes. The guarantee a qualified write buys is narrow
-//! and worth stating exactly: **registering another protocol family for a
-//! vendor cannot make an already-written qualified reference ambiguous.** It
-//! says nothing about a removed endpoint, a renamed identifier, a changed
-//! preset default or a retired model; a short reference selects a preset, it
-//! does not freeze one.
-//!
-//! `copilot/openai` takes an already-exchanged Copilot session token, not a
-//! GitHub OAuth token. Its preset derives the endpoint from that token, and
-//! [`ProviderConfig::completion_handler`] uses Copilot's model-dependent
-//! routing and editor headers. An explicit configuration preserves its host,
-//! route and instruction placement rather than replacing them with the
-//! preset. Token exchange remains the host's responsibility.
-//!
-//! # Registry, not telemetry
-//!
-//! `vendor/format` is registry syntax. The provider string a record and a
-//! span carry is still the dialect's own `name`
-//! ([`Wire::name`]) — `deepseek`, `gcp.gemini`,
-//! `azure.openai`. The two have different contracts and neither renames the
-//! other.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -83,10 +22,40 @@ use crate::completion::CompletionModel;
 use crate::driver::{Bind, Bound};
 use crate::http_client::BoxedHttpClient;
 use crate::operation::Completion;
-use crate::providers::{anthropic, copilot, gemini, openai};
+use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::CompletionAdapter;
 use crate::wire::{HasCompletion, Secret, Wire};
+
+/// Every dialect this build knows, for
+/// [`openai::wire::Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
+///
+/// Keyed by [`openai::wire::Dialect::name`], so the regional and endpoint variants that
+/// share a provider name are not listed: a stored wire keeps its base URL,
+/// which is what distinguishes them.
+pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
+    &openai::wire::OPENAI,
+    &openai::wire::AZURE,
+    &openai::wire::DEEPSEEK,
+    &openai::wire::GROQ,
+    &openai::wire::HYPERBOLIC,
+    &openai::wire::MIRA,
+    &openai::wire::PERPLEXITY,
+    &openai::wire::TOGETHER,
+    &openai::wire::HUGGINGFACE,
+    &openai::wire::LLAMACPP,
+    &openai::wire::MISTRAL,
+    &openai::wire::OPENROUTER,
+    &openai::wire::VENICE,
+    &openai::wire::DOUBLEWORD,
+    &openai::wire::ZAI,
+    &openai::wire::MINIMAX,
+    &openai::wire::MOONSHOT,
+    &openai::wire::XIAOMIMIMO,
+    &crate::providers::xai::DIALECT,
+    &crate::providers::chatgpt::DIALECT,
+    &crate::providers::copilot::wire::DIALECT,
+];
 
 /// A protocol family: the request grammar a provider speaks, and so which of
 /// this crate's configuration types describes it.
@@ -106,8 +75,7 @@ pub enum Format {
 }
 
 impl Format {
-    /// Every protocol family, in registration order. The one table: the
-    /// serialized spelling, the parser and this list cannot disagree.
+    /// Every protocol family, in registration order.
     pub const ALL: [Format; 3] = [Format::OpenAi, Format::Anthropic, Format::Gemini];
 
     /// The family's stable serialized name.
@@ -158,12 +126,7 @@ impl<'de> Deserialize<'de> for Format {
     }
 }
 
-/// Which registered provider a [`ProviderId`] names.
-///
-/// The one decomposition of an identity into a vendor and a family: every
-/// accessor reads this, and nothing else rediscovers it. Each arm holds the
-/// provider's existing dialect definition rather than restating it, so the
-/// registry cannot disagree with the tables it is built from.
+/// Registered dialect definition and its configuration family.
 #[derive(Debug, Clone, Copy)]
 enum Registered {
     OpenAi(openai::wire::Dialect),
@@ -171,24 +134,9 @@ enum Registered {
     Gemini,
 }
 
-/// A registered provider selection: a vendor this build ships, paired with
-/// one protocol family it speaks.
-///
-/// Opaque and minted only here, from a provider's own dialect definition, so
-/// a pair the crate does not describe — `openai/anthropic`,
-/// `anthropic/gemini` — has no representation, and no public unchecked
-/// constructor or derived deserializer can make one:
-/// [`Deserialize`](ProviderId#impl-Deserialize<'de>-for-ProviderId) goes
-/// through [`resolve`](Self::resolve) like any other input.
-///
-/// "Registered" means *listed in this build's dialect tables*, which is what
-/// [`all`](Self::all) yields and [`resolve`](Self::resolve) accepts. A
-/// dialect const that exists but is missing from those tables — an
-/// in-progress provider — is still describable through
-/// [`ProviderConfig::id`], and will not resolve; adding the const to its
-/// table is what registers it.
-///
-/// [`Display`](fmt::Display) writes the canonical `vendor/format`.
+/// Validated vendor and protocol-family pair from this build's dialect tables.
+/// Construction and deserialization reject unregistered pairs. Equality and
+/// hashing use the pair, not dialect options; display emits `vendor/format`.
 #[derive(Debug, Clone, Copy)]
 pub struct ProviderId(Registered);
 
@@ -307,19 +255,10 @@ impl ProviderId {
         })
     }
 
-    /// This selection's preset configuration, credentialed with `api_key`.
-    ///
-    /// Infallible: every registered selection holds a definition that already
-    /// exists, so there is nothing to look up and nothing to fail.
+    /// Build this selection's preset with `api_key`. Copilot requires an exchanged
+    /// session token, not a GitHub OAuth token.
     pub fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
         match &self.0 {
-            Registered::OpenAi(dialect) if dialect.name == copilot::PROVIDER_NAME => {
-                let provider = copilot::wire::Copilot::new(api_key);
-                ProviderConfig::OpenAi(
-                    openai::wire::OpenAI::with_key(dialect, provider.api_key)
-                        .with_base_url(provider.base_url),
-                )
-            }
             Registered::OpenAi(dialect) => {
                 ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(dialect, api_key))
             }
@@ -330,8 +269,7 @@ impl ProviderId {
         }
     }
 
-    /// The environment variable the provider documents its credential under —
-    /// borrowed, because the dialect tables already hold it.
+    /// Environment variable named by the registered credential configuration.
     pub fn api_key_env(&self) -> &'static str {
         match &self.0 {
             Registered::OpenAi(dialect) => dialect.api_key_env,
@@ -430,7 +368,12 @@ pub enum SelectionError {
 /// A provider's configuration, by protocol family: this crate's existing
 /// configuration types, not a copy of their fields.
 ///
-/// Serializes externally tagged — `{"openai": {…}}` — so the family is read
+/// Dialects serialize by catalog name. Unregistered or modified dialect
+/// definitions remain usable programmatically but serialization refuses them,
+/// rather than writing an unreloadable or lossy configuration. Set hosts and
+/// typed options on the configuration, not on a copied dialect, to persist them.
+///
+/// Serializes externally tagged as `{"openai": {…}}`, so the family is read
 /// before the configuration, and a misspelled option is an error naming the
 /// field rather than a failure to match any variant.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -447,19 +390,33 @@ pub enum ProviderConfig {
 }
 
 impl ProviderConfig {
-    /// The registered selection this configuration speaks: its dialect's
-    /// identity, whatever host or options it carries. The family is
-    /// [`ProviderId::format`] on it.
-    pub fn id(&self) -> ProviderId {
-        ProviderId(match self {
-            Self::OpenAi(provider) => Registered::OpenAi(provider.dialect),
-            Self::Anthropic(provider) => Registered::Anthropic(provider.dialect),
-            Self::Gemini(_) => Registered::Gemini,
-        })
+    /// The catalog selection with this dialect's name, if registered.
+    /// Host and option overrides do not change the selection; its preset
+    /// remains the catalog's, never a custom dialect's payload.
+    pub fn id(&self) -> Option<ProviderId> {
+        ProviderId::new(self.vendor(), self.format())
     }
 
-    /// Whether the credential is empty — which it always is after a round
-    /// trip, since [`Secret`] does not serialize.
+    /// The configured dialect's name, including unregistered dialects.
+    pub fn vendor(&self) -> &'static str {
+        match self {
+            Self::OpenAi(provider) => provider.dialect.name,
+            Self::Anthropic(provider) => provider.dialect.name,
+            Self::Gemini(_) => gemini::PROVIDER_NAME,
+        }
+    }
+
+    /// The configuration family, independently of catalog membership.
+    pub fn format(&self) -> Format {
+        match self {
+            Self::OpenAi(_) => Format::OpenAi,
+            Self::Anthropic(_) => Format::Anthropic,
+            Self::Gemini(_) => Format::Gemini,
+        }
+    }
+
+    /// Whether the credential is empty, as it is after serialization round-trip
+    /// because [`Secret`] omits its value.
     pub fn is_unauthenticated(&self) -> bool {
         match self {
             Self::OpenAi(provider) => provider.api_key.is_empty(),
@@ -493,11 +450,6 @@ impl ProviderConfig {
         http: BoxedHttpClient,
     ) -> ErasedHandler {
         match self {
-            Self::OpenAi(provider) if provider.dialect.name == copilot::PROVIDER_NAME => erase(
-                copilot::wire::CopilotWire::from_openai(provider.clone(), model),
-                label,
-                http,
-            ),
             Self::OpenAi(provider) => erase(provider.completion(model), label, http),
             Self::Anthropic(provider) => erase(provider.completion(model), label, http),
             Self::Gemini(provider) => erase(provider.completion(model), label, http),
@@ -525,32 +477,68 @@ pub enum Provider {
 }
 
 /// A model identifier paired with the provider that serves it: what a host
-/// stores when it stores "which model".
+/// stores when it stores "which model". Construction validates the identifier;
+/// [`model`](Self::model) exposes it without permitting invalid mutation.
+///
+/// ```compile_fail
+/// use rig_core::providers::registry::ProviderRef;
+/// let Ok(mut reference) = ProviderRef::parse("deepseek:deepseek-chat") else { return; };
+/// reference.model.clear(); // the validated identifier is private
+/// ```
+///
+/// Provider data is also read-only, so credentials cannot be inserted afterwards:
+///
+/// ```compile_fail
+/// use rig_core::providers::registry::ProviderRef;
+/// let Ok(mut reference) = ProviderRef::parse("deepseek:deepseek-chat") else { return; };
+/// reference.provider = reference.provider().clone();
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProviderRef {
     /// The provider.
-    pub provider: Provider,
+    provider: Provider,
     /// The provider's own model identifier. Non-empty: the string form
     /// separates the selection from the model at the first `:`, so an empty
     /// model has no spelling [`parse`](Self::parse) would read back.
-    pub model: String,
+    model: String,
 }
 
 impl ProviderRef {
-    /// A reference to `model` on a registered selection.
-    pub fn registered(id: ProviderId, model: impl Into<String>) -> Self {
-        Self {
-            provider: Provider::Registered(id),
-            model: model.into(),
-        }
+    /// A reference to a non-empty `model` on a registered selection.
+    /// Returns [`RefError::EmptyModel`] for an empty identifier.
+    pub fn registered(id: ProviderId, model: impl Into<String>) -> Result<Self, RefError> {
+        Self::new(Provider::Registered(id), model.into())
     }
 
-    /// A reference to `model` on an explicit configuration.
-    pub fn configured(config: ProviderConfig, model: impl Into<String>) -> Self {
-        Self {
-            provider: Provider::Configured(config),
-            model: model.into(),
+    /// A reference to a non-empty `model` on an explicit configuration.
+    /// Removes the credential: references are persistent recipes, and the
+    /// host supplies credentials through [`config`](Self::config) at construction time.
+    /// The host stays fixed, even if it is a preset's default. For Copilot,
+    /// use a registered reference to follow the resolved token's proxy endpoint,
+    /// or configure the intended endpoint before creating this reference.
+    /// Returns [`RefError::EmptyModel`] for an empty identifier.
+    pub fn configured(config: ProviderConfig, model: impl Into<String>) -> Result<Self, RefError> {
+        Self::new(
+            Provider::Configured(config.with_credential("")),
+            model.into(),
+        )
+    }
+
+    /// The credential-free provider recipe.
+    pub fn provider(&self) -> &Provider {
+        &self.provider
+    }
+
+    fn new(provider: Provider, model: String) -> Result<Self, RefError> {
+        if model.is_empty() {
+            return Err(RefError::EmptyModel);
         }
+        Ok(Self { provider, model })
+    }
+
+    /// The non-empty model identifier.
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
     /// Parse `vendor[/format]:model`.
@@ -568,15 +556,13 @@ impl ProviderRef {
                 reference: text.to_owned(),
             });
         }
-        Ok(Self::registered(ProviderId::resolve(selection)?, model))
+        Self::registered(ProviderId::resolve(selection)?, model)
     }
 
-    /// The registered selection this reference names — the preset's own, or
-    /// the configuration's dialect. The canonical identity label diagnostics
-    /// print.
-    pub fn id(&self) -> ProviderId {
+    /// The catalog selection this reference names, if its dialect is registered.
+    pub fn id(&self) -> Option<ProviderId> {
         match &self.provider {
-            Provider::Registered(id) => *id,
+            Provider::Registered(id) => Some(*id),
             Provider::Configured(config) => config.id(),
         }
     }
@@ -606,13 +592,21 @@ impl std::str::FromStr for ProviderRef {
 /// host and options are not in it, and writing those is `Serialize`'s job.
 impl fmt::Display for ProviderRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.id(), self.model)
+        match &self.provider {
+            Provider::Registered(id) => write!(f, "{id}:{}", self.model),
+            Provider::Configured(config) => {
+                write!(f, "{}/{}:{}", config.vendor(), config.format(), self.model)
+            }
+        }
     }
 }
 
 /// Why a provider reference did not parse.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RefError {
+    /// A constructor or structured reference supplied an empty model identifier.
+    #[error("model identifier must not be empty")]
+    EmptyModel,
     /// No model identifier after the selection.
     #[error("`{reference}` names no model: expected `vendor[/format]:model`")]
     NoModel {
@@ -645,12 +639,8 @@ impl Serialize for ProviderRef {
     }
 }
 
-/// Symmetric with `Serialize`: a string is a registered reference, a map is a
-/// configuration.
-///
-/// Dispatching on the shape rather than buffering the input keeps the
-/// configuration's own field errors intact, and needs a self-describing
-/// format — which JSON is.
+/// Deserialize strings as registered references and maps as explicit configurations.
+/// Requires a self-describing format and preserves configuration field errors.
 impl<'de> Deserialize<'de> for ProviderRef {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(RefVisitor)
@@ -692,10 +682,11 @@ impl<'de> Visitor<'de> for RefVisitor {
                 unknown => return Err(de::Error::unknown_field(unknown, REF_FIELDS)),
             }
         }
-        Ok(ProviderRef::configured(
+        ProviderRef::configured(
             config.ok_or_else(|| de::Error::missing_field("config"))?,
             model.ok_or_else(|| de::Error::missing_field("model"))?,
-        ))
+        )
+        .map_err(de::Error::custom)
     }
 }
 

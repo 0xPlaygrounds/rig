@@ -94,9 +94,13 @@ impl Serve for Answer {
         if self.streaming {
             Reply::written(|mut out| async move {
                 out.text("original").await.unwrap();
-                out.finish(StreamFinal::new("proof", Usage::default()))
-                    .await
-                    .unwrap();
+                out.finish(StreamFinal::new(
+                    "proof",
+                    Usage::default(),
+                    serde_json::json!({}),
+                ))
+                .await
+                .unwrap();
             })
         } else {
             let EffectKind::Custom { payload, .. } = kind else {
@@ -265,6 +269,7 @@ impl Serve for ImageAnswer {
             })],
             Usage::default(),
             "proof",
+            serde_json::json!({}),
         ))))
     }
 }

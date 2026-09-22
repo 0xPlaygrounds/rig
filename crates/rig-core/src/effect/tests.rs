@@ -307,6 +307,7 @@ fn every_outcome_round_trips() {
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
                 "mock",
+                serde_json::json!({}),
             )),
             EffectFamily::Completion,
         ),
@@ -432,8 +433,12 @@ fn custom_kind_label_is_a_plain_string_on_the_wire() {
 fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     let completion = family::Completion::wrap(request()).expect("a request has a wire form");
     assert_eq!(completion.family(), EffectFamily::Completion);
-    let response =
-        CompletionResponse::new(vec![AssistantContent::text("hi")], Usage::default(), "mock");
+    let response = CompletionResponse::new(
+        vec![AssistantContent::text("hi")],
+        Usage::default(),
+        "mock",
+        serde_json::json!({}),
+    );
     let answer =
         family::Completion::unwrap(Outcome::Completion(response.clone())).expect("own family");
     assert_eq!(answer.choice, response.choice);

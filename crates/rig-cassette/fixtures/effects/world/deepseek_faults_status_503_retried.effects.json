@@ -1,0 +1,249 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 4,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 6,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 8,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 6744372726494626960
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say hi."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": true,
+          "message": "ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+          "code": "invalid_request_error",
+          "http_status": 503,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 503,
+            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say hi."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": true,
+          "message": "ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+          "code": "invalid_request_error",
+          "http_status": 503,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 503,
+            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say hi."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": true,
+          "message": "ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+          "code": "invalid_request_error",
+          "http_status": 503,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 503,
+            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say hi."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": true,
+          "message": "ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+          "code": "invalid_request_error",
+          "http_status": 503,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 503,
+            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

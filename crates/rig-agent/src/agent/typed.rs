@@ -1,12 +1,13 @@
-//! Typed runs: an [`AgentRunner`] whose accepted output is deserialized into
-//! `T`, with an optional retry budget.
+//! Typed run outputs with optional retries for execution or deserialization failures.
+//! Native prompting parses final text; extractors require an output-tool call.
 //!
-//! [`Agent::prompt_typed`] builds one in *native* mode: the schema for `T` is
-//! sent to the provider as the structured-output schema and the model's final
-//! text is parsed as `T`. [`Extractor`](crate::extractor::Extractor) builds
-//! one in *output-tool* mode: the model must call a synthetic `submit` tool
-//! whose arguments are the value. Both are the same run type; only how the
-//! value is recovered from the [`PromptResponse`] differs.
+//! ```no_run
+//! # async fn example(agent: rig_agent::Agent) -> Result<(), rig_agent::completion::StructuredOutputError> {
+//! let response = agent.prompt_typed::<Vec<String>>("List three colors.").retries(1).await?;
+//! assert_eq!(response.output.len(), 3);
+//! # Ok(())
+//! # }
+//! ```
 
 use std::{future::IntoFuture, marker::PhantomData};
 
@@ -309,20 +310,14 @@ where
     pub(crate) fn native(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut runner = AgentRunner::from_agent(agent, prompt);
         runner.config.output_schema = Some(schema_for!(T));
-        // Typed prompts deserialize the model's final string, so they pin
-        // `Native` structured output to keep the typed API's behavior unchanged
-        // across all providers. Routing the typed path through `Tool` output
-        // mode for tool-using agents on non-composing providers is a follow-up;
-        // use the untyped `output_schema`/`output_mode` API for tool-composing
-        // structured output today.
+        // Native typed prompting parses final text rather than requiring an output call.
         runner.config.output_mode = OutputMode::Native;
         Self::from_runner(runner, TypedOutput::Native)
     }
 
     /// An output-tool typed run over an already configured runner: the value
-    /// is the arguments of the run's output tool call. An invalid tool call
-    /// the hooks leave unhandled is ignored rather than failing the run, so a
-    /// model that fumbles the call once can still succeed within the budget.
+    /// is the arguments of the run's output tool call. Unhandled invalid tool
+    /// calls are ignored rather than failing the run.
     pub(crate) fn output_tool(runner: AgentRunner) -> Self {
         Self::from_runner(
             runner.unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore),
@@ -430,12 +425,8 @@ fn recover_output<T: DeserializeOwned>(
     }
 }
 
-/// Deserialize a typed structured response from the model's final text.
-///
-/// Tries a direct parse first (the common path — native and tool-call output is
-/// already clean JSON), then falls back to the first balanced JSON value in the
-/// text so prose or markdown code fences around the JSON don't break weaker
-/// `Prompted`/best-effort output.
+/// Deserialize final text directly, then try one value starting at the first
+/// object or array delimiter. Returns a parse error if neither attempt yields `T`.
 pub(crate) fn deserialize_structured_output<T: DeserializeOwned>(
     text: &str,
 ) -> Result<T, serde_json::Error> {

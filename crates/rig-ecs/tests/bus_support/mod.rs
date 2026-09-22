@@ -156,6 +156,7 @@ impl Serve for MockModel {
                     vec![AssistantContent::text(&self.text)],
                     Usage::default(),
                     "mock",
+                    serde_json::json!({ "provider": "mock" }),
                 ))))
             }
             EffectKind::Completion { stream: true, .. } => {
@@ -174,7 +175,11 @@ impl Serve for MockModel {
                         let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
                         if sent >= cap {
                             guard.finished = out
-                                .finish(StreamFinal::new("mock", Usage::default()))
+                                .finish(StreamFinal::new(
+                                    "mock",
+                                    Usage::default(),
+                                    serde_json::json!({ "provider": "mock" }),
+                                ))
                                 .await
                                 .is_ok();
                             return;
@@ -242,6 +247,7 @@ pub fn streaming() -> EffectKind {
 pub fn app_with(policy: ServingPolicy) -> App {
     let mut app = App::new();
     app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     rig_ecs::checkpoint::register_types(app.world_mut());
     app.finish();
     app.cleanup();

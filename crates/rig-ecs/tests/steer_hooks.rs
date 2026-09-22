@@ -19,6 +19,9 @@ use crate::run_support;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::required_row;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
     error::ErrorKind,
@@ -29,12 +32,10 @@ use rig_ecs::{
         Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, RequestPatch,
         Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
-    bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, load_world, save_world},
-    replay::required_row,
+    bus::{Handlers, PendingEffect, RigSchedule},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{Fresh, RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -363,6 +364,8 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     let loaded = load_world(
         &Checkpoint::from_json(&json).expect("serde"),
         app.world_mut(),
+        RestoreMode::Strict,
+        [],
     )
     .expect("loads");
     let turn = loaded.with::<rig_ecs::agent::Turn>(app.world())[0];
@@ -422,6 +425,8 @@ fn reload(
     let loaded = load_world(
         &Checkpoint::from_json(json).expect("serde"),
         app.world_mut(),
+        RestoreMode::Strict,
+        [],
     )
     .expect("loads");
     let run = loaded.with::<rig_ecs::agent::Run>(app.world())[0];
@@ -538,7 +543,7 @@ fn a_checkpoint_preserves_invalid_call_identity_namespaces() {
         },
     );
     let count = destination.world().entities().len();
-    let error = load_world(&legacy, destination.world_mut())
+    let error = load_world(&legacy, destination.world_mut(), RestoreMode::Strict, [])
         .expect_err("legacy component identities must fail load");
     assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
     assert!(
@@ -593,7 +598,7 @@ fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
 
 #[test]
 fn a_part_patch_is_not_sticky_on_a_judge_retry() {
-    use rig_ecs::agent::content::parts::{EditTarget, RequestPartEdit, TextPart};
+    use rig_ecs::agent::content::parts::{ContentPart, EditTarget, RequestPartEdit};
     let mut app = app();
     let (agent, requests) = scripted_agent(
         &mut app,
@@ -610,9 +615,9 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
     let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
     let target = app
         .world_mut()
-        .query::<(Entity, &TextPart)>()
+        .query::<(Entity, &ContentPart)>()
         .iter(app.world())
-        .find(|(_, text)| text.0.text == "say it")
+        .find(|(_, part)| matches!(part, ContentPart::Text(text) if text.text == "say it"))
         .unwrap()
         .0;
     add_system(
@@ -648,8 +653,7 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
             "user:End with DONE."
         ]
     );
-    assert_eq!(
-        app.world().get::<TextPart>(target).unwrap().0.text,
-        "say it"
+    assert!(
+        matches!(app.world().get::<ContentPart>(target), Some(ContentPart::Text(text)) if text.text == "say it")
     );
 }

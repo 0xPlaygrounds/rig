@@ -1,0 +1,442 @@
+{
+  "parity/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Ignore"
+          },
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "age": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint8",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "profession": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "title": "Person",
+              "$schema": "https://json-schema.org/draft/2020-12/schema"
+            }
+          },
+          "rig_ecs::agent::OutputToolConfig": {
+            "name": "submit",
+            "description": "Submit the structured data you extracted from the provided text.",
+            "augment_preamble": false
+          },
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ",
+          "rig_ecs::agent::ToolChoiceSpec": "required",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Alice is a 25 year old developer."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ],
+  "parity/run#1": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Ignore"
+          },
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "street": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "city": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "zip_code": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "title": "Address",
+              "$schema": "https://json-schema.org/draft/2020-12/schema"
+            }
+          },
+          "rig_ecs::agent::OutputToolConfig": {
+            "name": "submit",
+            "description": "Submit the structured data you extracted from the provided text.",
+            "augment_preamble": false
+          },
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ",
+          "rig_ecs::agent::ToolChoiceSpec": "required",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 1
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": "submit",
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunResult": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::Settled": {},
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {
+            "input_tokens": 164,
+            "output_tokens": 22,
+            "total_tokens": 186,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "rig_ecs::agent::UsesModel": 0,
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Alice is a 25 year old developer."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_1"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_1"
+                },
+                "function": {
+                  "name": "submit",
+                  "arguments": {
+                    "age": 25,
+                    "name": "Alice",
+                    "profession": "developer"
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {},
+            "allowed": []
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::systems::Folded": "Tool",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 5,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "submit",
+                    "arguments": {
+                      "age": 25,
+                      "name": "Alice",
+                      "profession": "developer"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 164,
+                "output_tokens": 22,
+                "total_tokens": 186,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_1",
+              "finish_reason": "tool_calls",
+              "provider": "copilot",
+              "model": "gpt-4o-mini-2024-07-18",
+              "raw": {
+                "choices": [
+                  {
+                    "content_filter_results": {},
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "padding": "abcdefghijklmnopqr",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_REDACTED_1",
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "copilot_usage": {
+                  "token_details": [
+                    {
+                      "batch_size": 1000000,
+                      "cost_per_batch": 0,
+                      "token_count": 164,
+                      "token_type": "input"
+                    },
+                    {
+                      "batch_size": 1000000,
+                      "cost_per_batch": 0,
+                      "token_count": 0,
+                      "token_type": "cache_read"
+                    },
+                    {
+                      "batch_size": 1000000,
+                      "cost_per_batch": 0,
+                      "token_count": 0,
+                      "token_type": "cache_write"
+                    },
+                    {
+                      "batch_size": 1000000,
+                      "cost_per_batch": 0,
+                      "token_count": 22,
+                      "token_type": "output"
+                    }
+                  ],
+                  "total_nano_aiu": 0
+                },
+                "id": "chatcmpl-REDACTED_1",
+                "model": "gpt-4o-mini-2024-07-18",
+                "prompt_filter_results": [
+                  {
+                    "content_filter_results": {},
+                    "prompt_index": 0
+                  }
+                ],
+                "service_tier": "default",
+                "system_fingerprint": "fp_REDACTED_1",
+                "usage": {
+                  "completion_tokens": 22,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 164,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "reasoning_tokens": 0,
+                  "total_tokens": 186
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}"
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 1,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 9,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 10,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "456 Oak Avenue, Cambridge, MA 02139"
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 2,
+        "next_id": 1
+      },
+      "binaries": []
+    }
+  ]
+}

@@ -5,7 +5,7 @@
 //! an unknown call in a stream, an unknown call beside a valid one, a
 //! repair, a skip, the runner's `Ignore` policy — are the mock's. The
 //! contract is the corpus's all the same: recorded once here, replayed by
-//! rig-verify with nothing behind the keys, both interpreters.
+//! rig-cassette with nothing behind the keys, both interpreters.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
@@ -14,6 +14,7 @@ use rig::effect::EffectFamily;
 use rig::message::{AssistantContent, ToolCall, ToolChoice, ToolFunction};
 use rig::run::UnhandledInvalidToolCall;
 use rig::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
+use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
@@ -57,7 +58,7 @@ async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String 
     output.expect("a final response")
 }
 
-fn tool_result_texts(log: &rig::effect_log::EffectLog, at: usize) -> Vec<String> {
+fn tool_result_texts(log: &rig::cassette::effect_log::EffectLog, at: usize) -> Vec<String> {
     match &log.records[at].kind {
         rig::effect::EffectKind::Completion { request, .. } => request
             .chat_history
@@ -92,6 +93,7 @@ fn tool_result_texts(log: &rig::effect_log::EffectLog, at: usize) -> Vec<String>
 /// retry is a second streamed completion; events kept.
 #[tokio::test]
 async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(vec![MockStreamEvent::tool_call(
             "call-1",
@@ -105,7 +107,7 @@ async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RetryUnknownTool)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let mut stream = agent
         .prompt(PROMPT)
@@ -120,7 +122,7 @@ async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
     }
     drop(stream);
     assert_eq!(output.as_deref(), Some(ANSWER));
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -137,6 +139,7 @@ async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
 /// Two unknown calls in a row, streamed, retried twice.
 #[tokio::test]
 async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(vec![MockStreamEvent::tool_call(
             "call-1",
@@ -151,7 +154,7 @@ async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RetryUnknownTool)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let mut stream = agent
         .prompt(PROMPT)
@@ -166,7 +169,7 @@ async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
     }
     drop(stream);
     assert_eq!(output.as_deref(), Some(ANSWER));
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -188,6 +191,7 @@ async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
 /// asked for.
 #[tokio::test]
 async fn invalid_ignore_unary_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "multiply", args()),
         MockTurn::text(ANSWER),
@@ -195,7 +199,7 @@ async fn invalid_ignore_unary_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(PROMPT)
@@ -207,7 +211,7 @@ async fn invalid_ignore_unary_effect_log_is_the_golden_fixture() {
         response.output, "",
         "an ignored-only turn is an empty answer"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_invalid_ignore_unary", &log);
 }
@@ -215,6 +219,7 @@ async fn invalid_ignore_unary_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events.
 #[tokio::test]
 async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(vec![MockStreamEvent::tool_call(
             "call-1",
@@ -226,7 +231,7 @@ async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let mut stream = agent
         .prompt(PROMPT)
@@ -245,7 +250,7 @@ async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
         Some(""),
         "an ignored-only turn is an empty answer"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_invalid_ignore_streamed", &log);
 }
@@ -254,6 +259,7 @@ async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
 /// valid call runs, the unknown one is dropped.
 #[tokio::test]
 async fn invalid_mixed_ignore_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         two_calls_turn(),
         MockTurn::text(ANSWER),
@@ -261,7 +267,7 @@ async fn invalid_mixed_ignore_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(PROMPT)
@@ -270,7 +276,7 @@ async fn invalid_mixed_ignore_effect_log_is_the_golden_fixture() {
         .await
         .expect("the valid call runs");
     assert_eq!(response.output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -285,6 +291,7 @@ async fn invalid_mixed_ignore_effect_log_is_the_golden_fixture() {
 /// The same turn, streamed with events, under `Ignore`.
 #[tokio::test]
 async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(vec![
             MockStreamEvent::tool_call("call-1", "multiply", args()),
@@ -295,7 +302,7 @@ async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let mut stream = agent
         .prompt(PROMPT)
@@ -310,7 +317,7 @@ async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
     }
     drop(stream);
     assert_eq!(output.as_deref(), Some(ANSWER));
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -326,11 +333,12 @@ async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
 /// at the completion; the valid call does not run.
 #[tokio::test]
 async fn invalid_mixed_fail_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([two_calls_turn()]))
         .name("golden")
         .preamble(PREAMBLE)
         .tool(Add)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let error = agent
         .prompt(PROMPT)
@@ -341,7 +349,7 @@ async fn invalid_mixed_fail_effect_log_is_the_golden_fixture() {
         matches!(error, PromptError::UnknownToolCall { .. }),
         "{error:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_invalid_mixed_fail", &log);
 }
@@ -352,6 +360,7 @@ async fn invalid_mixed_fail_effect_log_is_the_golden_fixture() {
 /// arguments.
 #[tokio::test]
 async fn invalid_repair_to_add_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "multiply", args()),
         MockTurn::text(ANSWER),
@@ -360,7 +369,7 @@ async fn invalid_repair_to_add_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RepairToAdd)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(PROMPT)
@@ -368,7 +377,7 @@ async fn invalid_repair_to_add_effect_log_is_the_golden_fixture() {
         .await
         .expect("the repaired call runs");
     assert_eq!(response.output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -388,6 +397,7 @@ async fn invalid_repair_to_add_effect_log_is_the_golden_fixture() {
 /// as the call's result and answers.
 #[tokio::test]
 async fn invalid_skip_under_auto_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "multiply", args()),
         MockTurn::text(ANSWER),
@@ -396,7 +406,7 @@ async fn invalid_skip_under_auto_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(SkipUnknown)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(PROMPT)
@@ -404,7 +414,7 @@ async fn invalid_skip_under_auto_effect_log_is_the_golden_fixture() {
         .await
         .expect("the skipped call does not fail the run");
     assert_eq!(response.output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
@@ -417,6 +427,7 @@ async fn invalid_skip_under_auto_effect_log_is_the_golden_fixture() {
 /// fails with `UnknownToolCall`.
 #[tokio::test]
 async fn invalid_skip_under_none_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
         "call-1",
         "multiply",
@@ -427,7 +438,7 @@ async fn invalid_skip_under_none_effect_log_is_the_golden_fixture() {
     .tool_choice(ToolChoice::None)
     .tool(Add)
     .add_hook(SkipUnknown)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let error = agent
         .prompt(PROMPT)
@@ -438,7 +449,7 @@ async fn invalid_skip_under_none_effect_log_is_the_golden_fixture() {
         matches!(error, PromptError::UnknownToolCall { .. }),
         "{error:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_invalid_skip_under_none", &log);
 }
@@ -448,6 +459,7 @@ async fn invalid_skip_under_none_effect_log_is_the_golden_fixture() {
 /// ends in `MaxTurnsError` after the real call.
 #[tokio::test]
 async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "multiply", args()),
         MockTurn::tool_call("call-2", "add", args()),
@@ -458,7 +470,7 @@ async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
     .tool_choice(ToolChoice::Required)
     .tool(Add)
     .add_hook(RetryUnknownTool)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let error = agent
         .prompt(PROMPT)
@@ -470,7 +482,7 @@ async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
         matches!(error, PromptError::MaxTurnsError { max_turns: 2, .. }),
         "{error:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -485,6 +497,7 @@ async fn invalid_retry_under_required_effect_log_is_the_golden_fixture() {
 /// A streamed unknown call repaired to `add`.
 #[tokio::test]
 async fn invalid_streamed_repair_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(vec![MockStreamEvent::tool_call(
             "call-1",
@@ -497,10 +510,10 @@ async fn invalid_streamed_repair_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RepairToAdd)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     assert_eq!(streamed_output(&agent, 3).await, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -515,6 +528,7 @@ async fn invalid_streamed_repair_effect_log_is_the_golden_fixture() {
 /// A streamed unknown call skipped.
 #[tokio::test]
 async fn invalid_streamed_skip_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(vec![MockStreamEvent::tool_call(
             "call-1",
@@ -527,10 +541,10 @@ async fn invalid_streamed_skip_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(SkipUnknown)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     assert_eq!(streamed_output(&agent, 3).await, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]

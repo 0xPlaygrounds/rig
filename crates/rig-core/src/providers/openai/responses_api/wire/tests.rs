@@ -25,7 +25,7 @@ use futures::StreamExt;
 /// dependency, and never written.
 fn cassette_body(path: &str) -> String {
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cassettes")
+        .join("../rig-cassette/fixtures/cassettes")
         .join(path);
     let text = std::fs::read_to_string(&file)
         .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));
@@ -120,7 +120,9 @@ async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionRes
     );
     let mut response = bound.stream(prompt()).await.expect("the stream opens");
     while response.next().await.is_some() {}
-    response.finish()
+    response
+        .finish()
+        .expect("the stream produced a terminal record")
 }
 
 fn openai() -> Responses {

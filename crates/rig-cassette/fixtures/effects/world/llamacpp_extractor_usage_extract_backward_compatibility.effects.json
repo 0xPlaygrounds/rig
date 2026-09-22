@@ -1,0 +1,203 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 4314097811712133996
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract every field explicitly stated in the input text.\nDo not omit keys when the value is present in the text.\nReturn the exact stated values through the submit tool."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "John Doe is a 30 year old software engineer."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "submit",
+              "description": "Submit the structured data you extracted from the provided text.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "age": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "profession": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "age",
+                  "profession"
+                ],
+                "title": "Person",
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": {
+            "temperature": 0.0
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Okay, let's see. The user provided a sentence: \"John Doe is a 30 year old software engineer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly John Doe. The age is 30, so that's straightforward. The profession is software engineer. The submit function requires name, age, and profession. All three are present in the text. The age is given as 30, which is an integer. The profession is a string. So I should map these directly. There's no ambiguity here. I need to make sure the age is in uint8 format, which 30 is. The name is a string, and the profession is also a string. So the JSON should have those three fields with the respective values. No other fields are needed. I'll call the submit function with these values.\n"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "name": "John Doe",
+                  "age": 30,
+                  "profession": "software engineer"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 349,
+            "output_tokens": 220,
+            "total_tokens": 569,
+            "cached_input_tokens": 332
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "llamacpp",
+          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                  "content": "",
+                  "reasoning_content": "Okay, let's see. The user provided a sentence: \"John Doe is a 30 year old software engineer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly John Doe. The age is 30, so that's straightforward. The profession is software engineer. The submit function requires name, age, and profession. All three are present in the text. The age is given as 30, which is an integer. The profession is a string. So I should map these directly. There's no ambiguity here. I need to make sure the age is in uint8 format, which 30 is. The name is a string, and the profession is also a string. So the JSON should have those three fields with the respective values. No other fields are needed. I'll call the submit function with these values.\n",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+            "object": "chat.completion",
+            "system_fingerprint": "b10499-6d05498",
+            "timings": {
+              "cache_n": 332,
+              "predicted_ms": 1878.073,
+              "predicted_n": 220,
+              "predicted_per_second": 116.608885810083,
+              "predicted_per_token_ms": 8.575675799086758,
+              "prompt_ms": 26.994,
+              "prompt_n": 17,
+              "prompt_per_second": 629.7695784248352,
+              "prompt_per_token_ms": 1.5878823529411765
+            },
+            "usage": {
+              "completion_tokens": 220,
+              "prompt_tokens": 349,
+              "prompt_tokens_details": {
+                "cached_tokens": 332
+              },
+              "total_tokens": 569
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

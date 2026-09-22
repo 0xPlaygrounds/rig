@@ -12,7 +12,7 @@ use rig_ecs::{
         },
         content::parts::read_message,
     },
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -161,7 +161,7 @@ fn fresh_world_restore_preserves_holds_links_and_emits_only_new_commits() {
     register(&mut restored, MODEL, model);
     register(&mut restored, ADD, Adder::new(ADD));
     let seen = observe(&mut restored);
-    let loaded = load_world(&checkpoint, restored.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let run = loaded.with::<Run>(restored.world())[0];
     assert!(committed(restored.world_mut(), run, 1));
     let links: Vec<_> = restored
@@ -413,7 +413,13 @@ fn corrupt_commits_links_and_hold_owners_are_rejected_before_destination_mutatio
         let sentinel = destination.world_mut().spawn_empty().id();
         let before = destination.world().entities().len();
         assert!(
-            load_world(&checkpoint, destination.world_mut()).is_err(),
+            load_world(
+                &checkpoint,
+                destination.world_mut(),
+                RestoreMode::Strict,
+                []
+            )
+            .is_err(),
             "accepted {defect}"
         );
         assert_eq!(
@@ -472,6 +478,7 @@ impl rig_core::serve::Serve for RetryModel {
                 vec![call("c1", "add", serde_json::json!({"x":1,"y":2}))],
                 Usage::default(),
                 "retry-model",
+                serde_json::json!({}),
             ))),
             2 => Err(ErrorReport::new(ErrorKind::ProviderResponse, "transient")
                 .with_http_status(503)
@@ -480,6 +487,7 @@ impl rig_core::serve::Serve for RetryModel {
                 vec![AssistantContent::text("done")],
                 Usage::default(),
                 "retry-model",
+                serde_json::json!({}),
             ))),
             _ => panic!("unexpected repeated request"),
         })

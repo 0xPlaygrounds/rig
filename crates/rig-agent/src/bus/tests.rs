@@ -1721,6 +1721,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
                     .finish(rig_core::streaming::StreamFinal::new(
                         "writer",
                         rig_core::completion::Usage::default(),
+                        serde_json::json!({}),
                     ))
                     .await;
             })

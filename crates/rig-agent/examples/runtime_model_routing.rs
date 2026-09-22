@@ -32,8 +32,13 @@ fn response(
     choice: AssistantContent,
     total_tokens: u64,
 ) -> CompletionResponse {
-    CompletionResponse::new(vec![choice], usage(total_tokens), provider)
-        .with_message_id(format!("{provider}-message"))
+    CompletionResponse::new(
+        vec![choice],
+        usage(total_tokens),
+        provider,
+        serde_json::json!({}),
+    )
+    .with_message_id(format!("{provider}-message"))
 }
 
 #[derive(Clone)]
@@ -75,7 +80,11 @@ impl CompletionModel for FastResearchModel {
                     ),
                     block: None,
                 }),
-                Ok(StreamEvent::Final(StreamFinal::new("fast", usage(3)))),
+                Ok(StreamEvent::Final(StreamFinal::new(
+                    "fast",
+                    usage(3),
+                    serde_json::json!({}),
+                ))),
             ])),
         ))
     }
@@ -112,7 +121,11 @@ impl CompletionModel for StrongSynthesisModel {
                     BlockId::wire("text-1"),
                     "The strong model synthesized the committed search result.",
                 )),
-                Ok(StreamEvent::Final(StreamFinal::new("strong", usage(5)))),
+                Ok(StreamEvent::Final(StreamFinal::new(
+                    "strong",
+                    usage(5),
+                    serde_json::json!({}),
+                ))),
             ])),
         ))
     }

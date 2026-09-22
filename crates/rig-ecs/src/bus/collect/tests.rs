@@ -89,7 +89,7 @@ fn ready_delivery_is_bounded_per_pass() {
 fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     use rig_core::{effect::EffectKind, serve::Origin};
     let mut world = world();
-    let recorder = rig_effect_log::EffectLogRecorder::keeping_stream_events();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     Recording::install(&mut world, recorder.clone());
     for id in 0..2 {
         world.resource::<Recording>().begin(

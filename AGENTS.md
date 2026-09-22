@@ -39,7 +39,8 @@ signatures, module paths, and feature flags.
 - Verification planner and source-tree checks: `xtask/`
 - Workspace example packages: `examples/*`; per-crate examples: `crates/<crate>/examples/`
 - Root integration test targets: `tests/*.rs`
-- Provider test modules: `tests/providers/<provider>/`; cassette fixtures: `tests/cassettes/<provider>/`
+- Record/replay home: `crates/rig-cassette` — the engine (`src/`), the provider cassette corpus (`fixtures/cassettes/<provider>/`), the effect-log golden corpus (`fixtures/effects/`), every cassette-backed provider target (`tests/<provider>.rs` with `tests/providers/<provider>/` and the shared drivers in `tests/common/`), the cache-prefix guard, and the effect-bus verification targets `verify` and `world_replay`. Corpora and `tests/` are excluded from the published package.
+- Live-only provider test modules stay in the facade: `tests/providers/<provider>/`, driven by `tests/<provider>.rs`
 - External-service integration tests: `tests/integrations/`
 - Unpublished vector-store test runner: `test-support/service-tests`
 
@@ -92,7 +93,19 @@ errors, and use the WASM-compatible bounds.
 
 ## Style
 
-- Comments should explain why, not restate what the code does.
+- Module docs state the module's purpose in at most three paragraphs and include
+  one short example when there is a public entry point. No headers, tables,
+  history, or rhetorical phrasing.
+- Item docs state the contract, inputs, outputs, errors, and caller invariants.
+  Allow one sentence of non-obvious rationale. No issue numbers, bug narratives,
+  or comparisons with other providers.
+- Inline comments explain a non-obvious why in one or two sentences. Delete
+  restated code, control-flow narration, and design discussions.
+- Use short sentences and no em-dashes. Keep true `# Safety` and `# Panics`
+  sections. Doc examples must compile with current APIs; use `no_run` for
+  credentials, network access, or services.
+- Move needed design rationale to the crate's CONTRACT.md or README, checking
+  for and merging existing coverage rather than duplicating it.
 - Follow local naming, module layout, and test patterns.
 - Test modules are sibling files, never inline blocks: write
   `#[cfg(test)] mod tests;` and put the body in `foo/tests.rs` (for `foo.rs`)

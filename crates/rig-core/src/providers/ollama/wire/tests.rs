@@ -8,7 +8,7 @@ use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
 
-/// The recorded request of `tests/cassettes/ollama/agent/max_tokens.yaml`
+/// The recorded request of `crates/rig-cassette/fixtures/cassettes/ollama/agent/max_tokens.yaml`
 /// (`POST /api/chat`): `max_tokens` rides in `options.num_predict`, and
 /// `stream` is spelled out.
 const RECORDED_REQUEST: &str = r#"{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"qwen3:4b","options":{"num_predict":24},"stream":false,"think":false}"#;
@@ -17,7 +17,7 @@ const RECORDED_REQUEST: &str = r#"{"messages":[{"content":"You are a concise ass
 const UNARY_BODY: &str = r#"{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":24,"eval_duration":318697665,"load_duration":4220408500,"message":{"content":"Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":42,"prompt_eval_duration":2035633750,"total_duration":6668117083}"#;
 
 /// The same turn as a stream. The record shapes are verbatim from
-/// `tests/cassettes/ollama/streaming/streaming_smoke.yaml` — content
+/// `crates/rig-cassette/fixtures/cassettes/ollama/streaming/streaming_smoke.yaml` — content
 /// records with `"done":false`, then an empty-content `"done":true` record
 /// carrying the counters — and they carry the unary reply's text, model,
 /// counters and `done_reason`. Ollama records the two modes from separate
@@ -99,7 +99,9 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response.finish();
+    let streamed = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
@@ -149,7 +151,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 
 /// A reasoning model that puts its reasoning in `content` is split on the
 /// whole reply only: the shape is the one recorded in
-/// `tests/cassettes/ollama/structured_output/raw_with_thinking.yaml`.
+/// `crates/rig-cassette/fixtures/cassettes/ollama/structured_output/raw_with_thinking.yaml`.
 #[tokio::test]
 async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
     let body = r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing it up</think>the answer"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#;
@@ -196,7 +198,9 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
         .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response.finish();
+    let streamed = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(
         text_of(&streamed.choice),
@@ -256,7 +260,7 @@ fn a_local_daemon_sends_no_authorization_header() {
     );
 }
 
-/// The reply shape of `tests/cassettes/ollama/models/list_models_smoke.yaml`
+/// The reply shape of `crates/rig-cassette/fixtures/cassettes/ollama/models/list_models_smoke.yaml`
 /// (`GET /api/tags`), with two of its entries.
 const MODELS_BODY: &str = r#"{"models":[{"name":"all-minilm:latest","model":"all-minilm:latest","modified_at":"2026-06-19T17:15:40.188240254-07:00","size":45960996},{"name":"qwen3:4b","model":"qwen3:4b","modified_at":"2026-06-19T16:26:52.429441648-07:00","size":2497293931}]}"#;
 

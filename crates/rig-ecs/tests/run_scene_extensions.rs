@@ -12,7 +12,7 @@ use bevy_reflect::Reflect;
 use rig_core::error::ErrorKind;
 use rig_ecs::{
     agent::{Owner, Run, RunOf, Settled, Turn},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use serde::{Deserialize, Serialize};
@@ -76,7 +76,7 @@ fn a_registered_host_component_round_trips_on_the_remapped_graph_with_host_owned
         app.world_mut().spawn_empty();
     }
     app.world_mut().insert_resource(HostState(99));
-    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    let loaded = load_world(&saved, app.world_mut(), RestoreMode::Strict, []).unwrap();
     let world = app.world_mut();
     let run = loaded.with::<Run>(world)[0];
     assert_eq!(world.get::<RetryBudget>(run), Some(&RetryBudget(3)));
@@ -123,7 +123,7 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
     let mut app = run_support::app();
     run_support::capturing_agent(&mut app, "t/model:default", "t", "ok");
     let count = app.world().entities().len();
-    let error = load_world(&saved, app.world_mut()).unwrap_err();
+    let error = load_world(&saved, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
     assert_eq!(error.kind, ErrorKind::Request);
     assert!(
         error.message.contains(type_name::<RetryBudget>())
@@ -142,7 +142,7 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
         type_name::<RetryBudget>().to_owned(),
         serde_json::json!("not a budget"),
     );
-    let error = load_world(&invalid, app.world_mut()).unwrap_err();
+    let error = load_world(&invalid, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
     assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
     assert_eq!(app.world().entities().len(), count);
     let mut invalid = saved;
@@ -150,7 +150,7 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
         type_name::<Blames>().to_owned(),
         serde_json::json!(usize::MAX),
     );
-    let error = load_world(&invalid, app.world_mut()).unwrap_err();
+    let error = load_world(&invalid, app.world_mut(), RestoreMode::Strict, []).unwrap_err();
     assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
     assert_eq!(app.world().entities().len(), count);
 }
@@ -170,7 +170,7 @@ fn unregistered_state_is_outside_the_checkpoint_contract() {
     );
     let mut restored = run_support::app();
     register(restored.world_mut());
-    let loaded = load_world(&saved, restored.world_mut()).unwrap();
+    let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let agent = loaded.with::<Owner>(restored.world())[0];
     assert!(restored.world().get::<RetryBudget>(agent).is_none());
 }
@@ -222,7 +222,7 @@ fn a_stream_checkpoint_restores_completed_state_and_refuses_an_unfinished_prefix
             bus_support::MockModel::new(&counters),
         );
         let count = restored.world().entities().len();
-        let loaded = load_world(&saved, restored.world_mut());
+        let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []);
         if completed {
             let loaded = loaded.unwrap();
             let effect = loaded.with::<PendingEffect>(restored.world())[0];

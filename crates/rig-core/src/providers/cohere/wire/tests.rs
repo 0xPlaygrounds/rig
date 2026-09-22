@@ -9,7 +9,7 @@ use crate::test_utils::{
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
 
-/// The recorded request of `tests/cassettes/cohere/agent/
+/// The recorded request of `crates/rig-cassette/fixtures/cassettes/cohere/agent/
 /// max_tokens_sets_max_tokens_finish_reason.yaml` (`POST /v2/chat`).
 const RECORDED_REQUEST: &str = r#"{"documents":[],"max_tokens":4,"messages":[{"content":[{"text":"Write a detailed fifty-word description of the ocean.","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}"#;
 
@@ -17,7 +17,7 @@ const RECORDED_REQUEST: &str = r#"{"documents":[],"max_tokens":4,"messages":[{"c
 const UNARY_BODY: &str = r#"{"finish_reason":"MAX_TOKENS","id":"20ae3cc4-46d2-4e78-8566-83649fbfc218","message":{"content":[{"text":"The ocean,","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":11,"output_tokens":3},"cached_tokens":448,"tokens":{"input_tokens":506,"output_tokens":4}}}"#;
 
 /// The same turn as a stream: the frame shapes are verbatim from
-/// `tests/cassettes/cohere/streaming/streaming_smoke.yaml` (`message-start`
+/// `crates/rig-cassette/fixtures/cassettes/cohere/streaming/streaming_smoke.yaml` (`message-start`
 /// carrying the id, an empty `content-start`, `content-delta` text
 /// fragments, `content-end`, then `message-end` with usage and finish
 /// reason), carrying the unary reply's id, text, usage and finish reason.
@@ -112,7 +112,9 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
         .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response.finish();
+    let streamed = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(text_of(&buffered.choice), "The ocean,");
     assert_eq!(buffered.choice, streamed.choice);
@@ -170,7 +172,7 @@ fn a_serialized_config_carries_no_key_material() {
     );
 }
 
-/// A `/v1/embed` reply, shaped as `tests/cassettes/cohere/embeddings/
+/// A `/v1/embed` reply, shaped as `crates/rig-cassette/fixtures/cassettes/cohere/embeddings/
 /// embed_texts_smoke.yaml` records it (`id`, `embeddings`, `texts`, and
 /// `meta.billed_units`), with two-element vectors in place of the recorded
 /// 1024-element ones.

@@ -1,25 +1,19 @@
-//! Agent construction.
+//! Agent construction over an owned or host-driven bus. Typestate permits either
+//! builder-supplied tools or a shared tool server, not both.
 //!
-//! `AgentBuilder::new(model)` creates the agent's bus and registers the
-//! model on it; every tool, memory backend and retrieval index added to the
-//! builder is registered as a handler under a generated key, and the agent
-//! keeps the [`BusDriver`](crate::bus::BusDriver) and drives it inline
-//! while a run is awaited. `AgentBuilder::over_bus` builds an agent over a
-//! host's bus instead: the host drives.
-//!
-//! The typestate tracks where tools come from:
-//! - `NoToolConfig`: no tools yet;
-//! - `WithBuilderTools`: tools added through the builder API;
-//! - `WithToolServerHandle`: a pre-existing shared [`ToolServerHandle`].
-//!
-//! Use one or the other, not both.
+//! ```
+//! use rig_agent::{Agent, AgentBuilder, core::completion::CompletionModel};
+//! fn assistant(model: impl CompletionModel + 'static) -> Agent {
+//!     AgentBuilder::new(model).preamble("Be concise.").build()
+//! }
+//! ```
 
 use std::sync::{Arc, OnceLock};
 
-use crate::bus::{Bus, Dispatcher, Registrar};
-use rig_core::serve::ErasedHandler;
+use crate::bus::{Bus, Dispatcher, Recording, Registrar};
 use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
+use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
     completion::{CompletionModel, Document, ModelRef},
     effect::{HandlerKey, Key, family},
@@ -30,10 +24,7 @@ use rig_core::{
 use schemars::{JsonSchema, Schema, schema_for};
 
 use crate::{
-    agent::{
-        AgentHook, CompletionCallAction, CompletionCallEvent as CompletionCall, HookContext,
-        RequestPatch,
-    },
+    agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
     completion::message::ToolChoice,
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,
@@ -56,7 +47,7 @@ impl AgentHook for DynamicContext {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
-        event: CompletionCall<'_>,
+        event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let query = event.prompt.rag_text().or_else(|| {
             event
@@ -135,11 +126,10 @@ enum DefaultModel {
 ///
 /// Every handler the builder registers (the default model, model routes,
 /// memory, dynamic-context indexes) is minted a key under the agent's
-/// owner label at build — `<owner>/model:<label>`, `<owner>/memory`,
-/// `<owner>/retrieve:context#<n>` — so two agents on one host bus never
-/// overwrite each other's handlers. The owner is [`AgentBuilder::owner`]'s
-/// label, else `agent#<n>` from a per-process counter; an agent over a
-/// host's bus names its owner up front ([`AgentBuilder::over_bus`]).
+/// owner label at build: `<owner>/model:<label>`, `<owner>/memory`, and
+/// `<owner>/retrieve:context#<n>`. Hosts sharing a bus must choose distinct
+/// owners to avoid replacing each other's bindings. The explicit owner takes
+/// precedence over the agent name, then a generated `agent#<n>` label.
 pub struct AgentBuilder<ToolState = NoToolConfig> {
     config: AgentConfig,
     tool_state: ToolState,
@@ -151,8 +141,7 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     /// The dynamic-context hooks' key slots, by key suffix.
     dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
     memory: bool,
-    record_effects: bool,
-    record_events: bool,
+    recorder: Option<Recording>,
     retrieval_indexes: usize,
     /// The labels `model_route` registered, in order.
     routes: Vec<String>,
@@ -222,11 +211,8 @@ impl<ToolState> AgentBuilder<ToolState> {
         self.add_hook(DynamicContext { samples, key })
     }
 
-    /// Retrieve `samples` documents for every prompt from `handler` — any
-    /// retrieval-family handler, such as a replayer answering a recorded
-    /// index from an effect log — registered under the agent's next
-    /// context key, as [`dynamic_context`](Self::dynamic_context) would
-    /// register an index.
+    /// Retrieve `samples` documents through a retrieval-family handler registered
+    /// under the next context key, using the dynamic-context hook lifecycle.
     pub fn dynamic_context_handler(
         mut self,
         samples: usize,
@@ -272,7 +258,8 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Record message content into telemetry spans.
+    /// Enable or disable sensitive message content on telemetry spans.
+    /// Disabled by default; enabling may expose prompts, responses, and tool data.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
         self.config.record_telemetry_content = enabled;
         self
@@ -313,9 +300,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Serve conversation memory from `handler` — any memory-family
-    /// handler, such as a replayer answering a recorded conversation from
-    /// an effect log — registered under the agent's memory key.
+    /// Register a memory-family handler under the agent's memory key.
     pub fn memory_handler(mut self, handler: impl rig_core::serve::Serve + 'static) -> Self {
         self.pending
             .push(("memory".to_owned(), ErasedHandler::new(handler)));
@@ -344,11 +329,8 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Register a route served by `handler` — any completion-family
-    /// handler, such as a replayer answering a recorded route from an
-    /// effect log — under the agent's key for `label`, so the program's
-    /// required row names the route as [`model_route`](Self::model_route)
-    /// would.
+    /// Register a completion-family handler under the route key for `label`.
+    /// Includes that route in the program's required effect row.
     pub fn model_route_handler(
         mut self,
         label: impl Into<ModelRef>,
@@ -365,20 +347,16 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Name the agent's keys: `<owner>/model:<label>`, `<owner>/memory`,
     /// `<owner>/retrieve:context#<n>`, and its own tools' `<owner>/tool:…`.
-    /// The default is the agent's [`name`](Self::name) when one is set —
-    /// so a named agent's keys are the same in every process, which a log
-    /// meant for replay elsewhere needs — else `agent#<n>` from a
-    /// per-process counter.
+    /// Defaults to the agent's name, or a process-local `agent#<n>` counter.
+    /// Use stable, distinct owners for replay and agents sharing a bus.
     pub fn owner(mut self, label: impl Into<String>) -> Self {
         self.owner = Some(label.into());
         self
     }
 
-    /// Size the agent's own bus. The default serves concurrently; the
-    /// agent's tool concurrency is governed by the runner, which the cassette
-    /// corpus was recorded with at its default of one. An agent over a
-    /// host's bus cannot be sized here — the host sized its bus — so the
-    /// call is refused with a warning rather than silently dropped.
+    /// Configure the owned bus, which serves concurrently by default.
+    /// Runner tool concurrency is independent. Has no effect on a host-owned
+    /// bus and emits a warning in that case.
     pub fn configure_bus(mut self, bus_config: ServingPolicy) -> Self {
         match &mut self.bus {
             BusSource::Owned(config) => *config = bus_config,
@@ -389,21 +367,18 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Record every dispatch into the agent's effect log
-    /// ([`Agent::effect_log`]). For an agent that owns its bus; over a
-    /// host's bus ([`AgentBuilder::over_bus`]) the host records through its
-    /// driver, and asking here fails at build, at the `over_bus` line.
-    pub fn record_effects(mut self) -> Self {
-        self.record_effects = true;
-        self
-    }
-
-    /// Record every dispatch *and* keep a streamed completion's events
-    /// verbatim on its record, so a golden pins the event sequence and a
-    /// replay re-emits the original delta boundaries.
-    pub fn record_effects_with_events(mut self) -> Self {
-        self.record_effects = true;
-        self.record_events = true;
+    /// Observe every dispatch with a caller-owned recorder.
+    ///
+    /// Keep a clone of a shared recorder to inspect its observations. The
+    /// driver retains the installed instance even after [`Agent::into_parts`].
+    /// Like [`BusDriver::record_to`](crate::bus::BusDriver::record_to), this
+    /// requires a thread-safe recorder on every target because reply observers
+    /// cross the bus's thread-safe channels, including on browser WASM.
+    ///
+    /// An agent over a host's bus cannot install a recorder; the host owns
+    /// that driver's recording policy. Asking here fails at build.
+    pub fn record_to(mut self, recorder: impl Recorder + Send + Sync) -> Self {
+        self.recorder = Some(Recording::new(recorder));
         self
     }
 
@@ -426,8 +401,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             pending: self.pending,
             dynamic_contexts: self.dynamic_contexts,
             memory: self.memory,
-            record_effects: self.record_effects,
-            record_events: self.record_events,
+            recorder: self.recorder,
             retrieval_indexes: self.retrieval_indexes,
             routes: self.routes,
         }
@@ -450,10 +424,8 @@ impl<ToolState> AgentBuilder<ToolState> {
             )
         }
 
-        /// Recording asked of an agent over a host's bus: the agent holds
-        /// no driver to tap — recording is the host's, through
-        /// `BusDriver::record_to` — so this is the host's programming
-        /// error, reported at the host's `over_bus` line.
+        /// Panic at the host's construction site when an agent tries to replace
+        /// recording policy on a driver it does not own.
         #[allow(
             clippy::panic,
             reason = "recording over a host's bus is a programming error at the host's call site, not a runtime condition; `build` stays infallible for every other case"
@@ -473,8 +445,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             mut pending,
             dynamic_contexts,
             memory,
-            record_effects,
-            record_events,
+            recorder,
             retrieval_indexes: _,
             routes,
         } = self;
@@ -482,9 +453,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             DefaultModel::Key(_, caller) => Some(*caller),
             DefaultModel::Labelled(..) => None,
         };
-        // The owner: the label given, else the agent's name (so a named
-        // agent's keys are the same in every process — what a log meant
-        // for replay elsewhere needs), else a per-process counter.
+        // Named agents need stable keys across processes for replay.
         let owner = owner
             .or_else(|| config.name.clone())
             .unwrap_or_else(crate::agent::drive::default_owner);
@@ -502,14 +471,8 @@ impl<ToolState> AgentBuilder<ToolState> {
                 config.bus.model_key(label.as_str())
             }
             DefaultModel::Key(key, caller) => {
-                // A host's key is asserted, not minted: check what it serves
-                // now, and fail at build — at the host's line — rather than
-                // at the first run. A key that serves another family is the
-                // host's programming error, not a runtime condition, so it
-                // is a panic (decided: `build()` stays infallible for every
-                // other case); a key nothing serves *yet* is legal — the
-                // host may register after building — and fails at the
-                // first run as `HandlerUnavailable`.
+                // Reject an incompatible host binding now, but allow missing keys
+                // because hosts may register them after construction.
                 if let Some(descriptor) = config.bus.dispatcher().descriptor(&key)
                     && descriptor.family.family()
                         != <family::Completion as rig_core::effect::Family>::FAMILY
@@ -536,17 +499,14 @@ impl<ToolState> AgentBuilder<ToolState> {
         if memory {
             config.memory_key = Some(config.bus.key("memory"));
         } else if let Some(conversation) = &config.conversation_id {
-            // A conversation id without a backend loads and saves nothing;
-            // say so once here rather than let every run silently skip it.
-            // Not an error: a runner may still bypass memory with explicit
-            // history, and a host may serve the memory key itself.
+            // Warn once at construction rather than silently ignoring memory on each run.
             tracing::warn!(
                 %conversation,
                 "AgentBuilder::conversation set without memory(..) or memory_handler(..): nothing is loaded or saved"
             );
         }
-        if record_effects {
-            match (host, config.bus.enable_recording(record_events)) {
+        if let Some(recorder) = recorder {
+            match (host, config.bus.record_to(recorder)) {
                 (Some(caller), Err(_)) => recording_over_a_hosts_bus(caller),
                 (None, registered) => crate::agent::drive::register_generated(registered),
                 (Some(_), Ok(())) => {}
@@ -586,13 +546,11 @@ impl AgentBuilder<NoToolConfig> {
         )
     }
 
-    /// An agent over a host's bus, named `owner` on it: the model under
-    /// `model` must be registered on the bus (the key is used as given),
-    /// and the host drives it. Everything else the builder registers
-    /// (memory, routes, tools) goes through `registrar`, keyed under
-    /// `owner`. The host records too, through its driver: an agent built
-    /// here holds no driver to tap, and [`record_effects`](Self::record_effects)
-    /// on it fails at build, at this call site.
+    /// Build over a host-driven bus using `model` verbatim and owner-qualified
+    /// keys for additional handlers. `dispatcher` and `registrar` must name the
+    /// same bus; register the completion model before running the agent.
+    /// Building panics for an existing wrong-family model binding or a requested
+    /// recorder, since the host owns recording policy.
     #[track_caller]
     pub fn over_bus(
         dispatcher: Dispatcher,
@@ -628,8 +586,7 @@ impl AgentBuilder<NoToolConfig> {
             pending: Vec::new(),
             dynamic_contexts: Vec::new(),
             memory: false,
-            record_effects: false,
-            record_events: false,
+            recorder: None,
             retrieval_indexes: 0,
             routes: Vec::new(),
         }
@@ -727,8 +684,7 @@ impl AgentBuilder<WithBuilderTools> {
             pending,
             dynamic_contexts,
             memory,
-            record_effects,
-            record_events,
+            recorder,
             retrieval_indexes,
             routes,
         } = self;
@@ -741,8 +697,7 @@ impl AgentBuilder<WithBuilderTools> {
             pending,
             dynamic_contexts,
             memory,
-            record_effects,
-            record_events,
+            recorder,
             retrieval_indexes,
             routes,
         }

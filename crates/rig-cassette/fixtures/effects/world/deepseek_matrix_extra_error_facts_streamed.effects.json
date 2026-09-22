@@ -1,0 +1,121 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "stream_errors": {
+      "0": [
+        {
+          "item": 0,
+          "error": {
+            "kind": "provider_response",
+            "retryable": false,
+            "message": "ProviderResponseError: status 400 Bad Request: {\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "code": "invalid_request_error",
+            "http_status": 400,
+            "refusal": false,
+            "source_chain": [],
+            "provider_response": {
+              "status": 400,
+              "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+              "provider_request_id": null
+            }
+          }
+        }
+      ]
+    },
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 15393948987066687781
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "hi"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 8,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": false,
+          "message": "ProviderResponseError: status 400 Bad Request: {\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+          "code": "invalid_request_error",
+          "http_status": 400,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 400,
+            "body": "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-v9-nonexistent.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "events": [],
+      "scope": "parity/run#0"
+    }
+  ]
+}

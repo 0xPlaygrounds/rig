@@ -6,21 +6,22 @@ a listed or ignored registration does not establish execution or parity.
 Models, prompts, budgets, tool definitions and expected values belong in the
 tests, not a second handwritten inventory.
 
-## Native identity expectations
+## Each runtime pins its own record
 
-The native log's payload is compared to its original golden. Native-only
-metadata is pinned in `test-support/rig-test-support/src/ecs_goldens/identities.json`: every program's
-policy hash, the exact record-to-scope boundaries and exceptional dispatch IDs.
-Each program's required row is compared to the original header's required row.
-Consecutive IDs starting at zero are implicit. The compact data preserves empty
-programs and repeated scope blocks without duplicating requests and responses.
+Agent producers write `crates/rig-cassette/fixtures/effects/<name>.effects.json`.
+Native ECS cells write `crates/rig-cassette/fixtures/effects/world/<name>.effects.json`.
+Each runtime compares its log only to its own committed golden. Neither corpus
+is compared to the other or normalized toward it.
 
-Policy hashes cover `rig_ecs::replay::spec_json`, including budgets and bound
-descriptors. A deliberate policy change requires reviewing and updating its
-fixed expectations. Identity checks compare independently committed values;
-they do not derive the expected policy from the actual program under test.
-The pairing guard requires every identity entry to have a native consumer and
-every original golden to have exactly one original producer.
+A native log carries run scopes and each scope's required row and policy hash
+from `rig_cassette::ecs::identity::stamp_run`. An agent log carries its builder
+spec, hook list and required row. Golden assertions supplement each cell's
+semantic checks: ending, committed history, tool invocations and results,
+reported usage, and the family-specific facts below.
+
+The world interpreters under `crates/rig-cassette/tests/corpus/` and
+`tests/world_replay.rs` are replay, not comparison: they answer every effect
+from a golden by id and check the bus reproduces the trace it was given.
 
 ## Execution and comparison boundaries
 
@@ -49,22 +50,27 @@ The helpers in [shared test drivers](../../test-support/rig-test-support/src) de
   fresh-world persistence framework. Host notes and nested calls must complete
   before teardown; gated controls establish those waits independently of quick
   cassette responses.
-- `ecs_goldens.rs` compares complete logs. It maps strictly increasing nominal
-  effect IDs bijectively by position, including parent and error references;
-  parents must exist and precede children. Native records must have corresponding
-  scoped program identities. Cross-runtime comparison omits those native-only
-  scopes/programs; compact fixed expectations retain them and the native IDs. Scheduling-dependent
-  delivery batches are excluded from stable golden equality. Requests, responses,
-  usage, errors and positions, tool publications, descriptors, builder identity
-  and causal relationships remain compared. These goldens do not certify
-  delivery-sensitive policy equivalence.
+- `goldens::golden_effects` compares an agent producer's log to the agent
+  corpus. `goldens::world_golden_effects` compares a native log to the world
+  corpus. Both include program identity in their assertions. World comparisons
+  exclude only `header.deliveries`: asynchronous readiness changes collection
+  batches and stream groupings. Fixtures retain the raw deliveries, and the
+  world-corpus replay validates those recorded boundaries. The pairing guard
+  rejects cross-corpus helpers, missing fixtures and duplicate producers.
+- `native_matrix!` and `resume_matrix!` declare literal world golden names.
+  Ignored rows keep their registration but have no committed world fixture.
+- Each world fixture has a `.programs.json` sidecar containing its pre-dispatch
+  configuration scenes. Native producers capture each scope before dispatch.
+  `world_replay_world` restores those configurations, checks each scope with
+  `check_replayable`, then replays every recorded exchange by id in a separate
+  bus-only world. Configuration evidence does not serialize application systems.
 - Per-run settings remain separate from agent defaults, including undeclared
   default budgets. Host bus policy can be undeclared in a comparison header
   without changing actual serving policy. Declared policy names do not hash
   application implementation or establish its correctness.
 
 Keep HTTP recordings and original goldens unchanged during ordinary regression
-runs. Never normalize away a new semantic difference to make parity pass.
+runs. Never weaken a native cell's assertions to make it pass.
 
 ## Family-specific obligations
 

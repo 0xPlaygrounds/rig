@@ -1,0 +1,3944 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 11,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 20,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 48
+        }
+      },
+      {
+        "batch": 21,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 23,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 28,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 33,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 35,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 50,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 56,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 56,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 57,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 61,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 63,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 67,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 71,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 75,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 76,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 77,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 7
+        }
+      },
+      {
+        "batch": 78,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 79,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 81,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 82,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 86,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 87,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 88,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 89,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 90,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 91,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 92,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 94,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 95,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 96,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 98,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 99,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 101,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 103,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 104,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 105,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 107,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 109,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 112,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 113,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 115,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 119,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 119,
+        "id": 8,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "ping_empty",
+          "description": "Return EMPTY-OK. This tool takes no arguments.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "inspect_manifest",
+          "description": "Validate a nested deployment manifest.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "flags": {
+                "type": "object",
+                "properties": {
+                  "critical": {
+                    "type": "boolean"
+                  },
+                  "retries": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "critical",
+                  "retries"
+                ]
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "weight": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "weight"
+                  ]
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "project",
+              "flags",
+              "steps",
+              "note"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#2",
+        "family": {
+          "family": "tool",
+          "name": "join_labels",
+          "description": "Join label strings with the requested separator.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "separator": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "labels",
+              "separator"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#3",
+        "family": {
+          "family": "tool",
+          "name": "escape_echo",
+          "description": "Echo a string containing escaping-sensitive characters.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool",
+      "parity/tool#2": "tool",
+      "parity/tool#3": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool",
+          "parity/tool#2": "tool",
+          "parity/tool#3": "tool"
+        },
+        "policy": 14609035020798066834
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\openrouter`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "ping_empty",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 352,
+            "output_tokens": 11,
+            "total_tokens": 363,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 352,
+              "completion_tokens": 11,
+              "total_tokens": 363,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.00099,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00011,
+                "upstream_inference_cost": 0.00099,
+                "upstream_inference_prompt_cost": 0.00088
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "ping_empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_1"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_1"
+            },
+            "function": {
+              "name": "ping_empty",
+              "arguments": {}
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 352,
+            "output_tokens": 11,
+            "total_tokens": 363,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 352,
+              "completion_tokens": 11,
+              "total_tokens": 363,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.00099,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00011,
+                "upstream_inference_cost": 0.00099,
+                "upstream_inference_prompt_cost": 0.00088
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "ping_empty",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "EMPTY-OK"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\openrouter`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "inspect_manifest",
+                "arguments": {
+                  "project": "rig-openrouter",
+                  "flags": {
+                    "critical": true,
+                    "retries": 2
+                  },
+                  "steps": [
+                    {
+                      "name": "plan",
+                      "weight": 1
+                    },
+                    {
+                      "name": "verify",
+                      "weight": 2
+                    }
+                  ],
+                  "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 374,
+            "output_tokens": 67,
+            "total_tokens": 441,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 374,
+              "completion_tokens": 67,
+              "total_tokens": 441,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.001605,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00067,
+                "upstream_inference_cost": 0.001605,
+                "upstream_inference_prompt_cost": 0.000935
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_name",
+            "name": "inspect_manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "project"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "rig"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "-open"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "router"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "flags"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "true"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "re"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "tries"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "},\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "steps"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":["
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "name"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "plan"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "weight"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "},{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "name"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "verify"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "weight"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "],\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "note"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ";"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " two"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " says"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "hello"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " path"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " C"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ":\\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "rig"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "open"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "router"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_2",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_2",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_2"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_2"
+            },
+            "function": {
+              "name": "inspect_manifest",
+              "arguments": {
+                "project": "rig-openrouter",
+                "flags": {
+                  "critical": true,
+                  "retries": 2
+                },
+                "steps": [
+                  {
+                    "name": "plan",
+                    "weight": 1
+                  },
+                  {
+                    "name": "verify",
+                    "weight": 2
+                  }
+                ],
+                "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 374,
+            "output_tokens": 67,
+            "total_tokens": 441,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 374,
+              "completion_tokens": 67,
+              "total_tokens": 441,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.001605,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00067,
+                "upstream_inference_cost": 0.001605,
+                "upstream_inference_prompt_cost": 0.000935
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 3,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "inspect_manifest",
+        "args": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "MANIFEST-OK project=rig-openrouter steps=2 retries=2"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\openrouter`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-openrouter",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-openrouter steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "function": {
+                "name": "join_labels",
+                "arguments": {
+                  "labels": [
+                    "north",
+                    "beta gamma",
+                    "quote:\"delta\"",
+                    "slash\\path"
+                  ],
+                  "separator": "|"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 464,
+            "output_tokens": 31,
+            "total_tokens": 495,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 464,
+              "completion_tokens": 31,
+              "total_tokens": 495,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.00147,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00031,
+                "upstream_inference_cost": 0.00147,
+                "upstream_inference_prompt_cost": 0.00116
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_3",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_name",
+            "name": "join_labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":[\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "north"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "beta"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " gamma"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "quote"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ":\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "delta"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "slash"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "path"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\"],"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "separator"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "|"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_3",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_3",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_3"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_3"
+            },
+            "function": {
+              "name": "join_labels",
+              "arguments": {
+                "labels": [
+                  "north",
+                  "beta gamma",
+                  "quote:\"delta\"",
+                  "slash\\path"
+                ],
+                "separator": "|"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 464,
+            "output_tokens": 31,
+            "total_tokens": 495,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_3",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 464,
+              "completion_tokens": 31,
+              "total_tokens": 495,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.00147,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00031,
+                "upstream_inference_cost": 0.00147,
+                "upstream_inference_prompt_cost": 0.00116
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_3",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 5,
+      "key": "parity/tool#2",
+      "kind": {
+        "effect": "tool_call",
+        "name": "join_labels",
+        "args": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\openrouter`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-openrouter",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-openrouter steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "function": {
+                "name": "escape_echo",
+                "arguments": {
+                  "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 519,
+            "output_tokens": 31,
+            "total_tokens": 550,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 519,
+              "completion_tokens": 31,
+              "total_tokens": 550,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.0016075,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00031,
+                "upstream_inference_cost": 0.0016075,
+                "upstream_inference_prompt_cost": 0.0012975
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_4",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_name",
+            "name": "escape_echo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "Line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "Line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " back"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "slash"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " unicode"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " snow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "man"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " ☃"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_4",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_4",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_4"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_4"
+            },
+            "function": {
+              "name": "escape_echo",
+              "arguments": {
+                "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 519,
+            "output_tokens": 31,
+            "total_tokens": 550,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_4",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 519,
+              "completion_tokens": 31,
+              "total_tokens": 550,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.0016075,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00031,
+                "upstream_inference_cost": 0.0016075,
+                "upstream_inference_prompt_cost": 0.0012975
+              },
+              "is_byok": false
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_4",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 7,
+      "key": "parity/tool#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "escape_echo",
+        "args": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 8,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-openrouter, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\openrouter`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-openrouter",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-openrouter steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "escape_echo",
+                    "arguments": {
+                      "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "escape_echo",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The production-readiness scenario results are: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            }
+          ],
+          "usage": {
+            "input_tokens": 580,
+            "output_tokens": 29,
+            "total_tokens": 609,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_5",
+          "finish_reason": "stop",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 580,
+              "completion_tokens": 29,
+              "total_tokens": 609,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.00174,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00029,
+                "upstream_inference_cost": 0.00174,
+                "upstream_inference_prompt_cost": 0.00145
+              },
+              "is_byok": false
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_5",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " production"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-read"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "iness"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " scenario"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " results"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " are"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " EMPTY"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " MAN"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "IFEST"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " LABEL"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "S"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " ESC"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "APE"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 580,
+            "output_tokens": 29,
+            "total_tokens": 609,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_5",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 580,
+              "completion_tokens": 29,
+              "total_tokens": 609,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cost": 0.00174,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.00029,
+                "upstream_inference_cost": 0.00174,
+                "upstream_inference_prompt_cost": 0.00145
+              },
+              "is_byok": false
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_5",
+            "model": "openai/gpt-4o",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "provider": "OpenAI",
+              "system_fingerprint": "fp_REDACTED_1",
+              "service_tier": null
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

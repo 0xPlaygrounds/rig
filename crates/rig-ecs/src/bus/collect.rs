@@ -1,4 +1,9 @@
-//! `BusSet::Collect`: land what finished, close the record.
+//! Bounded collection of handler replies, stream delivery, and effect settlement.
+//!
+//! ```
+//! use rig_ecs::bus::collect::STREAM_WORK_PER_TICK;
+//! assert!(STREAM_WORK_PER_TICK > 0);
+//! ```
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -56,10 +61,8 @@ pub fn collect_world(
     }
 }
 
-/// A unary handler's task finished: its outcome lands as [`EffectOutcome`]
-/// and the task leaves the entity; a tool call's published context lands
-/// beside it as [`ToolOutputs`]. A non-blocking check per in-flight task
-/// (`check_ready`), no waker kept, nothing awaited.
+/// Collect ready handler tasks without awaiting them. Publish unary outcomes and
+/// tool outputs together; transfer returned streams to effect-owned workers.
 pub fn collect_tasks(
     mut commands: Commands,
     serving: Query<(Entity, Option<&Publishing>, &Serving), With<InFlight>>,
@@ -283,10 +286,9 @@ pub type StreamingView = (
 /// An outcome that landed on an effect still in flight.
 pub type Landing = (Added<EffectOutcome>, With<InFlight>);
 
-/// An outcome landed on an in-flight effect: the record closes with it and
-/// the effect leaves flight. The one place records close, so a `Gate`
-/// denial (never in flight) is no record and a `Judge` rewrite (after this)
-/// is not re-recorded: decisions are program, never record.
+/// Settle newly answered in-flight effects, record the original handler answer,
+/// release execution state, and trigger [`Landed`]. Discarded dispatches and gate
+/// denials produce no record; later policy rewrites are not re-recorded.
 pub fn settle(
     mut commands: Commands,
     landed: Query<
@@ -347,10 +349,8 @@ pub fn settle(
                 );
                 witness.observe(observation);
                 if differs {
-                    // A layer's verdict on the way out: the record keeps
-                    // the handler's answer, the world sees the layer's. The
-                    // layer names itself when it replaced; a difference no
-                    // layer claimed keeps the explicit unknown.
+                    // Attribute the difference to its named layer when available;
+                    // unclaimed replacements retain unknown attribution.
                     witness.emit(
                         subject,
                         Stage::Handler,
@@ -363,28 +363,21 @@ pub fn settle(
                 }
             }
         }
-        // The collection marker goes first, on its own: the `Remove<InFlight>`
-        // observers read its absence as "settled" and its presence as an
-        // answered effect leaving flight unsettled (a despawn from the
-        // outcome observer), whose record they close instead.
+        // Remove the collection marker first so InFlight removal observers can
+        // distinguish settlement from despawn before an answered effect settles.
         commands.entity(entity).remove::<CollectedOutcome>();
         commands
             .entity(entity)
             .remove::<(InFlight, Observed, super::record::ReplacedBy)>();
-        // The pass's `Judge` runs before an observer of this can read the
-        // outcome it settles on: the trigger is queued, applied at the
-        // set's sync point, after the record closed.
+        // Defer notification until the record is closed and flight state removed.
         commands.trigger(Landed { entity, id });
     }
 }
 
-/// An effect's record closed: its outcome is on the entity, its record is
-/// written. Triggered on the effect and propagated up `ChildOf` — the
-/// turn, the run, the agent — so an observer on any of them sees every
-/// landing beneath it in the same pass it happened; `original_event_target`
-/// is the effect. A `Judge` system that rewrites the outcome runs after
-/// this pass's `Collect`, so an observer here reads what the handler
-/// answered; read `EffectOutcome` again later for the judged value.
+/// Notification that an answered effect has settled and its record is closed.
+/// Propagates through `ChildOf`; `original_event_target` identifies the effect.
+/// Observers run during collection before later `Judge` systems, so read the
+/// outcome after judgement when policy replacements are needed.
 #[derive(EntityEvent, Debug, Clone, Copy)]
 #[entity_event(propagate, auto_propagate)]
 pub struct Landed {

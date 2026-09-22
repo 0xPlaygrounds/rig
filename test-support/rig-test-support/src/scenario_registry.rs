@@ -75,6 +75,34 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
             .path
             .segments
             .last()
+            .is_some_and(|s| s.ident == "native_matrix")
+        {
+            match syn::parse2::<matrix_registry::NativeMatrix>(node.tokens.clone()) {
+                Ok(matrix) => {
+                    let wrapper = matrix
+                        .wrapper
+                        .segments
+                        .last()
+                        .expect("wrapper path")
+                        .ident
+                        .to_string();
+                    if self.wrapper_names.contains(&wrapper.as_str()) {
+                        self.scenarios.extend(
+                            matrix
+                                .rows
+                                .into_iter()
+                                .filter(|row| !row.ignored)
+                                .map(|row| row.scenario.value()),
+                        );
+                    }
+                }
+                Err(error) => self.failures.push(error.to_string()),
+            }
+        }
+        if node
+            .path
+            .segments
+            .last()
             .is_some_and(|s| s.ident == "resume_matrix")
         {
             match syn::parse2::<matrix_registry::ResumeMatrix>(node.tokens.clone()) {
@@ -91,8 +119,8 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
                             matrix
                                 .rows
                                 .into_iter()
-                                .filter(|(_, ignored)| !ignored)
-                                .map(|(scenario, _)| scenario.value()),
+                                .filter(|row| !row.ignored)
+                                .map(|row| row.scenario.value()),
                         );
                     }
                 }

@@ -116,18 +116,21 @@ pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
 }
 
 /// The folded completion response: the aggregated choice plus the terminal
-/// record's usage and metadata. Usage reports no counter when the reply
-/// produced no terminal record.
+/// record's usage and metadata, carrying `raw` as the provider's document
+/// for the turn. Usage reports no counter when the reply produced no
+/// terminal record.
 pub(crate) fn fold_finish(
     mut accumulator: BlockAccumulator,
     terminal: Option<&StreamFinal>,
     message_id: Option<String>,
     provider: String,
+    raw: serde_json::Value,
 ) -> CompletionResponse {
     CompletionResponse::new(
         accumulator.finish(),
         terminal.map(|response| response.usage).unwrap_or_default(),
         provider,
+        raw,
     )
     // An explicit message-id block outranks the terminal record's ID.
     .with_optional_message_id(
@@ -139,14 +142,6 @@ pub(crate) fn fold_finish(
     )
     .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
     .with_optional_model(terminal.and_then(|response| response.model.clone()))
-    // The provider's own document for the turn, which on a stream is the
-    // terminal record the adapter serialized. Dropping it here would make
-    // the escape hatch depend on whether the caller streamed.
-    .with_raw(
-        terminal
-            .map(|response| response.raw.clone())
-            .unwrap_or(serde_json::Value::Null),
-    )
 }
 
 /// Shared pause flag plus the parked consumer's waker.
@@ -317,23 +312,21 @@ pub struct StreamFinal {
     ///
     /// An escape hatch for provider-specific data rig does not normalize — it
     /// never replaces a normalized field, and every normalized field means the
-    /// same thing whatever this holds. `Value::Null` means the record was
-    /// built without a provider behind it — [`StreamFinal::new`] without
-    /// `with_raw` (test doubles, hand-built records), or a record persisted
-    /// before the field existed — never that the provider sent nothing: no
-    /// stream that reached its terminal yields `Null` here.
+    /// same thing whatever this holds. Required at construction: a terminal
+    /// record is built from the document that produced it, so there is no
+    /// record without one and no sentinel for its absence.
     ///
     /// Typed access is recoverable: provider terminal types are
     /// `Deserialize`, so `provider::StreamingCompletionResponse::deserialize(&raw)`
     /// returns the provider's own type.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
 
 impl StreamFinal {
-    /// Create a terminal record for `provider` with `usage`; optional metadata
-    /// starts unset and is filled in with the `with_*` helpers.
-    pub fn new(provider: impl Into<String>, usage: Usage) -> Self {
+    /// Create a terminal record for `provider` with `usage` and the
+    /// provider's own terminal document `raw` (see [`Self::raw`]); optional
+    /// metadata starts unset and is filled in with the `with_*` helpers.
+    pub fn new(provider: impl Into<String>, usage: Usage, raw: serde_json::Value) -> Self {
         Self {
             usage,
             finish_reason: None,
@@ -342,7 +335,7 @@ impl StreamFinal {
             provider_request_id: None,
             provider: provider.into(),
             model: None,
-            raw: serde_json::Value::Null,
+            raw,
         }
     }
 
@@ -396,10 +389,6 @@ struct StreamFinalRepr {
     provider: String,
     #[serde(default)]
     model: Option<String>,
-    // `default` because persisted terminal records predate the field; a
-    // missing key loads as `Null`, which is exactly what "no provider record
-    // behind this value" means.
-    #[serde(default)]
     raw: serde_json::Value,
 }
 
@@ -415,13 +404,12 @@ impl From<StreamFinalRepr> for StreamFinal {
             model,
             raw,
         } = repr;
-        Self::new(provider, usage)
+        Self::new(provider, usage, raw)
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
             .with_optional_provider_request_id(provider_request_id)
             .with_optional_model(model)
-            .with_raw(raw)
     }
 }
 
@@ -574,20 +562,27 @@ impl StreamingCompletionResponse {
     }
 
     /// Consume the stream into the unary response shape: the aggregated
-    /// choice, the terminal record's usage and metadata. Usage reports no
-    /// counter ([`Usage::default`]) when the stream produced no terminal
-    /// record; `provider` comes from the stream itself, so it is populated
-    /// even then.
+    /// choice, the terminal record's usage and metadata, and the terminal
+    /// record's document as `raw`. A stream that produced no terminal
+    /// record is truncated per the emission contract and is refused: there
+    /// is no document to build a response from.
     ///
     /// Events not yet polled are not part of the choice: drain the stream
     /// first when the whole turn is wanted.
-    pub fn finish(self) -> CompletionResponse {
-        fold_finish(
+    pub fn finish(self) -> Result<CompletionResponse, CompletionError> {
+        let Some(terminal) = self.response.as_ref() else {
+            return Err(CompletionError::ResponseError(
+                "provider stream ended without a terminal record; treating the turn as truncated"
+                    .to_owned(),
+            ));
+        };
+        Ok(fold_finish(
             self.accumulator,
-            self.response.as_ref(),
+            Some(terminal),
             self.message_id.clone(),
             self.provider.clone(),
-        )
+            terminal.raw.clone(),
+        ))
     }
 
     /// Cancel the stream and immediately drop the provider's inner stream.

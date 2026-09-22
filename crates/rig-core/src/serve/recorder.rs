@@ -1,7 +1,7 @@
 //! What a driver tells about the dispatches it serves: the seam a log
 //! recorder implements. Beside the dispatch observer because it is the same kind
 //! of thing — the handler side's view of a dispatch's life — and so that a
-//! recorder needs no runtime crate: `rig-effect-log` implements it over
+//! recorder needs no runtime crate: `rig_cassette::effect_log` implements it over
 //! rig-core alone, and any driver (the bus's, an ECS schedule's) feeds one.
 
 use crate::{

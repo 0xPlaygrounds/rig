@@ -963,20 +963,27 @@ pub async fn collect_required_terminal(
     terminal.expect("stream should end with a terminal record")
 }
 
-/// Drive a raw provider stream to exhaustion and return its one terminal
-/// record.
+/// Drive a raw provider stream to exhaustion, keeping the visible text and
+/// requiring that it ended with exactly one terminal record.
 ///
-/// Exactly one terminal record per stream is the contract, so a stream that
-/// emitted none — or more than one — fails here instead of silently handing
-/// back the last.
-pub async fn collect_sole_terminal(
+/// The two claims belong together for the dialects whose contract is one
+/// terminal record *and* whose cells are about what the stream said:
+/// [`collect_sole_terminal`] drops the text, [`collect_text_and_terminal`]
+/// keeps the last of several records.
+pub async fn collect_text_and_sole_terminal(
     mut stream: StreamingCompletionResponse,
-) -> rig_core::streaming::StreamFinal {
+) -> (String, rig_core::streaming::StreamFinal) {
+    let mut text = String::new();
     let mut finals = Vec::new();
 
     while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
-            finals.push(record);
+        match item.expect("stream item should be ok") {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(record) => finals.push(record),
+            _ => {}
         }
     }
 
@@ -985,7 +992,19 @@ pub async fn collect_sole_terminal(
         1,
         "stream should yield exactly one terminal record"
     );
-    finals.remove(0)
+    (text, finals.remove(0))
+}
+
+/// Drive a raw provider stream to exhaustion and return its one terminal
+/// record.
+///
+/// Exactly one terminal record per stream is the contract, so a stream that
+/// emitted none — or more than one — fails here instead of silently handing
+/// back the last.
+pub async fn collect_sole_terminal(
+    stream: StreamingCompletionResponse,
+) -> rig_core::streaming::StreamFinal {
+    collect_text_and_sole_terminal(stream).await.1
 }
 
 /// Where a matrix cell parks the observation its recorded turn produced.
@@ -1099,42 +1118,36 @@ pub fn assert_wire_value_matches(
     }
 }
 
-/// The finish reason a recorded chat-completions body reports.
+/// Compare a generated token (response id, system fingerprint, request id)
+/// observed by a test with the value its fixture holds.
 ///
-/// Mapped by hand from the wire word, so the expectation is independent of
-/// the decoder that produced the normalized reason it is compared against.
-pub fn recorded_chat_finish_reason(body: &serde_json::Value) -> rig_core::completion::FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => rig_core::completion::FinishReason::Stop,
-        Some("length") => rig_core::completion::FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
+/// Fixtures are placeholder-scrubbed (`chatcmpl-REDACTED_1`, `fp_REDACTED_1`,
+/// `req_REDACTED_1`), so on the recording pass the live token cannot equal
+/// the fixture's; both are then required to be present and non-empty. On
+/// replay the harness serves the scrubbed bytes back, so equality is exact —
+/// which is what CI runs. Presence must agree in both modes.
+pub fn assert_matches_recorded_token(actual: Option<&str>, recorded: Option<&str>, context: &str) {
+    match crate::cassettes::CassetteMode::current() {
+        crate::cassettes::CassetteMode::Replay => {
+            assert_eq!(
+                actual, recorded,
+                "{context}: replay serves the fixture's token back"
+            );
+        }
+        crate::cassettes::CassetteMode::Record => {
+            assert_eq!(
+                actual.is_some(),
+                recorded.is_some(),
+                "{context}: live and recorded token presence must agree"
+            );
+            if let (Some(actual), Some(recorded)) = (actual, recorded) {
+                assert!(
+                    !actual.trim().is_empty() && !recorded.trim().is_empty(),
+                    "{context}: live and recorded token must both be non-empty"
+                );
+            }
+        }
     }
-}
-
-/// The one usage-bearing SSE frame of a recorded chat-completions stream.
-///
-/// The premise of a terminal-record matrix is that the wire reported its
-/// accounting exactly once, on the stream's last data frame; both halves are
-/// asserted here rather than assumed.
-pub fn recorded_sole_usage_frame(provider: &str, scenario: &str) -> serde_json::Value {
-    let frames = crate::cassettes::recorded_sse_json_frames(provider, scenario);
-    let mut with_usage = frames
-        .iter()
-        .enumerate()
-        .filter(|(_, frame)| !frame["usage"].is_null());
-    let (index, terminal) = with_usage
-        .next()
-        .expect("the recorded stream must carry usage on its terminal frame");
-    assert!(
-        with_usage.next().is_none(),
-        "usage must be reported on exactly one (terminal) frame"
-    );
-    assert_eq!(
-        index + 1,
-        frames.len(),
-        "the usage-bearing frame must be the stream's last data frame"
-    );
-    terminal.clone()
 }
 
 /// Drain a raw provider stream into text, tool, error, and final-event observations.

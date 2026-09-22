@@ -1,18 +1,23 @@
 //! Golden effect logs: the effect-bus cassette corpus.
 //!
 //! A producing test runs an agent program against the cassette transport
-//! with `record_effects()` and either writes the log to
-//! `crates/rig-verify/fixtures/<name>.effects.json` (under
+//! with an explicit `EffectLogRecorder` and either writes the log to
+//! `crates/rig-cassette/fixtures/effects/<name>.effects.json` (under
 //! `RIG_REGENERATE_GOLDEN=1`) or asserts the run's log equals the committed
 //! one as data — so the root suite itself detects drift between a cassette
-//! and its golden. rig-verify replays every golden with no provider at
+//! and its golden. rig-cassette replays every golden with no provider at
 //! all. Goldens are re-recorded by their producer, never edited by hand.
 
 use rig_core::effect::EffectFamily;
 
 use rig_core::message::Message;
 
-use rig_effect_log::EffectLog;
+use rig_cassette::effect_log::EffectLog;
+
+#[path = "goldens/world.rs"]
+mod world;
+pub(crate) use world::attach_world_recorder;
+pub use world::{capture_world_program, capture_world_programs, world_golden_test};
 
 /// The families of a log's records, in order: the shape a producer asserts.
 #[allow(dead_code)] // not every target records
@@ -24,8 +29,8 @@ pub fn families(log: &EffectLog) -> Vec<EffectFamily> {
 }
 
 /// The output schema the request-shape matrix constrains an answer to,
-/// as one literal both the producer and the rig-verify replay build the
-/// program from (`crates/rig-verify/tests/corpus_request_shape.rs`).
+/// as one literal both the producer and the rig-cassette replay build the
+/// program from (`crates/rig-cassette/tests/corpus_request_shape.rs`).
 #[allow(dead_code)]
 pub const EVENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"]}"#;
 
@@ -48,7 +53,7 @@ pub fn prior_history() -> Vec<Message> {
 /// The committed golden's path.
 pub fn golden_path(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/rig-verify/fixtures")
+        .join("../../crates/rig-cassette/fixtures/effects")
         .join(format!("{name}.effects.json"))
 }
 
@@ -93,10 +98,68 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
     );
 }
 
+/// Compare a native log with its world fixture as JSON data.
+/// Observed delivery boundaries are excluded because HTTP scheduling varies.
+/// Requires [`capture_world_programs`] and pre-dispatch program captures.
+/// In replay mode, `RIG_REGENERATE_GOLDEN` writes the fixture instead.
+/// Record mode does nothing and rejects simultaneous regeneration.
+/// Names must be a single file stem, not a path.
+pub fn world_golden_effects(name: &str, log: &EffectLog) {
+    assert!(
+        !name.is_empty()
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'),
+        "world golden names must contain only letters, digits, and underscores"
+    );
+    if std::env::var("RIG_PROVIDER_TEST_MODE").is_ok_and(|mode| mode.eq_ignore_ascii_case("record"))
+    {
+        assert!(
+            std::env::var_os("RIG_REGENERATE_GOLDEN").is_none(),
+            "world golden `{name}`: regenerate only in replay mode"
+        );
+        return;
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/rig-cassette/fixtures/effects/world")
+        .join(format!("{name}.effects.json"));
+    if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(path.parent().expect("world corpus directory"))
+            .expect("create world corpus directory");
+        let rendered = serde_json::to_string_pretty(log).expect("the world log serializes");
+        std::fs::write(&path, format!("{rendered}\n")).expect("write world golden");
+        world::programs(
+            &path.with_file_name(format!("{name}.programs.json")),
+            log,
+            true,
+        );
+        return;
+    }
+    let committed = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "world golden {}: {error}; regenerate in replay mode",
+            path.display()
+        )
+    });
+    world::programs(
+        &path.with_file_name(format!("{name}.programs.json")),
+        log,
+        false,
+    );
+    let expected: serde_json::Value = serde_json::from_str(&committed).expect("world golden JSON");
+    assert_eq!(
+        world::without_delivery_boundaries(expected),
+        world::without_delivery_boundaries(
+            serde_json::to_value(log).expect("the world log serializes")
+        ),
+        "the world's effects diverged from world golden `{name}`"
+    );
+}
+
 /// The corpus's recovery hook: an unknown tool is retried once with
 /// feedback. A hook is program, not record — the effect-log header names
 /// it by type, so every producer that records a recovery and the
-/// rig-verify replay use this one type.
+/// rig-cassette replay use this one type.
 #[allow(dead_code)] // used by the recovery producer, not every target
 pub struct RetryUnknownTool;
 
@@ -113,9 +176,9 @@ impl rig_agent::agent::AgentHook for RetryUnknownTool {
 }
 
 // ---------------------------------------------------------------------------
-// The hook matrix's hooks (Matrix B, `tests/providers/anthropic/cassette/
-// corpus_hooks.rs`, `crates/rig-verify/tests/corpus_hooks.rs`). Hooks are
-// program: the header names each by type, and the rig-verify replay
+// The hook matrix's hooks (Matrix B, `crates/rig-cassette/tests/providers/anthropic/cassette/
+// corpus_hooks.rs`, `crates/rig-cassette/tests/corpus_hooks.rs`). Hooks are
+// program: the header names each by type, and the rig-cassette replay
 // defines a type of the same name making the same decision. Every hook is
 // stateless, so its decision is a function of the event alone (the
 // header cannot tell two hooks of one type with different state apart).
@@ -1484,7 +1547,7 @@ impl rig_agent::agent::AgentHook for RerankDocs {
 // own service through the dispatcher its sink carries, so the child record
 // names the tool's record as its parent; the host's relay nests once more;
 // the host's `never` handler holds a dispatch until its consumer goes. The
-// rig-verify replay registers the same handlers (`corpus/mod.rs`): program,
+// rig-cassette replay registers the same handlers (`corpus/mod.rs`): program,
 // not record.
 
 #[allow(dead_code)]
@@ -1865,7 +1928,7 @@ pub fn parent_positions(log: &EffectLog) -> Vec<Option<usize>> {
 
 // ---------------------------------------------------------------------------
 // Matrix P: the layers, hand-written `Intercept`s; Matrix T's `Denied`
-// cells. Program, not record: `crates/rig-verify/tests/corpus/mod.rs`
+// cells. Program, not record: `crates/rig-cassette/tests/corpus/mod.rs`
 // holds the same types verbatim.
 
 #[allow(dead_code)]

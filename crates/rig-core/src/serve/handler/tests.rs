@@ -49,6 +49,7 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             ],
             Default::default(),
             "test",
+            serde_json::json!({}),
         );
         response.message_id = Some("message".into());
         response.response_id = Some("response".into());
@@ -148,7 +149,11 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
     let reply = Reply::written(move |mut writer| async move {
         writer.text("prefix").await.expect("consumer present");
         writer
-            .finish(StreamFinal::new("test", Default::default()))
+            .finish(StreamFinal::new(
+                "test",
+                Default::default(),
+                serde_json::json!({}),
+            ))
             .await
             .expect("consumer present");
         finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -212,7 +217,12 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
     provider_call.signature = Some("signature".into());
     provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
     calls.push(AssistantContent::ToolCall(provider_call));
-    let response = CompletionResponse::new(calls.clone(), Default::default(), "local");
+    let response = CompletionResponse::new(
+        calls.clone(),
+        Default::default(),
+        "local",
+        serde_json::json!({}),
+    );
     let mut accumulator = crate::streaming::BlockAccumulator::new();
     let mut published = Vec::new();
     let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
@@ -243,7 +253,11 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let finished = completed.clone();
     let mut stream = Reply::written(move |writer| async move {
         writer
-            .finish(StreamFinal::new("writer", Default::default()))
+            .finish(StreamFinal::new(
+                "writer",
+                Default::default(),
+                serde_json::json!({}),
+            ))
             .await
             .expect("open");
         wait.await.expect("released");
@@ -309,12 +323,14 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         })],
         Default::default(),
         "image-provider",
+        serde_json::json!({}),
     );
     let original = Ok(Outcome::Completion(response));
     let error = ErrorReport::new(ErrorKind::Response, "first error");
     let final_event = Ok(StreamEvent::Final(StreamFinal::new(
         "test",
         Default::default(),
+        serde_json::json!({}),
     )));
     let after = Ok(StreamEvent::Unknown(crate::streaming::UnknownPayload::new(
         serde_json::json!({"after": true}),
@@ -543,6 +559,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
         Ok(StreamEvent::Final(StreamFinal::new(
             "test",
             Default::default(),
+            serde_json::json!({}),
         )))
     }
     fn text(fragment: &str) -> Result<StreamEvent, ErrorReport> {
@@ -563,6 +580,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
                 ],
                 Default::default(),
                 "test",
+                serde_json::json!({}),
             ))))
         }),
         ("a setup failure", || {

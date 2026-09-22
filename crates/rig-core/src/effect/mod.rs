@@ -5,7 +5,7 @@
 //! operation, a retrieval — expressed as a value rather than as a call on a
 //! trait object. The bus (`rig_agent::bus`) carries these values to the
 //! handler registered for a [`HandlerKey`] and carries the [`Outcome`] back;
-//! an `EffectLog` (`rig_effect_log`) records every exchange so a run can be
+//! an `EffectLog` (`rig_cassette::effect_log`) records every exchange so a run can be
 //! replayed.
 //!
 //! Everything in this module is serde, `Clone + Send + Sync + 'static`, with

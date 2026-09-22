@@ -10,14 +10,15 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::{check_replayable, required_row, spec_hash, stamp_run};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::effect::{EffectFamily, HandlerKey};
 use rig_ecs::{
     agent::{Grant, PolicyVersion, Preamble},
-    bus::{EffectLogResource, Scope},
-    replay::{check_replayable, required_row, spec_hash, stamp_legacy_builder_header, stamp_run},
+    bus::Scope,
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -25,7 +26,7 @@ const ADD: &str = "t/tool:add#0";
 
 fn golden(name: &str) -> EffectLog {
     let path = format!(
-        "{}/../rig-verify/fixtures/{name}.effects.json",
+        "{}/../rig-cassette/fixtures/effects/{name}.effects.json",
         env!("CARGO_MANIFEST_DIR")
     );
     serde_json::from_str(&std::fs::read_to_string(path).expect("committed")).expect("loads")
@@ -40,17 +41,15 @@ fn a_worlds_log_names_its_program_by_scope() {
     let agent = spawn_agent(app.world_mut(), "t", model);
     let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     let recorder = app.world().resource::<EffectLogResource>().0.clone();
-    stamp_legacy_builder_header(app.world_mut(), agent, &recorder, None, Vec::new());
     stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     let scope = app.world().get::<Scope>(run).expect("scoped").0.clone();
     let header = recorder.header();
     let identity = header.programs.get(&scope).expect("the run's identity");
     assert_eq!(Some(identity.policy), spec_hash(app.world_mut(), run));
     assert_eq!(identity.required, required_row(app.world_mut(), agent));
-    assert_ne!(
-        header.run_spec,
-        Some(identity.policy),
-        "builder identity is not effective run identity"
+    assert!(
+        header.run_spec.is_none(),
+        "a world's log carries no builder identity"
     );
     // rig-agent's goldens carry no `programs`.
     assert!(
@@ -132,7 +131,7 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
     foreign.header.programs.clear();
     foreign.header.programs.insert(
         "other/run#0".to_owned(),
-        rig_effect_log::ProgramIdentity {
+        rig_cassette::effect_log::ProgramIdentity {
             required: foreign.header.required.clone(),
             policy: 1,
         },

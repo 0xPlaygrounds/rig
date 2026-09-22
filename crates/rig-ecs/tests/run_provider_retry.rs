@@ -22,6 +22,10 @@ use std::{
 };
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::ecs::identity::stamp_run;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
@@ -36,15 +40,10 @@ use rig_ecs::{
         Cancelled, Cursor, Failed, Failure, Grant, MaxTurns, ProviderRetried, ProviderRetries,
         RunResult, Settled,
     },
-    bus::{
-        Bound, BusSet, EffectLogResource, Handlers, Held, PendingEffect, Replay, RigSchedule,
-        Witnessing,
-    },
-    checkpoint::{Checkpoint, load_world, save_world},
-    replay::stamp_run,
+    bus::{Bound, BusSet, Held, PendingEffect, RigSchedule, Witnessing},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -81,6 +80,7 @@ impl Serve for Flaky {
                 choice,
                 Usage::default(),
                 "flaky",
+                serde_json::json!({}),
             ))),
             Some(Err(report)) => Err(report),
             None => Err(ErrorReport::new(ErrorKind::Provider, "the script ran out")),
@@ -225,8 +225,8 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
     // The log replays: the same program over by-id replayers sees the
     // failed attempt answered from its record, retries, and settles.
     let mut replay = run_support::app();
-    Handlers::with(replay.world_mut(), |h| Replay::default().register(h, &log))
-        .unwrap()
+    Replay::default()
+        .register(replay.world_mut(), &log)
         .unwrap();
     let model = bound_entity(replay.world_mut(), MODEL);
     let tool = bound_entity(replay.world_mut(), ADD);
@@ -428,7 +428,8 @@ fn a_checkpoint_saved_during_the_hold_resumes_into_the_retry() {
         },
     );
     register(&mut app, ADD, Adder::new(ADD));
-    let loaded = load_world(&saved, app.world_mut()).expect("the handlers are bound");
+    let loaded = load_world(&saved, app.world_mut(), RestoreMode::Strict, [])
+        .expect("the handlers are bound");
     let run = loaded.with::<rig_ecs::agent::Run>(app.world())[0];
     assert_eq!(retried(app.world(), run), 1, "the spent retry is restored");
     for held in holding(&mut app) {
@@ -500,6 +501,7 @@ impl Serve for Truncating {
             done(),
             Usage::default(),
             "whole",
+            serde_json::json!({}),
         ))))
     }
 }

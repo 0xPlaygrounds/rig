@@ -1,23 +1,17 @@
-//! Running websocket I/O when the caller has no tokio runtime.
+//! A lazy single-worker Tokio runtime for websocket I/O from other executors.
 //!
-//! `tokio-tungstenite` needs a tokio reactor. Inside a tokio runtime this
-//! backend drives the socket directly. Outside one — Bevy task pools, smol,
-//! `futures::executor::block_on` — it moves the socket onto a lazily started,
-//! single-worker fallback runtime and talks to it over `futures` channels, so
-//! the caller only ever polls runtime-agnostic futures and no thread parks.
-//!
-//! This mirrors `rig-reqwest`'s own fallback runtime, for the same reason and
-//! with the same shape; a websocket differs only in living longer, which is why
-//! the socket is moved rather than each request driven individually.
+//! Sockets remain on this runtime for their lifetime; callers communicate over
+//! channels without needing a reactor. Each [`OwnedTask`] aborts on drop so
+//! cancelled connections release their transport resources.
 
-use rig_core::http_client::Error;
+use rig_core::{http_client::Error, wasm_compat::WasmCompatSend};
 use std::future::Future;
 use std::sync::LazyLock;
 use tokio::runtime::{Handle, Runtime};
+use tokio::task::JoinHandle;
 
-/// The fallback runtime, or the reason it could not start. A `LazyLock`
-/// initializer cannot return an error, so the failure is stored and surfaced as
-/// a transport error on every connection that needs the runtime.
+/// The shared fallback runtime, caching initialization failure for subsequent
+/// connections.
 static RUNTIME: LazyLock<Result<Runtime, RuntimeUnavailable>> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -36,34 +30,53 @@ fn runtime() -> Result<&'static Runtime, Error> {
     RUNTIME.as_ref().map_err(|err| Error::instance(err.clone()))
 }
 
-/// Whether the current task already runs inside a tokio runtime.
+/// Return whether the current task has a Tokio runtime handle.
 ///
-/// A caveat this shares with `rig-reqwest`: a `current_thread` runtime built
-/// without `enable_io()`/`enable_time()` answers `true` here, and tungstenite
-/// then panics with "there is no reactor running". `Handle::try_current()`
-/// cannot distinguish a runtime with the I/O driver from one without it, so a
-/// host that builds its own runtime must enable I/O.
+/// Hosts must enable I/O and timers on their runtime; this check cannot detect
+/// missing drivers, which can cause socket I/O to panic.
 pub(crate) fn in_tokio() -> bool {
     Handle::try_current().is_ok()
 }
 
-/// Run `future` to completion on the fallback runtime, awaiting its result from
-/// whatever executor the caller is on. Only call this when [`in_tokio`] is
-/// false; inside a runtime, just `.await` the future.
-pub(crate) async fn run_off_runtime<F>(future: F) -> Result<F::Output, Error>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    runtime()?.spawn(future).await.map_err(Error::instance)
+/// A fallback-runtime task whose handle aborts it on drop.
+pub(crate) struct OwnedTask<T> {
+    handle: JoinHandle<T>,
 }
 
-/// Spawn a detached task on the fallback runtime — the connection actor, which
-/// owns the socket for as long as the caller holds the connection.
-pub(crate) fn spawn_off_runtime<F>(future: F) -> Result<(), Error>
+impl<T> OwnedTask<T> {
+    /// Await the task's output, returning a join error if it fails.
+    /// Dropping the returned future aborts the task.
+    pub(crate) async fn join(mut self) -> Result<T, Error> {
+        // Borrow the handle so cancellation still drops the abort guard.
+        (&mut self.handle).await.map_err(Error::instance)
+    }
+}
+
+impl<T> Drop for OwnedTask<T> {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+/// Run `future` to completion on the fallback runtime, awaiting its result from
+/// whatever executor the caller is on. Only call this when [`in_tokio`] is
+/// false. Returns an error if startup or the spawned task fails.
+pub(crate) async fn run_off_runtime<F>(future: F) -> Result<F::Output, Error>
 where
-    F: Future<Output = ()> + Send + 'static,
+    F: Future + WasmCompatSend + 'static,
+    F::Output: WasmCompatSend + 'static,
 {
-    runtime()?.spawn(future);
-    Ok(())
+    spawn_off_runtime(future)?.join().await
+}
+
+/// Spawn `future` on the fallback runtime and return its owning handle, or an
+/// error if the runtime cannot start.
+pub(crate) fn spawn_off_runtime<F>(future: F) -> Result<OwnedTask<F::Output>, Error>
+where
+    F: Future + WasmCompatSend + 'static,
+    F::Output: WasmCompatSend + 'static,
+{
+    Ok(OwnedTask {
+        handle: runtime()?.spawn(future),
+    })
 }

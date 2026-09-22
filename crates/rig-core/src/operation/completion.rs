@@ -14,9 +14,6 @@ use crate::streaming::{
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply, Sink};
 
-/// One decoded step of a completion reply.
-pub type CompletionEvent = StreamEvent;
-
 /// Generating an assistant turn, unary or streamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Completion;
@@ -181,19 +178,21 @@ impl Fold<Completion> for CompletionFold {
     }
 
     fn finish(self, reply: Reply) -> Result<CompletionResponse, CompletionError> {
+        // The buffered reply's document is the response's `raw`, not the
+        // terminal record's: the wire decoded the whole body at once.
         let response = crate::streaming::fold_finish(
             self.accumulator,
             self.terminal.as_ref(),
             self.message_id,
             reply.provider,
+            reply.raw,
         );
         // The terminal's own id wins; the reply headers only fill a gap.
-        let response = if response.provider_request_id.is_none() {
-            response.with_optional_provider_request_id(reply.provider_request_id)
+        if response.provider_request_id.is_none() {
+            Ok(response.with_optional_provider_request_id(reply.provider_request_id))
         } else {
-            response
-        };
-        Ok(response.with_raw(reply.raw))
+            Ok(response)
+        }
     }
 }
 

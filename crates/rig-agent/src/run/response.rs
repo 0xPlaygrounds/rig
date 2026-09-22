@@ -1,11 +1,15 @@
-//! The protocol's outputs: per-call accounting and the final response.
+//! Per-call accounting, final run responses, and prompting errors.
+//!
+//! ```
+//! use rig_agent::run::response::PromptResponse;
+//! let response = PromptResponse::empty();
+//! assert!(response.output().is_empty());
+//! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
-// No longer `Copy`: the identity fields carry owned strings. No longer `Eq`:
-// `raw` is a `serde_json::Value`, which is `PartialEq` but not `Eq` (floats).
 /// One completion call of a run: what was asked and what came back.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionCall {
@@ -22,46 +26,24 @@ pub struct CompletionCall {
     /// Provider-assigned response-scoped ID for this call, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
-    /// The provider's transport request id for this call (HTTP response
-    /// header, e.g. Anthropic `request-id`) — the id provider support asks
-    /// for. `None` means the provider did not report one, never an error.
+    /// Transport request ID for this call, or `None` if the provider reported none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
-    /// Why the model stopped generating on this call, when the provider
-    /// reported it. `None` means the provider reported no reason.
-    ///
-    /// Recorded **per call** rather than once per run: a multi-turn run makes N
-    /// completion requests, each with its own terminal reason, and collapsing
-    /// them to a single run-level value would lose exactly the information that
-    /// makes a truncated turn diagnosable — which turn hit the limit. A caller
-    /// that wants the run's last reason reads it off the final entry.
-    ///
-    /// This is the field whose absence hid rig#2322: the provider layer carried
-    /// [`FinishReason::Length`] on the stream's terminal record, but the agent
-    /// assembler dropped it, so a turn truncated at the output-token limit was
-    /// indistinguishable from a turn that simply had nothing to say.
+    /// Why this call stopped generating, or `None` if unreported.
+    /// Retained per call so callers can identify which attempt was truncated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
-    /// The provider's own response for this call — see
-    /// `CompletionResponse::raw` for the exact meaning of the payload. Every
-    /// provider seam populates it; `Value::Null` only when the call's response
-    /// was built without a provider behind it (a hand-constructed model, a
-    /// record persisted before the field, or a hand-driven `AgentRun` that
-    /// recorded a streamed call with no terminal record — the runner itself
-    /// rejects such a stream as truncated before recording anything).
-    ///
-    /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
-    /// run each entry carries its own attempt's response, never a previous
-    /// attempt's, and on a retried turn the recorded call carries the retried
-    /// attempt's own.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    /// This attempt's provider response payload, as defined by
+    /// [`rig_core::completion::CompletionResponse::raw`]. A stream without a
+    /// terminal response produces no completion-call entry.
     pub raw: serde_json::Value,
 }
 
 impl CompletionCall {
-    /// Create details for one completion request in an agent run; identity
+    /// Create details for one completion request in an agent run, carrying
+    /// the provider's own response `raw` (see [`Self::raw`]); identity
     /// metadata starts unset and is attached with [`Self::with_identity`].
-    pub fn new(call_index: usize, usage: Usage) -> Self {
+    pub fn new(call_index: usize, usage: Usage, raw: serde_json::Value) -> Self {
         Self {
             call_index,
             usage,
@@ -69,14 +51,8 @@ impl CompletionCall {
             response_id: None,
             provider_request_id: None,
             finish_reason: None,
-            raw: serde_json::Value::Null,
+            raw,
         }
-    }
-
-    /// Attach the provider's own response this call's attempt produced.
-    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
-        self.raw = raw;
-        self
     }
 
     /// Attach the response identity metadata this call's attempt reported.
@@ -87,11 +63,7 @@ impl CompletionCall {
         self
     }
 
-    /// Attach the terminal finish reason this call's attempt reported.
-    ///
-    /// Kept separate from [`Self::with_identity`] because a finish reason is
-    /// not identity: [`ResponseIdentity`] answers "which response was this",
-    /// while this answers "why did it stop".
+    /// Attach the terminal finish reason reported by this attempt.
     pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
         self.finish_reason = finish_reason;
         self
@@ -107,13 +79,8 @@ impl CompletionCall {
     }
 }
 
-/// The result of an agent run, returned by **both** the blocking
-/// (`AgentRunner::run`) and streaming (`AgentRunner::stream`) surfaces so a
-/// call site reads identically whether it awaited the runner or streamed it.
-///
-/// On the streaming surface this is the payload of the terminal
-/// `MultiTurnStreamItem::FinalResponse` item.
-///
+/// Final run output and accounting, returned by awaited runs and terminal
+/// `MultiTurnStreamItem::FinalResponse` stream items.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptResponse {
     /// Concatenated assistant text for the final turn.
@@ -155,25 +122,18 @@ pub struct PromptResponse {
     output_tool_calls: usize,
 }
 
-/// How a finished run's conversation-memory append settled. A run that
-/// completed is a run whose answer stands; whether its transcript was
-/// persisted is a separate fact, and this is it.
-///
-/// An append is one dispatch to the memory backend: acknowledged means the
-/// backend answered that it appended, not that the write is durable beyond
-/// what the backend promises, and a run dropped while the append is in
-/// flight produces no response at all. Nothing here is exactly-once: a
-/// backend may have written before it failed.
+/// Outcome of the memory append, independent of the accepted run answer.
+/// Acknowledgement provides only the backend's durability guarantee; failure
+/// does not prove no write occurred. Dropping an in-flight append yields no
+/// response, and this outcome does not guarantee exactly-once persistence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum MemoryAppend {
     /// The backend acknowledged the append of [`PromptResponse::messages`].
     Acknowledged,
-    /// The append was refused — by the backend, a layer on the memory key
-    /// or an outcome hook — and the transcript was not persisted. The
-    /// report is what the dispatch settled with, after outcome hooks; the
-    /// effect log records what the handler answered, which an outcome hook
-    /// may have replaced.
+    /// The append dispatch failed or was refused, as reported after outcome hooks.
+    /// Persistence may still have occurred. The effect log retains the handler's
+    /// original answer rather than any hook replacement.
     Failed {
         /// Why the append failed.
         report: rig_core::error::ErrorReport,
@@ -297,8 +257,6 @@ impl PromptResponse {
     }
 }
 
-// ---- errors of the run ----
-
 use thiserror::Error;
 
 use rig_core::{completion::CompletionError, memory::MemoryError};
@@ -310,8 +268,7 @@ pub enum PromptError {
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
 
-    /// An effect failed on the agent's bus — a bus or handler failure, a
-    /// hook's denial, a stream item's error — as the wire reports it.
+    /// Structured effect failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]
     Report(#[from] rig_core::error::ErrorReport),
 
@@ -355,8 +312,7 @@ pub enum PromptError {
     },
 }
 
-/// Forwards the `provider_response_*` accessor trio through the variant that
-/// wraps an error which itself exposes them.
+/// Forward provider response accessors through wrapped errors and optional reports.
 macro_rules! forward_provider_response_helpers {
     ($err:ident, $variant:ident, $inner:literal $(, report = $report:ident)?) => {
         impl $err {
@@ -380,7 +336,7 @@ macro_rules! forward_provider_response_helpers {
                 }
             }
 
-            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314), or carried by a wire report.")]
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, ", or carried by a wire report.")]
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_request_id(),
@@ -400,7 +356,7 @@ macro_rules! forward_provider_response_helpers {
                 }
             }
 
-            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " — e.g. `Retry-After` on a 429 (rig#2210).")]
+            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " or report.")]
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
                     Self::$variant(error) => error.provider_response_headers(),

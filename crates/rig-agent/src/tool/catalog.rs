@@ -1,5 +1,11 @@
-//! The advertisement snapshot of a tool set: the definitions a request
-//! carries plus the registrations behind them, pinned at snapshot time.
+//! Request-scoped tool advertisements and their pinned registrations.
+//!
+//! ```
+//! use rig_agent::tool::ToolCatalog;
+//! fn advertised_names(catalog: &ToolCatalog) -> Vec<&str> {
+//!     catalog.names().collect()
+//! }
+//! ```
 
 use std::collections::BTreeSet;
 
@@ -13,14 +19,11 @@ use rig_core::{
 
 use super::registry::{RegisteredTool, ToolDispatch, execute_tool};
 
-/// An opaque token a catalog keeps alive for as long as it exists: a
-/// registry that retires replaced generations lazily hands one per pinned
-/// registration and sweeps a generation once no catalog holds its token —
-/// the token's own drop is the registry's cue.
+/// Opaque generation lease retained by catalogs. Registries may retire replaced
+/// bindings once no catalog holds their lease.
 #[cfg(not(target_family = "wasm"))]
 pub type ToolLease = std::sync::Arc<dyn std::any::Any + Send + Sync>;
-/// An opaque token a catalog keeps alive for as long as it exists (browser
-/// wasm: no `Send + Sync`, no threads).
+/// Opaque generation lease retained by catalogs, without thread-safety bounds on WASM.
 #[cfg(target_family = "wasm")]
 pub type ToolLease = std::sync::Arc<dyn std::any::Any>;
 

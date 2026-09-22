@@ -116,7 +116,7 @@ mod slow_stream {
         driver
             .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(Slow))
             .expect("register");
-        let recorder = rig_effect_log::EffectLogRecorder::new();
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         driver.record_to(recorder.clone());
         let task = tokio::spawn(driver);
         let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", key)
@@ -163,12 +163,13 @@ mod slow_stream {
     /// and the log holds the cancel.
     #[tokio::test]
     async fn a_delta_stop_on_an_owned_bus_is_in_the_log() {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = AgentBuilder::new(rig_core::test_utils::MockCompletionModel::text("never"))
             .name("golden")
             .model_route_handler("slow", Slow)
             .add_hook(SelectSlow)
             .add_hook(StopOnTextDelta)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let mut stream = agent.prompt("go").stream();
         while let Some(item) = stream.next().await {
@@ -180,7 +181,7 @@ mod slow_stream {
             }
         }
         drop(stream);
-        let log = agent.take_effect_log().expect("recording");
+        let log = recorder.take();
         assert_eq!(log.len(), 1, "the cancelled dispatch is a record");
         let report = log[0].outcome.as_ref().expect_err("cancelled in flight");
         assert_eq!(

@@ -88,6 +88,15 @@ Rig separates portable provider/backend contracts from agent orchestration:
 The root `rig` facade re-exports both at their familiar paths, so most code
 depends only on `rig`.
 
+Hosts construct HTTP or SDK models with their chosen authentication, transport
+policy and runtime lifetime; both agent runtimes execute the resulting
+`CompletionModel` through shared adapters. ECS checkpoints retain execution
+state and handler descriptors, not provider launch recipes. Restoration
+explicitly validates the complete handler set against the original saved
+contracts or accepts intentional replacements. Effect replay uses recorded
+handlers and does not require live provider construction. See the
+[ECS host/restoration contract](crates/rig-ecs/CONTRACT.md#121-host-assembly-runtime-execution).
+
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:
 - [St Jude](https://www.stjude.org/) - Using Rig for a chatbot utility as part of [`proteinpaint`](https://github.com/stjude/proteinpaint), a genomics visualisation tool.
@@ -147,6 +156,19 @@ Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-t
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
 More examples live in [`examples`](./examples) and each crate's `examples` directory; provider test coverage and cassette commands are described in [`tests/README.md`](./tests/README.md). Detailed walkthroughs are published on our [Dev.to Blog](https://dev.to/0thtachi) and at [rig.rs/docs](https://rig.rs/docs).
+
+## Recording and replay
+
+`rig::cassette::effect_log` provides logs, recorders, replay handlers and
+checkpoints. Keep an `EffectLogRecorder` handle and attach its clone with
+`AgentBuilder::record_to`; import `rig::cassette::agent::AgentReplayExt` to stamp
+the resulting log or check replay compatibility.
+
+For transport-free consumers, depend directly on `rig-cassette` with default
+features disabled. Its optional `agent` and `ecs` adapters are independent of
+each other and of the native `http` engine. Neither runtime depends on the
+concrete logging crate. See the [cassette README](crates/rig-cassette/README.md)
+for dependency guarantees, ECS replay installation and migration paths.
 
 ## Supported Integrations
 

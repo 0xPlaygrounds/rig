@@ -1,0 +1,114 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 15425459599997556635
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 24,
+          "tool_choice": null,
+          "additional_params": {
+            "think": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
+            }
+          ],
+          "usage": {
+            "input_tokens": 42,
+            "output_tokens": 24,
+            "total_tokens": 66
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": "length",
+          "provider": "ollama",
+          "model": "qwen3:4b",
+          "raw": {
+            "created_at": "1970-01-01T00:00:00Z",
+            "done": true,
+            "done_reason": "length",
+            "eval_count": 24,
+            "eval_duration": 318697665,
+            "load_duration": 4220408500,
+            "message": {
+              "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
+              "role": "assistant"
+            },
+            "model": "qwen3:4b",
+            "prompt_eval_count": 42,
+            "prompt_eval_duration": 2035633750,
+            "total_duration": 6668117083
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

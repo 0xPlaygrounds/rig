@@ -312,12 +312,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     }
 
     /// Add documents and their corresponding embeddings to the store.
-    /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
-    /// is the index of the document.
+    /// IDs have the form `"doc{n}"`, starting at the current document count and
+    /// skipping occupied IDs so existing documents are never overwritten.
     pub fn add_documents(&mut self, documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) {
-        let current_index = self.embeddings.len();
-        for (index, (doc, embeddings)) in documents.into_iter().enumerate() {
-            self.insert_document(format!("doc{}", index + current_index), doc, embeddings);
+        let mut index = self.embeddings.len();
+        for (doc, embeddings) in documents {
+            let mut id = format!("doc{index}");
+            while self.embeddings.contains_key(&id) {
+                index += 1;
+                id = format!("doc{index}");
+            }
+            self.insert_document(id, doc, embeddings);
+            index += 1;
         }
     }
 

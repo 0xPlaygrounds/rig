@@ -1,22 +1,9 @@
 //! Doubleword's model identifiers.
 //!
-//! [Doubleword](https://docs.doubleword.ai) is an OpenAI chat-completions
-//! dialect, so it has no client and no models of its own:
-//! [`openai::wire::DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD)
-//! carries the base URL, the `DOUBLEWORD_API_KEY` and `DOUBLEWORD_BASE_URL`
-//! variables, and the embeddings quirks (no `encoding_format`, no `user`,
-//! usage not guaranteed). What lives here is the model identifiers.
+//! Configure realtime chat and embedding requests with
+//! [`crate::providers::openai::wire::DOUBLEWORD`]. Async polling and batch
+//! submission are not modeled by these operations.
 //!
-//! This is the **realtime** tier: synchronous chat completions, streaming,
-//! and embeddings on the same host. Doubleword's two cheaper tiers are
-//! separate mechanisms and Rig models neither — the **async** tier is the
-//! same endpoints with `service_tier: "flex"` (plus `background: true` to
-//! poll), while only the **batch** tier uses the OpenAI-compatible Batch API
-//! (`/v1/batches`) with a JSONL upload.
-//!
-//! # Example
-//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
-//! `rig-reqwest`) turns it into the model.
 //! ```no_run
 //! use rig_core::providers::doubleword;
 //! use rig_core::providers::openai::wire::{DOUBLEWORD, OpenAI};
@@ -30,10 +17,6 @@
 //! # }
 //! ```
 
-// ================================================================
-// Doubleword Completion Models
-// ================================================================
-// A non-exhaustive selection; the authoritative list is `GET /v1/models`.
 pub const QWEN3_5_4B: &str = "Qwen/Qwen3.5-4B";
 pub const QWEN3_5_9B: &str = "Qwen/Qwen3.5-9B";
 pub const QWEN3_5_397B_A17B: &str = "Qwen/Qwen3.5-397B-A17B-FP8";
@@ -47,14 +30,6 @@ pub const GLM_5_2: &str = "zai-org/GLM-5.2-FP8";
 pub const QWEN3_VL_30B: &str = "Qwen/Qwen3-VL-30B-A3B-Instruct-FP8";
 pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 
-// ================================================================
-// Doubleword Embedding Models
-// ================================================================
-/// Doubleword's only embedding model, documented on its model page
-/// (<https://docs.doubleword.ai/inference-api/models/qwen-qwen3-embedding-8b>).
-///
-/// Its default and accepted output widths are carried as data by the
-/// [`DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD) dialect's
-/// embedding quirks, which is what the encoder reads and what `ndims()`
-/// reports; the numbers are not restated here so the two cannot drift.
+/// Identifier for the Qwen3 Embedding 8B model. Supported output dimensions are
+/// defined by [`crate::providers::openai::wire::DOUBLEWORD`].
 pub const QWEN3_EMBEDDING_8B: &str = "Qwen/Qwen3-Embedding-8B";

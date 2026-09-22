@@ -10,52 +10,30 @@
         clippy::unreachable
     )
 )]
-//! Rig's classic agent runtime.
+//! Rig's classic agent runtime: builders, serializable run state, hooks, tools,
+//! memory orchestration, and typed extraction.
 //!
-//! This crate owns the mature builder, run state machine, typed hook system,
-//! contextual tool registry, memory orchestration, extraction, and shared
-//! blocking/streaming driver. Portable provider, message, tool, and storage
-//! contracts remain in [`rig_core`] and are reachable here through the
-//! explicit [`core`] namespace; this crate's root deliberately exports only
-//! runtime-owned items. The comprehensive end-user facade is the root `rig`
-//! crate.
+//! Portable contracts are available through [`core`]; recording accepts
+//! [`rig_core::serve::Recorder`], with concrete replay adapters in `rig-cassette`.
+//! Native and browser WASM targets are supported; WASI is not. MCP integration
+//! is provided by the native-only `rig-rmcp` crate.
 //!
-//! # Target support
-//!
-//! Native targets are fully supported. `wasm32-unknown-unknown` (browser) is
-//! supported with no feature flags to set — the relaxed async bounds follow
-//! from the target alone.
-//!
-//! MCP tool support lives in the companion `rig-rmcp` crate, which is
-//! native-only (rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
-//! which rig's wasm tool registry cannot satisfy). WASI
-//! (`wasm32-wasip1`/`wasip2`) is **not supported**: the dependency graph does
-//! not build for it. See the crate README for the full matrix and the
-//! reasoning.
+//! ```
+//! use rig_agent::{Agent, AgentBuilder, core::completion::CompletionModel};
+//! fn assistant(model: impl CompletionModel + 'static) -> Agent {
+//!     AgentBuilder::new(model).preamble("Be concise.").build()
+//! }
+//! ```
 
 extern crate self as rig;
 
-/// Direct access to portable provider, data, memory, and tool contracts.
-///
-/// This explicit namespace is also the stable expansion root for portable
-/// `#[rig_tool]` functions in crates that depend on `rig-agent` without a
-/// separate direct `rig-core` dependency.
-///
-/// Portable `rig-core` root items are reachable here, but deliberately *not*
-/// at the `rig_agent` crate root — adding a root export to `rig-core` must not
-/// silently add one to `rig-agent`. A stable `rig-core` root export
-/// ([`rig_core::Embed`]) demonstrates both halves of that invariant (the
-/// two doctests below enforce it):
+/// Portable provider, data, memory, and tool contracts, also used as the expansion
+/// root for portable `#[rig_tool]` functions. These exports are not forwarded to
+/// the `rig_agent` crate root.
 ///
 /// ```
-/// // Reachable through the explicit `core` namespace.
 /// use rig_agent::core::Embed;
-/// fn _reachable<T: Embed>() {}
-/// ```
-///
-/// ```compile_fail
-/// // NOT reachable at the `rig_agent` crate root.
-/// use rig_agent::Embed as _;
+/// fn accepts_embeddings<T: Embed>() {}
 /// ```
 pub mod core {
     pub use rig_core::*;
@@ -68,8 +46,6 @@ pub mod completion;
 pub mod extractor;
 /// Ready-made integrations: the CLI chatbot.
 pub mod integrations;
-// Shared JSON helpers live in rig-core; re-export so call sites stay
-// `json_utils::merge` / `json_utils::serialize_json_value`.
 pub(crate) use rig_core::json_utils;
 pub mod prelude;
 pub mod run;
@@ -102,7 +78,6 @@ const _: fn() = || {
     assert_send_sync_static::<agent::RunEvents>();
     assert_send_sync_static::<agent::PromptResponse>();
     assert_send_sync_static::<tool::server::ToolServerHandle>();
-    // The erased tool set a driver forks and the per-turn catalog it pins.
     assert_send_sync_static::<tool::ToolSet>();
     assert_send_sync_static::<tool::ToolCatalog>();
 };

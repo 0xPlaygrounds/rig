@@ -1,0 +1,200 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "file_report",
+          "description": "File the incident now; this action takes no arguments.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 14484117198200715160
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user's entire request, word for word, at least 120 words long."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "file_report",
+              "description": "File the incident now; this action takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [],
+          "usage": {
+            "input_tokens": 355,
+            "output_tokens": 16,
+            "total_tokens": 371,
+            "cached_input_tokens": 256
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "length",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 355,
+              "completion_tokens": 16,
+              "total_tokens": 371,
+              "prompt_tokens_details": {
+                "cached_tokens": 256
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 99
+            },
+            "finish_reason": "length",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "a26a7955944dc5c60445bff77fac9c8e"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "file_report"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 355,
+            "output_tokens": 16,
+            "total_tokens": 371,
+            "cached_input_tokens": 256
+          },
+          "finish_reason": "length",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 355,
+              "completion_tokens": 16,
+              "total_tokens": 371,
+              "prompt_tokens_details": {
+                "cached_tokens": 256
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 99
+            },
+            "finish_reason": "length",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "a26a7955944dc5c60445bff77fac9c8e"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

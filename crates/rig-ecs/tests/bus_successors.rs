@@ -6,7 +6,7 @@
 //! |---|---|---|
 //! | `reopen_while_a_driver_is_alive_is_refused` | the reopen race | there is no driver to race: another pass while effects are in flight is just a pass |
 //! | `pendings_and_streams_created_while_closed_stay_closed_after_reopen` | no resurrection across a restart | an effect answered `HandlerUnavailable` stays answered once its key is bound |
-//! | `a_rebind_before_registration_fails_at_first_dispatch_not_at_bind` | `Handle::rebind` before the handler | a checkpoint loaded before its handlers are bound fails at the first pass, by key, never at load |
+//! | `an_unfinished_effect_without_a_saved_contract_is_refused_before_loading` | checkpoint restoration | an unfinished effect without a saved handler contract refuses before any resumed execution |
 //! | `a_rebind_of_the_wrong_family_panics_at_the_hosts_line` | the family assertion at rebind | a checkpoint whose key is bound here to another family is refused as data, before anything is spawned |
 //! | `the_inbox_names_every_dispatch_that_ended_since_the_last_drain` | the completion inbox | `Added<EffectOutcome>` names every effect that ended since the system last ran |
 //! | `the_inbox_is_bounded_and_counts_what_it_dropped` | the inbox's bound and drop count | nothing is dropped: a system that skips passes still sees every outcome |
@@ -21,10 +21,10 @@ use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
-use rig_core::error::ErrorKind;
+use rig_core::{effect::HandlerKey, error::ErrorKind, serve::ErasedHandler};
 use rig_ecs::{
-    bus::{Bound, BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule},
-    checkpoint::load_world,
+    bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule},
+    checkpoint::{RestoreMode, load_world},
 };
 
 #[test]
@@ -94,38 +94,27 @@ fn pendings_and_streams_created_while_closed_stay_closed_after_reopen() {
 }
 
 #[test]
-fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
+fn an_unfinished_effect_without_a_saved_contract_is_refused_before_loading() {
     let counters = Arc::new(Counters::default());
-    // What a checkpoint stored: the bound key, and one effect never taken.
     let (mut live, _, _) = served();
     live.world_mut()
-        .spawn(PendingEffect::new("model", completion()));
+        .spawn(PendingEffect::new("later", completion()));
     let saved = checkpoint(&mut live);
-    drop(live);
     let mut app = app();
-    let loaded = load_world(&saved, app.world_mut()).unwrap();
-    let effects = loaded.with::<PendingEffect>(app.world());
-    assert_eq!(effects.len(), 1, "the load succeeds with nothing bound");
-    assert!(
-        app.world().get::<EffectOutcome>(effects[0]).is_none(),
-        "not failed at load"
-    );
-    app.update();
-    let outcome = app
-        .world()
-        .get::<EffectOutcome>(effects[0])
-        .expect("answered");
-    assert_eq!(
-        outcome.0.as_ref().expect_err("nothing serves it").kind,
-        ErrorKind::HandlerUnavailable,
-        "failed at the first pass, by key"
-    );
-    // Bound afterwards, a fresh effect on the same key works: the
-    // descriptor a checkpoint keeps is a claim about the key, not a
-    // binding — and the handler takes the entity the checkpoint bound.
-    let handler = register(&mut app, "model", MockModel::new(&counters));
-    assert_eq!(loaded.with::<Bound>(app.world()), vec![handler]);
-    answered(&mut app, "served");
+    let before = checkpoint(&mut app).to_json().unwrap();
+    let error = load_world(
+        &saved,
+        app.world_mut(),
+        RestoreMode::Strict,
+        [(
+            HandlerKey::from("model"),
+            ErasedHandler::new(MockModel::new(&counters)),
+        )],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("missing saved handler `later`"));
+    assert_eq!(checkpoint(&mut app).to_json().unwrap(), before);
+    assert_eq!(counters.unary_started.load(Ordering::SeqCst), 0);
 }
 
 #[test]
@@ -142,7 +131,8 @@ fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
     let saved = checkpoint(&mut live);
     let before = app.world().entities().len();
     // No panic anywhere: the gap is data, refused at the host's line.
-    let error = load_world(&saved, app.world_mut()).expect_err("the family differs");
+    let error = load_world(&saved, app.world_mut(), RestoreMode::Strict, [])
+        .expect_err("the family differs");
     assert_eq!(error.kind, ErrorKind::Request);
     assert!(error.message.contains("model"), "{error:?}");
     assert_eq!(app.world().entities().len(), before, "nothing spawned");

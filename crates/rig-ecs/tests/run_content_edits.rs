@@ -9,7 +9,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Failed, MessageParts, RequestPatch, Turn, Utterance, content::parts::*},
     bus::{PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{Fresh, RunCommands},
 };
 
@@ -89,14 +89,14 @@ fn edit_target_is_remapped_with_the_checkpoint() {
     world.spawn((RequestPartEdit::Remove, EditTarget(target), ChildOf(turn)));
     let checkpoint = save_world(&mut world).unwrap();
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
-    let loaded = load_world(&checkpoint, &mut world).unwrap();
+    let loaded = load_world(&checkpoint, &mut world, RestoreMode::Strict, []).unwrap();
     let link = loaded.with::<RequestPartEdit>(&world)[0];
     let remapped = world.get::<EditTarget>(link).unwrap().0;
     assert_ne!(remapped, target);
     assert!(loaded.entities.contains(&remapped));
     assert_eq!(
-        world.get::<TextPart>(remapped),
-        world.get::<TextPart>(target)
+        world.get::<ContentPart>(remapped),
+        world.get::<ContentPart>(target)
     );
     world.run_schedule(RigSchedule);
     let requests: Vec<_> = world
@@ -117,6 +117,69 @@ fn edit_target_is_remapped_with_the_checkpoint() {
             .iter()
             .all(|request| request.chat_history == vec![Message::user("sibling")])
     );
+}
+
+#[test]
+fn nested_edit_target_and_its_result_parent_are_remapped() {
+    use rig_core::message::ToolResultContent;
+
+    let (mut world, _, turn, utterance, _) = fixture();
+    let original = MessageParts::User {
+        content: vec![UserContent::tool_result(
+            "call",
+            "tool",
+            vec![
+                ToolResultContent::text("original"),
+                ToolResultContent::text("sibling"),
+            ],
+        )],
+    };
+    write_message(&mut world, utterance, original.clone()).unwrap();
+    let result = world.get::<Children>(utterance).unwrap()[0];
+    let target = world.get::<Children>(result).unwrap()[0];
+    world.spawn((
+        RequestPartEdit::Text("patched".into()),
+        EditTarget(target),
+        ChildOf(turn),
+    ));
+    let checkpoint = save_world(&mut world).unwrap();
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
+    let loaded = load_world(&checkpoint, &mut world, RestoreMode::Strict, []).unwrap();
+    let link = loaded.with::<RequestPartEdit>(&world)[0];
+    let remapped = world.get::<EditTarget>(link).unwrap().0;
+    let remapped_result = world.get::<ChildOf>(remapped).unwrap().parent();
+    let remapped_utterance = world.get::<ChildOf>(remapped_result).unwrap().parent();
+    assert_ne!(remapped, target);
+    assert_ne!(remapped_result, result);
+    assert!(loaded.entities.contains(&remapped));
+    assert!(loaded.entities.contains(&remapped_result));
+    world.run_schedule(RigSchedule);
+    let expected = Message::User {
+        content: vec![UserContent::tool_result(
+            "call",
+            "tool",
+            vec![
+                ToolResultContent::text("patched"),
+                ToolResultContent::text("sibling"),
+            ],
+        )],
+    };
+    let requests: Vec<_> = world
+        .query::<&PendingEffect>()
+        .iter(&world)
+        .filter_map(|effect| match &effect.kind {
+            EffectKind::Completion { request, .. } => Some(request),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.chat_history == vec![expected.clone()])
+    );
+    assert_eq!(read_message(&world, utterance).unwrap(), original);
+    assert_eq!(read_message(&world, remapped_utterance).unwrap(), original);
 }
 
 #[test]
@@ -150,7 +213,10 @@ fn conflicting_history_and_cross_run_targets_fail_before_dispatch() {
         world.run_schedule(RigSchedule);
         assert!(world.get::<Failed>(run).is_some());
         assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 0);
-        assert!(world.get::<TextPart>(target).is_some());
+        assert!(matches!(
+            world.get::<ContentPart>(target),
+            Some(ContentPart::Text(_))
+        ));
     }
 }
 
@@ -159,7 +225,7 @@ struct DenyPart(Entity);
 
 fn deny_targeted_part(
     target: Res<DenyPart>,
-    parts: Query<&TextPart>,
+    parts: Query<&ContentPart>,
     effects: Query<
         Entity,
         (
@@ -172,7 +238,7 @@ fn deny_targeted_part(
 ) {
     if parts
         .get(target.0)
-        .is_ok_and(|part| part.0.text == "original")
+        .is_ok_and(|part| matches!(part, ContentPart::Text(text) if text.text == "original"))
     {
         for effect in &effects {
             commands

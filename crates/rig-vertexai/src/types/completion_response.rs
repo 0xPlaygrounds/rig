@@ -9,6 +9,10 @@ use rig_core::message::{
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
 use serde::{Deserialize, Serialize};
 
+/// Vertex AI's SDK reply, returned by
+/// [`CompletionModel::raw_completion`](crate::completion::CompletionModel::raw_completion).
+///
+/// It can also be recovered from a normalized [`CompletionResponse::raw`].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct VertexGenerateContentOutput(pub vertexai::model::GenerateContentResponse);
 
@@ -38,6 +42,9 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
 
     fn try_from(value: VertexGenerateContentOutput) -> Result<Self, Self::Error> {
         let response = &value.0;
+        // The provider's own document, captured before the response is
+        // consumed into normalized content.
+        let raw = serde_json::to_value(response)?;
 
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ProviderError("No candidates in response".to_string())
@@ -172,7 +179,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
         let finish_reason = map_finish_reason(&candidate.finish_reason);
         let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
 
-        Ok(CompletionResponse::new(choice, usage, PROVIDER_NAME)
+        Ok(CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
             .with_optional_response_id(

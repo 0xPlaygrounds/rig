@@ -1,7 +1,12 @@
-//! Provider-retry backoff: the re-issued completion of a provider retry
-//! waits before it is dispatched. Time is the world's `Time` (bevy_time),
-//! so a host that pauses `Time<Virtual>` — a replay — holds every backoff
-//! until it advances the clock itself.
+//! Provider-retry delays driven by the world's Bevy clock. Pausing virtual time
+//! holds retries until the host advances it.
+//!
+//! ```
+//! use std::time::Duration;
+//! use rig_ecs::{agent::Backoff, systems::backoff::delay};
+//! let backoff = Backoff { base: Duration::from_secs(1), max: Duration::from_secs(8) };
+//! assert_eq!(delay(&backoff, 2), Duration::from_secs(2));
+//! ```
 
 use std::time::Duration;
 
@@ -56,7 +61,7 @@ pub fn hold_retries(
         };
         let wait = delay(backoff, *attempt);
         commands.queue(move |world: &mut World| {
-            // Refused only when the effect is gone or already issued.
+            // A removed or issued effect no longer needs this retry barrier.
             let _ = acquire_hold(world, effect, Emitter::named(BACKOFF_OWNER));
         });
         commands

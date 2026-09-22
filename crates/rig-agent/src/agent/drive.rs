@@ -1,16 +1,6 @@
-//! The agent's bus: the dispatcher every run dispatches through, the driver
-//! the agent drives inline while a run is awaited, and the recorder that
-//! taps it.
-//!
-//! **Whoever holds the driver drives — and whoever is awaiting a run holds
-//! it.** An agent built with [`AgentBuilder::new`](super::AgentBuilder::new)
-//! owns its driver, and every run it produces polls that driver whenever
-//! the run is pending ([`AgentBus::drive`], [`Driven`]); no run owns the
-//! driver for longer than one poll. The agent never hands its dispatcher
-//! out on its own — [`Agent::into_parts`]
-//! (super::Agent::into_parts) moves the driver out together with it. An
-//! agent built over a host's bus ([`AgentBuilder::over_bus`]
-//! (super::AgentBuilder::over_bus)) holds no driver: the host drives.
+//! Agent-owned bus driving, scoped model registrations, and shared run wakeups.
+//! Runs poll owned drivers without retaining a lock between polls; agents over
+//! host buses leave driving to the host.
 
 use std::{
     pin::Pin,
@@ -29,7 +19,7 @@ use crate::sync::Mutex;
 mod loom_models;
 #[cfg(all(test, not(rig_loom)))]
 mod tests;
-use crate::bus::{BusDriver, Dispatcher, Registrar};
+use crate::bus::{BusDriver, Dispatcher, Recording, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
@@ -38,7 +28,6 @@ use rig_core::{
     effect::{HandlerKey, Key, family},
     error::ErrorReport,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 /// The per-process counter behind an agent's default owner label.
 static NEXT_AGENT: AtomicU64 = AtomicU64::new(0);
@@ -79,13 +68,11 @@ pub(crate) struct AgentBus {
     /// The owner segment of every key this agent mints
     /// (`<owner>/model:<label>`, `<owner>/memory`, ...).
     owner: Arc<str>,
-    /// The agent's own driver, when it owns one. Behind an async mutex so
-    /// concurrent runs on clones of one agent take turns driving: the run
-    /// holding the guard serves every run's dispatches.
+    /// Owned driver protected by a synchronous mutex for one poll at a time.
+    /// Each polling run can serve dispatches from every run sharing the bus.
     driver: Option<Arc<Mutex<BusDriver>>>,
     /// The wakers of every live run; see [`Driven`].
     wakers: Arc<WakerSet>,
-    recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
     /// The policy the owned bus was created with; `None` over a host's bus.
     config: Option<ServingPolicy>,
@@ -96,7 +83,6 @@ impl std::fmt::Debug for AgentBus {
         f.debug_struct("AgentBus")
             .field("owner", &self.owner)
             .field("owns_driver", &self.driver.is_some())
-            .field("recording", &self.recorder.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -115,7 +101,6 @@ impl AgentBus {
             owner: Arc::from(owner),
             driver: Some(Arc::new(Mutex::new(driver))),
             wakers: Arc::new(WakerSet::default()),
-            recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
             config: Some(config),
         }
@@ -130,7 +115,7 @@ impl AgentBus {
     /// builder is the driver's only holder; a bus this agent does not own
     /// (or one another agent value already shares) cannot record, and says
     /// so.
-    pub(crate) fn enable_recording(&mut self, keep_events: bool) -> Result<(), ErrorReport> {
+    pub(crate) fn record_to(&mut self, recorder: Recording) -> Result<(), ErrorReport> {
         let Some(driver) = self.driver.as_mut() else {
             return Err(ErrorReport::new(
                 rig_core::error::ErrorKind::Internal,
@@ -143,16 +128,10 @@ impl AgentBus {
                 "recording is enabled at build, before a clone shares the driver",
             ));
         };
-        let recorder = if keep_events {
-            EffectLogRecorder::keeping_stream_events()
-        } else {
-            EffectLogRecorder::new()
-        };
         driver
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .record_to(recorder.clone());
-        self.recorder = Some(recorder);
+            .record_with(recorder);
         Ok(())
     }
 
@@ -163,7 +142,6 @@ impl AgentBus {
             owner: Arc::from(owner),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
-            recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
             config: None,
         }
@@ -171,8 +149,7 @@ impl AgentBus {
 
     /// This bus without its driver: what an agent keeps when
     /// [`Agent::into_parts`](super::Agent::into_parts) moves the driver
-    /// out. The recorder stays, so the moved driver keeps recording into
-    /// the agent's log.
+    /// out. Recording belongs to that driver and remains active after the move.
     pub(crate) fn detached(&self) -> Self {
         Self {
             dispatcher: self.dispatcher.clone(),
@@ -180,7 +157,6 @@ impl AgentBus {
             owner: self.owner.clone(),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
-            recorder: self.recorder.clone(),
             anonymous_models: self.anonymous_models.clone(),
             config: self.config,
         }
@@ -245,16 +221,6 @@ impl AgentBus {
         self.driver.is_some()
     }
 
-    /// The recorded log so far, when the agent records.
-    pub(crate) fn effect_log(&self) -> Option<EffectLog> {
-        self.recorder.as_ref().map(EffectLogRecorder::log)
-    }
-
-    /// Take the recorded log, when the agent records.
-    pub(crate) fn take_effect_log(&self) -> Option<EffectLog> {
-        self.recorder.as_ref().map(EffectLogRecorder::take)
-    }
-
     /// Register `model` under `label` (replacing any model under it) and
     /// return the key a run selects it by.
     pub(crate) fn register_model<M>(&self, label: &ModelRef, model: M) -> Key<family::Completion>
@@ -288,9 +254,8 @@ impl AgentBus {
         })
     }
 
-    /// Move the driver out. Fails when another clone of the agent still
-    /// shares it — every clone drives, so the driver cannot leave while
-    /// one of them may still run.
+    /// Move out an exclusively owned driver and dispatcher. Returns this bus
+    /// unchanged if it has no driver or another value still shares the driver.
     pub(crate) fn try_into_parts(self) -> Result<(Dispatcher, BusDriver), Self> {
         let Some(driver) = self.driver else {
             return Err(self);
@@ -309,11 +274,8 @@ impl AgentBus {
         }
     }
 
-    /// Drive the agent's driver for as long as `inner` runs: every poll of
-    /// the returned stream that leaves `inner` pending polls the driver too,
-    /// so every dispatch the run makes — from the engine, a hook, a tool —
-    /// is served by a run awaiting it. Over a host's bus this is `inner`
-    /// unchanged.
+    /// Wrap a stream to poll the owned driver when the stream is pending.
+    /// Over a host bus, delegates to the inner stream without driving.
     pub(crate) fn drive<S>(&self, inner: S) -> Driven<S> {
         Driven {
             inner: Some(inner),
@@ -324,11 +286,8 @@ impl AgentBus {
     }
 }
 
-/// The agent's generated keys are family-prefixed (`model:`, `tool:`,
-/// `memory`, `retrieve:`), so a registration under one can never change
-/// the key's family — the one thing `Dispatcher::register` refuses. The
-/// refusal is therefore unreachable here; it is asserted in debug builds
-/// and logged, never swallowed silently, in release.
+/// Check a generated-key registration expected to preserve its family.
+/// Panics on refusal in debug builds; logs the error in release builds.
 #[track_caller]
 pub(crate) fn register_generated(registered: Result<(), rig_core::error::ErrorReport>) {
     if let Err(report) = registered {
@@ -345,23 +304,10 @@ pub(crate) fn register_generated(registered: Result<(), rig_core::error::ErrorRe
     }
 }
 
-/// A stream that drives the agent's bus driver whenever it is pending.
-///
-/// **Whoever is awaiting drives.** The driver sits behind a mutex that is
-/// only ever held for the duration of one synchronous poll: every `Driven`
-/// that is polled and finds its run pending takes the lock if it is free,
-/// polls the driver once, and releases it. A `Driven` that finds the lock
-/// taken is being polled from *inside* another `Driven`'s driver poll (a
-/// tool that runs a nested prompt on a clone) and simply yields — the
-/// poll in progress serves its dispatches too.
-///
-/// The driver is polled with a waker that wakes *every* live `Driven` on
-/// this bus, so progress inside the driver (a provider reply, a timer, a
-/// channel send) reaches whichever run is awaiting it, even when the run
-/// that last polled the driver has since finished or been dropped. That is
-/// what keeps a finished stream in scope, two streams polled alternately,
-/// and a `prompt()` awaited inside a `while let` over a stream from
-/// starving each other: none of them owns the driver.
+/// Stream wrapper polling the shared driver while pending. Holds the driver lock
+/// only during a synchronous poll and yields on contention, including reentrant
+/// polls. A bus-wide waker notifies all live runs so progress does not depend on
+/// the last polling run remaining alive.
 pub(crate) struct Driven<S> {
     /// `None` once the run finished or while dropping: the run is released
     /// before the driver's last poll, so its abandoned dispatches read as
@@ -387,14 +333,9 @@ impl<S> Driven<S> {
         self.wakers.wake_by_ref();
     }
 
-    /// A run that ended with a dispatch still in flight left it because it
-    /// dropped the stream — a hook stopped the run on a delta — and the
-    /// driver settles that cancel only when polled. Nothing polls an owned
-    /// driver between runs, so the cancelled dispatch's record was never
-    /// written to the log (the next run would have settled it, or nothing
-    /// would). Poll the driver until the in-flight count stops falling:
-    /// a cancel resolves on the poll that observes it, so this is a few
-    /// polls, and a dispatch that is not cancelled is not waited on.
+    /// Poll cancellations until the in-flight count stops decreasing, without
+    /// waiting for live dispatches. Owned drivers are not polled between runs,
+    /// so abandoned work must be settled before releasing the final run.
     fn settle_in_flight(&mut self, cx: &Context<'_>) {
         let Some(driver) = self.driver.clone() else {
             return;
@@ -429,11 +370,8 @@ impl<S> Driven<S> {
     }
 }
 
-/// The driver lock is only ever held for one synchronous poll, so it is a
-/// plain mutex and every acquisition is a `try_lock`: a run that finds it
-/// taken is being polled from inside another run's driver poll and yields.
-/// A poisoned lock (a handler panicked under a poll) is taken over, as
-/// everywhere else in the bus.
+/// Acquire without blocking, recovering poisoned locks. Returns `None` on
+/// contention so concurrent or nested driver polls can yield.
 fn try_lock<T>(driver: &Mutex<T>) -> Option<crate::sync::MutexGuard<'_, T>> {
     match driver.try_lock() {
         Ok(guard) => Some(guard),
@@ -444,14 +382,8 @@ fn try_lock<T>(driver: &Mutex<T>) -> Option<crate::sync::MutexGuard<'_, T>> {
 
 impl<S> Drop for Driven<S> {
     fn drop(&mut self) {
-        // A dropped run is a cancelled run: release it first (its pending
-        // dispatches drop their cancel guards), then give the driver one last
-        // poll so every abandoned dispatch is observed as cancelled now — its
-        // handler future (and the provider call or stream inside) drops here
-        // rather than when the next run happens to drive. The poll uses the
-        // bus-wide waker, never a noop one: the driver's internals must keep
-        // waking the runs that are still live. A run that already finished
-        // has nothing to cancel.
+        // Drop the run before polling so abandoned dispatches expose cancellation.
+        // Keep the bus-wide waker so surviving runs still receive driver progress.
         let was_live = self.inner.take().is_some();
         self.wakers.unregister(self.slot);
         if !was_live {

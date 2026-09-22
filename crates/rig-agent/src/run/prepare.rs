@@ -1,13 +1,12 @@
-//! Pure request preparation: `(spec, tools, patch) → the request`.
+//! Pure request preparation from run settings, model capabilities, history, tools,
+//! and per-turn overrides. Retrieval and model execution remain driver responsibilities.
 //!
-//! [`prepare_request`] is the protocol's answer to "given this run
-//! specification, the tools available this turn, the history to send, and a
-//! per-turn [`RequestPatch`], what exactly goes to the model?" It performs no
-//! IO — tool *retrieval* (which tools are available) is a driver concern that
-//! happens before, model *execution* happens after — so every driver builds
-//! byte-identical requests from the same inputs, and the output-mode
-//! resolution, synthetic output-tool synthesis, preamble augmentation and
-//! tool-choice validation live in exactly one place.
+//! ```
+//! use rig_agent::run::{prepare::prepare_request, spec::RunSpec};
+//! let request = prepare_request(&RunSpec::new(), &Default::default(), &[], vec![], None, None)?;
+//! assert!(request.tools.is_empty());
+//! # Ok::<(), rig_agent::run::prepare::PrepareError>(())
+//! ```
 
 use std::collections::BTreeSet;
 
@@ -62,15 +61,14 @@ pub struct PreparedRequest {
     pub tools: Vec<ToolDefinition>,
     /// Effective sampling temperature (patch over spec).
     pub temperature: Option<f64>,
-    /// Effective output-token cap (patch over spec) — the value the request
-    /// carries, so a driver can report it without reading the builder back.
+    /// Effective output-token cap, with patch values overriding the spec.
     pub max_tokens: Option<u64>,
     /// Effective provider passthrough parameters (patch shallow-merged over
     /// spec when both are objects).
     pub additional_params: Option<serde_json::Value>,
     /// Effective tool choice (patch over spec).
     pub tool_choice: Option<ToolChoice>,
-    /// The provider-native structured-output constraint — set only when the
+    /// The provider-native structured-output constraint, set only when the
     /// resolved mode is [`OutputMode::Native`].
     pub output_schema: Option<rig_core::schemars::Schema>,
     /// The mode this turn actually runs in (never [`OutputMode::Auto`]).
@@ -107,21 +105,11 @@ impl PreparedRequest {
     }
 }
 
-/// Prepare one model call.
-///
-/// * `spec` — the run's configuration (preamble, static context, sampling,
-///   tool choice, structured-output policy).
-/// * `capabilities` — the selected model's capability snapshot; only
-///   `composes_native_output_with_tools` is read, for output-mode resolution.
-/// * `history` — the prior messages (the run's history for this call).
-/// * `tools` — the real tools available this turn, already retrieved, in
-///   advertisement order.
-/// * `committed_output_tool` — the output-tool name the run committed to on
-///   an earlier turn, if any; pins Tool mode and its name for the whole run.
-/// * `patch` — the merged per-turn [`RequestPatch`], if any.
-///
-/// The result is pure data; nothing here touches a model, a registry, or an
-/// executor.
+/// Prepare one model call from settings, capability snapshot, ordered history,
+/// retrieved tools in advertisement order, and an optional merged patch.
+/// A committed output-tool name pins tool mode while a schema is present.
+/// Returns errors for incompatible tool choices, unavailable allow-list names,
+/// output-tool collisions, or invalid native schemas. Performs no I/O.
 pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
@@ -142,11 +130,6 @@ pub fn prepare_request(
     let output_mode = &spec.output_mode;
     let output_tool_description = spec.output_tool_description.as_deref();
     let augment_output_preamble = spec.augment_output_preamble;
-    // Apply a per-turn request patch (the merged patch from every `CompletionCall`
-    // hook): each set field replaces the agent's configured value for this turn,
-    // unset fields inherit it, `additional_params` is shallow-merged, and
-    // `extra_context`/`history` are applied below. This is per-turn only — it
-    // never mutates the agent's baseline.
     let preamble = request_patch
         .and_then(|o| o.preamble.as_deref())
         .or(preamble);
@@ -155,12 +138,8 @@ pub fn prepare_request(
     let tool_choice = request_patch
         .and_then(|o| o.tool_choice.as_ref())
         .or(tool_choice);
-    // Provider passthrough params: when both the baseline and the override are
-    // JSON objects, shallow-merge them (top-level keys, the override winning);
-    // otherwise the override value wins wholesale when set, else the baseline.
-    // This keeps the override winning consistently instead of silently dropping a
-    // non-object patch — `json_utils::merge` returns its first argument unchanged
-    // when either side isn't an object.
+    // Non-object patches must replace the baseline; the object merge helper
+    // otherwise retains its first argument for these inputs.
     let additional_params: Option<serde_json::Value> = match (
         additional_params,
         request_patch.and_then(|o| o.additional_params.as_ref()),
@@ -172,24 +151,13 @@ pub fn prepare_request(
     };
     let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
 
-    // When a per-turn `active_tools` allow-list is present, capture the full tool
-    // set BEFORE filtering: the synthetic output-tool name must avoid colliding
-    // with ANY advertised tool, not just this turn's narrowed set — a tool
-    // filtered out this turn can be advertised again on a later turn, while the
-    // output-tool name is pinned for the whole run, so picking against only the
-    // narrowed set could commit a name that collides once the filter lifts.
-    // Without a filter the full set equals `executable_tool_names` below, so we
-    // skip the extra allocation and reuse that.
+    // Reserve output names against the full tool set because filtered tools may
+    // return on later turns while the output name remains pinned.
     let pre_filter_tool_names: Option<BTreeSet<String>> =
         active_tools.map(|_| tools.iter().map(|tool| tool.name.clone()).collect());
 
-    // Apply a per-turn `active_tools` allow-list (from a `CompletionCall` hook):
-    // narrow the advertised tool set to the named tools BEFORE computing the
-    // executable set, so tool-choice resolution and invalid-tool-call validation
-    // all operate on the narrowed set. The synthetic output tool is appended
-    // later and is unaffected, so structured output still works under an empty
-    // allow-list. A name that isn't available this turn is a hook bug, surfaced
-    // as a request error (mirroring `ToolChoice::Specific`'s contract).
+    // Filter before computing executable names so request advertisements and
+    // runtime validation agree. Synthetic output remains independent of this filter.
     let mut tooldefs = tools;
     if let Some(allow) = active_tools {
         if let Some(missing) = allow
@@ -204,27 +172,12 @@ pub fn prepare_request(
         tooldefs.retain(|tool| allowed.contains(&tool.name));
     }
 
-    // Executable tools are the real tool-server tools, computed BEFORE any
-    // synthetic output tool is appended.
+    // The synthetic output tool must never enter the executable set.
     let executable_tool_names: BTreeSet<String> =
         tooldefs.iter().map(|tool| tool.name.clone()).collect();
 
-    // Resolve the effective output mode (#1928). Once the run has committed to a
-    // Tool-mode output tool on an earlier turn (signaled by `committed_output_
-    // tool`, which is persisted on the run via `output_tool_name`), stay in Tool
-    // mode and reuse that name — so a later turn whose tool set differs (e.g. RAG
-    // retrieved no tools) can't flip Tool -> Native and re-apply the native
-    // constraint that suppressed tools in the first place. Only Tool mode is
-    // pinned; Native/Prompted re-resolve, so a tool-less first turn can still
-    // become Tool once tools appear. Otherwise resolve from the request, the
-    // schema, the tool set, whether the tool choice permits the output-tool call,
-    // and whether the provider composes native structured output with tools.
-    //
-    // The name Tool mode would use is known before the mode is resolved — the
-    // run's committed name, or a collision-safe pick against the full
-    // pre-filter set (or the executable set when unfiltered) — so the
-    // resolution asks whether the choice can call *that* tool: a `Specific`
-    // set naming it keeps Tool mode, one omitting it degrades to Native.
+    // Resolve against the actual candidate name so Specific choices can permit
+    // the output tool. A committed name prevents changing output mode mid-run.
     let candidate_output_tool = committed_output_tool.map_or_else(
         || {
             pick_output_tool_name(
@@ -250,12 +203,8 @@ pub fn prepare_request(
     let output_tool_name =
         matches!(resolved_mode, OutputMode::Tool).then_some(candidate_output_tool);
 
-    // A freshly picked name never collides, but a name pinned on turn 1 can if a
-    // real tool with that name becomes effective later (for example through a
-    // shared tool server, retrieval, or an MCP refresh). The output-tool
-    // intercept matches by name, so fail before provider I/O: advertising both
-    // definitions would make a call to the real tool finalize the run instead
-    // of reaching normal dispatch.
+    // A later real tool may collide with a pinned output name; reject it before
+    // a real tool call can be mistaken for run finalization.
     if let Some(name) = &output_tool_name
         && executable_tool_names.contains(name)
     {
@@ -266,16 +215,8 @@ pub fn prepare_request(
         )));
     }
 
-    // In committed Tool mode the run can only finalize by calling the synthetic
-    // output tool, and the mode is pinned (it cannot degrade to Native mid-run,
-    // see #1928). A `tool_choice` that forbids the output-tool call — `None`, or
-    // a `Specific` set that excludes it, e.g. from a per-turn `RequestPatch` —
-    // therefore produces a turn that cannot emit the structured result. The
-    // non-committed path degrades to Native via `resolve_output_mode`, so this
-    // only fires once a turn has committed Tool mode; warn rather than silently
-    // stall the run. Use the name-aware check so a `Specific` set that *names*
-    // the output tool (which `allowed_tool_names_for_choice` accepts) is not
-    // falsely flagged as unable to finalize.
+    // Pinned tool mode cannot fall back to native output when a later choice
+    // forbids its output call, so report the incompatible policy.
     if let Some(name) = &output_tool_name
         && !output_tool_callable(tool_choice, name)
     {
@@ -287,8 +228,6 @@ pub fn prepare_request(
         );
     }
 
-    // Augment the preamble for Tool/Prompted modes, then prepend it as a system
-    // message (deferred from the original position so it can reference the tool).
     let effective_preamble: Option<String> = {
         let base = preamble.map(str::to_owned);
         let instruction = match &resolved_mode {
@@ -320,10 +259,7 @@ pub fn prepare_request(
         }
     };
 
-    // A per-turn `history` patch replaces the prior messages sent to the provider
-    // *this turn only* (context-window compaction / summarization). The RAG query
-    // text above deliberately still derives from the original `chat_history`, so
-    // this changes only what is sent, never what is retrieved or persisted.
+    // Request history replacement must not mutate persisted conversation history.
     let messages_history: &[Message] = request_patch
         .and_then(|o| o.history.as_deref())
         .unwrap_or(chat_history);
@@ -335,11 +271,6 @@ pub fn prepare_request(
         messages_history.to_vec()
     };
 
-    // In Tool mode, advertise the synthetic output tool to the provider (its name
-    // is added to `allowed_tool_names` below but never to `executable_tool_names`,
-    // so it is never dispatched to the tool server).
-    // `output_tool_name` is only `Some` when `output_schema` is `Some` (Tool mode
-    // requires a schema), so this match always fires in Tool mode.
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
         tooldefs.push(ToolDefinition {
             name: name.clone(),
@@ -353,7 +284,6 @@ pub fn prepare_request(
         });
     }
 
-    // Only Native mode sets the provider's native structured-output constraint.
     let native_schema = match (&resolved_mode, output_schema) {
         (OutputMode::Native, Some(schema)) => Some(
             rig_core::schemars::Schema::try_from(schema.clone())
@@ -362,18 +292,12 @@ pub fn prepare_request(
         _ => None,
     };
 
-    // Hook-supplied extra context documents (passive RAG) follow static context,
-    // with extras in hook registration order (they were merged in that order).
-    // Per-turn and non-sticky: the next turn re-resolves from the baseline.
     let mut documents = static_context.clone();
     if let Some(patch) = request_patch {
         documents.extend(patch.extra_context.iter().cloned());
     }
 
-    // Validate the effective request locally (Required/Specific vs the effective
-    // advertised tool set, incl. the output tool) *before* building the send —
-    // so an impossible tool_choice/tool-set combination fails here with no
-    // provider round-trip, and names the `active_tools` filter when it caused it.
+    // Reject impossible choices before spending a provider request.
     let mut allowed_tool_names = allowed_tool_names_for_choice(
         &executable_tool_names,
         tool_choice,
@@ -405,15 +329,8 @@ pub fn prepare_request(
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
 const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
 
-/// Whether the active [`ToolChoice`] can call the named synthetic output tool.
-///
-/// Tool output mode finalizes via that call, so the mode resolves to Tool only
-/// when the choice permits it: `Auto`, `Required`, or a `Specific` set that
-/// names the output tool (which [`allowed_tool_names_for_choice`] advertises
-/// for exactly that choice). A `None` choice, or a `Specific` set that lists
-/// only the caller's real tools, cannot finalize a Tool-mode turn: an
-/// uncommitted run degrades to native structured output, a committed one
-/// warns.
+/// Return whether tool choice permits the named output tool. Unspecified, auto,
+/// required, and specific choices naming it permit the call.
 fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str) -> bool {
     match tool_choice {
         None | Some(ToolChoice::Auto | ToolChoice::Required) => true,
@@ -424,20 +341,10 @@ fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str
     }
 }
 
-/// Resolve the caller-facing [`OutputMode`] to a concrete mode for one request.
-///
-/// With no schema there is nothing to enforce, so the result is always `Native`
-/// (the synthetic tool and prompt injection only make sense with a schema).
-/// `Auto` becomes `Tool` only when a real executable tool is present, the tool
-/// choice permits the output-tool call, AND the provider does *not* compose
-/// native structured output with tools — i.e. only where the native constraint
-/// would actually suppress tool calls (#1928). On providers that compose them
-/// (OpenAI, Anthropic), `Auto` keeps guaranteed native structured output.
-/// `Tool` (explicit or via `Auto`) requires that the active [`ToolChoice`]
-/// permit the output-tool call; when it does not, it degrades to `Native` so
-/// structured output is still enforced rather than silently dropped. Explicit
-/// `Prompted`/`Native` are honored when a schema is present. The returned mode is
-/// never `Auto`.
+/// Resolve to a non-auto mode. Without a schema, use native output. Auto selects
+/// tool output only with executable tools, a callable output tool, and no native
+/// composition support. Explicit tool mode falls back to native if uncallable;
+/// native and prompted modes remain unchanged when a schema is present.
 fn resolve_output_mode(
     has_schema: bool,
     has_executable_tools: bool,
@@ -474,25 +381,12 @@ fn pick_output_tool_name(executable_tool_names: &BTreeSet<String>) -> String {
     name
 }
 
-/// Compute the allowed tool names for a `tool_choice` **and** validate the
-/// effective request locally (no provider round-trip).
-///
-/// The effective advertised tool set for a turn is the executable tools (after
-/// any per-turn `active_tools` filtering) plus the synthetic output tool
-/// (`output_tool_name`) when structured output runs in Tool mode. Validation:
-///
-/// - [`ToolChoice::Required`] with **no** advertised tool (no executable tool and
-///   no output tool) is a local error — the model is forced to call a tool but
-///   none is advertised.
-/// - [`ToolChoice::Specific`] must name only advertised tools (executable tools
-///   or the output tool); an empty specific set is also an error.
-///
-/// `pre_filter_tool_names` is the full executable tool set *before* any per-turn
-/// `active_tools` filtering — `Some` only when an `active_tools` allow-list was
-/// applied. When the incompatibility was actually **caused** by that filter (a
-/// tool that would otherwise satisfy the choice was dropped), the error says so
-/// and suggests setting a compatible `tool_choice` in the same `RequestPatch`.
-/// A plain typo naming a tool that never existed is *not* blamed on the filter.
+/// Validate tool choice and return permitted names. Auto and required choices
+/// return executable names; specific choices return their requested names,
+/// including the output tool if named. None returns an empty set.
+/// Errors on required choice without any advertised tool, empty specific choices,
+/// or names absent from executable tools and the output tool. Supply pre-filter
+/// names only when an allow-list was applied, for filter-specific diagnostics.
 pub fn allowed_tool_names_for_choice(
     executable_tool_names: &BTreeSet<String>,
     tool_choice: Option<&ToolChoice>,
@@ -508,7 +402,6 @@ pub fn allowed_tool_names_for_choice(
             ""
         }
     };
-    // The advertised tools the model may call: executable tools + the output tool.
     let advertised = || {
         executable_tool_names
             .iter()
@@ -521,7 +414,6 @@ pub fn allowed_tool_names_for_choice(
         None | Some(ToolChoice::Auto) => executable_tool_names.clone(),
         Some(ToolChoice::Required) => {
             if !has_advertised_tool {
-                // The filter caused this only if there *were* tools before it ran.
                 let active_tools_caused = pre_filter_tool_names.is_some_and(|pf| !pf.is_empty());
                 return Err(PrepareError::Request(format!(
                     "ToolChoice::Required forces the model to call a tool, but no tools are \
@@ -549,8 +441,7 @@ pub fn allowed_tool_names_for_choice(
                 .collect::<Vec<_>>();
 
             if !missing.is_empty() {
-                // The filter caused this only if a missing name existed pre-filter
-                // (i.e. `active_tools` dropped it) — not for a plain typo.
+                // Attribute missing names to filtering only if they existed before it.
                 let active_tools_caused = pre_filter_tool_names
                     .is_some_and(|pf| missing.iter().any(|name| pf.contains(*name)));
                 return Err(PrepareError::Request(format!(

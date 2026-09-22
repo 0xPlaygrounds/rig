@@ -1,4 +1,11 @@
 //! Early invalid-name publication from the native bus's delivered stream.
+//!
+//! ```
+//! use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+//! use rig_ecs::systems::{RigSet, discover_streamed_invalid_calls};
+//! let mut schedule = Schedule::default();
+//! schedule.add_systems(discover_streamed_invalid_calls.in_set(RigSet::Fold));
+//! ```
 
 use super::*;
 use rig_core::{
@@ -6,8 +13,8 @@ use rig_core::{
     streaming::{BlockAccumulator, Delta, StreamEvent},
 };
 
-/// A consumer stops at its first error. Its item position equals the number
-/// of preceding successful events, since there are no earlier error items.
+/// Return the successful event count before the first error, or the full length.
+/// The first error's item position equals the number of preceding successful events.
 pub(super) fn validation_len(stream: &BusStreamed) -> usize {
     stream
         .errors
@@ -91,8 +98,7 @@ pub fn discover_streamed_invalid_calls(
             allowed = names.iter().cloned().collect();
         }
         allowed.extend(minted.0.iter().cloned());
-        // Valid streams scan each event once. Reconstruct a prefix only when
-        // there is an actual invalid name to expose to policy.
+        // Track the validated offset to avoid rescanning valid stream prefixes.
         for (index, event) in stream
             .events
             .iter()

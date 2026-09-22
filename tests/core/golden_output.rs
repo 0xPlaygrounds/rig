@@ -8,6 +8,7 @@ use rig::agent::AgentBuilder;
 use rig::effect::EffectFamily;
 use rig::run::OutputMode;
 use rig::test_utils::{MockCompletionModel, MockTurn};
+use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use crate::goldens::{event_schema, families};
@@ -23,6 +24,7 @@ fn event() -> serde_json::Value {
 /// the call settles the run.
 #[tokio::test]
 async fn output_tool_text_reprompt_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("Seattle Rust Meetup, a technology meetup."),
         MockTurn::tool_call("call-1", "final_result", event()),
@@ -31,7 +33,7 @@ async fn output_tool_text_reprompt_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .output_schema_raw(event_schema())
     .output_mode(OutputMode::Tool)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(PROMPT)
@@ -39,7 +41,7 @@ async fn output_tool_text_reprompt_effect_log_is_the_golden_fixture() {
         .await
         .expect("the reprompt recovers");
     assert_eq!(response.output, event().to_string());
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
@@ -51,6 +53,7 @@ async fn output_tool_text_reprompt_effect_log_is_the_golden_fixture() {
 /// missing field named, then the complete call settles the run.
 #[tokio::test]
 async fn output_tool_missing_field_reprompt_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call(
             "call-1",
@@ -63,7 +66,7 @@ async fn output_tool_missing_field_reprompt_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .output_schema_raw(event_schema())
     .output_mode(OutputMode::Tool)
-    .record_effects()
+    .record_to(recorder.clone())
     .build();
     let response = agent
         .prompt(PROMPT)
@@ -71,7 +74,7 @@ async fn output_tool_missing_field_reprompt_effect_log_is_the_golden_fixture() {
         .await
         .expect("the reprompt recovers");
     assert_eq!(response.output, event().to_string());
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]

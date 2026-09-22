@@ -1,15 +1,11 @@
 //! Together AI's completion model identifiers.
 //!
-//! From [Together AI Reference](https://docs.together.ai/docs/chat-overview).
-//! Together is an OpenAI chat-completions dialect, so the requests run on the
-//! shared wire: [`openai::wire::TOGETHER`](crate::providers::openai::wire::TOGETHER)
-//! carries the base URL, the `TOGETHER_API_KEY` variable, the `/v1`-prefixed
-//! paths, and the per-model structured-output support that makes this dialect
-//! drop a schema with a warning rather than send one and be rejected.
-
-// ================================================================
-// Together Completion Models
-// ================================================================
+//! ```no_run
+//! use rig_core::providers::{together, openai::wire::{OpenAI, TOGETHER}};
+//! let wire = OpenAI::from_env_with(&TOGETHER)?
+//!     .chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 pub const YI_34B_CHAT: &str = "zero-one-ai/Yi-34B-Chat";
 pub const OLMO_7B_INSTRUCT: &str = "allenai/OLMo-7B-Instruct";

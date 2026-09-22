@@ -3,8 +3,8 @@
 //! The property the whole model exists for is that a unary reply and a
 //! streamed reply of the *same turn* fold to the same response. These tests
 //! assert it against real recorded bodies: the pairs under
-//! `tests/cassettes/openai/raw_capture_matrix/**` and
-//! `tests/cassettes/openai/raw_stream_capture_matrix/**` are the same prompt
+//! `crates/rig-cassette/fixtures/cassettes/openai/raw_capture_matrix/**` and
+//! `crates/rig-cassette/fixtures/cassettes/openai/raw_stream_capture_matrix/**` are the same prompt
 //! answered both ways, so there is nothing hand-written for the two paths to
 //! agree about by accident.
 
@@ -69,7 +69,12 @@ async fn fold_both(
         .await
         .expect("the recorded stream opens");
     while response.next().await.is_some() {}
-    (buffered, response.finish())
+    (
+        buffered,
+        response
+            .finish()
+            .expect("the stream produced a terminal record"),
+    )
 }
 
 #[tokio::test]
@@ -208,7 +213,9 @@ async fn the_done_sentinel_emits_the_deferred_terminal() {
     );
     let mut response = bound.stream(prompt("hi")).await.expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response.finish();
+    let folded = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(folded.choice.first(), Some(&AssistantContent::text("hi")));
     // No chunk reported a reason, so the record carries none — the sentinel
@@ -233,9 +240,14 @@ async fn a_truncated_stream_yields_no_terminal_record() {
     );
     let mut response = bound.stream(prompt("hi")).await.expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response.finish();
-    assert_eq!(folded.usage, crate::completion::Usage::default());
-    assert_eq!(folded.finish_reason(), None);
+    assert!(
+        response.response.is_none(),
+        "no terminal record is synthesized"
+    );
+    let error = response
+        .finish()
+        .expect_err("a stream without a terminal record has no response to fold");
+    assert!(error.to_string().contains("truncated"), "{error}");
 }
 
 /// The wire's in-band error envelope arrives with a 200 status, so only the
@@ -262,8 +274,9 @@ async fn an_in_band_error_envelope_fails_the_turn() {
         errors[0].contains("rate limited"),
         "the provider's message survives: {errors:?}"
     );
-    // A failed turn commits no terminal record, so nothing reports usage.
-    assert_eq!(response.finish().finish_reason(), None);
+    // A failed turn commits no terminal record, so there is nothing to fold.
+    assert!(response.response.is_none());
+    assert!(response.finish().is_err());
 }
 
 /// A dialect that spells the cap `max_completion_tokens` does so only for
@@ -376,7 +389,9 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     .await
     .expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response.finish();
+    let folded = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     // `serde_json::from_value`, not `Type::deserialize` — the latter needs
     // `serde::Deserialize` in scope at the call site, which is the trait-bound
@@ -450,7 +465,9 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
         .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response.finish();
+    let streamed = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     // Reasoning first, then the visible text — one emitter, one order.
     let reasoning_text = |choice: &[AssistantContent]| match choice.first() {
@@ -498,7 +515,9 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
     .await
     .expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response.finish();
+    let folded = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     let record: StreamingCompletionResponse<ChatUsage> =
         serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
@@ -552,7 +571,9 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
     .await
     .expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response.finish();
+    let folded = response
+        .finish()
+        .expect("the stream produced a terminal record");
 
     // The whole turn, not just its first frame.
     assert_eq!(folded.choice.first(), Some(&AssistantContent::text("pong")));
@@ -774,7 +795,7 @@ fn empty_turn_body(finish_reason: Option<&str>) -> String {
 /// restating which reasons are legally empty. Live traffic cannot enumerate
 /// the vocabulary — no prompt reliably produces an empty `content_filter`
 /// turn — so the boundary is asserted here and the recorded matrices
-/// (`tests/providers/openai/cassette/truncated_turn_matrix.rs`) confirm the
+/// (`crates/rig-cassette/tests/providers/openai/cassette/truncated_turn_matrix.rs`) confirm the
 /// `length` half against real bytes.
 #[tokio::test]
 async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
@@ -811,7 +832,7 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
 /// naming twice: a provider that says the model finished and hands back
 /// nothing has misbehaved, so `stop` must stay out of the legal set even
 /// though a stop sequence can consume a whole answer — which is exactly
-/// what `tests/providers/llamacpp/cassette/content_matrix.rs`'s
+/// what `crates/rig-cassette/tests/providers/llamacpp/cassette/content_matrix.rs`'s
 /// stop-sequence cell records.
 #[tokio::test]
 async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
