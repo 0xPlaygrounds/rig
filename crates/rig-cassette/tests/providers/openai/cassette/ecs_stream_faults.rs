@@ -383,7 +383,11 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
             let runs = &mut runs;
             with_openai_cassette("streaming/streaming_smoke", |client| async move {
                 let run = native_run(
-                    client.openai.completion(GPT_4O),
+                    crate::ecs_matrix::world::FirstDelta {
+                        inner: client.openai.completion(GPT_4O),
+                        tool: false,
+                        release: std::sync::Arc::new(tokio::sync::Semaphore::new(0)),
+                    },
                     STREAMING_PREAMBLE,
                     STREAMING_PROMPT,
                     witness,
@@ -419,10 +423,8 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
             comparable_failure(observed.failure()),
             comparable_failure(plain.failure())
         );
-        // The despawn lands on the tick that collected the first text delta,
-        // and how many deltas that tick collected is scheduling: the witness's
-        // extra work, a loaded CI runner. The two logs agree up to the first
-        // text delta; what a cancelled record kept after it is not a parity fact.
+        // The delivery gate keeps later deltas pending until despawn drops
+        // the stream, so the cancellation cut is independent of polling speed.
         assert_eq!(
             log_json_through_the_first_text_delta(&observed.log),
             log_json_through_the_first_text_delta(&plain.log)

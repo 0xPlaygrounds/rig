@@ -131,10 +131,10 @@ pub(crate) struct Gates {
 /// can publish more of the stream (the anthropic `FirstDelta` gate,
 /// for both delta hooks); a driver that saves a scene mid-stream releases
 /// the gate afterwards.
-struct FirstDelta<M> {
-    inner: M,
-    tool: bool,
-    release: Arc<Semaphore>,
+pub(crate) struct FirstDelta<M> {
+    pub(crate) inner: M,
+    pub(crate) tool: bool,
+    pub(crate) release: Arc<Semaphore>,
 }
 
 impl<M: CompletionModel> CompletionModel for FirstDelta<M> {

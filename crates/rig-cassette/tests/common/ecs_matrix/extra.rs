@@ -47,6 +47,10 @@ use crate::stream_faults::{adapter_events, endings, witnessed};
 
 const GUARD: std::time::Duration = std::time::Duration::from_secs(300);
 
+#[cfg(test)]
+#[path = "extra/tests.rs"]
+mod tests;
+
 /// A 4xx the wire records, as the request the recording holds.
 pub(crate) struct ErrorProbe {
     pub(crate) prompt: &'static str,
@@ -398,7 +402,7 @@ struct CancelAt {
 /// `Cancelled` at the cut, and nothing else: the stream is left to its
 /// handler (CONTRACT §9.1).
 fn cancel_at_cut(
-    streams: Query<(&ChildOf, &Streamed)>,
+    streams: Query<(&ChildOf, &Streamed, Option<&EffectOutcome>)>,
     turns: Query<&ChildOf, With<Turn>>,
     mut at: ResMut<CancelAt>,
     mut commands: Commands,
@@ -406,7 +410,7 @@ fn cancel_at_cut(
     if at.done {
         return;
     }
-    for (parent, stream) in &streams {
+    for (parent, stream, outcome) in &streams {
         let reached = match at.cut {
             Cut::FirstTextDelta => stream.events.iter().any(|event| {
                 matches!(
@@ -421,7 +425,9 @@ fn cancel_at_cut(
                 .events
                 .iter()
                 .any(super::world::is_tool_call_progress),
-            Cut::AfterTerminal => stream.outcome.is_some(),
+            // A folded terminal can precede EOF. This cut promises no live
+            // stream, so wait for the collector's completed effect outcome.
+            Cut::AfterTerminal => outcome.is_some(),
         };
         if reached {
             let run = turns
