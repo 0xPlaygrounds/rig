@@ -33,7 +33,7 @@ pub mod wire;
 /// cannot supply it: Anthropic, OpenAI-chat, Cohere, and Bedrock tool
 /// messages carry no name on their wires, so a cross-provider ingested
 /// transcript arrives with `name: ""`. The name lives on the paired
-/// assistant call in the same history — match by rig's correlation handle
+/// assistant call in the same history. match by rig's correlation handle
 /// first, then by provider identifiers. A result matching no call keeps
 /// its empty name: the transcript genuinely lacks the data, and the wire's
 /// own rejection is the honest failure.

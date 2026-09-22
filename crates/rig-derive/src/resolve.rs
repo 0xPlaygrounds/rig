@@ -96,7 +96,7 @@ impl CrateRefs {
 
     /// Whether `segments` is an unambiguous fully qualified path to the
     /// runtime `ToolContext` under any name the crates resolve to in this
-    /// build — including Cargo renames and `crate` self-references.
+    /// build. including Cargo renames and `crate` self-references.
     pub(crate) fn is_context_path(&self, segments: &[String]) -> bool {
         match segments {
             [root, tool, context] => {

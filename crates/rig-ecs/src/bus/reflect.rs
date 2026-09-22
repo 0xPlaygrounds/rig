@@ -17,22 +17,22 @@ use rig_core::{
 };
 
 crate::reflect::opaque_reflect! {
-    /// [`HandlerKey`], reflected.
+ /// [`HandlerKey`], reflected.
     struct HandlerKeyReflect(HandlerKey): PartialEq;
-    /// [`EffectKind`], reflected.
+ /// [`EffectKind`], reflected.
     enum EffectKindReflect(EffectKind):;
-    /// [`EffectId`], reflected.
+ /// [`EffectId`], reflected.
     struct EffectIdReflect(EffectId): PartialEq;
-    /// [`HandlerDescriptor`], reflected.
+ /// [`HandlerDescriptor`], reflected.
     struct HandlerDescriptorReflect(HandlerDescriptor): PartialEq;
-    /// [`ToolContext`], reflected.
+ /// [`ToolContext`], reflected.
     struct ToolContextReflect(ToolContext): Default, PartialEq;
-    /// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.
+ /// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.
     enum OutcomeReflect(Result<Outcome, ErrorReport>):;
-    /// A stream's answer so far, `Option<Result<Outcome, ErrorReport>>`, reflected.
+ /// A stream's answer so far, `Option<Result<Outcome, ErrorReport>>`, reflected.
     enum StreamedOutcomeReflect(Option<Result<Outcome, ErrorReport>>): Default;
-    /// A stream's events, `Vec<StreamEvent>`, reflected.
+ /// A stream's events, `Vec<StreamEvent>`, reflected.
     struct StreamEventsReflect(Vec<StreamEvent>): Default, PartialEq;
-    /// Stream error reports with their item positions, reflected.
+ /// Stream error reports with their item positions, reflected.
     struct StreamErrorsReflect(Vec<(usize, ErrorReport)>): Default, PartialEq;
 }

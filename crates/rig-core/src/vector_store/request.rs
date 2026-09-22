@@ -160,7 +160,7 @@ impl<P> SqlCondition<P> {
         }
     }
 
-    /// Renders `<key> <op> (<placeholder>, ...)` with one placeholder per value,
+    /// Renders `<key> <op> (<placeholder>,...)` with one placeholder per value,
     /// e.g. `id IN (?, ?)`.
     pub fn list(key: impl AsRef<str>, op: &str, placeholder: &str, values: Vec<P>) -> Self {
         let placeholders = vec![placeholder; values.len()].join(", ");

@@ -49,7 +49,7 @@ pub enum VertexAiClientError {
 /// `tokio::spawn` for its refresh task while it is being constructed. So this
 /// function must run inside a Tokio runtime context, and the runtime that
 /// accepted the spawn has to stay alive and driven for as long as the
-/// credentials are used — see [`Client::from_env`].
+/// credentials are used. see [`Client::from_env`].
 fn build_credentials(
     explicit_creds: Option<Credentials>,
 ) -> Result<Credentials, VertexAiClientError> {
@@ -128,8 +128,8 @@ impl ClientBuilder {
     /// configured here (explicitly or from the environment), because they name
     /// the model resource in the request rather than the connection.
     ///
-    /// Combining this with [`Self::with_credentials`] is a contradiction —
-    /// the supplied client's credentials are already fixed — and
+    /// Combining this with [`Self::with_credentials`] is a contradiction -
+    /// the supplied client's credentials are already fixed. and
     /// [`Self::build`] rejects it with
     /// [`VertexAiClientError::ConflictingCredentials`].
     ///
@@ -137,14 +137,14 @@ impl ClientBuilder {
     /// # use google_cloud_aiplatform_v1::client::PredictionService;
     /// # async fn example() -> anyhow::Result<()> {
     /// let service = PredictionService::builder()
-    ///     .with_endpoint("https://us-central1-aiplatform.googleapis.com")
-    ///     .build()
-    ///     .await?;
+    ///.with_endpoint("https://us-central1-aiplatform.googleapis.com")
+    ///.build()
+    ///.await?;
     /// let client = rig_vertexai::Client::builder()
-    ///     .with_project("my-project")
-    ///     .with_location("us-central1")
-    ///     .with_prediction_service(service)
-    ///     .build()?;
+    ///.with_project("my-project")
+    ///.with_location("us-central1")
+    ///.with_prediction_service(service)
+    ///.build()?;
     /// # let _ = client;
     /// # Ok(())
     /// # }
@@ -209,8 +209,8 @@ impl Default for ClientBuilder {
 #[derive(Clone, Debug)]
 enum PredictionServiceSource {
     /// Rig resolved the credentials and builds the SDK client on first use,
-    /// on whichever runtime drives that first completion. The result — error
-    /// included — is shared permanently by every clone of the client. Correct
+    /// on whichever runtime drives that first completion. The result. error
+    /// included. is shared permanently by every clone of the client. Correct
     /// invalid construction settings by building a fresh client; this cell is
     /// not a request-retry policy.
     Deferred {
@@ -249,9 +249,9 @@ impl Client {
     ///
     /// // Override project and location
     /// let client = Client::builder()
-    ///     .with_project("my-project")
-    ///     .with_location("us-central1")
-    ///     .build()?;
+    ///.with_project("my-project")
+    ///.with_location("us-central1")
+    ///.build()?;
     /// # Ok(())
     /// # }
     /// ```
@@ -282,7 +282,7 @@ impl Client {
     /// Resolving Application Default Credentials constructs
     /// `google-cloud-auth`'s token cache, which `tokio::spawn`s a refresh task
     /// as part of construction. Call this from inside a Tokio runtime context
-    /// — otherwise this returns [`VertexAiClientError::RuntimeRequired`] — and keep that runtime alive and driven
+    ///. otherwise this returns [`VertexAiClientError::RuntimeRequired`]. and keep that runtime alive and driven
     /// for as long as the client is used: the refresh task belongs to the
     /// runtime that accepted it, not to any one completion, and dropping the
     /// runtime drops it. A host that builds the client on a temporary runtime

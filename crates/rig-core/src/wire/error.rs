@@ -16,7 +16,7 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     /// as an error is the provider's reply; a response-less failure is not.
     fn transport(error: crate::http_client::Error) -> Self;
 
-    /// The provider's reply, preserved verbatim with its status — a
+    /// The provider's reply, preserved verbatim with its status. a
     /// non-success response or a 2xx error envelope.
     fn http_response(status: http::StatusCode, body: &str) -> Self;
 
@@ -34,11 +34,11 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     /// Attach the status a preserved reply arrived with, when it has none.
     fn with_provider_status(self, status: Option<http::StatusCode>) -> Self;
 
-    /// Attach the provider's transport request id (rig#2314).
+    /// Attach the provider's transport request id.
     fn with_provider_request_id(self, request_id: Option<String>) -> Self;
 
     /// Attach the reply's headers, so rate-limit metadata survives
-    /// (rig#2210).
+    ///.
     fn with_response_headers(self, headers: Option<http::HeaderMap>) -> Self;
 
     /// The HTTP status of a preserved provider reply, when this error has

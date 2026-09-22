@@ -1,15 +1,15 @@
 // To run this example:
 //
 // 1. Create a Vectorize index:
-//    wrangler vectorize create rig-example --dimensions=1536 --metric=cosine
+// wrangler vectorize create rig-example --dimensions=1536 --metric=cosine
 //
 // 2. Set environment variables:
-//    export OPENAI_API_KEY=<your-openai-api-key>
-//    export CLOUDFLARE_ACCOUNT_ID=<your-account-id>
-//    export CLOUDFLARE_API_TOKEN=<your-api-token>
+// export OPENAI_API_KEY=<your-openai-api-key>
+// export CLOUDFLARE_ACCOUNT_ID=<your-account-id>
+// export CLOUDFLARE_API_TOKEN=<your-api-token>
 //
 // 3. Run the example:
-//    cargo run --release --example vectorize_vector_search
+// cargo run --release --example vectorize_vector_search
 
 use rig_core::{
     Embed,

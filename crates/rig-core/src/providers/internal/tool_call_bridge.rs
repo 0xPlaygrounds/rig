@@ -10,7 +10,7 @@
 //! is enforced in exactly one place: when the wire supplies no id, the slot's
 //! grammar id is a `BlockId::Minted` from the bridge's [`SyntheticIds`]
 //! counter, so parallel id-less calls can never share an assembly key
-//! downstream — and a minted id structurally cannot serialize upstream as a
+//! downstream. and a minted id structurally cannot serialize upstream as a
 //! wire-genuine one.
 //!
 //! Only the *bridging state* lives here. Argument assembly, internal-id
@@ -25,13 +25,13 @@ use crate::streaming::{
 };
 
 /// Wire identity of a tool call whose input is streaming, as tracked by an
-/// adapter. The slot keeps only what the wire keys by — an index — mapped to
+/// adapter. The slot keeps only what the wire keys by. an index. mapped to
 /// the identity the adapter established for that call.
 #[derive(Debug, Clone)]
 pub struct ToolCallSlot {
     /// Assembly id: the id under which this call's fragments are emitted.
     /// Fixed at open: the first-seen provider id, or a minted identity when
-    /// the wire omits one — so parallel id-less calls can never share an
+    /// the wire omits one. so parallel id-less calls can never share an
     /// assembly key downstream.
     key: BlockId,
     /// Established provider id: updated when a later chunk carries one.
@@ -45,7 +45,7 @@ pub struct ToolCallSlot {
     pub additional_params: Option<serde_json::Value>,
     /// Whether any raw argument fragment streamed for this slot. The done
     /// item's unparseable restatement re-emits its raw bytes only when NO
-    /// fragment preceded it — the buffer already holds streamed bytes, and
+    /// fragment preceded it. the buffer already holds streamed bytes, and
     /// re-emitting the restatement doubled them.
     pub saw_arguments_delta: bool,
     /// Whether any argument fragment carried a non-whitespace byte. An empty
@@ -154,7 +154,7 @@ where
     /// Open (or update) the slot for a wire index, establishing its identity.
     ///
     /// On first sight the assembly key is fixed: the wire id when one is
-    /// supplied, else a freshly minted identity — the single enforcement
+    /// supplied, else a freshly minted identity. the single enforcement
     /// point of the mandatory-identity invariant. Later fragments update the
     /// established provider id and name from any non-empty values they
     /// carry.
@@ -170,7 +170,7 @@ where
                 Some(id) if !id.is_empty() => BlockId::wire(id),
                 // Id-less wires (several llama.cpp/vllm-style gateways) key
                 // tool calls by index alone; the slot identity is minted so
-                // it can never collide with a wire-genuine id — and can
+                // it can never collide with a wire-genuine id. and can
                 // never serialize upstream.
                 _ => minted.mint(),
             },
@@ -203,7 +203,7 @@ where
         self.slots.get(&index)
     }
 
-    /// The open slot at a wire index, mutably — for fragment bookkeeping
+    /// The open slot at a wire index, mutably. for fragment bookkeeping
     /// on an already-open slot without `open`'s insert-if-absent.
     pub fn get_mut(&mut self, index: I) -> Option<&mut ToolCallSlot> {
         self.slots.get_mut(&index)
@@ -223,7 +223,7 @@ where
 
     /// Evict the slot at a wire index when the predicate says the incoming
     /// fragment belongs to a *different* call reusing the same index (the
-    /// per-profile eviction semantics — e.g. a distinct id + name pair on a
+    /// per-profile eviction semantics. e.g. a distinct id + name pair on a
     /// wire that restarts indices per call). Returns the evicted slot so the
     /// caller can flush it to the consumer.
     pub fn evict_if(
@@ -243,12 +243,17 @@ where
     ///
     /// Two matching rules keep this deterministic:
     /// - A slot whose wire never established a provider id (empty `id`) never
-    ///   matches — a decoration for the empty string would otherwise pick an
-    ///   arbitrary id-less slot out of `HashMap` iteration order.
+    ///
+    /// matches. a decoration for the empty string would otherwise pick an
+    ///
+    /// arbitrary id-less slot out of `HashMap` iteration order.
     /// - Each field is **first-wins**: a later decoration for the same call
-    ///   fills only the fields still unset, so a gemini-style
-    ///   signature-then-params sequence composes instead of the second
-    ///   decoration clobbering the first's signature with `None`.
+    ///
+    /// fills only the fields still unset, so a gemini-style
+    ///
+    /// signature-then-params sequence composes instead of the second
+    ///
+    /// decoration clobbering the first's signature with `None`.
     pub fn decorate(&mut self, decoration: ToolCallDecoration) {
         if decoration.tool_id.is_empty() {
             return;
@@ -282,7 +287,7 @@ where
             .collect()
     }
 
-    /// [`ToolCallBridge::drain_ordered`], keeping each slot's wire index —
+    /// [`ToolCallBridge::drain_ordered`], keeping each slot's wire index -
     /// for adapters that track per-slot state of their own beside the
     /// bridge (the Responses adapter's pending `call_id`s).
     pub fn drain_ordered_indexed(&mut self) -> Vec<(I, ToolCallSlot)> {

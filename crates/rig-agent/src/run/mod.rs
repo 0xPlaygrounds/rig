@@ -7,7 +7,7 @@
 //! ```
 //! use rig_agent::run::{AgentRun, AgentRunStep};
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);
-//! assert!(matches!(run.next_step()?, AgentRunStep::CallModel { turn: 1, .. }));
+//! assert!(matches!(run.next_step()?, AgentRunStep::CallModel { turn: 1,.. }));
 //! # Ok::<(), rig_agent::run::PromptError>(())
 //! ```
 
@@ -667,7 +667,7 @@ impl AgentRun {
         self
     }
 
-    /// Set the tool choice active for this run. Used to reject
+    /// Set the tool choice active for this run. previously reject
     /// [`InvalidToolCallAction::Skip`] resolutions under
     /// [`ToolChoice::None`] and reported in invalid tool-call contexts.
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
@@ -889,8 +889,10 @@ impl AgentRun {
     /// # Errors
     /// - [`PromptError::MaxTurnsError`] when the total model-call budget is exhausted.
     /// - [`PromptError::PromptCancelled`] when the machine is driven out of
-    ///   protocol (for example, calling this while a model response is
-    ///   pending).
+    ///
+    /// protocol (for example, calling this while a model response is
+    ///
+    /// pending).
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::PreparingRequest => {
@@ -1260,17 +1262,24 @@ impl AgentRun {
     ///
     /// Applies the agent loop's recovery semantics:
     /// - [`InvalidToolCallAction::Fail`] fails the run with
-    ///   [`PromptError::UnknownToolCall`].
+    ///
+    /// [`PromptError::UnknownToolCall`].
     /// - [`InvalidToolCallAction::Retry`] rolls the turn back with
-    ///   corrective feedback while budget remains, consuming the total
-    ///   model-call budget.
+    ///
+    /// corrective feedback while budget remains, consuming the total
+    ///
+    /// model-call budget.
     /// - [`InvalidToolCallAction::Repair`] renames the tool call; the
-    ///   repaired name is revalidated against the allowed tools.
+    ///
+    /// repaired name is revalidated against the allowed tools.
     /// - [`InvalidToolCallAction::Stop`] cancels the run with
-    ///   `PromptError::prompt_cancelled` and the supplied reason.
+    ///
+    /// `PromptError::prompt_cancelled` and the supplied reason.
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
-    ///   and suppresses execution of every tool call in the turn. Rejected
-    ///   under [`ToolChoice::None`].
+    ///
+    /// and suppresses execution of every tool call in the turn. Rejected
+    ///
+    /// under [`ToolChoice::None`].
     pub fn resolve_invalid_tool_call(
         &mut self,
         action: InvalidToolCallAction,

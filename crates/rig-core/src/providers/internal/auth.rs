@@ -16,7 +16,7 @@ pub struct DeviceCodePrompt {
 
 /// The stored device-code callback: thread-safe on every target where the
 /// `WasmCompat*` markers mean `Send`/`Sync`, unconstrained on browser wasm
-/// (where the callback is never invoked — the wasm authenticators ignore it).
+/// (where the callback is never invoked. the wasm authenticators ignore it).
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt) + Send + Sync;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -72,8 +72,8 @@ pub(crate) fn request(method: http::Method, url: &str) -> http::request::Builder
 ///
 /// A non-success status surfaces as `AuthError::Http` carrying the
 /// transport's status-bearing error (the equivalent of reqwest's
-/// `error_for_status`), so callers that need to branch on a status — device
-/// flows polling for authorization — read it off the error.
+/// `error_for_status`), so callers that need to branch on a status. device
+/// flows polling for authorization. read it off the error.
 pub(crate) async fn send_json<H, T>(
     http: &H,
     req: http::Result<http::Request<bytes::Bytes>>,

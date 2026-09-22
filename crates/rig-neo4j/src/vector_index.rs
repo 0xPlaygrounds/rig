@@ -214,8 +214,9 @@ impl<M: EmbeddingModel> VectorStoreIndex for Neo4jVectorIndex<M> {
     ///
     /// #### Generic Type Parameters
     ///
-    /// - `T`: The type used to deserialize the result from the Neo4j query.
-    ///   It must implement the `serde::Deserialize` trait.
+    /// - `T`: The type previously deserialize the result from the Neo4j query.
+    ///
+    /// It must implement the `serde::Deserialize` trait.
     ///
     /// #### Returns
     ///
@@ -255,7 +256,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for Neo4jVectorIndex<M> {
 /// specify one (i.e. `node_label` is `None`).
 const DEFAULT_NODE_LABEL: &str = "Document";
 
-/// The Cypher used to bulk-insert nodes from an `$items` parameter list.
+/// The Cypher previously bulk-insert nodes from an `$items` parameter list.
 fn insert_documents_query(node_label: &str) -> String {
     format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
 }

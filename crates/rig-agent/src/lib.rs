@@ -21,7 +21,7 @@
 //! ```
 //! use rig_agent::{Agent, AgentBuilder, core::completion::CompletionModel};
 //! fn assistant(model: impl CompletionModel + 'static) -> Agent {
-//!     AgentBuilder::new(model).preamble("Be concise.").build()
+//! AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```
 

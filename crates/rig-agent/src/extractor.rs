@@ -156,24 +156,24 @@ where
     }
 
     forward_agent_builder! {
-        /// Add a context document to the extractor
-        context(doc: &str);
+    /// Add a context document to the extractor
+           context(doc: &str);
 
-        /// Set provider-specific parameters for every extraction attempt.
-        additional_params(params: serde_json::Value);
+    /// Set provider-specific parameters for every extraction attempt.
+           additional_params(params: serde_json::Value);
 
-        /// Set the maximum number of tokens for the completion
-        max_tokens(max_tokens: u64);
+    /// Set the maximum number of tokens for the completion
+           max_tokens(max_tokens: u64);
 
-        /// Set the `tool_choice` option for the inner Agent.
-        tool_choice(choice: ToolChoice);
+    /// Set the `tool_choice` option for the inner Agent.
+           tool_choice(choice: ToolChoice);
 
-        /// Add a provider-independent lifecycle hook to every extraction attempt.
-        ///
-        /// Completion-response hooks receive canonical Rig content, usage, prompt,
-        /// and identity fields, just like hooks attached directly to an agent.
-        add_hook[H: AgentHook + 'static](hook: H);
-    }
+    /// Add a provider-independent lifecycle hook to every extraction attempt.
+    ///
+    /// Completion-response hooks receive canonical Rig content, usage, prompt,
+    /// and identity fields, just like hooks attached directly to an agent.
+           add_hook[H: AgentHook + 'static](hook: H);
+       }
 
     /// Retrieve `samples` documents from `index` for every extraction.
     ///

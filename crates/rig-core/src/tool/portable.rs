@@ -64,7 +64,7 @@ pub trait PortableToolEmbedding: PortableTool {
 }
 
 /// A liveness probe: whether the tool's owner still serves it. A plain
-/// function, not a behaviour trait — it is exempt from the one-erasure
+/// function, not a behaviour trait. it is exempt from the one-erasure
 /// rule the way `dyn Fn` is everywhere else.
 ///
 /// Deregistration is lazy: a registry consults the probe on its next read
@@ -80,7 +80,7 @@ pub type LivenessFn = Arc<dyn Fn() -> bool>;
 /// A tool defined at runtime by a callback, portable across hosts: the
 /// definition plus the erased handler (the callback is the handler). An
 /// optional liveness probe lets a registry retire it when its owner (an MCP
-/// transport) goes away — the probe is deregistration, not a second
+/// transport) goes away. the probe is deregistration, not a second
 /// execution path.
 #[derive(Clone)]
 pub struct PortableDynamicTool {
@@ -182,7 +182,7 @@ impl PortableDynamicTool {
         &self.handler
     }
 
-    /// The definition, the handler and the liveness probe, by value — what
+    /// The definition, the handler and the liveness probe, by value. what
     /// a registry stages from a portable tool.
     pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
         (self.definition, self.handler, self.liveness)

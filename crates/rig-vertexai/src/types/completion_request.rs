@@ -12,7 +12,7 @@ pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 impl VertexCompletionRequest {
     pub fn contents(self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         // Vertex's `functionResponse.name` is the *function name*, not a
-        // call identifier — `ToolResult::name` carries it as required data.
+        // call identifier. `ToolResult::name` carries it as required data.
         // Consumes the request: this is the one accessor that needs the
         // history by value, so call it after the borrowing accessors.
         let mut history: Vec<rig_core::completion::Message> = self.0.chat_history;

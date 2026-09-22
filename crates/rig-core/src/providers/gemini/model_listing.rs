@@ -28,9 +28,9 @@ struct ListModelEntry {
     description: Option<String>,
     input_token_limit: Option<u64>,
     /// The model's output ceiling. Gemini reports this for every model
-    /// (`gemini-2.5-flash`: 65536) and rig used to drop it on the floor, which
-    /// is why a hardcoded 4096 default went unnoticed for so long — nothing in
-    /// the library ever knew the real limit was ~16x larger (rig#2322).
+    /// (`gemini-2.5-flash`: 65536) and rig previously drop it on the floor, which
+    /// is why a hardcoded 4096 default went unnoticed for so long. nothing in
+    /// the library ever knew the real limit was ~16x larger.
     output_token_limit: Option<u64>,
 }
 

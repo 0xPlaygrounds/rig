@@ -73,7 +73,7 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
 /// complete one. The REST surface has always failed here; the gRPC surface
 /// must not diverge.
 ///
-/// Only the reasons this proto models are matched — REST's
+/// Only the reasons this proto models are matched. REST's
 /// `MISSING_THOUGHT_SIGNATURE` / `MALFORMED_RESPONSE` have no protobuf
 /// discriminant in `v1beta`, so an unmapped value cannot masquerade as one.
 pub fn tool_protocol_finish_reason_error(
@@ -345,7 +345,7 @@ fn rig_user_content_to_grpc_part(
             let response_struct =
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
-            // `FunctionResponse.name` is the executed function's name —
+            // `FunctionResponse.name` is the executed function's name -
             // required data on the result. Only a provider-issued id may
             // travel back on the wire (the proto field is optional-empty).
             Ok(data_part(proto::part::Data::FunctionResponse(
@@ -522,7 +522,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                     );
 
                     // An id-less call mints its correlation handle at the
-                    // call's index — never name-as-id, which collides two
+                    // call's index. never name-as-id, which collides two
                     // same-tool calls in one turn.
                     let index = tool_index;
                     tool_index += 1;
@@ -547,7 +547,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             // The wire hangs a `thoughtSignature` on a trailing part carrying
             // no `thought` flag, and this crate's own streaming adapter keeps
             // it (`streaming.rs`, the non-thought text arm) while this mapper
-            // dropped it — the same blocking/streaming asymmetry the REST wire
+            // dropped it. the same blocking/streaming asymmetry the REST wire
             // had. One shared rule places it on both transports.
             if !part.thought
                 && matches!(part.data, Some(proto::part::Data::Text(_)))
@@ -607,7 +607,7 @@ impl ProviderResponseExt for GenerateContentResponse {
                     // `thought` marks the model's chain-of-thought, which the
                     // completion mapper above routes to `Reasoning`. A reader
                     // that wants the response *text* must skip it, or it
-                    // reports reasoning as the answer — the same defect the
+                    // reports reasoning as the answer. the same defect the
                     // REST wire carried.
                     .filter(|part| !part.thought)
                     .filter_map(|part| {
@@ -771,7 +771,7 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
 // `proto::Schema` expected by `FunctionDeclaration.parameters`.
 //
 // Without this, every tool was sent to Gemini with `parameters = None`, which
-// caused the model to invoke tools with no argument shape (issue #1710).
+// caused the model to invoke tools with no argument shape.
 //
 // An empty object schema (`{"type": "object", "properties": {}}`, the default
 // when a tool takes no arguments) is mapped to `None` rather than a vacuous

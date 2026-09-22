@@ -13,8 +13,8 @@
 //! let sonar = OpenAI::from_env_with(&OPENROUTER)?.chat(openrouter::PERPLEXITY_SONAR_PRO);
 //!
 //! let request = CompletionRequestBuilder::unbound("What is Rig?")
-//!     .additional_params(ProviderPreferences::new().cheapest().to_json())
-//!     .build();
+//!.additional_params(ProviderPreferences::new().cheapest().to_json())
+//!.build();
 //! # let _ = (sonar, request);
 //! # Ok(())
 //! # }

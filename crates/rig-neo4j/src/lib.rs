@@ -29,12 +29,12 @@
 //!
 //! ```text
 //! CREATE VECTOR INDEX moviePlots
-//!     FOR (m:Movie)
-//!     ON m.embedding
-//!     OPTIONS {indexConfig: {
-//!         `vector.dimensions`: 1536,
-//!         `vector.similarity_function`: 'cosine'
-//!     }}
+//! FOR (m:Movie)
+//! ON m.embedding
+//! OPTIONS {indexConfig: {
+//! `vector.dimensions`: 1536,
+//! `vector.similarity_function`: 'cosine'
+//! }}
 //! ```
 //!
 //! ## Simple example:
@@ -50,37 +50,37 @@
 //!
 //! #[derive(Debug, Deserialize)]
 //! struct Movie {
-//!     title: String,
-//!     plot: String,
+//! title: String,
+//! plot: String,
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
-//!     let openai = OpenAI::from_env()?.bound()?;
-//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+//! let openai = OpenAI::from_env()?.bound()?;
+//! let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 //!
-//!     let client = Neo4jClient::from_config(
-//!         ConfigBuilder::default()
-//!             .uri("neo4j+s://demo.neo4jlabs.com:7687")
-//!             .db("recommendations")
-//!             .user("recommendations")
-//!             .password("recommendations")
-//!             .build()?,
-//!     )
-//!     .await?;
+//! let client = Neo4jClient::from_config(
+//! ConfigBuilder::default()
+//!.uri("neo4j+s://demo.neo4jlabs.com:7687")
+//!.db("recommendations")
+//!.user("recommendations")
+//!.password("recommendations")
+//!.build()?,
+//! )
+//!.await?;
 //!
-//!     // ❗IMPORTANT: reuse the model the stored embeddings were generated with.
-//!     let index = client.get_index(model, "moviePlotsEmbedding").await?;
+//! // ❗IMPORTANT: reuse the model the stored embeddings were generated with.
+//! let index = client.get_index(model, "moviePlotsEmbedding").await?;
 //!
-//!     let req = VectorSearchRequest::builder()
-//!         .query("Batman")
-//!         .samples(3)
-//!         .build();
+//! let req = VectorSearchRequest::builder()
+//!.query("Batman")
+//!.samples(3)
+//!.build();
 //!
-//!     let results = index.top_n::<Movie>(req).await?;
-//!     println!("{results:#?}");
+//! let results = index.top_n::<Movie>(req).await?;
+//! println!("{results:#?}");
 //!
-//!     Ok(())
+//! Ok(())
 //! }
 //! ```
 pub mod vector_index;
@@ -319,7 +319,7 @@ impl Neo4jClient {
     /// An index (of type "vector") of the same name as `index_name` must already exist for the Neo4j database.
     /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
     ///
-    /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
+    /// ❗IMPORTANT: The index must be created with the same embedding model that will be previously query the index.
     pub async fn get_index<M: EmbeddingModel>(
         &self,
         model: M,
@@ -408,7 +408,8 @@ impl Neo4jClient {
     /// ### Arguments
     /// * `index_name` - The name of the index to create.
     /// * `node_label` - The label of the nodes to which the index will be applied. For example, if your nodes have
-    ///   the label `:Movie`, pass "Movie" as the `node_label` parameter.
+    ///
+    /// the label `:Movie`, pass "Movie" as the `node_label` parameter.
     /// * `embedding_prop_name` (optional) - The name of the property that contains the embedding vectors. Defaults to "embedding".
     ///
     pub async fn create_vector_index(

@@ -16,8 +16,8 @@
 //! constructing a client.
 //!
 //! A host that already owns a
-//! [`google_cloud_aiplatform_v1::client::PredictionService`] — with its own
-//! endpoint, credentials, transport and retry policy — can pass it to
+//! [`google_cloud_aiplatform_v1::client::PredictionService`]. with its own
+//! endpoint, credentials, transport and retry policy. can pass it to
 //! [`ClientBuilder::with_prediction_service`] instead. That path resolves no
 //! credentials of its own; the credential-resolving paths
 //! ([`Client::from_env`], [`Client::new`], and a [`ClientBuilder`] without a

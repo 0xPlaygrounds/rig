@@ -41,8 +41,8 @@ impl fmt::Debug for AuthSource {
 pub struct Authenticator {
     source: AuthSource,
     /// The platform half owns the token/key caches (files plus their parsed
-    /// state); serializing access to it — rather than to a detached unit
-    /// lock — is what prevents concurrent refreshes from racing the cache.
+    /// state); serializing access to it. rather than to a detached unit
+    /// lock. is what prevents concurrent refreshes from racing the cache.
     platform: Arc<Mutex<platform::PlatformAuthenticator>>,
 }
 
@@ -81,8 +81,8 @@ impl Authenticator {
         }
     }
 
-    /// Resolve the access token, refreshing or signing in through `http` —
-    /// the client's own transport — when the cache is stale.
+    /// Resolve the access token, refreshing or signing in through `http` -
+    /// the client's own transport. when the cache is stale.
     pub async fn auth_context<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,

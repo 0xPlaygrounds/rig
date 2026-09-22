@@ -1,28 +1,31 @@
 //! Accumulation of stream events into the ordered parts of one assistant
-//! choice — as **entities with a lifecycle**, not id-keyed event sequences.
+//! choice. as **entities with a lifecycle**, not id-keyed event sequences.
 //!
-//! Every part runs open → mutate → close (review 84a43e9e root cause A):
+//! Every part runs open, mutate, then close :
 //!
 //! - **open** registers the part in `parts` once, fixing arrival order, and
-//!   tracks it in an open-set keyed by its [`BlockId`];
+//!
+//! tracks it in an open-set keyed by its [`BlockId`];
 //! - **deltas** mutate the open part in place through that handle;
 //! - **close** applies the end event's authoritative payload (a whole-block
-//!   restatement supersedes the delta accumulation; a trailing signature
-//!   attaches), then moves the key to a finished-set.
+//!
+//! restatement supersedes the delta accumulation; a trailing signature
+//!
+//! attaches), then moves the key to a finished-set.
 //!
 //! The finished-set is the entity's `hasFinished` (vercel's
 //! `streaming-tool-call-tracker`): **every** finalization route consults and
-//! populates it, so a repeated end event — whatever payload it carries — is
+//! populates it, so a repeated end event. whatever payload it carries. is
 //! a no-op rather than a duplicate part, and the guard cannot be forgotten
 //! on one route. A key genuinely reused after finishing (new fragments, a
 //! same-key whole block) opens a **new** part: the lenient reuse rule that
 //! replaces the old ordinal machinery.
 //!
 //! The accumulator owns no transport: it is fed [`StreamEvent`]s one at a
-//! time through [`BlockAccumulator::apply`] — by
+//! time through [`BlockAccumulator::apply`]. by
 //! [`StreamingCompletionResponse`](super::StreamingCompletionResponse) on the
 //! provider path, by a bus client wrapping an effect stream, or by a test
-//! over `futures::stream::iter` — and [`BlockAccumulator::snapshot`] is
+//! over `futures::stream::iter`. and [`BlockAccumulator::snapshot`] is
 //! non-destructive: two snapshots mid-stream are equal, and neither changes
 //! what [`BlockAccumulator::finish`] later returns.
 //!
@@ -45,7 +48,7 @@ use crate::streaming::event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCal
 /// [`BlockAccumulator::snapshot`] or [`BlockAccumulator::finish`].
 #[derive(Default)]
 pub struct BlockAccumulator {
-    /// The choice's parts, in arrival order — the single accumulated state;
+    /// The choice's parts, in arrival order. the single accumulated state;
     /// [`BlockAccumulator::finish`] derives the choice from it directly.
     parts: Vec<AssistantContent>,
     /// Open reasoning entities: key → index in `parts`. Invariant: every
@@ -53,7 +56,7 @@ pub struct BlockAccumulator {
     open_reasoning: HashMap<BlockId, usize>,
     /// Finished reasoning entities: key → index of the latest finished part
     /// under that key. Repeated ends are no-ops; a trailing signature
-    /// (`reasoning_end` with no restatement) attaches here — the block that
+    /// (`reasoning_end` with no restatement) attaches here. the block that
     /// holds the chain-of-thought, wherever it sits.
     finished_reasoning: HashMap<BlockId, usize>,
     /// Text-block identity → index in `parts`: a delta whose key was
@@ -64,10 +67,10 @@ pub struct BlockAccumulator {
     /// Tool calls under delta assembly, keyed by the fragment key, in start
     /// order.
     open_tool_inputs: Vec<OpenToolInput>,
-    /// Finished tool entities — populated by **every** finalization route
+    /// Finished tool entities. populated by **every** finalization route
     /// (fragment-assembled ends, authoritative-payload ends, whole-call
     /// adoption), so a repeated end cannot duplicate a call whatever payload
-    /// it carries (84a43e9e #1). Cleared for a key when fragments reopen it.
+    /// it carries. Cleared for a key when fragments reopen it.
     finished_tools: HashSet<BlockId>,
     /// Whether any completed tool call was recorded; the streaming
     /// counterpart of the unary path's finish-reason reconciliation input.
@@ -77,7 +80,7 @@ pub struct BlockAccumulator {
 /// A tool call whose input is still being assembled from streamed fragments.
 ///
 /// Reference designs: pydantic-ai `handle_tool_call_delta` and vercel's
-/// shared `streaming-tool-call-tracker` — fragment buffering, keying, and
+/// shared `streaming-tool-call-tracker`. fragment buffering, keying, and
 /// the delta-to-part transition live in the one shared component, never in
 /// a provider.
 struct OpenToolInput {
@@ -85,12 +88,12 @@ struct OpenToolInput {
     id: BlockId,
     /// Tool name; a later non-empty name fragment replaces it.
     name: String,
-    /// Concatenated raw argument fragments. `None` until a fragment arrives —
+    /// Concatenated raw argument fragments. `None` until a fragment arrives -
     /// a call that streamed no arguments is a parameterless invocation.
     buffer: Option<String>,
     /// Whether the buffer hit [`MAX_TOOL_INPUT_BYTES`] and stopped
     /// accumulating. The truncated JSON then finalizes through the wire's
-    /// `UnparseableToolInput` policy — no runaway wire can grow a fragment
+    /// `UnparseableToolInput` policy. no runaway wire can grow a fragment
     /// buffer without bound.
     overflowed: bool,
 }
@@ -159,7 +162,7 @@ impl BlockAccumulator {
                     // something at the boundary: an end payload (a
                     // restatement or a signature) or a bare end frame the
                     // wire actually sent. Only a bare end an adapter
-                    // *synthesized* stays silent — the consumer already
+                    // *synthesized* stays silent. the consumer already
                     // received every delta, and fabricating a "completed
                     // block" event the wire never sent would change what
                     // downstream history builders observe.
@@ -179,7 +182,7 @@ impl BlockAccumulator {
 
     // --- text lifecycle -------------------------------------------------
 
-    /// Open the text block identified by `id` — with its provider metadata
+    /// Open the text block identified by `id`. with its provider metadata
     /// when the wire announced some. A previously seen key reactivates its
     /// block (a wire item's text keeps collapsing across interleaved
     /// output); an unseen key opens lazily, on its first delta or metadata,
@@ -241,7 +244,7 @@ impl BlockAccumulator {
     /// Open the reasoning entity for `id`, registering an empty part at the
     /// current arrival position. A start for an already-open key is a no-op
     /// (returns `false`); a start for a finished key opens a **new** part
-    /// (key reuse) — the `true` return tells the stream handler to mint a
+    /// (key reuse). the `true` return tells the stream handler to mint a
     /// fresh public correlator, so the new part never inherits the finished
     /// part's identity.
     fn reasoning_start(&mut self, id: &BlockId, provider_id: Option<&str>) -> bool {
@@ -253,7 +256,7 @@ impl BlockAccumulator {
     }
 
     /// Append reasoning delta text to the entity's open part, opening one if
-    /// none is open — the lenient bare-delta rule. A delta after the
+    /// none is open. the lenient bare-delta rule. A delta after the
     /// entity finished opens a new part (key reuse), never resurrects the
     /// finished one.
     fn reasoning_delta(&mut self, id: &BlockId, provider_id: Option<&str>, text: &str) {
@@ -288,11 +291,15 @@ impl BlockAccumulator {
     /// for the public completion event.
     ///
     /// - `restatement`: the wire's authoritative whole-block payload; it
-    ///   **supersedes** the delta accumulation (pydantic-ai `_replace_part`
-    ///   semantics — the deltas were a fallback and their buffer is
-    ///   discarded).
+    ///
+    /// **supersedes** the delta accumulation (pydantic-ai `_replace_part`
+    ///
+    /// semantics. the deltas were a fallback and their buffer is
+    ///
+    /// discarded).
     /// - `signature`: a provider signature closing the block; attaches to
-    ///   the part's last text content.
+    ///
+    /// the part's last text content.
     ///
     /// Idempotence is the entity's: an end for an already-finished key with
     /// **no new restatement** is a no-op. An end with a restatement for a
@@ -337,10 +344,10 @@ impl BlockAccumulator {
             match (restatement, signature) {
                 // Trailing lifecycle metadata for the finished block: the
                 // signature lands on the part that holds the chain-of-
-                // thought, wherever its arrival position was (#2258 B4) —
+                // thought, wherever its arrival position was -
                 // unless that part already carries a signature. Signatures
                 // cannot merge ("Don't combine two Parts that both contain
-                // signatures" — Google's own doctrine), so a second
+                // signatures". Google's own doctrine), so a second
                 // signature under a per-stream constant key records a
                 // DISTINCT sibling part and repoints the key, instead of
                 // overwriting the first signature and losing it from the
@@ -362,8 +369,8 @@ impl BlockAccumulator {
                     }
                     return self.reasoning_at(index);
                 }
-                // A repeated end with no new payload is a no-op — the
-                // entity already finished (84a43e9e #1, for reasoning).
+                // A repeated end with no new payload is a no-op. the
+                // entity already finished.
                 (None, None) => return None,
                 // A whole block under a finished key is a NEW sibling part
                 // reusing the key.
@@ -444,11 +451,11 @@ impl BlockAccumulator {
     /// exactly one does.
     ///
     /// A wire that fragmented under a minted key and restates the call under
-    /// its late-arriving wire key: minted-vs-wire is not a veto — with
+    /// its late-arriving wire key: minted-vs-wire is not a veto. with
     /// exactly one minted assembly open, the restatement CAN be that
     /// assembly completed. More than one is ambiguous; don't guess. And
     /// cardinality alone is not evidence: adoption also demands the whole
-    /// call restate the assembly — same tool name, arguments covering
+    /// call restate the assembly. same tool name, arguments covering
     /// whatever fragments streamed. An unrelated id-bearing call adopting
     /// the assembly marked it finished and silently dropped its streamed
     /// arguments when its own end arrived.
@@ -472,7 +479,7 @@ impl BlockAccumulator {
         let (index, input) = candidate;
         // An assembly opened by args-only deltas never saw a name
         // (`ensure_open_tool_input` records ""), so an empty name is no
-        // evidence against the restatement — only a *different* established
+        // evidence against the restatement. only a *different* established
         // name vetoes.
         let restates = (input.name.is_empty() || input.name == name)
             && fragments_covered_by(input.buffer.as_deref(), arguments);
@@ -483,7 +490,7 @@ impl BlockAccumulator {
     ///
     /// A completed call is a part boundary for the ACTIVE text block: text
     /// around it must stay two blocks in arrival order. (A keyed block still
-    /// reactivates through its own `TextStart` — the keyed collapse is
+    /// reactivates through its own `TextStart`. the keyed collapse is
     /// explicit; only the anonymous active-block cursor resets.)
     fn push_tool_call(&mut self, tool_call: ToolCall) {
         self.saw_tool_call = true;
@@ -518,7 +525,7 @@ impl BlockAccumulator {
         // `ensure` returns a live index.
         if let Some(input) = self.open_tool_inputs.get_mut(index) {
             // The first fragment takes the same guarded path as every
-            // later one — an oversized single fragment must trip the
+            // later one. an oversized single fragment must trip the
             // bound, not bypass it.
             let buffer = input.buffer.get_or_insert_with(String::new);
             // Some OpenAI-compatible gateways emit a literal
@@ -549,7 +556,7 @@ impl BlockAccumulator {
     ///
     /// Returns the completed call, `None` when the call
     /// is dropped (nameless, unparseable under [`UnparseableToolInput::Drop`],
-    /// or a repeated end for an already-finished entity — whatever payload
+    /// or a repeated end for an already-finished entity. whatever payload
     /// it carries), or an error item under [`UnparseableToolInput::Error`].
     /// Authoritative fields on the end event supersede the assembled state.
     /// An end with no open call and no finished entity opens and completes
@@ -579,10 +586,8 @@ impl BlockAccumulator {
             Some((index, key)) => (Some(index), key),
             None => (position, id.clone()),
         };
-        // The entity already finished — by its own end, or by whole-call
-        // adoption. A repeated end must finalize nothing, INCLUDING one
-        // carrying an authoritative name/arguments payload: pre-84a43e9e-#1
-        // that payload route bypassed the guard and duplicated the call.
+        // A repeated end must not finalize an entity again, even when it carries
+        // an authoritative name or arguments payload.
         if position.is_none() && self.finished_tools.contains(id) {
             if end.name.is_some() || end.arguments.is_some() {
                 tracing::debug!(
@@ -609,7 +614,7 @@ impl BlockAccumulator {
         let overflowed = open.as_ref().is_some_and(|input| input.overflowed);
         // The assembly key is opaque; a wire-derived key doubles as the
         // durable fallback when the end event carries no authoritative tool
-        // id — the wire issued that key, so it is a provider handle.
+        // id. the wire issued that key, so it is a provider handle.
         let opened_wire_id = opened_id.wire_str().map(str::to_owned);
         // An authoritative end-event name supersedes assembly, but an
         // *empty* one is filtered like the fragment path: it must not erase
@@ -633,7 +638,7 @@ impl BlockAccumulator {
         // Provider identifiers: a dual wire carries (call_id, item id); a
         // single wire's id arrives as `tool_id` (or as the wire-derived
         // assembly key). With none, the correlation handle is minted and
-        // `provider` stays `None` — the empty-string sentinel is
+        // `provider` stays `None`. the empty-string sentinel is
         // unrepresentable here. Derived before the input is parsed so a
         // malformed-input diagnostic carries the same ids a valid call would.
         let wire_tool_id = end.tool_id.or(opened_wire_id);
@@ -654,7 +659,7 @@ impl BlockAccumulator {
             None => match buffer {
                 // No streamed arguments: a parameterless invocation.
                 None => serde_json::Value::Object(serde_json::Map::new()),
-                // A capped (overflowed) buffer is truncated by definition —
+                // A capped (overflowed) buffer is truncated by definition -
                 // the lenient partial-JSON parse could still "succeed" on it
                 // and fabricate a silently corrupted call, so overflow
                 // forces the unparseable path.
@@ -691,7 +696,7 @@ impl BlockAccumulator {
                             // is a response defect, never a silent drop. The
                             // raw text and the call's ids ride on the report so
                             // an agent can route the model's mistake back to it
-                            // (rig#2447) instead of ending the run. The entity
+                            // instead of ending the run. The entity
                             // finalizes like any other end: a repeated end for
                             // this key must not resurrect it.
                             UnparseableToolInput::Error => {
@@ -731,7 +736,7 @@ impl BlockAccumulator {
             signature: end.signature,
             additional_params: end.additional_params,
         };
-        // Every finalization route records the finished entity — the end's
+        // Every finalization route records the finished entity. the end's
         // own key and, on adoption, the assembly key it completed.
         self.finished_tools.insert(id.clone());
         self.finished_tools.insert(published.clone());
@@ -781,11 +786,11 @@ impl BlockAccumulator {
             .collect()
     }
 
-    /// Consume the accumulated state into the ordered choice parts — the
-    /// value [`BlockAccumulator::snapshot`] would return — and reset.
+    /// Consume the accumulated state into the ordered choice parts. the
+    /// value [`BlockAccumulator::snapshot`] would return. and reset.
     ///
     /// Never padded: a stream that produced no content yields an empty
-    /// choice. The fabricated empty-text part that used to be pushed here
+    /// choice. The fabricated empty-text part that previously be pushed here
     /// existed only to satisfy the non-empty content type, and it reached
     /// history and the wire as if the model had emitted it.
     pub fn finish(&mut self) -> Vec<AssistantContent> {
@@ -855,8 +860,8 @@ fn attach_signature(part: &mut AssistantContent, signature: String) {
 fn attach_reasoning_signature(reasoning: &mut Reasoning, signature: String) {
     // Target the last UNSIGNED text slot: a signature never overwrites one
     // already recorded (signature strings cannot be merged, and replay
-    // needs every one). With no unsigned slot — all signed, or no text at
-    // all — the signature records on its own empty-text slot.
+    // needs every one). With no unsigned slot. all signed, or no text at
+    // all. the signature records on its own empty-text slot.
     match reasoning
         .content
         .iter_mut()
@@ -879,7 +884,6 @@ fn attach_reasoning_signature(reasoning: &mut Reasoning, signature: String) {
 #[cfg(test)]
 mod tests;
 
-/// The aggregation laws, as properties (#2258 A5, rewritten to the
-/// lifecycle vocabulary — not weakened).
+/// Property tests for the aggregation lifecycle laws.
 #[cfg(test)]
 mod property_tests;

@@ -1,8 +1,8 @@
 //! `examples/agent_with_human_in_the_loop` side by side: every tool call
-//! waits for a human's decision — there an `AgentHook::on_dispatch` that
+//! waits for a human's decision. there an `AgentHook::on_dispatch` that
 //! awaits stdin, here a system in `BusSet::Gate` that reads a line before
 //! the bus takes the tool child. Approve: the child goes on. Deny: an
-//! `EffectOutcome` with the reason, never dispatched — the model reads the
+//! `EffectOutcome` with the reason, never dispatched. the model reads the
 //! denial as the tool's result. Abort, or no input at all (closed stdin):
 //! `Cancelled` on the run, fail-closed.
 

@@ -46,7 +46,7 @@ mod utils;
 /// store's lifetime: an index populated under one model is only meaningful under
 /// that same model.
 pub struct LanceDbVectorIndex<M> {
-    /// Defines which model is used to generate embeddings for the vector store.
+    /// Defines which model is previously generate embeddings for the vector store.
     model: M,
     /// LanceDB table containing embeddings.
     table: lancedb::Table,
@@ -59,7 +59,7 @@ pub struct LanceDbVectorIndex<M> {
 impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
     /// Create an instance of `LanceDbVectorIndex` with an existing table and model.
     /// Define the id field name of the table.
-    /// Define search parameters that will be used to perform vector searches on the table.
+    /// Define search parameters that will be previously perform vector searches on the table.
     pub async fn new(
         table: lancedb::Table,
         model: M,
@@ -294,7 +294,7 @@ impl LanceDBFilter {
     }
 }
 
-/// Parameters used to perform a vector search on a LanceDb table.
+/// Parameters previously perform a vector search on a LanceDb table.
 /// # Example
 /// ```
 /// let search_params = rig_lancedb::SearchParams::default().distance_type(lancedb::DistanceType::Cosine);
@@ -311,7 +311,7 @@ pub struct SearchParams {
 
 impl SearchParams {
     /// Sets the distance type of the search params.
-    /// Always set the distance_type to match the value used to train the index.
+    /// Always set the distance_type to match the value previously train the index.
     /// The default is DistanceType::L2.
     pub fn distance_type(mut self, distance_type: DistanceType) -> Self {
         self.distance_type = Some(distance_type);
@@ -375,12 +375,12 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     /// let openai_client = OpenAI::from_env()?.bound()?;
     /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     /// let vector_store_index =
-    ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    /// LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// let req = VectorSearchRequest::builder()
-    ///     .query("My boss says I zindle too much, what does that mean?")
-    ///     .samples(1)
-    ///     .build();
+    ///.query("My boss says I zindle too much, what does that mean?")
+    ///.samples(1)
+    ///.build();
     ///
     /// let results = vector_store_index.top_n::<String>(req).await?;
     /// # Ok(())
@@ -431,7 +431,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
             .collect()
     }
 
-    /// Like [`LanceDbVectorIndex::top_n`], but projects only the id column —
+    /// Like [`LanceDbVectorIndex::top_n`], but projects only the id column -
     /// see that example for the setup, and pass the same request here.
     async fn top_n_ids(
         &self,

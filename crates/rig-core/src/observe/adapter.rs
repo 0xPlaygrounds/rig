@@ -375,8 +375,8 @@ impl AdapterContext {
 
     /// Begin an actual send, under the provider-declared route template
     /// rather than the resolved URL. The template excludes the base URL's own
-    /// path — so grouping attempts by route does not fragment when a caller
-    /// repoints the endpoint — and excludes query data, which is where a
+    /// path. so grouping attempts by route does not fragment when a caller
+    /// repoints the endpoint. and excludes query data, which is where a
     /// provider may carry its credential (Gemini puts its API key there).
     /// Exhaustion is observed and disables further sends' correlation without
     /// changing the provider operation or reusing an attempt identity.

@@ -37,13 +37,13 @@ impl Loadable for PathBuf {
 // ================================================================
 
 /// [EpubFileLoader] is a utility for loading epub files from the filesystem using glob patterns or
-///  directory paths. It provides methods to read file contents and handle errors gracefully.
+/// directory paths. It provides methods to read file contents and handle errors gracefully.
 ///
 /// # Errors
 ///
 /// This module defines a custom error type [EpubLoaderError] which can represent various errors
-///  that might occur during file loading operations, such as any [FileLoaderError](crate::loaders::file::FileLoaderError) alongside
-///  specific EPUB-related errors.
+/// that might occur during file loading operations, such as any [FileLoaderError](crate::loaders::file::FileLoaderError) alongside
+/// specific EPUB-related errors.
 ///
 /// # Example Usage
 ///
@@ -51,51 +51,51 @@ impl Loadable for PathBuf {
 /// use rig_core::loaders::{EpubFileLoader, RawTextProcessor, StripXmlProcessor};
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // Create a FileLoader using a glob pattern
-///     let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?;
+/// // Create a FileLoader using a glob pattern
+/// let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?;
 ///
-///     // Load epub file contents by chapter, ignoring any errors
-///     let contents = loader
-///         .load_with_path()
-///         .ignore_errors()
-///         .by_chapter()
-///         .ignore_errors();
+/// // Load epub file contents by chapter, ignoring any errors
+/// let contents = loader
+///.load_with_path()
+///.ignore_errors()
+///.by_chapter()
+///.ignore_errors();
 ///
-///     for (path, chapters) in contents {
-///         println!("{}", path.display());
-///         for (idx, chapter) in chapters {
-///             println!("Chapter {idx} begins");
-///             println!("{chapter}");
-///             println!("Chapter {idx} ends");
-///         }
-///     }
+/// for (path, chapters) in contents {
+/// println!("{}", path.display());
+/// for (idx, chapter) in chapters {
+/// println!("Chapter {idx} begins");
+/// println!("{chapter}");
+/// println!("Chapter {idx} ends");
+/// }
+/// }
 ///
-///     // Create a FileLoader using a glob pattern with stripping xml
-///     let loader = EpubFileLoader::<_, StripXmlProcessor>::with_glob("tests/data/*.epub")?;
+/// // Create a FileLoader using a glob pattern with stripping xml
+/// let loader = EpubFileLoader::<_, StripXmlProcessor>::with_glob("tests/data/*.epub")?;
 ///
-///     // Load epub file contents by chapter, ignoring any errors
-///     let contents = loader
-///         .load_with_path()
-///         .ignore_errors()
-///         .by_chapter()
-///         .ignore_errors();
+/// // Load epub file contents by chapter, ignoring any errors
+/// let contents = loader
+///.load_with_path()
+///.ignore_errors()
+///.by_chapter()
+///.ignore_errors();
 ///
-///     for (path, chapters) in contents {
-///         println!("{}", path.display());
-///         for (idx, chapter) in chapters {
-///             println!("Chapter {idx} begins");
-///             println!("{chapter}");
-///             println!("Chapter {idx} ends");
-///         }
-///     }
+/// for (path, chapters) in contents {
+/// println!("{}", path.display());
+/// for (idx, chapter) in chapters {
+/// println!("Chapter {idx} begins");
+/// println!("{chapter}");
+/// println!("Chapter {idx} ends");
+/// }
+/// }
 ///
-///     Ok(())
+/// Ok(())
 /// }
 /// ```
 ///
 /// [EpubFileLoader] uses strict typing between the iterator methods to ensure that transitions
-///  between different implementations of the loaders and it's methods are handled properly by
-///  the compiler.
+/// between different implementations of the loaders and it's methods are handled properly by
+/// the compiler.
 pub struct EpubFileLoader<'a, T, P = RawTextProcessor> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
     _processor: PhantomData<P>,
@@ -105,8 +105,8 @@ type EpubLoaded = Result<(PathBuf, EpubDoc<BufReader<File>>), EpubLoaderError>;
 
 impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// Loads the contents of the epub files within the iterator returned by [EpubFileLoader::with_glob]
-    ///  or [EpubFileLoader::with_dir]. Loaded EPUB documents are raw EPUB instances that can be
-    ///  further processed (by chapter, etc).
+    /// or [EpubFileLoader::with_dir]. Loaded EPUB documents are raw EPUB instances that can be
+    /// further processed (by chapter, etc).
     ///
     /// # Example
     /// Load epub files in directory "tests/data/*.epub" and return the loaded documents
@@ -117,10 +117,10 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.load().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok(doc) => println!("{doc:?}"),
-    ///         Err(e) => eprintln!("Error reading epub: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(doc) => println!("{doc:?}"),
+    /// Err(e) => eprintln!("Error reading epub: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -133,8 +133,8 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     }
 
     /// Loads the contents of the epub files within the iterator returned by [EpubFileLoader::with_glob]
-    ///  or [EpubFileLoader::with_dir]. Loaded EPUB documents are raw EPUB instances with their path
-    ///  that can be further processed.
+    /// or [EpubFileLoader::with_dir]. Loaded EPUB documents are raw EPUB instances with their path
+    /// that can be further processed.
     ///
     /// # Example
     /// Load epub files in directory "tests/data/*.epub" and return the loaded documents
@@ -145,10 +145,10 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.load_with_path().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok((path, doc)) => println!("{path:?} {doc:?}"),
-    ///         Err(e) => eprintln!("Error reading epub: {e}"),
-    ///     }
+    /// match result {
+    /// Ok((path, doc)) => println!("{path:?} {doc:?}"),
+    /// Err(e) => eprintln!("Error reading epub: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -166,7 +166,7 @@ where
     P: TextProcessor,
 {
     /// Directly reads the contents of the epub files within the iterator returned by
-    ///  [EpubFileLoader::with_glob] or [EpubFileLoader::with_dir].
+    /// [EpubFileLoader::with_glob] or [EpubFileLoader::with_dir].
     ///
     /// # Example
     /// Read epub files in directory "tests/data/*.epub" and return the contents of the documents.
@@ -176,10 +176,10 @@ where
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.read().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok(content) => println!("{content}"),
-    ///         Err(e) => eprintln!("Error reading epub: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(content) => println!("{content}"),
+    /// Err(e) => eprintln!("Error reading epub: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -200,8 +200,8 @@ where
     }
 
     /// Directly reads the contents of the epub files within the iterator returned by
-    ///  [EpubFileLoader::with_glob] or [EpubFileLoader::with_dir] and returns the path along with
-    ///  the content.
+    /// [EpubFileLoader::with_glob] or [EpubFileLoader::with_dir] and returns the path along with
+    /// the content.
     ///
     /// # Example
     /// Read epub files in directory "tests/data/*.epub" and return the content and paths of the documents.
@@ -211,10 +211,10 @@ where
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.read_with_path().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok((path, content)) => println!("{path:?} {content}"),
-    ///         Err(e) => eprintln!("Error reading epub: {e}"),
-    ///     }
+    /// match result {
+    /// Ok((path, content)) => println!("{path:?} {content}"),
+    /// Err(e) => eprintln!("Error reading epub: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -250,15 +250,15 @@ where
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?
-    ///     .load()
-    ///     .ignore_errors()
-    ///     .by_chapter()
-    ///     .into_iter();
+    ///.load()
+    ///.ignore_errors()
+    ///.by_chapter()
+    ///.into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok(chapter) => println!("{chapter}"),
-    ///         Err(e) => eprintln!("Error reading chapter: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(chapter) => println!("{chapter}"),
+    /// Err(e) => eprintln!("Error reading chapter: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -274,7 +274,7 @@ where
 type ByChapter = (PathBuf, Vec<(usize, Result<String, EpubLoaderError>)>);
 impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>), P> {
     /// Chunks the chapters of a loaded document by chapter, processed as a vector of documents by path
-    ///  which each document container an inner vector of chapters by chapter number.
+    /// which each document container an inner vector of chapters by chapter number.
     ///
     /// # Example
     /// Read epub files in directory "tests/data/*.epub" and chunk all documents by path by it's chapters.
@@ -283,14 +283,14 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?
-    ///     .load_with_path()
-    ///     .ignore_errors()
-    ///     .by_chapter()
-    ///     .ignore_errors()
-    ///     .into_iter();
+    ///.load_with_path()
+    ///.ignore_errors()
+    ///.by_chapter()
+    ///.ignore_errors()
+    ///.into_iter();
     ///
     /// for result in content {
-    ///     println!("{result:?}");
+    /// println!("{result:?}");
     /// }
     /// # Ok(())
     /// # }
@@ -317,7 +317,7 @@ where
     P: TextProcessor,
 {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
-    ///  [EpubFileLoader] state of iterator whose items are results.
+    /// [EpubFileLoader] state of iterator whose items are results.
     ///
     /// # Example
     /// Read files in directory "tests/data/*.epub" and ignore errors from unreadable files.
@@ -326,12 +326,12 @@ where
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?
-    ///     .load_with_path()
-    ///     .ignore_errors()
-    ///     .by_chapter()
-    ///     .ignore_errors();
+    ///.load_with_path()
+    ///.ignore_errors()
+    ///.by_chapter()
+    ///.ignore_errors();
     /// for (_path, chapters) in content {
-    ///     println!("{}", chapters.len())
+    /// println!("{}", chapters.len())
     /// }
     /// # Ok(())
     /// # }

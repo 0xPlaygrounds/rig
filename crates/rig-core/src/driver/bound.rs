@@ -13,7 +13,7 @@ use crate::wire::{Capabilities, Wire};
 /// and [`call`](super::call) / [`stream`](super::stream) join them.
 ///
 /// `H` defaults to the erased [`BoxedHttpClient`], so `Bound<W>` means "any
-/// transport" — the shape a host that owns one transport for many providers
+/// transport". the shape a host that owns one transport for many providers
 /// holds. The default does not apply in expression position, so
 /// [`Bound::new`] still infers `H` from its argument.
 #[derive(Clone, Debug, PartialEq)]

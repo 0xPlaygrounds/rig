@@ -5,10 +5,10 @@
 //!
 //! Dialects: [`ANTHROPIC`], plus [`compatible`] for every gateway that
 //! speaks the Messages format (zai, minimax, moonshot, xiaomimimo). A
-//! gateway differs from Anthropic by *data* — its name, its base URL, its
+//! gateway differs from Anthropic by *data*. its name, its base URL, its
 //! environment variables, whether it defaults `max_tokens` by model or to a
 //! fixed ceiling, and whether it implements Anthropic's constrained tool
-//! schemas — so it is a `const`, not a type.
+//! schemas. so it is a `const`, not a type.
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
@@ -391,8 +391,8 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching();
+    ///.messages(CLAUDE_SONNET_4_6)
+    ///.with_automatic_caching();
     /// # Ok(())
     /// # }
     /// ```
@@ -427,8 +427,8 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching_1h();
+    ///.messages(CLAUDE_SONNET_4_6)
+    ///.with_automatic_caching_1h();
     /// # Ok(())
     /// # }
     /// ```
@@ -446,7 +446,7 @@ impl Messages {
     /// sessions, while the conversation tail changes every turn and is
     /// worthless an hour later. A 1-hour cache write costs ~2x base input
     /// tokens where a 5-minute write costs ~1.25x, so the optimal
-    /// configuration is usually mixed — `1h` on the prefix, the 5-minute
+    /// configuration is usually mixed. `1h` on the prefix, the 5-minute
     /// default on the tail:
     ///
     /// ```no_run
@@ -455,9 +455,9 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching()
-    ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
+    ///.messages(CLAUDE_SONNET_4_6)
+    ///.with_automatic_caching()
+    ///.with_static_prefix_cache_ttl(CacheTtl::OneHour);
     /// # Ok(())
     /// # }
     /// ```
@@ -470,7 +470,7 @@ impl Messages {
     ///
     /// Anthropic requires 1-hour markers to precede 5-minute ones. The
     /// static prefix precedes the tail, so `OneHour` here composes with a
-    /// 5-minute tail — but setting `FiveMinutes` here alongside
+    /// 5-minute tail. but setting `FiveMinutes` here alongside
     /// [`Self::with_automatic_caching_1h`] is the illegal inversion and
     /// fails before any request is sent. The model-specific minimum
     /// cacheable prompt lengths tabulated on
@@ -592,7 +592,7 @@ impl Wire for Messages {
     fn capabilities(&self) -> ProviderCapabilities {
         // Anthropic's constrained decoding is designed to compose with
         // strict tool use, so the schema constraint does not suppress tool
-        // calls (issue #1928).
+        // calls.
         ProviderCapabilities::default().with_native_output_tool_composition(true)
     }
 }

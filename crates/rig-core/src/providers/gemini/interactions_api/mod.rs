@@ -20,7 +20,7 @@ pub use interactions_api_types::*;
 /// Stable descriptor name for the Gemini Interactions API.
 ///
 /// The Interactions API is a second surface over the same provider, so it
-/// reports the same descriptor as GenerateContent — matching the telemetry
+/// reports the same descriptor as GenerateContent. matching the telemetry
 /// spans, which have always shared it.
 pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
@@ -29,8 +29,8 @@ pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 /// produced.
 ///
 /// Unlike GenerateContent, this family's two replies really are two
-/// documents — a whole [`Interaction`] resource, or the SSE events that
-/// build one — so [`streaming::InteractionsDecoder`] names the whole
+/// documents. a whole [`Interaction`] resource, or the SSE events that
+/// build one. so [`streaming::InteractionsDecoder`] names the whole
 /// resource as one more event of its wire and synthesizes the step events
 /// the stream would have sent. There is exactly one mapping from steps to
 /// assistant content, and it is the streamed one.
@@ -515,7 +515,7 @@ pub mod interactions_api_types {
     /// interaction.
     #[derive(Clone, Debug)]
     pub struct Exchange<C, R> {
-        /// Call identifier used to match calls to results.
+        /// Call identifier previously match calls to results.
         pub call_id: Option<String>,
         /// One or more tool calls.
         pub calls: Vec<C>,
@@ -725,9 +725,9 @@ pub mod interactions_api_types {
             $($flat_doc:literal $flat_fn:ident => $method:ident -> $flat_ty:ty),* $(,)?
         ) => {
             #[doc = concat!("Groups ", $tool, " tool calls and results by call_id.")]
-            ///
-            /// When a call_id is missing, results are grouped with the most recent
-            /// call (identified or not) as a best-effort fallback.
+ ///
+ /// When a call_id is missing, results are grouped with the most recent
+ /// call (identified or not) as a best-effort fallback.
             pub fn $exchanges_fn(&self) -> Vec<$exchange> {
                 pair_exchanges(
                     &self.output_contents(),
@@ -895,7 +895,7 @@ pub mod interactions_api_types {
     /// Map an interaction's lifecycle status onto rig's normalized finish
     /// reasons.
     ///
-    /// The Interactions API has no `finishReason` field — the interaction's
+    /// The Interactions API has no `finishReason` field. the interaction's
     /// terminal state is the closest equivalent. Only the three statuses with a
     /// normalized counterpart are folded in; the rest (including the
     /// non-terminal `in_progress`) are carried verbatim rather than guessed at.
@@ -947,7 +947,7 @@ pub mod interactions_api_types {
             // The provider's own total is authoritative. The fallback sums every
             // component rather than just input+output, because on this surface
             // thinking and tool-use tokens are reported *beside* those two, not
-            // inside them — summing only the first pair understated the total by
+            // inside them. summing only the first pair understated the total by
             // the whole thinking spend. Without both input and output there is
             // nothing to derive a total from.
             let derived_total =
@@ -1057,7 +1057,7 @@ pub mod interactions_api_types {
     impl Step {
         /// The steps a history message is on the wire, in the message's
         /// order. A function call, its result and a thought are steps of
-        /// their own — the shape the API emits them in and the only shape it
+        /// their own. the shape the API emits them in and the only shape it
         /// accepts them back in (nested in a `model_output` or `user_input`
         /// step, a call-and-result round trip is "an invalid argument");
         /// text and media stay grouped in a `user_input` / `model_output`
@@ -1570,7 +1570,7 @@ pub mod interactions_api_types {
                 }
                 message::UserContent::ToolResult(tool_result) => {
                     // The wire requires a call id: the provider-issued one
-                    // when it exists, else rig's minted handle — always
+                    // when it exists, else rig's minted handle. always
                     // present, so the old "results require call_id" error
                     // is unrepresentable.
                     let call_id = tool_result.wire_call_id().into_owned();
@@ -2079,8 +2079,8 @@ pub mod interactions_api_types {
     /// Most deltas repeat a whole [`Content`] payload rather than a fragment of
     /// one, so they reuse the `*Content` types directly; the wire tags come
     /// from this enum's own `type` tagging. Only the variants whose payloads
-    /// genuinely differ from their `Content` counterpart — a partial text run,
-    /// a raw arguments fragment, and the identity-less thought deltas — carry
+    /// genuinely differ from their `Content` counterpart. a partial text run,
+    /// a raw arguments fragment, and the identity-less thought deltas. carry
     /// their own struct.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]

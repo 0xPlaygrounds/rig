@@ -281,10 +281,10 @@ impl MaxPrice {
 ///
 /// // Create preferences for zero data retention providers, sorted by throughput
 /// let prefs = ProviderPreferences::new()
-///     .sort(ProviderSortStrategy::Throughput)
-///     .zdr(true)
-///     .quantizations([Quantization::Int8])
-///     .only(["anthropic", "openai"]);
+///.sort(ProviderSortStrategy::Throughput)
+///.zdr(true)
+///.quantizations([Quantization::Int8])
+///.only(["anthropic", "openai"]);
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ProviderPreferences {
@@ -362,7 +362,7 @@ impl ProviderPreferences {
     /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
-    ///     .order(["anthropic", "openai"]);
+    ///.order(["anthropic", "openai"]);
     /// ```
     pub fn order(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.order = Some(
@@ -382,8 +382,8 @@ impl ProviderPreferences {
     /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
-    ///     .only(["azure", "together"])
-    ///     .allow_fallbacks(false);
+    ///.only(["azure", "together"])
+    ///.allow_fallbacks(false);
     /// ```
     pub fn only(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.only = Some(
@@ -403,7 +403,7 @@ impl ProviderPreferences {
     /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
-    ///     .ignore(["deepinfra"]);
+    ///.ignore(["deepinfra"]);
     /// ```
     pub fn ignore(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.ignore = Some(
@@ -448,7 +448,7 @@ impl ProviderPreferences {
     /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
-    ///     .zdr(true);
+    ///.zdr(true);
     /// ```
     pub fn zdr(mut self, enable: bool) -> Self {
         self.zdr = Some(enable);
@@ -466,7 +466,7 @@ impl ProviderPreferences {
     /// use rig_core::providers::openrouter::{ProviderPreferences, ProviderSortStrategy};
     ///
     /// let prefs = ProviderPreferences::new()
-    ///     .sort(ProviderSortStrategy::Latency);
+    ///.sort(ProviderSortStrategy::Latency);
     /// ```
     pub fn sort(mut self, sort: impl Into<ProviderSort>) -> Self {
         self.sort = Some(sort.into());
@@ -484,13 +484,13 @@ impl ProviderPreferences {
     ///
     /// // Simple threshold
     /// let prefs = ProviderPreferences::new()
-    ///     .preferred_min_throughput(ThroughputThreshold::Simple(50.0));
+    ///.preferred_min_throughput(ThroughputThreshold::Simple(50.0));
     ///
     /// // Percentile threshold
     /// let prefs = ProviderPreferences::new()
-    ///     .preferred_min_throughput(ThroughputThreshold::Percentile(
-    ///         PercentileThresholds::new().p90(50.0)
-    ///     ));
+    ///.preferred_min_throughput(ThroughputThreshold::Percentile(
+    /// PercentileThresholds::new().p90(50.0)
+    /// ));
     /// ```
     pub fn preferred_min_throughput(mut self, threshold: ThroughputThreshold) -> Self {
         self.preferred_min_throughput = Some(threshold);
@@ -521,7 +521,7 @@ impl ProviderPreferences {
     /// use rig_core::providers::openrouter::{ProviderPreferences, Quantization};
     ///
     /// let prefs = ProviderPreferences::new()
-    ///     .quantizations([Quantization::Int8, Quantization::Fp16]);
+    ///.quantizations([Quantization::Int8, Quantization::Fp16]);
     /// ```
     pub fn quantizations(mut self, quantizations: impl IntoIterator<Item = Quantization>) -> Self {
         self.quantizations = Some(quantizations.into_iter().collect());

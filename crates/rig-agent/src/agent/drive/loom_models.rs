@@ -145,7 +145,7 @@ impl rig_core::serve::Serve for Instant {
 /// The runtime itself, not a model of it: two runs on one agent bus, each
 /// awaiting one dispatch, polled from two threads through [`Driven`]. A
 /// run that finds the driver lock taken yields and must be woken to take
-/// over — by driver progress under the other run's poll, or by that run's
+/// over. by driver progress under the other run's poll, or by that run's
 /// end after its last drain. Whichever schedule the model picks, both runs
 /// complete: no run is left with its command buffered and nobody driving.
 /// (Fails against a `finish` that unregisters without waking: the run that

@@ -20,9 +20,9 @@ mod tool;
 ///
 /// #[derive(Embed)]
 /// struct Foo {
-///     id: String,
-///     #[embed] // this helper shows which field to embed
-///     description: String
+/// id: String,
+/// #[embed] // this helper shows which field to embed
+/// description: String
 ///}
 /// ```
 #[proc_macro_derive(Embed, attributes(embed))]
@@ -69,7 +69,7 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 ///
 /// #[rig_tool]
 /// fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolExecutionError> {
-///     Ok(a + b)
+/// Ok(a + b)
 /// }
 /// ```
 ///
@@ -79,13 +79,13 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 ///
 /// #[rig_tool(description = "Perform basic arithmetic operations")]
 /// fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolExecutionError> {
-///     match operation.as_str() {
-///         "add" => Ok(x + y),
-///         "subtract" => Ok(x - y),
-///         "multiply" => Ok(x * y),
-///         "divide" => Ok(x / y),
-///         _ => Err(rig::tool::ToolExecutionError::other("Unknown operation")),
-///     }
+/// match operation.as_str() {
+/// "add" => Ok(x + y),
+/// "subtract" => Ok(x - y),
+/// "multiply" => Ok(x * y),
+/// "divide" => Ok(x / y),
+/// _ => Err(rig::tool::ToolExecutionError::other("Unknown operation")),
+/// }
 /// }
 /// ```
 ///
@@ -98,7 +98,7 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 /// // 64 characters long.
 /// #[rig_tool(name = "search-docs", description = "Search the documentation")]
 /// fn search_docs_impl(query: String) -> Result<String, rig::tool::ToolExecutionError> {
-///     Ok(format!("Searching docs for {query}"))
+/// Ok(format!("Searching docs for {query}"))
 /// }
 /// ```
 ///
@@ -107,19 +107,19 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(
-///     description = "A tool that performs string operations",
-///     params(
-///         text = "The input text to process",
-///         operation = "The operation to perform (uppercase, lowercase, reverse)"
-///     )
+/// description = "A tool that performs string operations",
+/// params(
+/// text = "The input text to process",
+/// operation = "The operation to perform (uppercase, lowercase, reverse)"
+/// )
 /// )]
 /// fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolExecutionError> {
-///     match operation.as_str() {
-///         "uppercase" => Ok(text.to_uppercase()),
-///         "lowercase" => Ok(text.to_lowercase()),
-///         "reverse" => Ok(text.chars().rev().collect()),
-///         _ => Err(rig::tool::ToolExecutionError::other("Unknown operation")),
-///     }
+/// match operation.as_str() {
+/// "uppercase" => Ok(text.to_uppercase()),
+/// "lowercase" => Ok(text.to_lowercase()),
+/// "reverse" => Ok(text.chars().rev().collect()),
+/// _ => Err(rig::tool::ToolExecutionError::other("Unknown operation")),
+/// }
 /// }
 /// ```
 ///
@@ -130,7 +130,7 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 /// fields deserialize to `None`). An explicit `required(...)` list overrides
 /// this. A parameter *omitted* from an explicit list is deserialized with
 /// `#[serde(default)]`, so its type must be `Option<T>` or implement
-/// `Default` — the advertised schema and the deserializer always agree.
+/// `Default`. the advertised schema and the deserializer always agree.
 /// Listing an `Option<T>` parameter is a compile error (schemars and serde
 /// would both silently ignore the directive). Names in `params(...)` and
 /// `required(...)` must match actual parameters.
@@ -141,7 +141,7 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 /// // `b` is advertised as optional and defaults to `0` when omitted.
 /// #[rig_tool(required(a))]
 /// fn add(a: i64, b: i64) -> Result<i64, rig::tool::ToolExecutionError> {
-///     Ok(a + b)
+/// Ok(a + b)
 /// }
 /// ```
 ///
@@ -153,19 +153,19 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 ///
 /// #[rig_tool]
 /// fn current_user(
-///     // The marker is required for imported names and type aliases. A fully
-///     // qualified `&mut rig::tool::ToolContext` — including under a renamed
-///     // dependency — is recognized directly.
-///     #[rig(context)] context: &mut ToolContext,
-///     greeting: String,
+/// // The marker is required for imported names and type aliases. A fully
+/// // qualified `&mut rig::tool::ToolContext`. including under a renamed
+/// // dependency. is recognized directly.
+/// #[rig(context)] context: &mut ToolContext,
+/// greeting: String,
 /// ) -> Result<String, rig::tool::ToolExecutionError> {
-///     // `CurrentUser` derives `rig::tool::ContextValue` (serde data under a
-///     // declared key); `get` distinguishes absence from an undecodable slot.
-///     let user = context
-///         .get::<CurrentUser>()?
-///         .map(|user| user.0)
-///         .unwrap_or_else(|| "guest".to_owned());
-///     Ok(format!("{greeting}, {user}!"))
+/// // `CurrentUser` derives `rig::tool::ContextValue` (serde data under a
+/// // declared key); `get` distinguishes absence from an undecodable slot.
+/// let user = context
+///.get::<CurrentUser>()?
+///.map(|user| user.0)
+///.unwrap_or_else(|| "guest".to_owned());
+/// Ok(format!("{greeting}, {user}!"))
 /// }
 /// ```
 #[proc_macro_attribute]

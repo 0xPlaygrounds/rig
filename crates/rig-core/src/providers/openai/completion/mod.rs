@@ -340,8 +340,8 @@ pub struct FileData {
 ///
 /// Text is the only part official OpenAI accepts here; an image is refused with
 /// a 400 on `gpt-4o` and, worse, accepted-and-discarded on the GPT-5 family.
-/// Some OpenAI-compatible servers do honour an image — llama.cpp delivers one to
-/// the model, measured — so the variant exists and emitting it is gated on
+/// Some OpenAI-compatible servers do honour an image. llama.cpp delivers one to
+/// the model, measured. so the variant exists and emitting it is gated on
 /// [`Quirks::supports_image_tool_results`](crate::providers::openai::wire::Quirks::supports_image_tool_results).
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -675,8 +675,8 @@ impl TryFrom<message::UserContent> for UserContent {
                 DocumentSourceKind::Url(url) => Ok(UserContent::Image {
                     image_url: ImageUrl {
                         url,
-                        // OpenAI's wire format always carries a detail level;
-                        // absent rig-level detail maps to the default (auto).
+ // OpenAI's wire format always carries a detail level;
+ // absent rig-level detail maps to the default (auto).
                         detail: Some(detail.unwrap_or_default()),
                     },
                 }),
@@ -840,8 +840,8 @@ pub fn user_content_to_messages(
     value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     fn flush_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
-        // An empty flush is a legal no-op — it fires between consecutive
-        // tool-result groups — not a conversion error. This early return is
+        // An empty flush is a legal no-op. it fires between consecutive
+        // tool-result groups. not a conversion error. This early return is
         // the only emptiness decision here; the pushed content is non-empty
         // because of it.
         if pending.is_empty() {
@@ -884,7 +884,7 @@ pub fn user_content_to_messages(
 /// set, a block carrying parts replays as `reasoning_details` entries instead:
 /// OpenRouter's Anthropic and OpenAI routes require the block's *signature* or
 /// encrypted blob to be echoed back on the tool-call turn, and the display
-/// string cannot carry either — an unsigned replay is rejected upstream.
+/// string cannot carry either. an unsigned replay is rejected upstream.
 pub fn assistant_content_to_messages(
     value: Vec<message::AssistantContent>,
     reasoning_details: bool,
@@ -901,9 +901,9 @@ pub fn assistant_content_to_messages(
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
-            // A block with no parts has nothing structured to replay — only
+            // A block with no parts has nothing structured to replay. only
             // the text a provider streamed under `reasoning`/
-            // `reasoning_content` — so it takes the plain path on either
+            // `reasoning_content`. so it takes the plain path on either
             // dialect.
             message::AssistantContent::Reasoning(reasoning)
                 if reasoning_details && !reasoning.content.is_empty() =>
@@ -1072,7 +1072,7 @@ impl From<message::ToolCall> for ToolCall {
             // Keep the assistant echo consistent with the tool-result side:
             // the provider-issued call id when one exists (e.g. a
             // Responses-API history replayed via chat completions), else
-            // rig's minted handle — never empty.
+            // rig's minted handle. never empty.
             id: tool_call.wire_call_id().into_owned(),
             r#type: ToolType::default(),
             function: Function {
@@ -1163,7 +1163,7 @@ pub struct CompletionResponse {
 /// part** modeled by [`AssistantContent::Refusal`] is the Responses API's
 /// shape, which chat completions never sends. Every path that reads `content`
 /// alone therefore drops a real refusal entirely, so all of them route the
-/// fallback through here — one home for the rule, and no way for the raw text
+/// fallback through here. one home for the rule, and no way for the raw text
 /// view and the normalized response to disagree about whether a refusal is
 /// content.
 ///
@@ -1176,8 +1176,8 @@ pub struct CompletionResponse {
 /// path cannot share it: it decides per delta, before it knows whether text
 /// arrives later (the chat wire's `delta_text`, which prefers a delta's own
 /// content and falls back to its refusal). The two therefore agree on every
-/// shape this wire has been observed to send — a refusal turn holds `content`
-/// at `null` for its whole length — but would differ on a turn mixing both,
+/// shape this wire has been observed to send. a refusal turn holds `content`
+/// at `null` for its whole length. but would differ on a turn mixing both,
 /// where this rule keeps only the text and the streaming rule would deliver
 /// both in arrival order. That shape is pinned in
 /// `delta_text_prefers_content_over_a_simultaneous_refusal` so the difference
@@ -1201,8 +1201,8 @@ pub(crate) fn assistant_refusal_fallback<'a>(
 /// the sibling `refusal` appended only when [`assistant_refusal_fallback`]
 /// says it is the turn's text.
 ///
-/// No wire path reads text this way — the driver records off the folded
-/// response — so this survives for the OpenAI-compatible providers' unary
+/// No wire path reads text this way. the driver records off the folded
+/// response. so this survives for the OpenAI-compatible providers' unary
 /// decode tests, which read a decoded message's text through it.
 #[cfg(test)]
 pub(crate) fn assistant_message_text_response(message: &Message) -> Option<String> {
@@ -1265,7 +1265,7 @@ pub struct PromptTokensDetails {
     /// `null_or_default` because a gateway with no audio to report spells the
     /// absence as an explicit `null` rather than omitting the key
     /// (Doubleword sends `"audio_tokens":null`), and `serde(default)` alone
-    /// covers only a missing key — a text-only reply would fail to decode at
+    /// covers only a missing key. a text-only reply would fail to decode at
     /// all.
     #[serde(
         default,
@@ -1273,7 +1273,7 @@ pub struct PromptTokensDetails {
         skip_serializing_if = "is_zero"
     )]
     pub audio_tokens: usize,
-    /// Tokens written to the cache on this call — a miss that populated it.
+    /// Tokens written to the cache on this call. a miss that populated it.
     ///
     /// Reported by gateways fronting upstreams that bill cache writes
     /// separately (OpenRouter over Anthropic); OpenAI's own cache writes are
@@ -1444,8 +1444,8 @@ impl Usage {
 /// families are `gpt-5` and up, and the `o`-series (`o1`, `o3-mini`,
 /// `o4-mini`, …), and each gains dated snapshots and size variants that an
 /// enumerated list could not keep up with. A future family this misses keeps
-/// today's behavior — the legacy field, and the provider's own explicit
-/// `Unsupported parameter` error — rather than silently sending a field some
+/// today's behavior. the legacy field, and the provider's own explicit
+/// `Unsupported parameter` error. rather than silently sending a field some
 /// other backend does not know.
 pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
     /// `gpt-5` … `gpt-9`, in any spelling the family uses (`gpt-5`,
@@ -1455,8 +1455,8 @@ pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
     /// generation is spelled `gpt-<digit>` or `gpt-<digit>.<minor>`, so a
     /// multi-digit run (`gpt-45`, or a compatible server's own model name) is
     /// not a generation number and must not be read as one. A hypothetical
-    /// `gpt-10` would fall through to the legacy field — today's behavior, and
-    /// a visible provider error — rather than a field its backend may not know.
+    /// `gpt-10` would fall through to the legacy field. today's behavior, and
+    /// a visible provider error. rather than a field its backend may not know.
     fn is_numbered_gpt_family(model: &str, lowest: u32) -> bool {
         model
             .strip_prefix("gpt-")
@@ -1466,7 +1466,7 @@ pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
             .is_some_and(|major| major >= lowest)
     }
 
-    /// `o1`, `o3`, `o4`, … — but not `openai-…` or any other `o` word.
+    /// `o1`, `o3`, `o4`, …. but not `openai-…` or any other `o` word.
     fn is_o_series(model: &str) -> bool {
         let mut chars = model.chars();
         chars.next() == Some('o')
@@ -1497,7 +1497,7 @@ pub(crate) fn request_body(
     {
         // A caller who spelled the modern field themselves (through
         // `additional_params`) keeps their own value; the legacy key still has
-        // to go, since reasoning models reject its mere presence — and behind
+        // to go, since reasoning models reject its mere presence. and behind
         // this endpoint there is no backend that wants it.
         object.entry("max_completion_tokens").or_insert(max_tokens);
     }
@@ -1575,7 +1575,7 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
 /// `tool_calls`/`reasoning_content`), optionally flattens content-part arrays
 /// to strings, and drops assistant turns left without content (pure
 /// tool-call scaffolding). With `merge_same_role`, consecutive same-role
-/// string-content messages are additionally merged — the removals can leave
+/// string-content messages are additionally merged. the removals can leave
 /// user/user as well as assistant/assistant adjacency, and alternation-strict
 /// APIs (Perplexity) reject both; providers without that constraint keep
 /// their turns separate.
@@ -1738,7 +1738,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         }
 
         // Per-provider normalization of tool-result content. This is the only
-        // place with both the parts and the provider's capabilities in hand —
+        // place with both the parts and the provider's capabilities in hand -
         // `TryFrom<message::ToolResult>` has neither.
         for msg in &mut full_history {
             if let Message::ToolResult { content, .. } = msg {
@@ -1748,7 +1748,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                         // the image and send a tool result that silently says
                         // less than the caller asked for. Official OpenAI
                         // answers this shape with a 400 on gpt-4o and, on the
-                        // GPT-5 family, a 200 with the image discarded — so a
+                        // GPT-5 family, a 200 with the image discarded. so a
                         // local error naming the constraint beats both.
                         return Err(CompletionError::RequestError(
                             concat!(
@@ -1804,10 +1804,10 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         // `tools` array left in it would silently replace the typed `tools`
         // field (the body is built via `serde_json::to_value`, where the
         // flattened key wins). Merge its function tools into the typed list
-        // instead, mirroring the Responses API path (issue #1890). Entries that
+        // instead, mirroring the Responses API path. Entries that
         // are not function tools stay behind for the provider's
-        // `prepare_request` hook — Groq, for one, folds its native tools
-        // (`{"type": "browser_search"}`, ...) into `compound_custom` from there.
+        // `prepare_request` hook. Groq, for one, folds its native tools
+        // (`{"type": "browser_search"}`,...) into `compound_custom` from there.
         let mut additional_params = additional_params;
         if supports_tools
             && let Some(map) = additional_params
@@ -1857,7 +1857,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
         // if `response_format` is sent on the first turn alongside tools. Delay the
-        // schema until after the conversation contains a tool result — unless the
+        // schema until after the conversation contains a tool result. unless the
         // dialect was measured to honour both at once
         // (`Quirks::response_format_with_tools`), where deferring it would send a
         // turn the gateway never saw.
@@ -1890,8 +1890,8 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         // The wire rejects a `tool_choice` beside an empty `tools` ("'tool_choice'
         // is only allowed when 'tools' are specified"): a turn that advertises no
-        // tool — an output tool degraded to native output under `none`, an
-        // `active_tools: []` patch — carries no choice either.
+        // tool. an output tool degraded to native output under `none`, an
+        // `active_tools: []` patch. carries no choice either.
         let tool_choice = tool_choice.filter(|_| !tools.is_empty());
         let res = Self {
             model: request_model.unwrap_or(model),

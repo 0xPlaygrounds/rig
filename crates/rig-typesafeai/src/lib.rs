@@ -50,9 +50,9 @@ pub trait Evaluate {
     /// ```compile_fail
     /// use rig_typesafeai::{Evaluate, EvaluationResult, DynamicScoreAnswer, Noul, Query};
     /// async fn wrong(client: impl Evaluate) -> Result<(), rig_typesafeai::Error> {
-    ///     let question = Noul::new("Ready?")?.named("ready")?;
-    ///     let result: EvaluationResult<DynamicScoreAnswer> = client.evaluate(&"state", question).await?;
-    ///     Ok(())
+    /// let question = Noul::new("Ready?")?.named("ready")?;
+    /// let result: EvaluationResult<DynamicScoreAnswer> = client.evaluate(&"state", question).await?;
+    /// Ok(())
     /// }
     /// ```
     fn evaluate<S, Q>(

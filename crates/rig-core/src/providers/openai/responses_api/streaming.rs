@@ -33,7 +33,7 @@ pub enum StreamingCompletionChunk {
 ///
 /// This is the provider-native terminal record. The adapter maps it once,
 /// through `terminal_record`, into the [`StreamFinal`] the stream yields,
-/// and serializes it onto [`StreamFinal::raw`] — the escape hatch for
+/// and serializes it onto [`StreamFinal::raw`]. the escape hatch for
 /// Responses-API terminal fields rig does not normalize.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
@@ -68,7 +68,7 @@ pub struct StreamingCompletionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// The transport request id from the SSE connection's `x-request-id`
-    /// response header — not part of any stream frame. The transport stamps
+    /// response header. not part of any stream frame. The transport stamps
     /// it onto the normalized [`StreamFinal`] after the adapter has mapped
     /// this record, so here it is `None` unless a caller filled it in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,14 +127,14 @@ fn terminal_record(
 
 /// The done item's blocks as ONE authoritative end-of-part restatement.
 ///
-/// Every block — summaries, content texts, `encrypted_content` — belongs to
+/// Every block. summaries, content texts, `encrypted_content`. belongs to
 /// one `rs_*` reasoning item, so it must land in one part: emitting a
 /// whole-block end per entry made every block after the first a sibling
 /// part under the same key, and history then replayed duplicate reasoning
 /// input items carrying the identical `rs_*` id. The restatement supersedes
 /// the delta-built part in place (wire field order: summary, content,
 /// encrypted); the caller closes the block with it as a wire-sent
-/// `BlockEnd`. `None` when the item carries no blocks — an empty done item
+/// `BlockEnd`. `None` when the item carries no blocks. an empty done item
 /// says nothing at the boundary.
 pub(crate) fn reasoning_from_done_item(
     provider_id: Option<&str>,
@@ -175,7 +175,7 @@ pub struct ResponseChunk {
 }
 
 /// Response chunk type.
-/// Renames are used to ensure that this type gets (de)serialized properly.
+/// Renames are previously ensure that this type gets (de)serialized properly.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ResponseChunkKind {
     #[serde(rename = "response.created")]
@@ -277,27 +277,18 @@ pub struct RawChoiceAccumulator {
     /// `response.incomplete`) arrived. Without one the stream was truncated,
     /// and `finish` withholds the terminal record.
     saw_terminal: bool,
-    /// Slot-scoped reasoning identity, mirroring `tool_slots`: one assembly
-    /// key per output slot, fixed at the slot's FIRST reasoning event (wire
-    /// `rs_*` id when it carries one, else minted `output-{index}`) and
-    /// reused by every later frame regardless of the id it carries.
-    /// Gateways and ChatGPT's envelope-less replay bodies omit the id on a
-    /// subset of a slot's events; per-event resolution split one slot into
-    /// `Wire("rs_1")` and `Minted(Output, i)` halves, and the done item
-    /// superseded only one of them — the other survived as an orphaned
-    /// partial part carrying the same provider id (#2258 F3 and its mixed
-    /// generalization).
+    /// Assembly key for each reasoning output slot.
+    ///
+    /// The first event fixes the key from its wire ID or output index. Later
+    /// frames reuse it because some gateways omit IDs from individual events.
     reasoning_slots: std::collections::HashMap<u64, crate::streaming::BlockId>,
-    /// Tool-call identities minted for function-call items whose wire events
-    /// carried no `fc_*` id (gateways and the ChatGPT envelope-less replay
-    /// bodies), keyed by output slot. Mirrors `minted_reasoning_ids`: the
-    /// added/delta/done events of one item must all share one assembly key —
-    /// forwarding `""` verbatim would let two parallel id-less calls share the
-    /// empty key, and an id-less delta whose done restates a real `fc_*` id
-    /// would leave the fragments dangling under a different key.
+    /// Assembly key for each function-call output slot without a wire ID.
+    ///
+    /// All events for one item share this key so parallel ID-less calls cannot
+    /// collide and late IDs cannot strand earlier fragments.
     /// Slot-scoped tool identity: one assembly key per output slot, fixed at
     /// the slot's first event (wire `fc_*` id, else minted `output-{index}`),
-    /// reused by every later event regardless of the id it carries — mixed
+    /// reused by every later event regardless of the id it carries. mixed
     /// id/id-less events on one slot can no longer split assembly keys.
     tool_slots: crate::providers::internal::tool_call_bridge::ToolCallBridge<u64>,
     /// The `call_…` correlator each open slot announced on
@@ -326,7 +317,7 @@ pub struct RawChoiceAccumulator {
     /// for text the deltas streamed in full and the turn's answer lands
     /// twice (`crates/rig-cassette/fixtures/cassettes/copilot/reasoning_roundtrip/streaming.yaml`
     /// record 2 replays it once). `output_index` is the wire's positional
-    /// correlator for output items — it is what the terminal's `output[]`
+    /// correlator for output items. it is what the terminal's `output[]`
     /// array is indexed by, and what `tool_slots`/`reasoning_slots`
     /// already key their assemblies on for the same reason.
     delta_text_slots: std::collections::HashSet<u64>,
@@ -439,7 +430,7 @@ impl RawChoiceAccumulator {
     /// Merge the terminal body's own message text into the choice.
     ///
     /// The terminal restates the whole turn, so **its content is published
-    /// only where no delta delivered it** — the same principle
+    /// only where no delta delivered it**. the same principle
     /// `reasoning_from_done_item`'s `None` implements for a restated
     /// reasoning part. A gateway answering a unary call with a replayed
     /// event stream can state a message's text *only* here (no
@@ -470,8 +461,8 @@ impl RawChoiceAccumulator {
     /// The slot's reasoning assembly key, fixed at its first reasoning
     /// event: the wire's `rs_*` id when that first frame carries one, else
     /// a minted `output-{index}` identity. Every later frame on the slot
-    /// reuses the stored key regardless of the id it carries — the same
-    /// discipline as `tool_slots` — so mixed id/id-less frames cannot
+    /// reuses the stored key regardless of the id it carries. the same
+    /// discipline as `tool_slots`. so mixed id/id-less frames cannot
     /// split one slot's assembly. The durable `provider_id` is fixed on
     /// the block's start; the done item's wire-sent restatement (which
     /// always carries the real `rs_*` id) supersedes it, never the
@@ -523,7 +514,7 @@ impl RawChoiceAccumulator {
                 self.current_text_item = None;
                 // Slot identity is established here once (wire `fc_*` id,
                 // else a minted `output-{index}`) and reused for every later
-                // event on this slot — gateways and ChatGPT's envelope-less
+                // event on this slot. gateways and ChatGPT's envelope-less
                 // replay bodies can omit the id on any subset of a slot's
                 // events, and event-scoped resolution would split the
                 // assembly key.
@@ -575,7 +566,7 @@ impl RawChoiceAccumulator {
                 // anonymous text); forget the open message item so a later
                 // delta for the *same* item re-emits its text `BlockStart`
                 // and reactivates its block instead of silently opening a
-                // boundary-minted sibling (#2258 P2).
+                // boundary-minted sibling.
                 self.current_text_item = None;
                 let id = self.reasoning_slot_key(output_index, outer_item_id.as_deref());
                 out.reasoning_delta(
@@ -592,7 +583,7 @@ impl RawChoiceAccumulator {
                 // The slot's established identity keys the fragment; an
                 // id-less delta on a never-opened slot mints it here so the
                 // fragments survive truncation before the authoritative
-                // `output_item.done` restatement (#2258 P3). A late wire id
+                // `output_item.done` restatement. A late wire id
                 // updates the slot's reported id without moving the key.
                 let slot = self
                     .tool_slots
@@ -627,7 +618,7 @@ impl RawChoiceAccumulator {
                 // does not state it twice.
                 self.merge_terminal_body_text(&response, out);
                 // The provider proved the turn ended, so a slot still open
-                // here lost only its `output_item.done` frame — the same
+                // here lost only its `output_item.done` frame. the same
                 // terminal-drain the sibling adapters ship (Interactions at
                 // `interaction.completed`, chat-compat at `finish_reason`).
                 // Closing it lets the shared accumulator finalize the call
@@ -698,7 +689,7 @@ impl RawChoiceAccumulator {
                 self.pending_call_ids.remove(&output_index);
                 let item_id = match &slot {
                     // The slot's established key wins even when the done item
-                    // restates a real `fc_*` id — assembled fragments must
+                    // restates a real `fc_*` id. assembled fragments must
                     // not dangle under a different key.
                     Some(slot) => slot.key().clone(),
                     // Minted from the bridge's ONE counter: a done-only call
@@ -717,7 +708,7 @@ impl RawChoiceAccumulator {
                 end.name = Some(func.name);
                 // An empty `call_id` is this wire's "absent" spelling: with
                 // no correlator the call carries no provider identity at all,
-                // and the `fc_*` item id must NOT stand in for one — replay
+                // and the `fc_*` item id must NOT stand in for one. replay
                 // would send it where the API wants the real `call_id`, which
                 // it rejects.
                 end.call_id = crate::streaming::non_empty_id(func.call_id.clone());
@@ -734,13 +725,13 @@ impl RawChoiceAccumulator {
                 // truncated mid-JSON (item status `incomplete`); routing the
                 // raw string through the assembly buffer instead lets the
                 // shared accumulator apply the settled truncation policy
-                // (`UnparseableToolInput::Drop` — partial arguments never
+                // (`UnparseableToolInput::Drop`. partial arguments never
                 // fabricate a call), including when no argument fragments
                 // preceded the done item.
                 match func.arguments.parse() {
                     Ok(arguments) => end.arguments = Some(arguments),
                     // Fragments already streamed these bytes into the
-                    // assembly buffer — re-emitting the restatement doubled
+                    // assembly buffer. re-emitting the restatement doubled
                     // them (rendered twice by delta consumers and
                     // double-charged against the accumulation bound). Only a
                     // fragment-less done item (pure replay of a truncated
@@ -771,7 +762,7 @@ impl RawChoiceAccumulator {
                 // The done item resolves through the slot map: its full
                 // blocks must share whatever identity the slot's deltas
                 // established (wire or minted) to supersede the delta-built
-                // part — keying them by the item's own `rs_*` id would
+                // part. keying them by the item's own `rs_*` id would
                 // append the restated content beside a minted-keyed part.
                 // A slot with no established identity keeps the wire id
                 // (the pure-replay shape). The durable handle is the item's
@@ -798,9 +789,9 @@ impl RawChoiceAccumulator {
                 // A contentless reasoning item is still an item: its `rs_*`
                 // id is the durable handle the next turn has to replay.
                 // Copilot's Responses route answers a tool-calling turn
-                // with `{"id":…,"summary":[]}` and then requires it back —
+                // with `{"id":…,"summary":[]}` and then requires it back -
                 // `crates/rig-cassette/fixtures/cassettes/copilot/typed_prompt_tools/
-                // prompt_typed_with_tool_call_roundtrip.yaml` — and without
+                // prompt_typed_with_tool_call_roundtrip.yaml`. and without
                 // it turn two's `input` is missing an element the provider
                 // sent. An item with no id at all still says nothing at the
                 // boundary, and neither does an empty restatement of a part
@@ -847,8 +838,8 @@ impl RawChoiceAccumulator {
     ///
     /// The unary reply is the same turn stated at once, so this is not a
     /// second interpreter: each `output[]` item is the
-    /// `response.output_item.done` the stream sends for it — a message item
-    /// preceded by the `output_text.delta`s that built its text — and the
+    /// `response.output_item.done` the stream sends for it. a message item
+    /// preceded by the `output_text.delta`s that built its text. and the
     /// body itself is the terminal `response.completed`/`response.incomplete`
     /// event. Everything downstream is the code the stream already runs.
     pub(crate) fn replay_whole_response(
@@ -890,8 +881,8 @@ impl RawChoiceAccumulator {
             }
             // Published where the item appears rather than buffered to the
             // terminal: the body states every item in order, and the
-            // accumulator registers a part at its START — which is where a
-            // streamed call registers too (its `output_item.added`) — so
+            // accumulator registers a part at its START. which is where a
+            // streamed call registers too (its `output_item.added`). so
             // both paths order the choice identically.
             self.push_output_item_done(item, output_index, out, true);
         }
@@ -947,16 +938,16 @@ impl RawChoiceAccumulator {
 ///
 /// ChatGPT's replayed (unary) SSE bodies omit envelope bookkeeping fields
 /// (`sequence_number`, `output_index`, `content_index`, `summary_index`)
-/// that the typed frame decode requires. Those fields are bookkeeping only —
+/// that the typed frame decode requires. Those fields are bookkeeping only -
 /// no semantic decision reads them beyond the reasoning-identity fallback,
-/// which treats a missing `output_index` as `0` anyway — so injecting
+/// which treats a missing `output_index` as `0` anyway. so injecting
 /// neutral zeros where they are absent turns salvage into a preprocessing
 /// step in front of the ONE event interpreter instead of a second one.
 /// Data-level fields (`delta`, `item`, `response`, …) are never touched, so
 /// a frame that is defective in its content still fails the re-decode.
 ///
-/// **Policy decision — buffered-only, deliberately asymmetric with the live
-/// loop (#2258 F8):** a *live* SSE or websocket frame with a known `type` but
+/// **Policy decision. buffered-only, deliberately asymmetric with the live
+/// loop :** a *live* SSE or websocket frame with a known `type` but
 /// a missing envelope field classifies `Corrupt` and surfaces as an in-band
 /// `Err` item; it is never repaired. Only ChatGPT's replayed unary bodies
 /// verifiably omit the envelope bookkeeping (every recorded live Copilot and
@@ -966,8 +957,8 @@ impl RawChoiceAccumulator {
 /// exists to surface. The old live behavior (skip) hid the frame entirely;
 /// the `Err` item is the stated uniform policy for defective known frames.
 ///
-/// **Known limit — identity collapse, and why the obvious fix is worse
-/// (#2258 G2):** the injected `output_index: 0` is the reasoning-identity
+/// **Known limit. identity collapse, and why the obvious fix is worse
+/// :** the injected `output_index: 0` is the reasoning-identity
 /// fallback's key when `item_id` is also absent (see `reasoning_item_id` in
 /// [`RawChoiceAccumulator::decode_item_chunk`]). A body that omits BOTH
 /// `item_id` *and* `output_index` across two or more items therefore collapses
@@ -982,7 +973,7 @@ impl RawChoiceAccumulator {
 /// frames arrive). Envelope-less bodies are exactly the ones where consecutive
 /// frames belong to the SAME item: a counter would hand every delta of one
 /// reasoning block a different index, shattering one item into N single-delta
-/// parts. That is a real regression against a real recorded shape — it breaks
+/// parts. That is a real regression against a real recorded shape. it breaks
 /// `envelope_less_reasoning_deltas_are_superseded_by_their_done_item`, whose
 /// whole point is that the deltas and their `output_item.done` share one
 /// identity. Any future fix must key on something the body actually carries
@@ -1009,8 +1000,8 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
 ///
 /// The stream's SSE frames and the unary body are two shapes of the same
 /// reply, so they are variants of ONE event type: the unary variant's
-/// `interpret` synthesizes the very frames the stream sends — that is what the
-/// accumulator's crate-internal `replay_whole_response` does — and everything after
+/// `interpret` synthesizes the very frames the stream sends. that is what the
+/// accumulator's crate-internal `replay_whole_response` does. and everything after
 /// classification is shared.
 pub enum ResponsesEvent {
     /// One stream frame, with its raw payload: `response.failed` preserves
@@ -1032,7 +1023,7 @@ pub enum ResponsesEvent {
     Failure(String),
     /// The wire's `[DONE]` terminal sentinel: not JSON, and it says
     /// nothing `response.completed` has not already said, so it is a
-    /// modeled no-op rather than a frame to parse. Known by construction —
+    /// modeled no-op rather than a frame to parse. Known by construction -
     /// classifying it as unknown would warn on every stream, and routing
     /// it into the typed decode would fail every stream.
     Sentinel,
@@ -1040,7 +1031,7 @@ pub enum ResponsesEvent {
 
 /// The top-level keys that recognize a Responses reply body: `object`
 /// (`"response"`), the two fields every reply carries whatever the gateway
-/// omits, and `error` — a success whose body is nothing but the provider's
+/// omits, and `error`. a success whose body is nothing but the provider's
 /// error envelope is a reply too, and recognizing it here is what lets the
 /// body decode fail and hand the frame to the envelope classifier. A stream
 /// event carries none of them at top level (its response object is nested
@@ -1049,8 +1040,8 @@ const WHOLE_BODY_MARKERS: &[&str] = &["object", "output", "status", "error"];
 
 /// Whether a frame is the Responses stream's own `error` event.
 ///
-/// `error` is outside the modeled event set on purpose — it is not one of
-/// the turn's `response.*`/item events — but it is the protocol's in-band
+/// `error` is outside the modeled event set on purpose. it is not one of
+/// the turn's `response.*`/item events. but it is the protocol's in-band
 /// failure on every dialect, so it must never be skipped as unmodeled.
 fn is_error_event(data: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(data)
@@ -1061,8 +1052,8 @@ fn is_error_event(data: &str) -> bool {
 /// error itself is built from the raw body; this only proves the shape.
 #[derive(Deserialize)]
 struct ErrorEnvelope {
-    // Decoding it is the whole point — it proves the body is an envelope and
-    // nothing else — but the error the consumer sees is built from the raw
+    // Decoding it is the whole point. it proves the body is an envelope and
+    // nothing else. but the error the consumer sees is built from the raw
     // body, so the provider's payload rides out verbatim.
     #[allow(dead_code)]
     error: serde_json::Value,
@@ -1087,7 +1078,7 @@ pub struct ResponsesDecoder {
     /// fields. A dialect flag, not a mode flag: only the ChatGPT gateway
     /// verifiably sends them, and it sends the same bytes for a unary and a
     /// streamed turn, so there is no mode to key it on. Off for OpenAI and
-    /// xAI, whose live frames carry full envelopes — see
+    /// xAI, whose live frames carry full envelopes. see
     /// [`repair_envelope_less_frame`] for why repairing those would hide a
     /// defect.
     repair_envelopes: bool,
@@ -1135,7 +1126,7 @@ impl ResponsesDecoder {
     ///
     /// The two pre-emptions are not stylistic. [`wire::classify_or`] falls
     /// through to its second classifier only on `Corrupt`, and the tagged
-    /// classifier reports an unmodeled `type` as `Unknown` — so a frame
+    /// classifier reports an unmodeled `type` as `Unknown`. so a frame
     /// whose `type` is `"error"` would be *skipped* rather than handed to
     /// the envelope branch below, and EOF would become the diagnostic
     /// instead of the provider's own message. `[DONE]` is not an object at
@@ -1153,7 +1144,7 @@ impl ResponsesDecoder {
         };
         let envelope = |data: &str| {
             // An `error` payload is the Responses protocol's own in-band
-            // failure on EVERY dialect — the stream's `error` event — so it
+            // failure on EVERY dialect. the stream's `error` event. so it
             // is recognized unconditionally. `error_envelope_in_success` is
             // a different fact about a different shape: a gateway answering
             // a 200 with an error envelope as the whole BODY. Gating the
@@ -1190,7 +1181,7 @@ impl ResponsesDecoder {
                 // The reply's whole envelope, and on a unary call over this
                 // wire there is no other document: the bytes were an event
                 // stream. Every `response.*` frame carries a snapshot of the
-                // same envelope, so the LAST one wins — `response.created`
+                // same envelope, so the LAST one wins. `response.created`
                 // and `response.in_progress` precede the usage and the final
                 // status, and latching the first would hand back a
                 // pre-completion snapshot.
@@ -1366,7 +1357,7 @@ pub enum ItemChunkKind {
     /// Terminator for a raw-reasoning block, restating the text the
     /// `response.reasoning_text.delta` events already streamed.
     ///
-    /// Modeled but not acted on — it falls into `decode_item_chunk`'s no-op
+    /// Modeled but not acted on. it falls into `decode_item_chunk`'s no-op
     /// arm exactly like [`Self::ReasoningSummaryTextDone`], because the
     /// accumulated deltas are already the authoritative content and replaying
     /// the restatement would double the reasoning text.
@@ -1375,7 +1366,7 @@ pub enum ItemChunkKind {
     /// `is_known_responses_event_type` safe: the classify layer sends every
     /// KNOWN tag straight to `decode_known`, so listing the tag without a
     /// variant to decode into would turn today's benign warn-and-skip into an
-    /// in-band `Corrupt`/`Err` on every raw-reasoning block (#2258 G4). The
+    /// in-band `Corrupt`/`Err` on every raw-reasoning block. The
     /// two edits only make sense together.
     #[serde(rename = "response.reasoning_text.done")]
     ReasoningTextDone(OutputTextChunk),
@@ -1408,12 +1399,12 @@ pub enum ContentPartChunkPart {
     SummaryText {
         text: String,
     },
-    /// Any part type this client doesn't model — `refusal` and
+    /// Any part type this client doesn't model. `refusal` and
     /// `reasoning_text` parts appear on real refusal/reasoning-text turns,
     /// and new part types ship without notice. Content-part events are
     /// bookkeeping (the content itself arrives via the corresponding delta
     /// events, e.g. `response.refusal.delta`), so an unmodeled part must
-    /// parse as a no-op rather than fail the whole chunk — the same shape as
+    /// parse as a no-op rather than fail the whole chunk. the same shape as
     /// [`Output::Unknown`](super::Output).
     #[serde(untagged)]
     Unknown(serde_json::Value),
@@ -1427,15 +1418,21 @@ pub enum ContentPartChunkPart {
 /// must decode fully or error; only an unmodeled (or absent) tag falls back
 /// to [`ContentPartChunkPart::Unknown`], preserving the value verbatim.
 ///
-/// Two documented edges of the hand dispatch (#2258 F8):
+/// Two documented edges of the hand dispatch :
 /// - A part with **duplicate `type` keys** dispatches on the **last**
-///   occurrence, because `serde_json::Value` keeps the last duplicate, while
-///   a derived internally-tagged enum takes the first. Duplicate keys are
-///   not something any Responses gateway emits; the divergence is accepted
-///   and pinned by test rather than papered over with a custom map visitor.
+///
+/// occurrence, because `serde_json::Value` keeps the last duplicate, while
+///
+/// a derived internally-tagged enum takes the first. Duplicate keys are
+///
+/// not something any Responses gateway emits; the divergence is accepted
+///
+/// and pinned by test rather than papered over with a custom map visitor.
 /// - A **non-string `type`** is a data-level defect of the tagged shape, not
-///   an unmodeled part kind: it errors (classifying the frame `Corrupt`)
-///   instead of degrading to an `Unknown` no-op.
+///
+/// an unmodeled part kind: it errors (classifying the frame `Corrupt`)
+///
+/// instead of degrading to an `Unknown` no-op.
 impl<'de> Deserialize<'de> for ContentPartChunkPart {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

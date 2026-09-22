@@ -52,13 +52,13 @@ impl Readable for Vec<u8> {
 // ================================================================
 
 /// [FileLoader] is a utility for loading files from the filesystem using glob patterns or directory
-///  paths. It provides methods to read file contents and handle errors gracefully.
+/// paths. It provides methods to read file contents and handle errors gracefully.
 ///
 /// # Errors
 ///
 /// This module defines a custom error type [FileLoaderError] which can represent various errors
-///  that might occur during file loading operations, such as invalid glob patterns, IO errors, and
-///  glob errors.
+/// that might occur during file loading operations, such as invalid glob patterns, IO errors, and
+/// glob errors.
 ///
 /// # Example Usage
 ///
@@ -66,26 +66,26 @@ impl Readable for Vec<u8> {
 /// use rig_core::loaders::FileLoader;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // Create a FileLoader using a glob pattern
-///     let loader = FileLoader::with_glob("path/to/files/*.txt")?;
+/// // Create a FileLoader using a glob pattern
+/// let loader = FileLoader::with_glob("path/to/files/*.txt")?;
 ///
-///     // Read file contents, ignoring any errors
-///     let contents: Vec<String> = loader
-///         .read()
-///         .ignore_errors()
-///         .into_iter()
-///         .collect();
+/// // Read file contents, ignoring any errors
+/// let contents: Vec<String> = loader
+///.read()
+///.ignore_errors()
+///.into_iter()
+///.collect();
 ///
-///     for content in contents {
-///         println!("{content}");
-///     }
+/// for content in contents {
+/// println!("{content}");
+/// }
 ///
-///     Ok(())
+/// Ok(())
 /// }
 /// ```
 ///
 /// [FileLoader] uses strict typing between the iterator methods to ensure that transitions between
-///   different implementations of the loaders and it's methods are handled properly by the compiler.
+/// different implementations of the loaders and it's methods are handled properly by the compiler.
 pub struct FileLoader<'a, T> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
@@ -93,7 +93,7 @@ pub struct FileLoader<'a, T> {
 #[allow(private_bounds)] // `Readable` deliberately seals which states expose these methods
 impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     /// Reads the contents of the files within the iterator returned by [FileLoader::with_glob] or
-    ///  [FileLoader::with_dir].
+    /// [FileLoader::with_dir].
     ///
     /// # Example
     /// Read files in directory "files/*.txt" and print the content for each file
@@ -103,10 +103,10 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read();
     /// for result in content {
-    ///     match result {
-    ///         Ok(content) => println!("{content}"),
-    ///         Err(e) => eprintln!("Error reading file: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(content) => println!("{content}"),
+    /// Err(e) => eprintln!("Error reading file: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -117,21 +117,21 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
         }
     }
     /// Reads the contents of the files within the iterator returned by [FileLoader::with_glob] or
-    ///  [FileLoader::with_dir] and returns the path along with the content.
+    /// [FileLoader::with_dir] and returns the path along with the content.
     ///
     /// # Example
     /// Read files in directory "files/*.txt" and print the content for corresponding path for each
-    ///  file.
+    /// file.
     ///
     /// ```no_run
     /// # use rig_core::loaders::FileLoader;
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read_with_path();
     /// for result in content {
-    ///     match result {
-    ///         Ok((path, content)) => println!("{path:?} {content}"),
-    ///         Err(e) => eprintln!("Error reading file: {e}"),
-    ///     }
+    /// match result {
+    /// Ok((path, content)) => println!("{path:?} {content}"),
+    /// Err(e) => eprintln!("Error reading file: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }

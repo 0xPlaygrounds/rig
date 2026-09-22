@@ -25,7 +25,7 @@ use wasm as platform;
 /// host that wants no on-disk cache passes `None` and a test passes a
 /// temporary directory. This is the default the deleted client builder
 /// applied when the caller named neither, and it is the only place the
-/// location is written down — reading a cache Copilot's own tooling wrote
+/// location is written down. reading a cache Copilot's own tooling wrote
 /// means resolving it the same way.
 pub fn default_token_dir() -> Option<PathBuf> {
     crate::providers::internal::auth::config_dir().map(|dir| dir.join("github_copilot"))
@@ -52,8 +52,8 @@ impl fmt::Debug for AuthSource {
 pub struct Authenticator {
     source: AuthSource,
     /// The platform half owns the token/key caches (files plus their parsed
-    /// state); serializing access to it — rather than to a detached unit
-    /// lock — is what prevents concurrent refreshes from racing the cache.
+    /// state); serializing access to it. rather than to a detached unit
+    /// lock. is what prevents concurrent refreshes from racing the cache.
     platform: Arc<Mutex<platform::PlatformAuthenticator>>,
 }
 
@@ -95,7 +95,7 @@ impl Authenticator {
     }
 
     /// Resolve the API key (and optional API base), refreshing or signing in
-    /// through `http` — the client's own transport — when the cache is stale.
+    /// through `http`. the client's own transport. when the cache is stale.
     pub async fn auth_context<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,

@@ -1,6 +1,6 @@
 //! Push framers: response bytes in, wire frames out.
 //!
-//! A framer owns byte splitting and nothing else — no classification, no
+//! A framer owns byte splitting and nothing else. no classification, no
 //! policy, no transport. It is fed whatever chunks the transport produced
 //! (`push`) and yields the frames those chunks completed, holding any
 //! partial trailing frame until the bytes that finish it arrive.
@@ -37,7 +37,7 @@ pub struct SseEvent {
     pub data: String,
     /// The stream's last event id, empty when none was ever set.
     pub id: String,
-    /// The `retry:` field of this event only — reconnection time is not a
+    /// The `retry:` field of this event only. reconnection time is not a
     /// per-event property that persists, and rig never reconnects.
     pub retry: Option<u64>,
 }

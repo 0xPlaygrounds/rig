@@ -27,7 +27,7 @@ mod tests;
 /// impl below.
 pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 
-/// Something registered on the bus that serves effects — the trait
+/// Something registered on the bus that serves effects. the trait
 /// handler authors implement, with an `async fn`.
 ///
 /// Provider and tool authors do not implement this directly: the adapters
@@ -63,7 +63,7 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
 
 /// The dyn-compatible form the bus stores: the one erasure. Every [`Serve`]
 /// is a `Handler` through the blanket impl, which is where the boxing
-/// happens — once, here.
+/// happens. once, here.
 pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
@@ -109,8 +109,8 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 ///
 /// On native this is `Arc<dyn Handler + Send + Sync>` (every handler is,
 /// through the `WasmCompat*` supertraits), so it is `Clone + Send + Sync +
-/// 'static`. On browser wasm the supertraits are no-op markers — a provider
-/// client there is `!Send` — and so is this: `Arc<dyn Handler>`, `!Send`,
+/// 'static`. On browser wasm the supertraits are no-op markers. a provider
+/// client there is `!Send`. and so is this: `Arc<dyn Handler>`, `!Send`,
 /// honestly. Nothing that must be `Send + Sync` on every target (the
 /// dispatcher, the typed views) holds one.
 #[derive(Clone)]
@@ -129,7 +129,7 @@ impl ErasedHandler {
 
     /// Wrap this handler in a [`Layer`](super::Layer): `intercept` sees
     /// every dispatch before this handler does and every answer after.
-    /// `handler.layered(a).layered(b)` puts `b` outermost — `b.before`
+    /// `handler.layered(a).layered(b)` puts `b` outermost. `b.before`
     /// first, `a.after` first.
     pub fn layered(self, intercept: impl super::Intercept) -> Self {
         Self::new(super::Layer::new(self, intercept))

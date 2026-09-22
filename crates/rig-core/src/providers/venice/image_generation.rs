@@ -3,7 +3,7 @@
 //! ```
 //! use rig_core::providers::venice::image_generation::ImageGenerationResponse;
 //! let response: ImageGenerationResponse = serde_json::from_value(
-//!     serde_json::json!({"id": "generation-1", "images": []})
+//! serde_json::json!({"id": "generation-1", "images": []})
 //! )?;
 //! assert!(response.images.is_empty());
 //! # Ok::<(), serde_json::Error>(())

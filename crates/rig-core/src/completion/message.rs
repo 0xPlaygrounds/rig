@@ -37,14 +37,14 @@ pub enum Message {
 /// **The rule, stated here once.** An empty choice is an error EXCEPT
 /// where the reply named a terminal that CUT THE TURN SHORT. That set is
 /// [`FinishReason::truncated_output`](crate::completion::FinishReason::truncated_output)
-/// — `length` and `content_filter` — plus the per-provider terminals a
+///. `length` and `content_filter`. plus the per-provider terminals a
 /// provider documents as legally empty, which today is Anthropic's
 /// `end_turn` and its `stop_sequence` with a sequence named. On one of
 /// those the fold yields an empty choice with that finish reason and the
 /// usage the reply carried; it does not raise. A reply that delivered no
-/// assistant content and named no such terminal — including one that ran
+/// assistant content and named no such terminal. including one that ran
 /// to completion (`stop`, `tool_calls`), one whose reason is unclassified
-/// (`Other`), and one that named nothing at all — is rejected with this
+/// (`Other`), and one that named nothing at all. is rejected with this
 /// wording. A reply that delivered content and then ended without its
 /// terminal is neither: it is a truncation, reported by the missing
 /// terminal record.
@@ -69,7 +69,7 @@ pub enum Message {
 /// serves both transports, the [`Mode`](crate::wire::Mode) it was built
 /// for is the difference (see [`crate::wire::Wire::decoder`]), and the
 /// guard runs at end of reply under it (`providers::gemini::streaming`,
-/// `providers::openai::wire::chat`'s nothing-recognized case) — so a
+/// `providers::openai::wire::chat`'s nothing-recognized case). so a
 /// stream that stopped early stays a truncation while a whole reply that
 /// produced nothing at all is reported instead of read as an empty
 /// success.
@@ -84,12 +84,12 @@ pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool ca
 /// Reject an empty content list, with the error the call site chose.
 ///
 /// Message content is a `Vec`, so "no content" is representable in the type.
-/// Most wires nevertheless reject it — a completion that carried no message and
+/// Most wires nevertheless reject it. a completion that carried no message and
 /// no tool call is a provider defect, and a history message with no blocks has
-/// nothing to send — and at least one call site depends on that rejection as
+/// nothing to send. and at least one call site depends on that rejection as
 /// control flow rather than as a diagnostic.
 ///
-/// These guards used to be a side effect of the non-empty container's
+/// These guards previously be a side effect of the non-empty container's
 /// constructor, which meant every site borrowed the same context-free "cannot
 /// create with an empty vector". Stated explicitly here, each site keeps its own
 /// message, which is where the useful detail lives.
@@ -97,19 +97,31 @@ pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool ca
 /// Two rules for anyone extending this:
 ///
 /// - It is **mostly** a guard for the **response** direction. Empty assistant
-///   content is legal at the rig level — a tool-call-only turn, a truncated
-///   stream — but a provider returning nothing where its protocol promises
-///   content is malformed, and that is what most of these call sites detect.
-///   Request-direction emptiness at the rig level is rejected once, at the
-///   request boundary — but a few request-conversion sites also use this guard,
-///   because non-empty rig content can still convert to zero *wire* blocks
-///   (e.g. assistant content whose only parts have no representation on that
-///   wire), and only the provider's own conversion can see that. If your
-///   request `TryFrom` can drop parts, guard the converted list too.
+///
+/// content is legal at the rig level. a tool-call-only turn, a truncated
+///
+/// stream. but a provider returning nothing where its protocol promises
+///
+/// content is malformed, and that is what most of these call sites detect.
+///
+/// Request-direction emptiness at the rig level is rejected once, at the
+///
+/// request boundary. but a few request-conversion sites also use this guard,
+///
+/// because non-empty rig content can still convert to zero *wire* blocks
+///
+/// (e.g. assistant content whose only parts have no representation on that
+///
+/// wire), and only the provider's own conversion can see that. If your
+///
+/// request `TryFrom` can drop parts, guard the converted list too.
 /// - The check is on the **whole list**, never on individual items. A visibly
-///   empty block can still carry data that must survive a round trip: reasoning
-///   signatures and encrypted reasoning attach to blocks whose text is empty.
-///   Emptiness is a property of the list, not of its members.
+///
+/// empty block can still carry data that must survive a round trip: reasoning
+///
+/// signatures and encrypted reasoning attach to blocks whose text is empty.
+///
+/// Emptiness is a property of the list, not of its members.
 pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
     if items.is_empty() {
         return Err(error());
@@ -117,7 +129,7 @@ pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Resu
     Ok(items)
 }
 
-/// [`require_non_empty`] with the shared response-direction rejection — the
+/// [`require_non_empty`] with the shared response-direction rejection. the
 /// one-line guard for a provider decode whose converted choice is empty.
 /// Pairing the guard with [`EMPTY_RESPONSE_ERROR`] here keeps the wording
 /// from forking per wire. A decode with a *legal* empty case (anthropic's
@@ -147,7 +159,7 @@ pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
 /// The order a **streamed** turn with reasoning or tool calls is committed
 /// to history in by rig-agent's stream assembler and rig-ecs's fold
 /// ([`canonical_streamed_choice`]): a wire that delivers a reasoning part
-/// after the text — Gemini's thought signature rides the last chunk —
+/// after the text. Gemini's thought signature rides the last chunk -
 /// still commits the turn reasoning-first. A unary reply keeps the
 /// provider's order.
 pub fn ordered_assistant_content(
@@ -168,9 +180,9 @@ pub fn ordered_assistant_content(
 /// no image. Reasoning is scratch work, not an answer, so a reasoning-only
 /// turn delivers none (it still belongs in history). The predicate both
 /// runtimes read before deciding that a turn the provider cut short is a
-/// lost turn (rig#2322), so they cannot disagree about which turns those
+/// lost turn, so they cannot disagree about which turns those
 /// are; it is deliberately not "the turn is empty", which diverges on a
-/// reasoning-only turn — the common case, since Gemini counts thinking
+/// reasoning-only turn. the common case, since Gemini counts thinking
 /// tokens against `maxOutputTokens`, so a truncated thinking turn carries
 /// reasoning and no text.
 ///
@@ -178,7 +190,7 @@ pub fn ordered_assistant_content(
 /// variant is classified explicitly, so adding one to [`AssistantContent`]
 /// breaks this build and forces a decision instead of inheriting a
 /// default. The first version had a `_ => false` catch-all and classified
-/// image-only turns as "no answer" — a truncated image-generation turn
+/// image-only turns as "no answer". a truncated image-generation turn
 /// would have errored despite delivering an image, which matters because
 /// image tokens count against the same output budget.
 pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
@@ -193,12 +205,12 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
 }
 
 /// [`ordered_assistant_content`] over one delivered streamed choice: a
-/// turn with a reasoning block or a tool call is regrouped by kind —
+/// turn with a reasoning block or a tool call is regrouped by kind -
 /// reasoning, text, the calls, then the images, each group in arrival
 /// order; a turn with neither keeps the provider's order. rig-agent's
 /// assembler (`StreamedTurnAssembler::canonical_choice_with`) applies this
-/// function to its own inputs — the calls it accepted, the text items it
-/// reports — so the two runtimes share the rule; rig-ecs's fold applies it
+/// function to its own inputs. the calls it accepted, the text items it
+/// reports. so the two runtimes share the rule; rig-ecs's fold applies it
 /// to the delivered choice as is.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
@@ -226,8 +238,8 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
 }
 
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
-///  a document. Dependent on provider supporting the content type. Multimedia content is generally
-///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
+/// a document. Dependent on provider supporting the content type. Multimedia content is generally
+/// base64 (defined by it's format) encoded but additionally supports urls (for some providers).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
@@ -248,7 +260,7 @@ pub enum UserContent {
 /// Describes responses from a provider which is either text or a tool call.
 ///
 /// Tagged with `"type"`, exactly like [`UserContent`]. The tag is required on
-/// deserialize — there is no fallback to the tagless shape 0.41 serialized,
+/// deserialize. there is no fallback to the tagless shape 0.41 serialized,
 /// so a bare `{"text": …}` block does not load; see MIGRATING for the
 /// tag-insertion recipe.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -397,22 +409,22 @@ impl Reasoning {
 /// Tool result content containing information about a tool call and it's resulting content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
-    /// Which call this result answers — rig's correlation handle, always
+    /// Which call this result answers. rig's correlation handle, always
     /// present. Copied from the answered [`ToolCall::id`], which is minted
     /// at the provider boundary when the provider issued no identifier.
     pub call: ToolCallId,
-    /// What the provider issued for the answered call, if anything — the
+    /// What the provider issued for the answered call, if anything. the
     /// only identifiers that may travel back on that provider's wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ProviderCallId>,
-    /// Name of the tool that produced this result — the *executed* tool,
+    /// Name of the tool that produced this result. the *executed* tool,
     /// which can differ from the model's call when a hook repaired it.
     ///
     /// Required: several wires key the replay on it (Gemini's
     /// `functionResponse.name`, Ollama's tool messages), and an identifier
-    /// is not a name — rig used to smuggle the name through the id, which
+    /// is not a name. rig previously smuggle the name through the id, which
     /// collided two calls to the same tool and misnamed cross-provider
-    /// replays (review 84a43e9e #5).
+    /// replays.
     pub name: String,
     /// One or more content items produced by the tool.
     pub content: Vec<ToolResultContent>,
@@ -493,7 +505,7 @@ impl ToolResultContent {
 /// Error adopting the empty string as a tool-call identifier.
 ///
 /// Absence is `None` on [`ToolCall::provider`] (or a minted [`ToolCallId`]),
-/// never `""` — the empty-string sentinel is unrepresentable on these types.
+/// never `""`. the empty-string sentinel is unrepresentable on these types.
 #[derive(Debug, thiserror::Error)]
 #[error("a tool-call identifier cannot be the empty string; absence is `None` or a minted id")]
 pub struct EmptyToolCallId;
@@ -525,8 +537,8 @@ pub struct EmptyToolCallId;
 /// assert_eq!(explicit.explicit(), Some("tool-0"));
 /// assert!(generated.is_generated());
 /// assert_eq!(
-///     serde_json::to_value(&generated)?,
-///     serde_json::json!({"origin": "generated", "id": "minted:tool:0"}),
+/// serde_json::to_value(&generated)?,
+/// serde_json::json!({"origin": "generated", "id": "minted:tool:0"}),
 /// );
 /// let restored: ToolCallId = serde_json::from_value(serde_json::to_value(&generated)?)?;
 /// assert_eq!(restored, generated);
@@ -592,7 +604,7 @@ impl ToolCallId {
     }
 
     /// The explicitly chosen handle, if any. This is not proof of provider
-    /// provenance and must not be used to compare differently typed identities.
+    /// provenance and must not be previously compare differently typed identities.
     pub fn explicit(&self) -> Option<&str> {
         match &self.0 {
             ToolCallIdWire::Explicit(id) => Some(id),
@@ -660,7 +672,7 @@ struct ProviderCallIdWire {
     item_id: Option<String>,
 }
 
-/// What the provider issued for a call — the only identifiers that may
+/// What the provider issued for a call. the only identifiers that may
 /// travel back on that provider's wire.
 ///
 /// Dual-identifier wires need both: OpenAI Responses issues an item id
@@ -710,8 +722,8 @@ impl ProviderCallId {
     ///
     /// Both streaming surfaces (the parts accumulator and the raw
     /// `ToolCall` lift) derive through here so they cannot disagree.
-    /// [`ToolCall::from_dual_wire`] is deliberately different — a dual wire
-    /// that omits its `call_id` has no single-id fallback — and stays
+    /// [`ToolCall::from_dual_wire`] is deliberately different. a dual wire
+    /// that omits its `call_id` has no single-id fallback. and stays
     /// separate.
     pub fn from_optional_wire(call_id: Option<String>, tool_id: Option<String>) -> Option<Self> {
         let call_id = call_id.filter(|call_id| !call_id.is_empty());
@@ -746,7 +758,7 @@ pub struct ToolCall {
     /// Rig's correlation handle. Always present; minted when the provider
     /// issued none.
     pub id: ToolCallId,
-    /// What the provider issued, if anything — the only identifiers that
+    /// What the provider issued, if anything. the only identifiers that
     /// may go back on the wire as *that provider's* handles. `None` means
     /// the provider issued no id (id-less wires such as Gemini REST or
     /// older Ollama daemons).
@@ -907,19 +919,26 @@ impl ToolFunction {
 ///
 /// The serialized form is the bare object (`#[serde(transparent)]`), so the
 /// wire shape of an `additional_params` field is a named key carrying an
-/// object — never flattened into the block's own key namespace. The type
+/// object. never flattened into the block's own key namespace. The type
 /// carries the whole params contract, so no call-site convention is needed:
 ///
 /// - `Some(AdditionalParams)` always carries data. The constructors collapse
-///   an empty map to `None` and the inner map is private, so emptiness checks
-///   on a params field are a plain `is_none()`/`is_some()` — no tolerant
-///   shim, in-tree or out.
+///
+/// an empty map to `None` and the inner map is private, so emptiness checks
+///
+/// on a params field are a plain `is_none()`/`is_some()`. no tolerant
+///
+/// shim, in-tree or out.
 /// - A non-object params value is unrepresentable in memory, so serialization
-///   can never emit a value deserialization rejects: what a live run writes,
-///   a restored run loads.
+///
+/// can never emit a value deserialization rejects: what a live run writes,
+///
+/// a restored run loads.
 /// - On decode, `null` and `{}` canonicalize to an absent field (see
-///   [`optional_additional_params`]) and any other non-object value is a loud
-///   error.
+///
+/// [`optional_additional_params`]) and any other non-object value is a loud
+///
+/// error.
 ///
 /// The block structs themselves follow the complementary tolerance doctrine:
 /// a known field with the wrong shape is a loud decode error, an *unknown*
@@ -1008,12 +1027,12 @@ impl AdditionalParams {
         merge_maps(&mut self.0, incoming.0);
     }
 
-    /// The extras stored under a wire's own key, when present — the
+    /// The extras stored under a wire's own key, when present. the
     /// replay-side gate: a serializer asks for its key and never sees
     /// another wire's extras (capture is unconditional at ingest; replay is
     /// gated here). A non-object value under the key yields `None` (it is
     /// not that wire's extras); a caller that must *distinguish* malformed
-    /// from absent — a warn path — pairs this with [`Self::get`]. Never a
+    /// from absent. a warn path. pairs this with [`Self::get`]. Never a
     /// hard error: extras were written by a previous turn, and failing
     /// serialization over them would turn a persistence blemish into a
     /// broken conversation.
@@ -1039,7 +1058,7 @@ impl AdditionalParams {
 
     /// Build from a JSON value: `Ok(None)` for `null` and the empty object
     /// (canonical absence), `Ok(Some)` for a non-empty object, and `Err`
-    /// handing the value back otherwise — a non-object is never silently
+    /// handing the value back otherwise. a non-object is never silently
     /// swallowed; the caller decides loud versus lossy.
     pub fn try_from_value(value: serde_json::Value) -> Result<Option<Self>, serde_json::Value> {
         match value {
@@ -1059,7 +1078,7 @@ impl From<AdditionalParams> for serde_json::Value {
 impl std::ops::Index<&str> for AdditionalParams {
     type Output = serde_json::Value;
 
-    /// Panics when the key is absent — the mirror of `serde_json::Map`'s
+    /// Panics when the key is absent. the mirror of `serde_json::Map`'s
     /// `Index`, for test assertions and quick extraction.
     #[allow(clippy::indexing_slicing)]
     fn index(&self, key: &str) -> &serde_json::Value {
@@ -1105,7 +1124,7 @@ impl<'de> Deserialize<'de> for AdditionalParams {
 /// # Example
 ///
 /// MIGRATING's verification recipe, compiled here so the documented snippet
-/// and the behavior cannot drift — run it once over persisted history at
+/// and the behavior cannot drift. run it once over persisted history at
 /// migration time:
 ///
 /// ```
@@ -1113,8 +1132,8 @@ impl<'de> Deserialize<'de> for AdditionalParams {
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let original = serde_json::json!({
-///     "role": "assistant",
-///     "content": [{"type": "text", "text": "cited", "citations": ["not re-nested"]}],
+/// "role": "assistant",
+/// "content": [{"type": "text", "text": "cited", "citations": ["not re-nested"]}],
 /// });
 /// let loaded: message::Message = serde_json::from_value(original.clone())?;
 /// let round_tripped = serde_json::to_value(&loaded)?;
@@ -1147,7 +1166,7 @@ pub fn keys_lost_in_round_trip(
                     match round_map.get(key) {
                         Some(round_value) => walk(original_value, round_value, path, lost),
                         // A missing key whose original value the loader
-                        // canonicalizes to absence (the empty object —
+                        // canonicalizes to absence (the empty object -
                         // MIGRATING's blessed `"additional_params": {}`
                         // spelling; `null` is skipped above) is not a loss.
                         None => {
@@ -1190,7 +1209,7 @@ pub fn keys_lost_in_round_trip(
 }
 
 /// Serde route for `Option<AdditionalParams>` fields: an explicit `null` or
-/// `{}` decodes as `None`, exactly like an absent field — a mechanically
+/// `{}` decodes as `None`, exactly like an absent field. a mechanically
 /// migrated block that wrote `"additional_params": {}` classifies identically
 /// to one that omitted the key. Any other non-object value is a loud decode
 /// error: extras are a keyed namespace (every producer stores an object,
@@ -1214,11 +1233,11 @@ where
 ///
 /// `additional_params` carries provider-specific fields that arrive on text
 /// content blocks (e.g. Anthropic returns citation metadata on assistant text
-/// blocks). It is a **named** field in the serialized form — never flattened
+/// blocks). It is a **named** field in the serialized form. never flattened
 /// into the block's own key namespace, so a stray key can neither shadow the
 /// enum tag nor be silently captured, and an absent field decodes as `None`
 /// (no empty-map artifact). An unknown key on the block itself is ignored on
-/// decode — tolerated, never captured — so histories written by a newer rig
+/// decode. tolerated, never captured. so histories written by a newer rig
 /// stay loadable; [`AdditionalParams`] documents the full doctrine.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Text {
@@ -1488,7 +1507,7 @@ pub enum ImageDetail {
 // ================================================================
 
 impl Message {
-    /// This helper method is primarily used to extract the first string prompt from a `Message`.
+    /// This helper method is primarily previously extract the first string prompt from a `Message`.
     /// Since `Message` might have more than just text content, we need to find the first text.
     pub fn rag_text(&self) -> Option<String> {
         match self {
@@ -1595,29 +1614,29 @@ impl UserContent {
     }
 
     media_ctors! {
-        /// Helper constructor to make creating user image content easier.
-        image_base64 => Image(Base64: String);
-        /// Helper constructor to make creating user image content from raw unencoded bytes easier.
-        image_raw => Image(Raw: Vec<u8>);
-        /// Helper constructor to make creating user image content easier.
-        image_url => Image(Url: String);
-        /// Helper constructor to make creating user audio content easier.
-        audio => Audio(AudioMediaType, Base64: String);
-        /// Helper constructor to make creating user audio content from raw unencoded bytes easier.
-        audio_raw => Audio(AudioMediaType, Raw: Vec<u8>);
-        /// Helper to create an audio resource from a URL
-        audio_url => Audio(AudioMediaType, Url: String);
-        /// Helper constructor to make creating user video content easier.
-        video => Video(VideoMediaType, Base64: String);
-        /// Helper constructor to make creating user video content from raw unencoded bytes easier.
-        video_raw => Video(VideoMediaType, Raw: Vec<u8>);
-        /// Helper to create a video resource from a URL
-        video_url => Video(VideoMediaType, Url: String);
-        /// Helper to create a document from raw unencoded bytes
-        document_raw => Document(DocumentMediaType, Raw: Vec<u8>);
-        /// Helper to create a document from a URL
-        document_url => Document(DocumentMediaType, Url: String);
-    }
+    /// Helper constructor to make creating user image content easier.
+           image_base64 => Image(Base64: String);
+    /// Helper constructor to make creating user image content from raw unencoded bytes easier.
+           image_raw => Image(Raw: Vec<u8>);
+    /// Helper constructor to make creating user image content easier.
+           image_url => Image(Url: String);
+    /// Helper constructor to make creating user audio content easier.
+           audio => Audio(AudioMediaType, Base64: String);
+    /// Helper constructor to make creating user audio content from raw unencoded bytes easier.
+           audio_raw => Audio(AudioMediaType, Raw: Vec<u8>);
+    /// Helper to create an audio resource from a URL
+           audio_url => Audio(AudioMediaType, Url: String);
+    /// Helper constructor to make creating user video content easier.
+           video => Video(VideoMediaType, Base64: String);
+    /// Helper constructor to make creating user video content from raw unencoded bytes easier.
+           video_raw => Video(VideoMediaType, Raw: Vec<u8>);
+    /// Helper to create a video resource from a URL
+           video_url => Video(VideoMediaType, Url: String);
+    /// Helper to create a document from raw unencoded bytes
+           document_raw => Document(DocumentMediaType, Raw: Vec<u8>);
+    /// Helper to create a document from a URL
+           document_url => Document(DocumentMediaType, Url: String);
+       }
 
     /// Helper constructor to make creating user document content easier.
     /// This creates a document that assumes the data being passed in is a raw string.
@@ -1632,7 +1651,7 @@ impl UserContent {
 
     /// Helper constructor to make creating user tool result content easier.
     ///
-    /// `call` is the answered call's correlation handle — echo
+    /// `call` is the answered call's correlation handle. echo
     /// [`ToolCall::id`] (an empty string mints a fresh handle). It is
     /// recorded as the handle only, never as a provider-issued identifier:
     /// a bare string cannot prove provider provenance, and stamping a
@@ -1640,7 +1659,7 @@ impl UserContent {
     /// is optional. When you hold provider identifiers, use
     /// [`UserContent::tool_result_for`] (from an executed [`ToolCall`]) or
     /// [`UserContent::tool_result_from_wire`] (from the provider's wire).
-    /// `name` is the executed tool's name (required — several wires key
+    /// `name` is the executed tool's name (required. several wires key
     /// the replay on it).
     pub fn tool_result(
         call: impl Into<String>,
@@ -1655,7 +1674,7 @@ impl UserContent {
         })
     }
 
-    /// Tool result content at the single-identifier provider boundary —
+    /// Tool result content at the single-identifier provider boundary -
     /// the inbound-converter form, mirroring [`ToolCall::from_wire`]:
     /// `wire_id` came off the provider's wire, so it is recorded as the
     /// provider-issued identifier (empty records none and mints the
@@ -1670,7 +1689,7 @@ impl UserContent {
         Self::tool_result_for(call, provider, name, content)
     }
 
-    /// Tool result content answering a specific call — the form the agent
+    /// Tool result content answering a specific call. the form the agent
     /// drivers use: `call`/`provider` come from the executed [`ToolCall`],
     /// `name` is the *executed* tool's name (which can differ from the
     /// model's call when a hook repaired it).
@@ -1710,9 +1729,9 @@ impl AssistantContent {
     }
 
     media_ctors! {
-        /// Helper constructor to make creating assistant image content easier.
-        image_base64 => Image(Base64: String);
-    }
+    /// Helper constructor to make creating assistant image content easier.
+           image_base64 => Image(Base64: String);
+       }
 
     /// Helper constructor to make creating assistant tool call content easier.
     ///
@@ -1767,13 +1786,13 @@ impl ToolResultContent {
     }
 
     media_ctors! {
-        /// Helper constructor to make tool result images from a base64-encoded string.
-        image_base64 => Image(Base64: String);
-        /// Helper constructor to make tool result images from a base64-encoded string.
-        image_raw => Image(Raw: Vec<u8>);
-        /// Helper constructor to make tool result images from a URL.
-        image_url => Image(Url: String);
-    }
+    /// Helper constructor to make tool result images from a base64-encoded string.
+           image_base64 => Image(Base64: String);
+    /// Helper constructor to make tool result images from a base64-encoded string.
+           image_raw => Image(Raw: Vec<u8>);
+    /// Helper constructor to make tool result images from a URL.
+           image_url => Image(Url: String);
+       }
 }
 
 /// Trait for converting between MIME types and media types.

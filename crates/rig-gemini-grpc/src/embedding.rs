@@ -28,9 +28,9 @@ impl EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    /// Perform the requests and return Gemini's native gRPC answers — one
+    /// Perform the requests and return Gemini's native gRPC answers. one
     /// `EmbedContentResponse` per input text, in input order, because
-    /// `EmbedContent` takes one content per call — instead of the normalized
+    /// `EmbedContent` takes one content per call. instead of the normalized
     /// [`embeddings::EmbeddingResponse`]. Same requests, transport, and error
     /// path as [`embeddings::EmbeddingModel::embed_texts_response`].
     pub async fn raw_embed_texts(

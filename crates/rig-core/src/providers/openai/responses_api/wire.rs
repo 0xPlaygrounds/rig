@@ -3,9 +3,9 @@
 //!
 //! [`Responses`] is the wire; [`OpenAI`] is the configuration a host stores,
 //! and [`OpenAI::responses`] builds this wire from it. A gateway that speaks
-//! this format differs from OpenAI by *data* — which request shape it
+//! this format differs from OpenAI by *data*. which request shape it
 //! accepts, whether it answers every request with an event stream, whether
-//! a 200 can carry its error envelope — so it is the
+//! a 200 can carry its error envelope. so it is the
 //! [`responses`](crate::providers::openai::wire::Quirks::responses) field of
 //! a [`Dialect`](crate::providers::openai::wire::Dialect) constant, never a
 //! type or a trait.
@@ -97,7 +97,7 @@ impl Responses {
     }
 
     /// The Responses wire for `model` on `provider`, with the placement
-    /// `provider` configures — the dialect's default unless the
+    /// `provider` configures. the dialect's default unless the
     /// configuration overrode it
     /// ([`OpenAI::system_instructions`](crate::providers::openai::wire::OpenAI::system_instructions)).
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
@@ -262,7 +262,7 @@ impl Wire for Responses {
     fn capabilities(&self) -> ProviderCapabilities {
         // The Responses API constrains only the final assistant message via
         // `text.format`; tools are still called across turns, so native
-        // structured output composes with tool calls (issue #1928) — except
+        // structured output composes with tool calls. except
         // on xAI, whose does not.
         ProviderCapabilities::default().with_native_output_tool_composition(
             self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
@@ -274,7 +274,7 @@ impl Wire for Responses {
 ///
 /// The ONE interpreter: the decoder's unary variant synthesizes the events
 /// the stream sends, and the operation's own fold turns those into the
-/// response — the same two steps [`crate::driver::call`] runs, without a
+/// response. the same two steps [`crate::driver::call`] runs, without a
 /// socket. Only the websocket session needs that: every other transport
 /// reaches the same fold through the driver.
 #[cfg(any(test, feature = "websocket"))]

@@ -108,7 +108,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, &model)
         .await?;
 
-    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
+    // ❗IMPORTANT: Reuse the same model that was previously generate the embeddings
     let index = neo4j_client.get_index(model, INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";

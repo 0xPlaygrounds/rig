@@ -168,10 +168,10 @@ pub struct ToolContext {
     inbound: BTreeMap<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     result: BTreeMap<String, serde_json::Value>,
-    /// The driver's scopes for the call — not data: never on the wire, not
+    /// The driver's scopes for the call. not data: never on the wire, not
     /// part of equality, dropped by the adapter before the result is
     /// resolved. The adapter copies them from the sink it serves
-    /// (`Dispatch::scopes`) so a tool can reach its runtime by type —
+    /// (`Dispatch::scopes`) so a tool can reach its runtime by type -
     /// rig-agent's bus hands a `Dispatcher` whose every dispatch, and every agent
     /// built over it, descends from this call. Empty for an inline call.
     #[serde(skip)]
@@ -210,7 +210,7 @@ impl Eq for ToolContext {}
 
 /// A value that may be stored in a [`ToolContext`]: serde data under a key
 /// the type declares. The key is what survives a refactor, a persisted
-/// effect log (`rig_cassette::effect_log`), or a different toolchain —
+/// effect log (`rig_cassette::effect_log`), or a different toolchain -
 /// unlike `std::any::type_name`, which changes with a rename or a module
 /// move and is not stable across compiler versions.
 ///

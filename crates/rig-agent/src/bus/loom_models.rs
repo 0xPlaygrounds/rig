@@ -5,7 +5,7 @@
 //! `Waker`s are `std`'s (loom does not intercept `wake()`), so the models
 //! observe wakes through a recording `Wake` impl; the reply halves are
 //! `futures` channels, treated as data. The first two models are the
-//! regression proofs for the races `fix(core)` closed in #2443 (a send after
+//! regression proofs for the races `fix(core)` closed in (a send after
 //! the close; a registration between the driver's two drains): each fails
 //! against the pre-fix code.
 
@@ -72,7 +72,7 @@ fn command(id: u64) -> (Command, Receiver) {
 }
 
 /// A sender racing the driver's drop: every command is either taken by the
-/// driver or failed with `BusClosed` — never buffered forever.
+/// driver or failed with `BusClosed`. never buffered forever.
 #[test]
 fn loom_close_fails_what_the_driver_never_took() {
     loom::model(|| {
@@ -505,7 +505,7 @@ fn loom_cancel_before_serve_never_polls_the_handler() {
 /// The close for commands races a late enqueue from a `Pending` that
 /// outlived its dispatcher: every interleaving ends with the command
 /// either buffered on a bus still open for commands (the driver's next
-/// poll takes it) or refused as `BusClosed` — never buffered on a bus
+/// poll takes it) or refused as `BusClosed`. never buffered on a bus
 /// closed for commands, which nothing would ever take. The decision and
 /// the store are one critical section with the enqueue's check.
 #[test]
@@ -555,7 +555,7 @@ fn loom_close_for_commands_never_strands_a_late_enqueue() {
 /// chain, whichever thread enqueues it. A dispatch is in flight on `k`; a
 /// command made from it, to `k`, is enqueued from a spawned thread while
 /// another thread begins and ends an unrelated dispatch. Every interleaving
-/// refuses the nested command — the old thread-id rule accepted it (and
+/// refuses the nested command. the old thread-id rule accepted it (and
 /// hung) whenever the enqueuing thread was not the polling one.
 #[test]
 fn loom_a_nested_serial_dispatch_is_refused_from_any_thread() {
@@ -606,7 +606,7 @@ fn loom_a_nested_serial_dispatch_is_refused_from_any_thread() {
 /// One thread cancels the descendants of dispatch 1; another begins
 /// dispatch 2 as 1's child. Whichever order the model picks, the child is
 /// either refused at `begin_in_flight` (the cancel came first) or flagged
-/// (it was in flight when the cancel scanned) — never in flight unflagged,
+/// (it was in flight when the cancel scanned). never in flight unflagged,
 /// which is what a separate check-then-insert would allow.
 #[test]
 fn loom_a_parent_cancel_reaches_a_child_that_begins_meanwhile() {
@@ -753,7 +753,7 @@ fn loom_cancel_wakes_a_sender_parking_below_a_completed_middle() {
 /// one command is a descendant of a dispatch that is then cancelled. The
 /// driver's release drops that orphan from the buffer and drains. Whichever
 /// way the sender's parks interleave with the cancel's wake and the release,
-/// the model ends with the sender either sent or woken after its last park —
+/// the model ends with the sender either sent or woken after its last park -
 /// never parked on a buffer with room, which nothing would ever wake. Fails
 /// against a drain that wakes parked senders only when it took a command.
 #[test]

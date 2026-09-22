@@ -66,7 +66,7 @@ pub(crate) struct AgentBus {
     /// out of hand.
     registrar: Registrar,
     /// The owner segment of every key this agent mints
-    /// (`<owner>/model:<label>`, `<owner>/memory`, ...).
+    /// (`<owner>/model:<label>`, `<owner>/memory`,...).
     owner: Arc<str>,
     /// Owned driver protected by a synchronous mutex for one poll at a time.
     /// Each polling run can serve dispatches from every run sharing the bus.

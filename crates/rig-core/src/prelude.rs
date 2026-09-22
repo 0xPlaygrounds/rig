@@ -5,8 +5,8 @@
 //! contracts.
 //!
 //! This is deliberately the *common* path, not the whole crate. Advanced
-//! surfaces — the hook system, the run-loop stepping types, message content
-//! blocks, tool authoring internals, extraction/loaders/memory, etc. — are
+//! surfaces. the hook system, the run-loop stepping types, message content
+//! blocks, tool authoring internals, extraction/loaders/memory, etc.. are
 //! imported explicitly from their modules so those imports document intent.
 
 // The `Verify` operation's error, returned by `Bound::verify`.
@@ -14,7 +14,7 @@ pub use crate::client::verify::VerifyError;
 
 pub use crate::completion::{CompletionError, CompletionModel, Message};
 // Construction: a wire bound to a socket is the model, and anything that
-// builds a completion model answers `completion(model)` — including the
+// builds a completion model answers `completion(model)`. including the
 // typed-transport providers, which are not wires.
 pub use crate::driver::{Bind, Bound, CompletionProvider};
 

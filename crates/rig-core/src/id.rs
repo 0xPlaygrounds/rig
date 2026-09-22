@@ -36,11 +36,11 @@ macro_rules! counter_id {
                 &NEXT
             }
 
-            /// Mint the next nonzero process-local counter value. Values may repeat
-            /// after wraparound or collide with raw or deserialized IDs.
+ /// Mint the next nonzero process-local counter value. Values may repeat
+ /// after wraparound or collide with raw or deserialized IDs.
             #[allow(clippy::new_without_default)]
             pub fn new() -> Self {
-                // Zero is reserved even after counter wraparound.
+ // Zero is reserved even after counter wraparound.
                 loop {
                     if let Some(raw) = std::num::NonZeroU64::new(
                         Self::counter().fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -50,8 +50,8 @@ macro_rules! counter_id {
                 }
             }
 
-            /// Build an id from its raw value. `None` for zero, which is never
-            /// a valid id.
+ /// Build an id from its raw value. `None` for zero, which is never
+ /// a valid id.
             pub const fn from_raw(raw: u64) -> Option<Self> {
                 match std::num::NonZeroU64::new(raw) {
                     Some(raw) => Some(Self(raw)),
@@ -59,7 +59,7 @@ macro_rules! counter_id {
                 }
             }
 
-            /// The id's raw value (never zero).
+ /// The id's raw value (never zero).
             pub const fn to_raw(self) -> u64 {
                 self.0.get()
             }
@@ -111,8 +111,8 @@ macro_rules! counter_id {
 pub struct ParseIdError(String);
 
 counter_id! {
-    /// Process-local run identifier shared by that run's hook events.
-    /// Not secret; add a host or session scope for cross-process correlation.
+ /// Process-local run identifier shared by that run's hook events.
+ /// Not secret; add a host or session scope for cross-process correlation.
     RunId
 }
 

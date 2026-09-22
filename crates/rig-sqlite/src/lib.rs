@@ -23,7 +23,7 @@ use tracing::{debug, info};
 /// Maximum `k` accepted by a `sqlite-vec` `vec0` KNN query (`embedding MATCH ?
 /// AND k = ?`). `sqlite-vec` enforces this as a hard `#define
 /// SQLITE_VEC_VEC0_K_MAX 4096` and rejects larger values with
-/// `"k value in knn query too large, ..."`. When more candidates than this are
+/// `"k value in knn query too large,..."`. When more candidates than this are
 /// required for an exact result, searches fall back to a brute-force scan that
 /// ranks every row with the scalar `vec_distance_*` functions instead (same
 /// exact result, no `k` cap).
@@ -77,33 +77,33 @@ impl Column {
 ///
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 /// struct Document {
-///     id: String,
-///     #[embed]
-///     content: String,
+/// id: String,
+/// #[embed]
+/// content: String,
 /// }
 ///
 /// impl SqliteVectorStoreTable for Document {
-///     fn name() -> &'static str {
-///         "documents"
-///     }
+/// fn name() -> &'static str {
+/// "documents"
+/// }
 ///
-///     fn schema() -> Vec<Column> {
-///         vec![
-///             Column::new("id", "TEXT PRIMARY KEY"),
-///             Column::new("content", "TEXT"),
-///         ]
-///     }
+/// fn schema() -> Vec<Column> {
+/// vec![
+/// Column::new("id", "TEXT PRIMARY KEY"),
+/// Column::new("content", "TEXT"),
+/// ]
+/// }
 ///
-///     fn id(&self) -> String {
-///         self.id.clone()
-///     }
+/// fn id(&self) -> String {
+/// self.id.clone()
+/// }
 ///
-///     fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
-///         vec![
-///             ("id", Box::new(self.id.clone())),
-///             ("content", Box::new(self.content.clone())),
-///         ]
-///     }
+/// fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+/// vec![
+/// ("id", Box::new(self.id.clone())),
+/// ("content", Box::new(self.content.clone())),
+/// ]
+/// }
 /// }
 /// ```
 pub trait SqliteVectorStoreTable: Send + Sync + Clone {
@@ -481,15 +481,15 @@ where
             .call(move |conn| {
                 conn.execute_batch("BEGIN")?;
 
-                // Create document table
+ // Create document table
                 conn.execute_batch(&create_table)?;
 
-                // Create indexes
+ // Create indexes
                 for index_stmt in create_indexes {
                     conn.execute_batch(&index_stmt)?;
                 }
 
-                // Create embeddings table
+ // Create embeddings table
                 conn.execute_batch(&format!(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0({embeddings_columns})"
                 ))?;
@@ -1450,13 +1450,13 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # Example
 /// ```no_run
 /// use rig_core::{
-///     embeddings::EmbeddingsBuilder,
-///     providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI},
-///     vector_store::{InsertDocuments, VectorStoreIndex},
-///     Embed,
+/// embeddings::EmbeddingsBuilder,
+/// providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI},
+/// vector_store::{InsertDocuments, VectorStoreIndex},
+/// Embed,
 /// };
 /// use rig_sqlite::{
-///     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
+/// Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
 /// };
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
@@ -1466,33 +1466,33 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 /// struct Document {
-///     id: String,
-///     #[embed]
-///     content: String,
+/// id: String,
+/// #[embed]
+/// content: String,
 /// }
 ///
 /// impl SqliteVectorStoreTable for Document {
-///     fn name() -> &'static str {
-///         "documents"
-///     }
+/// fn name() -> &'static str {
+/// "documents"
+/// }
 ///
-///     fn schema() -> Vec<Column> {
-///         vec![
-///             Column::new("id", "TEXT PRIMARY KEY"),
-///             Column::new("content", "TEXT"),
-///         ]
-///     }
+/// fn schema() -> Vec<Column> {
+/// vec![
+/// Column::new("id", "TEXT PRIMARY KEY"),
+/// Column::new("content", "TEXT"),
+/// ]
+/// }
 ///
-///     fn id(&self) -> String {
-///         self.id.clone()
-///     }
+/// fn id(&self) -> String {
+/// self.id.clone()
+/// }
 ///
-///     fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
-///         vec![
-///             ("id", Box::new(self.id.clone())),
-///             ("content", Box::new(self.content.clone())),
-///         ]
-///     }
+/// fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+/// vec![
+/// ("id", Box::new(self.id.clone())),
+/// ("content", Box::new(self.content.clone())),
+/// ]
+/// }
 /// }
 ///
 /// let conn = Connection::open("vector_store.db").await?;
@@ -1501,29 +1501,29 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
-///     conn,
-///     &model,
-///     SqliteDistanceMetric::Cosine,
+/// conn,
+/// &model,
+/// SqliteDistanceMetric::Cosine,
 /// )
-/// .await?;
+///.await?;
 ///
 /// // Create documents
 /// let documents = vec![
-///     Document {
-///         id: "doc1".to_string(),
-///         content: "Example document 1".to_string(),
-///     },
-///     Document {
-///         id: "doc2".to_string(),
-///         content: "Example document 2".to_string(),
-///     },
+/// Document {
+/// id: "doc1".to_string(),
+/// content: "Example document 1".to_string(),
+/// },
+/// Document {
+/// id: "doc2".to_string(),
+/// content: "Example document 2".to_string(),
+/// },
 /// ];
 ///
 /// // Generate embeddings
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
-///     .documents(documents)?
-///     .build()
-///     .await?;
+///.documents(documents)?
+///.build()
+///.await?;
 ///
 /// // Add to vector store
 /// vector_store.insert_documents(embeddings).await?;
@@ -1531,9 +1531,9 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// // Create index and search
 /// let index = vector_store.index(model);
 /// let req = VectorSearchRequest::builder()
-///     .query("Example query")
-///     .samples(2)
-///     .build();
+///.query("Example query")
+///.samples(2)
+///.build();
 /// let results = index.top_n::<Document>(req).await?;
 /// # let _ = results;
 /// # Ok(())

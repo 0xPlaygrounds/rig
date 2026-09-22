@@ -12,8 +12,8 @@
 //!
 //! ```ignore
 //! use rig_core::{
-//!     completion::CompletionModel,
-//!     providers::openai::{self, wire::OpenAI},
+//! completion::CompletionModel,
+//! providers::openai::{self, wire::OpenAI},
 //! };
 //! use rig_reqwest::prelude::*;
 //!

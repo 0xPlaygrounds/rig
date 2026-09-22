@@ -26,7 +26,7 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize};
 
-/// The agent's name: the owner of every key it mints (`<owner>/model:..`),
+/// The agent's name: the owner of every key it mints (`<owner>/model:.`),
 /// the scope of every run's records.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]

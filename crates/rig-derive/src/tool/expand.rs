@@ -287,7 +287,7 @@ pub(crate) fn expand_rig_tool(
             };
             // A parameter the schema advertises as optional must also be
             // optional for the deserializer. Absent `Option` fields become
-            // `None`; any other type falls back to its `Default` — a missing
+            // `None`; any other type falls back to its `Default`. a missing
             // `Default` impl is a compile error here rather than a runtime
             // deserialization failure when the model omits the field.
             let serde_default = (!is_required).then(|| quote! { #[serde(default)] });
@@ -335,49 +335,49 @@ pub(crate) fn expand_rig_tool(
     let schemars_crate = crate_attr_string(core, "schemars");
 
     Ok(quote! {
-        #[derive(#core::serde::Deserialize, #core::schemars::JsonSchema)]
-        #[serde(crate = #serde_crate)]
-        #[schemars(crate = #schemars_crate)]
-        #vis struct #params_struct_name {
-            #(#field_tokens,)*
-        }
+           #[derive(#core::serde::Deserialize, #core::schemars::JsonSchema)]
+           #[serde(crate = #serde_crate)]
+           #[schemars(crate = #schemars_crate)]
+           #vis struct #params_struct_name {
+               #(#field_tokens,)*
+           }
 
-        #cleaned_fn
+           #cleaned_fn
 
-        #[derive(Default)]
-        #vis struct #struct_name;
+           #[derive(Default)]
+           #vis struct #struct_name;
 
-        impl #tool_trait for #struct_name {
-            const NAME: &'static str = #tool_name;
+           impl #tool_trait for #struct_name {
+               const NAME: &'static str = #tool_name;
 
-            type Args = #params_struct_name;
-            type Output = #output_type;
-            type Error = #error_type;
+               type Args = #params_struct_name;
+               type Output = #output_type;
+               type Error = #error_type;
 
-            fn description(&self) -> String {
-                #tool_description
-            }
+               fn description(&self) -> String {
+                   #tool_description
+               }
 
-            fn parameters(&self) -> #core::serde_json::Value {
-                static SCHEMA: ::std::sync::LazyLock<#core::serde_json::Value> =
-                    ::std::sync::LazyLock::new(|| {
-                        let mut schema =
-                            #core::schemars::schema_for!(#params_struct_name).to_value();
-                        // Providers expect an explicit `required` array even
-                        // when no parameter is required.
-                        if let Some(object) = schema.as_object_mut() {
-                            object
-                                .entry("required")
-                                .or_insert_with(|| #core::serde_json::Value::Array(Vec::new()));
-                        }
-                        schema
-                    });
-                ::std::clone::Clone::clone(&*SCHEMA)
-            }
+               fn parameters(&self) -> #core::serde_json::Value {
+                   static SCHEMA: ::std::sync::LazyLock<#core::serde_json::Value> =
+                       ::std::sync::LazyLock::new(|| {
+                           let mut schema =
+                               #core::schemars::schema_for!(#params_struct_name).to_value();
+    // Providers expect an explicit `required` array even
+    // when no parameter is required.
+                           if let Some(object) = schema.as_object_mut() {
+                               object
+                                   .entry("required")
+                                   .or_insert_with(|| #core::serde_json::Value::Array(Vec::new()));
+                           }
+                           schema
+                       });
+                   ::std::clone::Clone::clone(&*SCHEMA)
+               }
 
-            #call_impl
-        }
+               #call_impl
+           }
 
-        #vis static #static_name: #struct_name = #struct_name;
-    })
+           #vis static #static_name: #struct_name = #struct_name;
+       })
 }

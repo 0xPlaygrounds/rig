@@ -59,7 +59,7 @@ impl StreamWriter {
     }
 
     /// A reasoning fragment: extends the open reasoning block, or opens one
-    /// (closing an open text block — reasoning and text never interleave in
+    /// (closing an open text block. reasoning and text never interleave in
     /// one block).
     pub async fn reasoning(&mut self, text: impl Into<String>) -> Result<(), SinkClosed> {
         self.output.reasoning(text);

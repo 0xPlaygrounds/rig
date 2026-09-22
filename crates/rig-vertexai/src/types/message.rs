@@ -74,7 +74,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             response_struct.insert("output".to_string(), output_value);
 
                             // `functionResponse.name` is the executed
-                            // function's name — required data on the result.
+                            // function's name. required data on the result.
                             let function_name = tool_result.name.clone();
                             let function_response = vertexai::model::FunctionResponse::new()
                                 .set_name(function_name)
@@ -122,7 +122,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             // Echo back the Gemini `thoughtSignature` captured on the read side
                             // (base64 → bytes). Required by thinking models on every follow-up turn.
                             // A malformed signature is dropped (with a warning) rather than failing
-                            // the whole turn — one bad byte must not kill every other tool call.
+                            // the whole turn. one bad byte must not kill every other tool call.
                             if let Some(signature) = &tool_call.signature {
                                 match BASE64.decode(signature.as_bytes()) {
                                     Ok(bytes) => part = part.set_thought_signature(bytes),

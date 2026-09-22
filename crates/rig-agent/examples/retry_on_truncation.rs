@@ -7,7 +7,7 @@
 //! type, so the same code works against every model Rig supports.
 //!
 //! The scripted model here truncates whenever its cap is below what the answer
-//! needs, so the escalation is *causal* rather than staged — the loop ends
+//! needs, so the escalation is *causal* rather than staged. the loop ends
 //! because the cap finally became large enough, not because a script said so.
 //!
 //! ```not_rust
@@ -47,7 +47,7 @@ impl BudgetedModel {
     fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
         match cap {
             Some(cap) if cap < ANSWER_COST => {
-                // Roughly proportional truncation — the point is only that the
+                // Roughly proportional truncation. the point is only that the
                 // text is cut and the reason says so.
                 let kept = (ANSWER.len() as u64 * cap / ANSWER_COST) as usize;
                 (ANSWER[..kept].to_owned(), FinishReason::Length)
@@ -109,7 +109,7 @@ impl GrowCapOnTruncation {
 }
 
 impl AgentHook for GrowCapOnTruncation {
-    /// Every attempt — including a retry — is prepared afresh, so the current
+    /// Every attempt. including a retry. is prepared afresh, so the current
     /// cap is applied here and reported back on that attempt's
     /// `ModelTurnFinished`.
     async fn on_completion_call(
@@ -133,7 +133,7 @@ impl AgentHook for GrowCapOnTruncation {
             event.turn, event.max_tokens, reason
         );
 
-        // `truncated_output()` is `Length | ContentFilter` — the reasons that
+        // `truncated_output()` is `Length | ContentFilter`. the reasons that
         // mean "cut short" rather than "finished". It is the same predicate
         // rig-agent uses internally, so the two cannot drift.
         let truncated = reason.is_some_and(FinishReason::truncated_output);
@@ -143,7 +143,7 @@ impl AgentHook for GrowCapOnTruncation {
             .content
             .iter()
             .any(|content| matches!(content, AssistantContent::ToolCall(_)));
-        // `max_tokens` is *this* attempt's cap, patch included — growing past
+        // `max_tokens` is *this* attempt's cap, patch included. growing past
         // the ceiling would be retrying a limit we already know we can't raise.
         let room = event.max_tokens.is_none_or(|cap| cap < self.ceiling);
 

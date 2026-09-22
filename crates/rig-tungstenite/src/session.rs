@@ -5,10 +5,10 @@
 //! use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSessionBuilder;
 //!
 //! async fn connect(builder: ResponsesWebSocketSessionBuilder)
-//!     -> Result<(), rig_core::completion::CompletionError>
+//! -> Result<(), rig_core::completion::CompletionError>
 //! {
-//!     let session = builder.connect().await?;
-//!     Ok(())
+//! let session = builder.connect().await?;
+//! Ok(())
 //! }
 //! ```
 

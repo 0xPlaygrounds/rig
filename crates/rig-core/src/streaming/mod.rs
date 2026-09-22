@@ -147,7 +147,7 @@ pub(crate) fn fold_finish(
 /// Shared pause flag plus the parked consumer's waker.
 ///
 /// `AtomicWaker` holds a single waker, so this is correct only while one
-/// task polls the stream — which `poll_next` taking `Pin<&mut Self>`
+/// task polls the stream. which `poll_next` taking `Pin<&mut Self>`
 /// enforces. A design that shares one control across multiple streams must
 /// switch to a multi-waiter primitive instead.
 struct PauseState {
@@ -235,7 +235,7 @@ pub struct ToolCallDecoration {
 
 /// The provider's terminal stream record, normalized.
 ///
-/// This replaces the provider-typed final payload that streams used to carry:
+/// This replaces the provider-typed final payload that streams previously carry:
 /// usage is a plain field rather than a trait method, and the finish reason is
 /// normalized exactly as on the unary [`CompletionResponse`].
 ///
@@ -245,7 +245,7 @@ pub struct ToolCallDecoration {
 /// # Emission contract
 ///
 /// A terminal record is emitted only when the provider signaled genuine
-/// completion — its own end-of-response event (an Anthropic `message_delta`
+/// completion. its own end-of-response event (an Anthropic `message_delta`
 /// with a stop reason, an OpenAI `[DONE]` / `response.completed`, a Gemini
 /// chunk carrying `finishReason`, and so on). Three failure shapes reach a
 /// consumer, and they are distinct:
@@ -254,11 +254,11 @@ pub struct ToolCallDecoration {
 /// |---|---|---|---|
 /// | Transport error (connection lost, HTTP failure) | yes | no | never |
 /// | Malformed frame (recoverable parse error) | yes | yes | if a genuine terminal later arrives |
-/// | Truncation (EOF without the provider's end event) | no | — | never |
+/// | Truncation (EOF without the provider's end event) | no |. | never |
 ///
 /// On a terminal error (a transport failure or the provider's own failure
 /// event), tool calls that were fully delivered before the failure are yielded
-/// *before* the terminal `Err`; nothing follows the error — the stream then
+/// *before* the terminal `Err`; nothing follows the error. the stream then
 /// ends without a terminal record.
 ///
 /// Consequently an `Err` item is **not** by itself terminal: a malformed frame
@@ -277,16 +277,16 @@ pub struct StreamFinal {
     /// [`StreamingCompletionResponse`] applies
     /// [`FinishReason::reconcile_with_output`](crate::completion::FinishReason::reconcile_with_output)
     /// to this value using the tool calls actually seen on the stream, so a
-    /// provider adapter does not need to (and cannot — it has no view of the
+    /// provider adapter does not need to (and cannot. it has no view of the
     /// preceding events).
     #[serde(default)]
     pub finish_reason: Option<crate::completion::FinishReason>,
-    /// Provider-assigned *assistant message* ID, when available — only IDs the
+    /// Provider-assigned *assistant message* ID, when available. only IDs the
     /// provider would recognize on a replayed assistant message. Response-scoped
     /// identifiers belong in [`StreamFinal::response_id`].
     #[serde(default)]
     pub message_id: Option<String>,
-    /// Provider-assigned response-scoped ID, when available — e.g. an OpenAI
+    /// Provider-assigned response-scoped ID, when available. e.g. an OpenAI
     /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
@@ -294,7 +294,7 @@ pub struct StreamFinal {
     /// connection's HTTP response headers (Anthropic `request-id`, OpenAI/xAI
     /// `x-request-id`). When the source reconnected, this is the connection
     /// that delivered this terminal record. Never the body's message/response
-    /// id. `None` means the provider did not report one — a documented
+    /// id. `None` means the provider did not report one. a documented
     /// outcome, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
@@ -304,13 +304,13 @@ pub struct StreamFinal {
     #[serde(default)]
     pub model: Option<String>,
     /// The provider's own terminal record for this stream, serialized by the
-    /// adapter that mapped it. It is the terminal record as rig's wire type parsed it —
-    /// fields that type does not model are not here — and it is the terminal
+    /// adapter that mapped it. It is the terminal record as rig's wire type parsed it -
+    /// fields that type does not model are not here. and it is the terminal
     /// record only, not the stream's frames; see the module docs for why
     /// frames are a separate mechanism. Every in-tree adapter populates it
     /// unconditionally.
     ///
-    /// An escape hatch for provider-specific data rig does not normalize — it
+    /// An escape hatch for provider-specific data rig does not normalize. it
     /// never replaces a normalized field, and every normalized field means the
     /// same thing whatever this holds. Required at construction: a terminal
     /// record is built from the document that produced it, so there is no
@@ -420,7 +420,7 @@ impl From<StreamFinalRepr> for StreamFinal {
 /// and `warn!(?value)`-style Debug captures in streaming modules were a
 /// recurring leak class a text scanner existed to police. With the payload
 /// unable to Debug-print its content, that class is structurally closed for
-/// the JSON channel — the redaction is a property of the type, not a
+/// the JSON channel. the redaction is a property of the type, not a
 /// convention. Consumers who want the content opt in explicitly via
 /// [`UnknownPayload::value`]; serialization
 /// is `#[serde(transparent)]`, so wire round-trips are unchanged.
@@ -441,7 +441,7 @@ impl UnknownPayload {
 }
 
 impl std::fmt::Debug for UnknownPayload {
-    /// Structural metadata only — never the payload.
+    /// Structural metadata only. never the payload.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let bytes = serde_json::to_vec(&self.0).map_or(0, |json| json.len());
         write!(f, "UnknownPayload({bytes} bytes redacted)")
@@ -462,7 +462,7 @@ mod unknown_payload_tests;
 /// The stream a provider hands to [`StreamingCompletionResponse::stream`]:
 /// the impl-side wire, whose error half is the provider's
 /// [`CompletionError`]. It is mapped once, at construction, onto the one
-/// consumer item type — [`StreamEvents`], whose error half is
+/// consumer item type. [`StreamEvents`], whose error half is
 /// [`ErrorReport`] on every path (provider, accumulator, bus, hooks).
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, CompletionError>> + Send>>;
@@ -500,7 +500,7 @@ pub struct StreamingCompletionResponse {
     /// its provider up front.
     provider_from_terminal: bool,
     /// Whether the inner stream already ended: re-polling a drained stream
-    /// — which `Stream` permits and combinators do — stays drained.
+    ///. which `Stream` permits and combinators do. stays drained.
     finished: bool,
     /// The provider's normalized terminal record, `None` until the stream
     /// yields it (and forever on truncation or a terminal error).
@@ -526,7 +526,7 @@ impl StreamingCompletionResponse {
         }
     }
 
-    /// A response over events that already speak the wire's error half —
+    /// A response over events that already speak the wire's error half -
     /// what the bus hands back (`the bus driver’s stream wrapping`). No mapping.
     /// `provider` is the name the stream carries until its terminal record
     /// names the provider that produced it; from then on
@@ -555,7 +555,7 @@ impl StreamingCompletionResponse {
     }
 
     /// The aggregated choice so far: every block the events yielded to this
-    /// point have opened, in arrival order. Non-destructive — two snapshots
+    /// point have opened, in arrival order. Non-destructive. two snapshots
     /// are equal and neither changes what [`Self::finish`] returns.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
         self.accumulator.snapshot()
@@ -618,8 +618,8 @@ impl StreamingCompletionResponse {
     /// Token usage reported by the provider for this response.
     ///
     /// Returns the usage carried by the final response once the stream has
-    /// produced it. Until then — or when the provider does not report streamed
-    /// usage — this returns [`Usage::default`], with every counter `None`.
+    /// produced it. Until then. or when the provider does not report streamed
+    /// usage. this returns [`Usage::default`], with every counter `None`.
     pub fn usage(&self) -> Usage {
         self.response
             .as_ref()
@@ -653,7 +653,7 @@ impl Stream for StreamingCompletionResponse {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
 
-        // A drained stream stays drained (#2258 H6).
+        // A drained stream stays drained.
         if stream.finished {
             return Poll::Ready(None);
         }
@@ -661,7 +661,7 @@ impl Stream for StreamingCompletionResponse {
         if stream.is_paused() {
             // Park rather than re-waking immediately: a self-wake turns a
             // pause into a busy poll loop that burns the executor for as long
-            // as the consumer stays paused (#2258 H7). Register-then-recheck
+            // as the consumer stays paused. Register-then-recheck
             // is the `AtomicWaker` protocol that also closes the resume race:
             // `resume` clears the flag before waking, and this poll registers
             // its waker before re-reading the flag, so a resume racing this
@@ -674,7 +674,7 @@ impl Stream for StreamingCompletionResponse {
         }
 
         // Non-yielding events (duplicate terminals) loop rather than recurse
-        // — a long run of them must not grow the stack (#2258 review P3).
+        //. a long run of them must not grow the stack.
         loop {
             return match Pin::new(&mut stream.inner).poll_next(cx) {
                 Poll::Pending => Poll::Pending,
@@ -712,7 +712,7 @@ impl Stream for StreamingCompletionResponse {
 #[cfg(test)]
 mod tests;
 
-/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
+/// Streamed user content. This content is primarily previously represent tool results from tool calls made during a multi-turn/step agent prompt.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum StreamedUserContent {

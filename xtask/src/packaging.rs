@@ -3,19 +3,29 @@
 //! Three properties a downstream consumer pays for and no build catches,
 //! because none of them stops the workspace compiling:
 //!
-//! 1. **The facade ships its source, not the repository** (#2349). `rig`'s
-//!    library is one file, but the package directory is the whole workspace
-//!    root, so without an allowlist its tarball also carried CI workflows,
-//!    README artwork, the Nix flake, `examples/` data and a `tests/` tree that
-//!    cannot compile from the package at all - its `rig-test-support` dev
-//!    dependency is path-only, so Cargo strips it when publishing.
+//! 1. **The facade ships its source, not the repository**. `rig`'s
+//!
+//! library is one file, but the package directory is the whole workspace
+//!
+//! root, so without an allowlist its tarball also carried CI workflows,
+//!
+//! README artwork, the Nix flake, `examples/` data and a `tests/` tree that
+//!
+//! cannot compile from the package at all - its `rig-test-support` dev
+//!
+//! dependency is path-only, so Cargo strips it when publishing.
 //! 2. **A manifest asks for what the crate uses.** A `[dependencies]` entry no
-//!    source ever names is still resolved, still built and still part of every
-//!    consumer's supply chain. `rig-bedrock` pulled the `rig-derive`
-//!    proc-macro into every consumer for the sake of two examples.
+//!
+//! source ever names is still resolved, still built and still part of every
+//!
+//! consumer's supply chain. `rig-bedrock` pulled the `rig-derive`
+//!
+//! proc-macro into every consumer for the sake of two examples.
 //! 3. **The facade feature guard covers every facade feature.** The additivity
-//!    fixture's `all_root` is the only place every `rig` feature is compiled
-//!    together; a feature missing from that list is a feature nothing guards.
+//!
+//! fixture's `all_root` is the only place every `rig` feature is compiled
+//!
+//! together; a feature missing from that list is a feature nothing guards.
 //!
 //! Manifest data comes from `cargo metadata` and the file list from
 //! `cargo package --list`, so this checks what Cargo will actually do rather
@@ -168,8 +178,10 @@ fn facade_ships_only_its_source(workspace: &Path) -> Result<Vec<String>, String>
 }
 
 /// 2. Every publishable crate stays far below the registry's cap. The facade's
-///    allowlist is the sharp guard; this is the backstop for the crates that
-///    have no allowlist at all.
+///
+/// allowlist is the sharp guard; this is the backstop for the crates that
+///
+/// have no allowlist at all.
 fn packages_stay_under_the_ceiling(
     workspace: &Path,
     packages: &BTreeMap<String, Package>,
@@ -196,9 +208,12 @@ fn packages_stay_under_the_ceiling(
 }
 
 /// 3. Every non-target dependency a published crate declares is named by its
-///    own sources. Target-conditional entries are exempt: a `cfg`-gated
-///    dependency is sometimes present only to activate a feature on a crate
-///    another dependency pulls in.
+///
+/// own sources. Target-conditional entries are exempt: a `cfg`-gated
+///
+/// dependency is sometimes present only to activate a feature on a crate
+///
+/// another dependency pulls in.
 fn dependencies_are_used(packages: &BTreeMap<String, Package>) -> Result<Vec<String>, String> {
     let mut failures = Vec::new();
     for (name, package) in packages {

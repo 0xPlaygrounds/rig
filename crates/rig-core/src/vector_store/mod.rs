@@ -118,7 +118,7 @@ pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
     /// **Every document must carry at least one embedding.** The embedding
     /// list was non-empty by construction until it became a `Vec`; the
     /// requirement did not go away, it moved to the caller. Implementors do
-    /// not guard it, and what an empty list does varies by store — some
+    /// not guard it, and what an empty list does varies by store. some
     /// silently insert nothing, some store a document no similarity search
     /// can ever return, some surface a confusing driver error. Embeddings
     /// produced by `EmbeddingsBuilder` always satisfy this; only hand-built

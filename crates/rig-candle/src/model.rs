@@ -12,16 +12,16 @@
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let data = ModelData {
-//!     config: std::fs::read("./model/config.json")?,
-//!     tokenizer: std::fs::read("./model/tokenizer.json")?,
-//!     weights: std::fs::read("./model/model.safetensors")?,
+//! config: std::fs::read("./model/config.json")?,
+//! tokenizer: std::fs::read("./model/tokenizer.json")?,
+//! weights: std::fs::read("./model/model.safetensors")?,
 //! };
 //! let model = CandleModel::from_safetensors_async(data).await?;
 //! let agent = AgentBuilder::new(model)
-//!     .preamble("You are a helpful assistant.")
-//!     .temperature(0.7)
-//!     .max_tokens(256)
-//!     .build();
+//!.preamble("You are a helpful assistant.")
+//!.temperature(0.7)
+//!.max_tokens(256)
+//!.build();
 //! let answer = agent.prompt("Explain Rust ownership briefly.").await?.output;
 //! println!("{answer}");
 //! # Ok(())
@@ -368,8 +368,8 @@ fn stream_infer(
 /// [`Decoder`](rig_core::wire::Decoder) over typed generation events.
 ///
 /// The producer sends already-typed [`GenerationEvent`]s, so classification
-/// is total: **this family never produces `Unknown`** — there is no foreign
-/// wire to be forward-compatible with — and decode errors cannot occur,
+/// is total: **this family never produces `Unknown`**. there is no foreign
+/// wire to be forward-compatible with. and decode errors cannot occur,
 /// since no decoding happens between the generator and the driver. Routing
 /// through the shared driver keeps the terminal and truncation semantics on
 /// the one policy site the conformance corpus pins.
@@ -416,7 +416,7 @@ fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, s
     .with_finish_reason(response.finish_reason.into()))
 }
 
-/// Drive already-typed generation events through the full shared pipeline —
+/// Drive already-typed generation events through the full shared pipeline -
 /// driver policy, canonical grammar, terminal normalization.
 ///
 /// The events-first conformance seam: grammar scenarios feed events directly
@@ -438,7 +438,7 @@ impl CandleModel {
     /// This is the escape hatch for the local generation metrics rig does not
     /// normalize (timings, tokens/second, the local finish reason).
     /// [`CompletionModel::completion`] runs the same inference and normalizes
-    /// its result — the model is never run twice.
+    /// its result. the model is never run twice.
     pub async fn raw_completion(
         &self,
         request: CompletionRequest,

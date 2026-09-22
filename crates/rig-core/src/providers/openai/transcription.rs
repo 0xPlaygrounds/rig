@@ -35,7 +35,7 @@ pub struct TranscriptionResponse {
 /// reported `seconds` *and* token counts would otherwise decode as a duration
 /// and silently drop every token count. Anything whose `type` is unmodeled
 /// falls to the verbatim catch-all rather than failing the whole
-/// transcription — the same invariant the Responses `Output` enum keeps for
+/// transcription. the same invariant the Responses `Output` enum keeps for
 /// unmodeled output items.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]

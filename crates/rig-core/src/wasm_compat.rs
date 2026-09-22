@@ -31,9 +31,9 @@ compile_error!(
 ///
 /// struct Local(Rc<u8>);
 /// impl Serve for Local {
-///     type Family = family::Dynamic;
-///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
+/// type Family = family::Dynamic;
+/// fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
+/// async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
 /// }
 /// ```
 #[diagnostic::on_unimplemented(
@@ -90,9 +90,9 @@ where
 ///
 /// struct Local(Cell<u8>);
 /// impl Serve for Local {
-///     type Family = family::Dynamic;
-///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
+/// type Family = family::Dynamic;
+/// fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
+/// async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
 /// }
 /// ```
 #[diagnostic::on_unimplemented(

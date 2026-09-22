@@ -11,16 +11,24 @@
 //! Three things outlive that move, and this module is exactly those three:
 //!
 //! - [`mod@env`]: reading a provider's configuration out of the process
-//!   environment, with [`EnvError`] naming a variable that is absent or
-//!   unusable.
+//!
+//! environment, with [`EnvError`] naming a variable that is absent or
+//!
+//! unusable.
 //! - [`ProviderClientError`], with [`required_env_var`] and
-//!   [`optional_env_var`]: the faults of *binding* — a credential that cannot
-//!   be read, and a transport that cannot be constructed (no CA store, an
-//!   unusable proxy). Both happen before any wire is driven, so they belong to
-//!   no operation.
+//!
+//! [`optional_env_var`]: the faults of *binding*. a credential that cannot
+//!
+//! be read, and a transport that cannot be constructed (no CA store, an
+//!
+//! unusable proxy). Both happen before any wire is driven, so they belong to
+//!
+//! no operation.
 //! - [`VerifyError`]: the `Verify` operation's error. Verification is the one
-//!   operation whose reply *status* is the entire answer, so the 401/403
-//!   reading lives in its error type instead of being restated by every wire.
+//!
+//! operation whose reply *status* is the entire answer, so the 401/403
+//!
+//! reading lives in its error type instead of being restated by every wire.
 
 pub mod env;
 pub mod verify;

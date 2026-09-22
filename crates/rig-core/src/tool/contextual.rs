@@ -22,54 +22,54 @@
 //!
 //! #[derive(Deserialize)]
 //! struct AddArgs {
-//!     left: i64,
-//!     right: i64,
+//! left: i64,
+//! right: i64,
 //! }
 //!
 //! #[derive(Serialize)]
 //! struct Sum {
-//!     value: i64,
+//! value: i64,
 //! }
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct AuditRecord(i64);
 //!
 //! impl rig_core::tool::ContextValue for AuditRecord {
-//!     const KEY: &'static str = "audit_record";
+//! const KEY: &'static str = "audit_record";
 //! }
 //!
 //! struct Add;
 //!
 //! impl Tool for Add {
-//!     const NAME: &'static str = "add";
-//!     type Args = AddArgs;
-//!     type Output = Sum;
-//!     type Error = Infallible;
+//! const NAME: &'static str = "add";
+//! type Args = AddArgs;
+//! type Output = Sum;
+//! type Error = Infallible;
 //!
-//!     fn description(&self) -> String {
-//!         "Add two integers".into()
-//!     }
+//! fn description(&self) -> String {
+//! "Add two integers".into()
+//! }
 //!
-//!     fn parameters(&self) -> serde_json::Value {
-//!         serde_json::json!({
-//!             "type": "object",
-//!             "properties": {
-//!                 "left": { "type": "integer" },
-//!                 "right": { "type": "integer" }
-//!             },
-//!             "required": ["left", "right"]
-//!         })
-//!     }
+//! fn parameters(&self) -> serde_json::Value {
+//! serde_json::json!({
+//! "type": "object",
+//! "properties": {
+//! "left": { "type": "integer" },
+//! "right": { "type": "integer" }
+//! },
+//! "required": ["left", "right"]
+//! })
+//! }
 //!
-//!     async fn call(
-//!         &self,
-//!         context: &mut ToolContext,
-//!         args: Self::Args,
-//!     ) -> Result<Self::Output, Self::Error> {
-//!         let value = args.left + args.right;
-//!         let _ = context.insert_result(AuditRecord(value));
-//!         Ok(Sum { value })
-//!     }
+//! async fn call(
+//! &self,
+//! context: &mut ToolContext,
+//! args: Self::Args,
+//! ) -> Result<Self::Output, Self::Error> {
+//! let value = args.left + args.right;
+//! let _ = context.insert_result(AuditRecord(value));
+//! Ok(Sum { value })
+//! }
 //! }
 //! ```
 //!
@@ -80,18 +80,18 @@
 //!
 //! ```
 //! use rig_core::{
-//!     message::{ImageMediaType, ToolResultContent},
-//!     tool::ToolOutput,
+//! message::{ImageMediaType, ToolResultContent},
+//! tool::ToolOutput,
 //! };
 //!
 //! let output = ToolOutput::one(ToolResultContent::image_base64(
-//!     "iVBORw0KGgo=",
-//!     Some(ImageMediaType::PNG),
-//!     None,
+//! "iVBORw0KGgo=",
+//! Some(ImageMediaType::PNG),
+//! None,
 //! ));
 //! assert!(matches!(
-//!     output.as_content().first(),
-//!     Some(ToolResultContent::Image(_))
+//! output.as_content().first(),
+//! Some(ToolResultContent::Image(_))
 //! ));
 //! ```
 //!
@@ -221,7 +221,7 @@ pub trait ToolEmbedding: Tool {
     /// Runtime initialization state.
     type State: WasmCompatSend;
 
-    /// Documents used to retrieve the tool.
+    /// Documents previously retrieve the tool.
     fn embedding_docs(&self) -> Vec<String>;
     /// Serializable tool context.
     fn context(&self) -> Self::Context;
@@ -420,7 +420,7 @@ impl DynamicTool {
         &self.handler
     }
 
-    /// The definition, the handler and the liveness probe, by value — what
+    /// The definition, the handler and the liveness probe, by value. what
     /// a registry stages from a runtime-defined tool.
     pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
         (self.definition, self.handler, self.liveness)

@@ -1,8 +1,8 @@
 //! The unary modality operations: embeddings, reranking, transcription,
 //! image generation, audio generation.
 //!
-//! Each is the same shape — one request, one reply document, one normalized
-//! response carrying usage and identity — so they are declared once by
+//! Each is the same shape. one request, one reply document, one normalized
+//! response carrying usage and identity. so they are declared once by
 //! [`modality_operation!`] rather than five times by hand. The only
 //! per-operation data is the request, the response, the error enum and the
 //! canonical telemetry name.
@@ -32,7 +32,7 @@ pub struct EmbeddingCapabilities {
     /// `ndims` is what the model reports and a vector store sizes its index
     /// from: the caller's width when they named one, the provider's own
     /// table when they did not. This is only ever the caller's own claim,
-    /// and `None` when they made none — which is why an unstated width can
+    /// and `None` when they made none. which is why an unstated width can
     /// never mismatch, and a provider that disagrees with its own width
     /// table is not the caller's fault.
     pub declared: Option<usize>,
@@ -63,8 +63,8 @@ impl EmbeddingCapabilities {
     /// This is the invariant behind [`EmbeddingError::MismatchedDimensions`],
     /// and it lives beside the capability rather than in [`Embedded`], the
     /// embeddings fold: the fold is seeded from the *request*, which for
-    /// this operation is `Vec<String>`, so the declared width — a property
-    /// of the wire, reached through [`Wire::capabilities`] — is not in
+    /// this operation is `Vec<String>`, so the declared width. a property
+    /// of the wire, reached through [`Wire::capabilities`]. is not in
     /// scope there. The consumer impl that publishes `ndims()` off this
     /// same value is where both halves meet, so that is where it is called.
     ///
@@ -193,7 +193,7 @@ macro_rules! modality_operation {
 }
 
 modality_operation!(
-    /// Embedding a batch of texts.
+ /// Embedding a batch of texts.
     Embedding {
         request: Vec<String>,
         response: crate::embeddings::EmbeddingResponse,
@@ -207,7 +207,7 @@ modality_operation!(
 );
 
 modality_operation!(
-    /// Embedding a batch of images from their encoded file bytes.
+ /// Embedding a batch of images from their encoded file bytes.
     ImageEmbedding {
         request: Vec<Vec<u8>>,
         response: crate::embeddings::ImageEmbeddingResponse,
@@ -223,7 +223,7 @@ modality_operation!(
 );
 
 modality_operation!(
-    /// Ordering documents by relevance to a query.
+ /// Ordering documents by relevance to a query.
     Rerank {
         request: RerankRequest,
         response: crate::rerank::RerankResponse,
@@ -237,7 +237,7 @@ modality_operation!(
 );
 
 modality_operation!(
-    /// Transcribing audio. The only operation whose request is multipart.
+ /// Transcribing audio. The only operation whose request is multipart.
     Transcription {
         request: crate::transcription::TranscriptionRequest,
         response: crate::transcription::TranscriptionResponse,
@@ -252,7 +252,7 @@ modality_operation!(
 
 #[cfg(feature = "image")]
 modality_operation!(
-    /// Generating an image.
+ /// Generating an image.
     ImageGeneration {
         request: crate::image_generation::ImageGenerationRequest,
         response: crate::image_generation::ImageGenerationResponse,
@@ -267,7 +267,7 @@ modality_operation!(
 
 #[cfg(feature = "audio")]
 modality_operation!(
-    /// Generating speech.
+ /// Generating speech.
     AudioGeneration {
         request: crate::audio_generation::AudioGenerationRequest,
         response: crate::audio_generation::AudioGenerationResponse,
@@ -284,10 +284,10 @@ modality_operation!(
 /// the request's own input.
 ///
 /// [`Embedding::document`](crate::embeddings::Embedding) is the input the
-/// vector belongs to, and it is *not* on the wire — Cohere echoes the texts,
-/// Ollama and Voyage AI do not — so the fold carries the request's inputs
+/// vector belongs to, and it is *not* on the wire. Cohere echoes the texts,
+/// Ollama and Voyage AI do not. so the fold carries the request's inputs
 /// and zips them positionally, which is also the only place the
-/// batch-length invariant every provider used to restate is now checked.
+/// batch-length invariant every provider previously restate is now checked.
 ///
 /// Replies accumulate: a provider that takes one item per request (Cohere
 /// embeds one image per call) answers a batch with one reply each, in

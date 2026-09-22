@@ -78,7 +78,7 @@ impl QdrantFilter {
         Self(json!({ "is_empty": { "key": key } }))
     }
 
-    /// Construct a range filter `(lo .. hi)`
+    /// Construct a range filter `(lo.. hi)`
     pub fn range_exclusive(key: &str, lo: &serde_json::Value, hi: &serde_json::Value) -> Self {
         Self(json!({
             "key": key,
@@ -89,7 +89,7 @@ impl QdrantFilter {
         }))
     }
 
-    /// Construct a range filter `[lo .. hi)`
+    /// Construct a range filter `[lo.. hi)`
     pub fn range_lower_inclusive(
         key: &str,
         lo: &serde_json::Value,
@@ -104,7 +104,7 @@ impl QdrantFilter {
         }))
     }
 
-    /// Construct a range filter `(lo .. hi]`
+    /// Construct a range filter `(lo.. hi]`
     pub fn range_higher_inclusive(
         key: &str,
         lo: &serde_json::Value,
@@ -119,7 +119,7 @@ impl QdrantFilter {
         }))
     }
 
-    /// Construct a range filter `[lo .. hi]`
+    /// Construct a range filter `[lo.. hi]`
     pub fn range_inclusive(key: &str, lo: &serde_json::Value, hi: &serde_json::Value) -> Self {
         Self(json!({
             "key": key,

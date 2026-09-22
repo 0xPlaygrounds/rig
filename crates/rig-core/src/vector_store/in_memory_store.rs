@@ -41,9 +41,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// use rig_core::vector_store::InMemoryVectorStore;
     ///
     /// let store = InMemoryVectorStore::<String>::builder()
-    ///     .with_lsh()
-    ///     .documents(documents)
-    ///     .build();
+    ///.with_lsh()
+    ///.documents(documents)
+    ///.build();
     /// ```
     pub fn builder() -> InMemoryVectorStoreBuilder<D> {
         InMemoryVectorStoreBuilder::new()
@@ -354,7 +354,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 #[derive(Eq, PartialEq)]
 struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
 
-/// The ranking's items best first — highest score, then document id for
+/// The ranking's items best first. highest score, then document id for
 /// equal scores. A `BinaryHeap` iterates in heap order, which depends on
 /// the order its items arrived in (a `HashMap`'s iteration order, so a
 /// process's hash seed): a search that consumed the heap unsorted put the

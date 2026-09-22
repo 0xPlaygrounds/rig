@@ -29,35 +29,35 @@ impl EmbedError {
 /// use std::env;
 ///
 /// use rig_core::{
-///     Embed,
-///     embeddings::{self, EmbedError, TextEmbedder},
+/// Embed,
+/// embeddings::{self, EmbedError, TextEmbedder},
 /// };
 ///
 /// struct WordDefinition {
-///     id: String,
-///     word: String,
-///     definitions: String,
+/// id: String,
+/// word: String,
+/// definitions: String,
 /// }
 ///
 /// impl Embed for WordDefinition {
-///     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-///        // Embeddings only need to be generated for `definition` field.
-///        // Split the definitions by comma and collect them into a vector of strings.
-///        // That way, different embeddings can be generated for each definition in the `definitions` string.
-///        self.definitions
-///            .split(",")
-///            .for_each(|s| {
-///                embedder.embed(s.to_string());
-///            });
+/// fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+/// // Embeddings only need to be generated for `definition` field.
+/// // Split the definitions by comma and collect them into a vector of strings.
+/// // That way, different embeddings can be generated for each definition in the `definitions` string.
+/// self.definitions
+///.split(",")
+///.for_each(|s| {
+/// embedder.embed(s.to_string());
+/// });
 ///
-///        Ok(())
-///     }
+/// Ok(())
+/// }
 /// }
 ///
 /// let fake_definition = WordDefinition {
-///    id: "1".to_string(),
-///    word: "apple".to_string(),
-///    definitions: "a fruit, a tech company".to_string(),
+/// id: "1".to_string(),
+/// word: "apple".to_string(),
+/// definitions: "a fruit, a tech company".to_string(),
 /// };
 ///
 /// assert_eq!(embeddings::to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);

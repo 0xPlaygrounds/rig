@@ -10,15 +10,15 @@
 //! struct ResponseLogger;
 //!
 //! impl AgentHook for ResponseLogger {
-//!     async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
-//!         if let Some(response) = event.completion() {
-//!             println!(
-//!                 "message {:?}: {:?} ({:?})",
-//!                 response.message_id, response.choice, response.usage
-//!             );
-//!         }
-//!         OutcomeAction::proceed()
-//!     }
+//! async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+//! if let Some(response) = event.completion() {
+//! println!(
+//! "message {:?}: {:?} ({:?})",
+//! response.message_id, response.choice, response.usage
+//! );
+//! }
+//! OutcomeAction::proceed()
+//! }
 //! }
 //! ```
 
@@ -1033,7 +1033,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
 
     /// Resolves a model-emitted tool call that cannot be dispatched as written.
     ///
-    /// The call may be failed, retried, repaired, skipped, or used to stop the
+    /// The call may be failed, retried, repaired, skipped, or previously stop the
     /// run. Return `None` to leave the decision to a later hook. If every hook
     /// in a [`HookStack`] returns `None`, the agent preserves fail-fast
     /// behavior.
@@ -1573,11 +1573,11 @@ impl AgentHook for HookStack {
 /// use rig_core::effect::{Key, family};
 ///
 /// fn escape(ctx: &HookContext, key: &Key<family::Completion>) {
-///     let handle = ctx.bind(key).unwrap();
-///     // `handle` borrows `ctx`; the task must be `'static`.
-///     tokio::spawn(async move {
-///         let _ = handle.key();
-///     });
+/// let handle = ctx.bind(key).unwrap();
+/// // `handle` borrows `ctx`; the task must be `'static`.
+/// tokio::spawn(async move {
+/// let _ = handle.key();
+/// });
 /// }
 /// ```
 ///
@@ -1586,11 +1586,11 @@ impl AgentHook for HookStack {
 /// use rig_core::effect::{Key, family};
 ///
 /// struct Stash {
-///     kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
+/// kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
 /// }
 ///
 /// fn stash(stash: &Stash, ctx: &HookContext, key: &Key<family::Completion>) {
-///     *stash.kept.lock().unwrap() = Some(ctx.bind(key).unwrap());
+/// *stash.kept.lock().unwrap() = Some(ctx.bind(key).unwrap());
 /// }
 /// ```
 pub struct RunHandle<'ctx, F: rig_core::effect::Family> {

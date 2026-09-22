@@ -32,7 +32,7 @@ impl TryFrom<DocumentFormat> for RigDocumentMediaType {
     fn try_from(value: DocumentFormat) -> Result<Self, Self::Error> {
         // The mirror enum carries no `Display`, so the formats rig has no
         // media type for name themselves in the error with their Bedrock wire
-        // token — the spelling the SDK's own `Display` produced.
+        // token. the spelling the SDK's own `Display` produced.
         fn unsupported(format: &str) -> CompletionError {
             CompletionError::ProviderError(format!("Unsupported media type {format}"))
         }

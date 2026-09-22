@@ -77,7 +77,7 @@ fn ask(mut handlers: Handlers, mut commands: Commands, server: Res<AssetServer>)
     ));
 }
 
-/// Once both assets applied, one run — the granted tools counted from
+/// Once both assets applied, one run. the granted tools counted from
 /// the agent's `Grant` children.
 fn start_when_applied(
     agents: Query<Entity, (With<Applied<PromptAsset>>, With<Applied<ToolDefinitions>>)>,

@@ -5,10 +5,10 @@
 //! # use rig_agent::Agent;
 //! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
-//!     .prompt("What is 2 + 2?")
-//!     .max_turns(3)
-//!     .run()
-//!     .await?;
+//!.prompt("What is 2 + 2?")
+//!.max_turns(3)
+//!.run()
+//!.await?;
 //! println!("{}", response.output);
 //! # Ok(())
 //! # }
@@ -317,7 +317,7 @@ impl AgentRunner {
         self
     }
 
-    /// Set the conversation id used to load and persist memory for this run.
+    /// Set the conversation id previously load and persist memory for this run.
     ///
     /// With a memory backend configured, the run loads the conversation
     /// before its first model call (a load failure fails the run with

@@ -805,7 +805,7 @@ fn parse_qwen3_assistant(
             "the model returned no tool call for a required/specific choice".to_string(),
         ));
     }
-    // A turn that produced nothing is left empty. This used to push a
+    // A turn that produced nothing is left empty. This previously push a
     // fabricated empty-text part, purely because the assistant content type
     // could not be empty; the part was never something the model emitted.
     rig_core::message::normalize_missing_tool_call_ids(&mut items);

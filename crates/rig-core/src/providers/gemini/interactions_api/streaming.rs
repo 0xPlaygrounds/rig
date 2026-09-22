@@ -22,7 +22,7 @@ use serde_json::{Map, Value};
 /// [`wire::classify_tagged_frame`] dispatches on this list: a frame whose
 /// `event_type` is outside it classifies `Unknown` (driver policy: warn +
 /// skip), while a listed value must pass the full [`InteractionSseEvent`]
-/// decode or classify `Corrupt`. There is no untagged serde fallback — policy
+/// decode or classify `Corrupt`. There is no untagged serde fallback. policy
 /// lives in the classify layer, never in serde.
 const KNOWN_EVENT_TYPES: &[&str] = &[
     "interaction.created",
@@ -55,8 +55,8 @@ const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object",
 /// One decoded frame of the Interactions wire, in either mode.
 ///
 /// Unlike GenerateContent, this family's unary reply is a genuinely
-/// different document from its stream events — a whole `Interaction`
-/// resource rather than an `event_type`-tagged event — so it is named here
+/// different document from its stream events. a whole `Interaction`
+/// resource rather than an `event_type`-tagged event. so it is named here
 /// as one more event of the wire, and `interpret` synthesizes the step
 /// events a stream would have sent for it.
 pub enum InteractionsEvent {
@@ -71,7 +71,7 @@ pub enum InteractionsEvent {
 /// The tagged classifier runs first: it is the hot path, and it is the one
 /// that knows which `event_type` values are modeled (an unlisted one is a
 /// skippable `Unknown`, not a defect). An untagged document makes it report
-/// `Corrupt` — no modeled event omits `event_type` — which is exactly when
+/// `Corrupt`. no modeled event omits `event_type`. which is exactly when
 /// the unary resource is worth trying. The composition and its
 /// which-error-wins rule are [`wire::classify_or`]'s, so no verdict is read
 /// here.
@@ -119,11 +119,11 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 /// Holds the per-reply state (thought lifecycle, open function-call step
 /// assemblies); frame-triage policy is the driver's, not this decoder's.
 pub struct InteractionsDecoder {
-    /// Owns the constant-key thought lifecycle — the ends this wire never
+    /// Owns the constant-key thought lifecycle. the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// A provider `error` event ended the turn; later frames are dead — the
+    /// A provider `error` event ended the turn; later frames are dead. the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
     failed: bool,
@@ -133,7 +133,7 @@ pub struct InteractionsDecoder {
     /// in `step.start` (usually with `"arguments": {}`, kept as the slot's
     /// replace-if-no-deltas fallback), fragments the real payload across
     /// `step.delta` `arguments_delta` events, and closes it with
-    /// `step.stop` — a genuine start/delta/end lifecycle. Recorded live in
+    /// `step.stop`. a genuine start/delta/end lifecycle. Recorded live in
     /// `streaming_grammar/interactions_same_tool_twice`; the pre-fix code
     /// emitted the empty-args call at `step.start` and dropped every
     /// fragment.
@@ -141,7 +141,7 @@ pub struct InteractionsDecoder {
     /// The bridge's minter is also the whole-call minter
     /// ([`ToolCallBridge::minted_ids`]): both id-less paths draw from ONE
     /// counter, so a step assembly and a whole call can never collide on
-    /// one minted key (the step-0 assembly used to share
+    /// one minted key (the step-0 assembly previously share
     /// `Minted(Tool, 0)` with every id-less whole call, and the whole call
     /// silently swallowed the open assembly).
     open_function_steps: ToolCallBridge<u32>,
@@ -225,8 +225,8 @@ impl Decoder<Completion> for InteractionsDecoder {
                 ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
                     // One lifecycle end covers every shape (open block,
                     // already-closed block, signature-only stream); the
-                    // shared accumulator signs the right part — the missing
-                    // empty-buffer branch class (84a43e9e #2) cannot recur
+                    // shared accumulator signs the right part. the missing
+                    // empty-buffer branch class cannot recur
                     // because there is no branch.
                     self.reasoning.emit_chunk(
                         ChunkParts {
@@ -242,7 +242,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     if let Some(parts) = delta_content(delta).and_then(|content| {
                         content_to_parts(content, self.open_function_steps.minted_ids())
                     }) {
-                        // Interleaving content ends an open thought block —
+                        // Interleaving content ends an open thought block -
                         // the shared lifecycle synthesizes the boundary end.
                         self.reasoning.emit_chunk(parts, out);
                     }
@@ -325,7 +325,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                     span.record("gen_ai.response.model", model);
                 }
                 // A function-call step still open here was announced by
-                // `step.start` and — per this very event — belongs to a turn
+                // `step.start` and. per this very event. belongs to a turn
                 // the provider COMPLETED: its `step.stop` was lost or
                 // reordered, not truncated away. Close each assembly with a
                 // synthesized end so the announced call finalizes from its
@@ -347,7 +347,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                 // synthesizes nothing (see `finish`).
                 //
                 // The finish reason comes from the completed interaction's
-                // lifecycle status — the API has no `finishReason` field —
+                // lifecycle status. the API has no `finishReason` field -
                 // and is absent when the interaction carries none.
                 let model_version = interaction.model.clone();
                 let native = StreamingCompletionResponse {
@@ -381,7 +381,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                 // Preserve the provider error payload (code + message) as the
                 // error body, matching the blocking path's
                 // `completion_error_from_body`. The event is re-serialized
-                // from its decoded form — the modeled fields survive. The
+                // from its decoded form. the modeled fields survive. The
                 // error arrives over an established stream, so there is no
                 // HTTP status to attach (status: None).
                 self.failed = true;
@@ -397,7 +397,7 @@ impl Decoder<Completion> for InteractionsDecoder {
 
     fn finish(&mut self, _out: &mut Output<Completion>) {
         // EOF without `interaction.completed` is truncation: no terminal
-        // record may be synthesized — it would report a successful completion
+        // record may be synthesized. it would report a successful completion
         // for a turn the provider aborted.
     }
 
@@ -413,13 +413,13 @@ impl Decoder<Completion> for InteractionsDecoder {
 /// Close an announced function-call step. The shared accumulator finalizes
 /// the call from its accumulated fragments; a step that fragmented nothing
 /// falls back to the payload it announced at `step.start` (and to a
-/// parameterless `{}` when it announced none) — the slot's
+/// parameterless `{}` when it announced none). the slot's
 /// replace-if-no-deltas fallback.
 ///
 /// Interactions is a single-identifier wire: its id travels as `tool_id`
 /// only (`ToolCallSlot::end_event`'s shape). Filling `call_id` too made
 /// the accumulator take the dual-wire arm and store
-/// ProviderCallId{item_id: Some(fc_…)} — a fabricated Responses-shaped
+/// ProviderCallId{item_id: Some(fc_…)}. a fabricated Responses-shaped
 /// identity that slips past the foreign-id guard on cross-provider replay.
 /// Malformed accumulated input surfaces in-band (`Error` policy), matching
 /// the other complete-block wires.
@@ -450,7 +450,7 @@ fn function_call_parts(
     id: Option<String>,
     tool_ids: &mut streaming::SyntheticIds,
 ) -> ChunkParts {
-    // The wire's id when present; never the tool name — a name-as-id
+    // The wire's id when present; never the tool name. a name-as-id
     // fallback collides two same-tool calls in one turn.
     ChunkParts {
         reasoning: None,
@@ -534,7 +534,7 @@ fn content_to_parts(
             })
         }
         // An image the stream vocabulary cannot express rides a text
-        // block's metadata verbatim rather than being dropped — the same
+        // block's metadata verbatim rather than being dropped. the same
         // treatment, and the same reason, as GenerateContent's `inlineData`
         // (`GEMINI_RAW_CONTENT_KEY`).
         image @ Content::Image(_) => raw_content_parts(image, tool_ids),

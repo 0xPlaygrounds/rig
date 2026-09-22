@@ -2,8 +2,8 @@
 //! answers every assistant tool call in the next user message and carries no
 //! orphan results ([`validate_canonical`]), and a tool's output becomes that
 //! user-message content through one constructor ([`tool_result_output`]).
-//! How an agent loop *uses* these — history threading, recovery feedback,
-//! turn classification — lives with the loop (`rig_agent::run::transcript`).
+//! How an agent loop *uses* these. history threading, recovery feedback,
+//! turn classification. lives with the loop (`rig_agent::run::transcript`).
 
 use std::collections::BTreeSet;
 

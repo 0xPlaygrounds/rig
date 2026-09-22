@@ -30,7 +30,7 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // load environment variables from .env file
+    // load environment variables from.env file
     dotenvy::dotenv().ok();
 
     // Bind the OpenAI embeddings endpoint

@@ -243,7 +243,7 @@ impl<F> ToolCallback for F where
 {
 }
 
-/// A tool defined by a name, a schema and a callback — the runtime-defined
+/// A tool defined by a name, a schema and a callback. the runtime-defined
 /// tool as a handler.
 pub struct ToolFn<F> {
     name: String,

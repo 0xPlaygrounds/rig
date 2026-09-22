@@ -5,10 +5,10 @@
 //!
 //! Neo4j provides a demo database for the `recommendations` dataset (see [Github Neo4j-Graph-Examples/recommendations](https://github.com/neo4j-graph-examples/recommendations/tree/main?tab=readme-ov-file#setup)).
 //!
-//!     const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
-//!     const NEO4J_DB: &str = "recommendations";
-//!     const NEO4J_USERNAME: &str = "recommendations";
-//!     const NEO4J_PASSWORD: &str = "recommendations";
+//! const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
+//! const NEO4J_DB: &str = "recommendations";
+//! const NEO4J_USERNAME: &str = "recommendations";
+//! const NEO4J_PASSWORD: &str = "recommendations";
 //!
 //! [examples/vector_search_simple.rs](examples/vector_search_simple.rs) provides an example starting from an empty database.
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
@@ -65,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Create a vector index on our vector store
-    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
+    // ❗IMPORTANT: Reuse the same model that was previously generate the embeddings
     let index = neo4j_client.get_index(model, INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";

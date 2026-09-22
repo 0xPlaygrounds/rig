@@ -13,9 +13,9 @@
 //! that CI runs and that need a real parser rather than a grep.
 //!
 //! ```console
-//! cargo xtask check-packaging     # fail on stowaways, bloat and unused deps
-//! cargo xtask check-test-layout   # fail on inline `mod tests { }`
-//! cargo xtask check-wires         # fail if a provider is not a wire
+//! cargo xtask check-packaging # fail on stowaways, bloat and unused deps
+//! cargo xtask check-test-layout # fail on inline `mod tests { }`
+//! cargo xtask check-wires # fail if a provider is not a wire
 //! ```
 
 mod bevy;

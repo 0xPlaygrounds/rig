@@ -66,8 +66,8 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
 /// `response_schema`, which OpenAI requires a name for) and the schema
 /// sanitized for the strict subset.
 ///
-/// Derived once for both API surfaces — Chat Completions' `response_format`
-/// and Responses' `text.format` — so a turn's structured output is named and
+/// Derived once for both API surfaces. Chat Completions' `response_format`
+/// and Responses' `text.format`. so a turn's structured output is named and
 /// sanitized identically whichever endpoint serves it.
 pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, serde_json::Value) {
     let name = schema

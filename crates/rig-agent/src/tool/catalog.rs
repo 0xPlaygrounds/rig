@@ -3,7 +3,7 @@
 //! ```
 //! use rig_agent::tool::ToolCatalog;
 //! fn advertised_names(catalog: &ToolCatalog) -> Vec<&str> {
-//!     catalog.names().collect()
+//! catalog.names().collect()
 //! }
 //! ```
 

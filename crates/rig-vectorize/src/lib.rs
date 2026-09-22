@@ -14,10 +14,10 @@
 //! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
 //! let vector_store = VectorizeVectorStore::new(
-//!     embedding_model,
-//!     "your-account-id",
-//!     "your-index-name",
-//!     std::env::var("CLOUDFLARE_API_TOKEN").unwrap(),
+//! embedding_model,
+//! "your-account-id",
+//! "your-index-name",
+//! std::env::var("CLOUDFLARE_API_TOKEN").unwrap(),
 //! );
 //! ```
 
@@ -55,7 +55,7 @@ impl From<VectorizeError> for VectorStoreError {
 /// that same model.
 #[derive(Debug, Clone)]
 pub struct VectorizeVectorStore<M> {
-    /// The embedding model used to generate query embeddings.
+    /// The embedding model previously generate query embeddings.
     model: M,
     /// The HTTP client for Vectorize API.
     client: VectorizeClient,

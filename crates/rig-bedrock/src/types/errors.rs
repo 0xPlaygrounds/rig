@@ -29,19 +29,19 @@ macro_rules! service_error_message {
     ($fn_name:ident, $err_ty:ty, $default:expr, { $($variant:ident => $msg:expr),+ $(,)? }) => {
         fn $fn_name(err: $err_ty) -> Classified {
             type E = $err_ty;
-            // The catch-all arm is not only "an exception we chose not to
-            // name": `SdkError::into_service_error` funnels *every*
-            // non-service failure (timeout, dispatch error, unparseable
-            // response) and every exception this SDK version does not model
-            // into `Unhandled`. Those still carry the service's own message in
-            // their error metadata, so read it before falling back to Rig
-            // prose — dropping it reported a Bedrock end-of-life notice as
-            // "verify Internet connection or AWS keys".
+ // The catch-all arm is not only "an exception we chose not to
+ // name": `SdkError::into_service_error` funnels *every*
+ // non-service failure (timeout, dispatch error, unparseable
+ // response) and every exception this SDK version does not model
+ // into `Unhandled`. Those still carry the service's own message in
+ // their error metadata, so read it before falling back to Rig
+ // prose. dropping it reported a Bedrock end-of-life notice as
+ // "verify Internet connection or AWS keys".
             let metadata_message =
                 ::aws_smithy_types::error::metadata::ProvideErrorMetadata::message(&err)
                     .map(str::to_string);
-            // The exception type is the provider's code: the service's
-            // `x-amzn-errortype` when this SDK version does not model it.
+ // The exception type is the provider's code: the service's
+ // `x-amzn-errortype` when this SDK version does not model it.
             let metadata_code =
                 ::aws_smithy_types::error::metadata::ProvideErrorMetadata::code(&err)
                     .map(str::to_string);
@@ -56,8 +56,8 @@ macro_rules! service_error_message {
 /// The raw HTTP body Bedrock answered with, when the failure carries one.
 ///
 /// `SdkError::into_service_error` funnels every failure this SDK version does
-/// not model — a new exception type, or any response whose `x-amzn-errortype`
-/// the transport did not preserve — into `Unhandled`, whose *source* holds the
+/// not model. a new exception type, or any response whose `x-amzn-errortype`
+/// the transport did not preserve. into `Unhandled`, whose *source* holds the
 /// parsed message while its `meta()` is empty. Reading the raw body recovers
 /// what the service actually said instead of reporting Bedrock's end-of-life
 /// notice as "verify Internet connection or AWS keys".
@@ -184,7 +184,7 @@ provider_reply!(CompletionError, EmbeddingError, ImageGenerationError);
 /// Route a classified service error into an error type. A genuine provider
 /// message becomes a provider response body carrying the HTTP status the SDK
 /// saw (then the status classifies it), the exception type as its code, and
-/// — without a status — the exception type's own retry verdict. Without a
+///. without a status. the exception type's own retry verdict. Without a
 /// message: a status the SDK saw is still the provider's reply (an empty
 /// body under that status); a timeout or dispatch failure is a transport
 /// failure, retryable like any response-less one; anything else is the
@@ -291,8 +291,8 @@ impl From<AwsSdkInvokeModelError> for EmbeddingError {
 pub struct AwsSdkConverseError(pub SdkError<ConverseError, HttpResponse>);
 
 /// Attach the AWS request id (from the SDK error's response metadata) to a
-/// preserved provider response body — the id AWS support asks for on failed
-/// calls (rig#2314). Rig-authored `ProviderError` diagnostics are left
+/// preserved provider response body. the id AWS support asks for on failed
+/// calls. Rig-authored `ProviderError` diagnostics are left
 /// untouched: the id belongs with what the provider actually said.
 fn attach_request_id(error: CompletionError, request_id: Option<String>) -> CompletionError {
     match error {

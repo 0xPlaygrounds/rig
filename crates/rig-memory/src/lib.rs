@@ -14,17 +14,21 @@
 //! [`InMemoryConversationMemory`] backend. This crate adds reusable, named
 //! transformations for shaping loaded history before it is sent to the model:
 //!
-//! - [`NoopMemoryPolicy`] — identity, returns input unchanged.
-//! - [`SlidingWindowMemory`] — retains the most recent `N` messages.
-//! - [`TokenWindowMemory`] — retains messages that fit within a token budget.
-//! - [`HeuristicTokenCounter`] — provider-agnostic, zero-dependency
-//!   [`TokenCounter`] that approximates token cost from character lengths.
-//! - [`DemotionHook`] + [`DemotingPolicyMemory`] — bridge truncated turns
-//!   from a [`MemoryPolicy`] into a long-tail store.
-//! - [`Compactor`] + [`CompactingMemory`] — replace truncated turns with a
-//!   derived summary artifact (rolling-summary semantics).
-//! - [`TemplateCompactor`] — zero-dependency reference [`Compactor`] that
-//!   produces a textual rollup without calling an LLM.
+//! - [`NoopMemoryPolicy`]. identity, returns input unchanged.
+//! - [`SlidingWindowMemory`]. retains the most recent `N` messages.
+//! - [`TokenWindowMemory`]. retains messages that fit within a token budget.
+//! - [`HeuristicTokenCounter`]. provider-agnostic, zero-dependency
+//!
+//! [`TokenCounter`] that approximates token cost from character lengths.
+//! - [`DemotionHook`] + [`DemotingPolicyMemory`]. bridge truncated turns
+//!
+//! from a [`MemoryPolicy`] into a long-tail store.
+//! - [`Compactor`] + [`CompactingMemory`]. replace truncated turns with a
+//!
+//! derived summary artifact (rolling-summary semantics).
+//! - [`TemplateCompactor`]. zero-dependency reference [`Compactor`] that
+//!
+//! produces a textual rollup without calling an LLM.
 //!
 //! Both window policies demote the leading prefix through any tool-result
 //! messages whose assistant calls were truncated, including mixed-content
@@ -36,7 +40,7 @@
 //! use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory};
 //!
 //! let memory = InMemoryConversationMemory::new()
-//!     .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
+//!.with_filter(SlidingWindowMemory::last_messages(20).into_filter());
 //! ```
 
 use std::{
@@ -64,7 +68,7 @@ use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 /// always return `Ok`.
 pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
     /// Transform `messages` into the history that should be returned to the
-    /// agent. This is the required method — every policy must implement it.
+    /// agent. This is the required method. every policy must implement it.
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
 
     /// Transform `messages` and report which messages were demoted (excluded
@@ -498,8 +502,8 @@ impl MemoryPolicy for TokenWindowMemory {
 /// use rig_memory::{InMemoryConversationMemory, PolicyMemory, SlidingWindowMemory};
 ///
 /// let memory = PolicyMemory::new(
-///     InMemoryConversationMemory::new(),
-///     SlidingWindowMemory::last_messages(20),
+/// InMemoryConversationMemory::new(),
+/// SlidingWindowMemory::last_messages(20),
 /// );
 /// ```
 #[derive(Debug, Clone, Copy)]
@@ -601,14 +605,14 @@ where
 ///
 /// ```no_run
 /// use rig_memory::{
-///     DemotingPolicyMemory, DemotionHook, InMemoryConversationMemory,
-///     MemoryError, NoopDemotionHook, SlidingWindowMemory,
+/// DemotingPolicyMemory, DemotionHook, InMemoryConversationMemory,
+/// MemoryError, NoopDemotionHook, SlidingWindowMemory,
 /// };
 ///
 /// let memory = DemotingPolicyMemory::new(
-///     InMemoryConversationMemory::new(),
-///     SlidingWindowMemory::last_messages(20),
-///     NoopDemotionHook,
+/// InMemoryConversationMemory::new(),
+/// SlidingWindowMemory::last_messages(20),
+/// NoopDemotionHook,
 /// );
 /// # let _ = memory;
 /// ```
@@ -628,43 +632,43 @@ type InFlightReservation = Arc<()>;
 macro_rules! stateful_wrapper_common {
     ($ty:ident, $third:ident: $tgen:ident $(: $tbound:ident)?) => {
         impl<M, P, $tgen $(: $tbound)?> $ty<M, P, $tgen> {
-            /// Return a reference to the wrapped backend.
+ /// Return a reference to the wrapped backend.
             pub fn inner(&self) -> &M {
                 &self.inner
             }
 
-            /// Return a reference to the wrapped policy.
+ /// Return a reference to the wrapped policy.
             pub fn policy(&self) -> &P {
                 &self.policy
             }
 
-            /// Return a reference to the third component.
+ /// Return a reference to the third component.
             pub fn $third(&self) -> &$tgen {
                 &self.$third
             }
 
-            /// Consume the wrapper and return its three components.
+ /// Consume the wrapper and return its three components.
             pub fn into_inner(self) -> (M, P, $tgen) {
                 (self.inner, self.policy, self.$third)
             }
 
-            /// Drop the in-process state for `conversation_id`.
-            ///
-            /// Call this when a conversation has ended to bound memory usage;
-            /// the state map is otherwise unbounded — entries persist for the
-            /// lifetime of the wrapper. If the internal state lock has been
-            /// poisoned by a panic in another thread, this is a no-op (the
-            /// state will be dropped naturally when the wrapper itself is
-            /// dropped).
+ /// Drop the in-process state for `conversation_id`.
+ ///
+ /// Call this when a conversation has ended to bound memory usage;
+ /// the state map is otherwise unbounded. entries persist for the
+ /// lifetime of the wrapper. If the internal state lock has been
+ /// poisoned by a panic in another thread, this is a no-op (the
+ /// state will be dropped naturally when the wrapper itself is
+ /// dropped).
             pub fn forget(&self, conversation_id: &ConversationId) {
                 if let Ok(mut guard) = self.state.lock() {
                     guard.remove(conversation_id);
                 }
             }
 
-            /// Number of conversations currently tracked in the state map.
-            /// Useful for telemetry and leak detection. Returns `0` if the
-            /// internal state lock is poisoned.
+ /// Number of conversations currently tracked in the state map.
+ /// Useful for telemetry and leak detection. Returns `0` if the
+ /// internal state lock is poisoned.
             pub fn tracked_conversations(&self) -> usize {
                 self.state.lock().map_or(0, |g| g.len())
             }
@@ -819,7 +823,7 @@ where
             // (and matching `forget`) for this `conversation_id` may have
             // dropped the watermark entry while the hook was awaiting. In
             // that case we must not resurrect it with a stale `delivered`
-            // count — the next load on a freshly-populated backend would
+            // count. the next load on a freshly-populated backend would
             // then skip a real demotion.
             release_in_flight(&self.state, conversation_id, &reservation, |entry| {
                 if result.is_ok() {
@@ -841,7 +845,7 @@ fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
 
 /// Clear the conversation's `in_flight` reservation if the entry still exists
 /// and still holds `reservation`, running `on_match` on the entry under the
-/// lock. Returns `on_match`'s value only when the reservation matched — a
+/// lock. Returns `on_match`'s value only when the reservation matched. a
 /// missing entry (concurrent `clear`) or a newer reservation is a no-op, so
 /// stale releases can never resurrect or clobber newer state.
 fn release_in_flight<S: InFlightSlot, T>(
@@ -939,7 +943,7 @@ impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
 /// `CompactingMemory` is the next layer above [`DemotingPolicyMemory`]: a
 /// demotion hook only *observes* what the policy evicted, while a compactor
 /// *substitutes* the evicted prefix with a derived [`Message`]. The loaded
-/// history shape is therefore `[summary_message, ...kept_window]` whenever
+/// history shape is therefore `[summary_message,...kept_window]` whenever
 /// any compaction has occurred for the conversation, and just `kept_window`
 /// otherwise. The summary itself is recomputed (rolled forward) on every
 /// load that produces newly-evicted messages, so older summaries are folded
@@ -957,7 +961,7 @@ impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
 ///
 /// **Failure visibility.** A compactor error is returned only to the
 /// caller whose `load` actually drove the compaction. Concurrent callers
-/// that short-circuited on `in_flight` see `Ok([old_summary?, ...kept])`
+/// that short-circuited on `in_flight` see `Ok([old_summary?,...kept])`
 /// even if the in-flight compaction ultimately failed; the watermark
 /// stays unchanged so the next `load` retries.
 ///
@@ -974,8 +978,8 @@ impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
 /// `CompactingMemory` is **policy-agnostic**: the wrapped
 /// [`MemoryPolicy`] decides which messages are kept versus demoted, and
 /// only the kept window is bounded by that policy. The summary artifact
-/// produced by the [`Compactor`] is spliced **outside** that budget — so
-/// the loaded prompt has shape `[summary, ...kept_window]` where
+/// produced by the [`Compactor`] is spliced **outside** that budget. so
+/// the loaded prompt has shape `[summary,...kept_window]` where
 /// `kept_window` respects the policy's bounds and `summary` adds an
 /// extra message on top of it.
 ///
@@ -990,14 +994,14 @@ impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
 ///
 /// ```no_run
 /// use rig_memory::{
-///     CompactingMemory, InMemoryConversationMemory, SlidingWindowMemory,
-///     TemplateCompactor,
+/// CompactingMemory, InMemoryConversationMemory, SlidingWindowMemory,
+/// TemplateCompactor,
 /// };
 ///
 /// let memory = CompactingMemory::new(
-///     InMemoryConversationMemory::new(),
-///     SlidingWindowMemory::last_messages(20),
-///     TemplateCompactor::new(),
+/// InMemoryConversationMemory::new(),
+/// SlidingWindowMemory::last_messages(20),
+/// TemplateCompactor::new(),
 /// );
 /// # let _ = memory;
 /// ```
@@ -1105,7 +1109,7 @@ where
             // SAFETY: split_at(plan.skip) is sound because `plan.skip` was
             // sourced from the entry's `absorbed` watermark while we held
             // the lock, and we only set `absorbed = demoted_count` on
-            // success — so `plan.skip <= demoted_count == demoted.len()`.
+            // success. so `plan.skip <= demoted_count == demoted.len()`.
             let CompactionPlan {
                 carry_over,
                 skip,
@@ -1140,7 +1144,7 @@ where
             // Only update if the entry still exists: a concurrent `clear`
             // (and matching `forget`) for this `conversation_id` may have
             // dropped the state entry while the compactor was awaiting. In
-            // that case we must not resurrect it with stale state — the
+            // that case we must not resurrect it with stale state. the
             // next load on a freshly-populated backend would then start
             // from a non-zero watermark and skip a real compaction.
             // A conversation cleared mid-compaction has no entry anymore; the
@@ -1221,7 +1225,7 @@ where
 ///
 /// // Custom header plus a 4 KiB cap for use with token-budgeted policies.
 /// let _bounded = TemplateCompactor::with_header("Earlier context")
-///     .with_max_bytes(4 * 1024);
+///.with_max_bytes(4 * 1024);
 /// ```
 #[derive(Debug, Clone)]
 pub struct TemplateCompactor {

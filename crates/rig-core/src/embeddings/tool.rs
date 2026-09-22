@@ -1,4 +1,4 @@
-//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::PortableToolEmbedding]
+//! The module defines the [ToolSchema] struct, which is previously embed an object that implements [crate::tool::PortableToolEmbedding]
 
 use crate::{Embed, tool::PortableToolEmbedding};
 use serde::Serialize;
@@ -29,8 +29,8 @@ impl ToolSchema {
     /// # Example
     /// ```rust
     /// use rig_core::{
-    ///     embeddings::ToolSchema,
-    ///     tool::{PortableTool, PortableToolEmbedding},
+    /// embeddings::ToolSchema,
+    /// tool::{PortableTool, PortableToolEmbedding},
     /// };
     ///
     /// #[derive(Debug, thiserror::Error)]
@@ -43,39 +43,39 @@ impl ToolSchema {
     ///
     /// struct Nothing;
     /// impl PortableTool for Nothing {
-    ///     const NAME: &'static str = "nothing";
+    /// const NAME: &'static str = "nothing";
     ///
-    ///     type Args = ();
-    ///     type Output = ();
-    ///     type Error = NothingError;
+    /// type Args = ();
+    /// type Output = ();
+    /// type Error = NothingError;
     ///
-    ///     fn description(&self) -> String {
-    ///         "nothing".to_string()
-    ///     }
+    /// fn description(&self) -> String {
+    /// "nothing".to_string()
+    /// }
     ///
-    ///     fn parameters(&self) -> serde_json::Value {
-    ///         serde_json::json!({})
-    ///     }
+    /// fn parameters(&self) -> serde_json::Value {
+    /// serde_json::json!({})
+    /// }
     ///
-    ///     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-    ///         Ok(())
-    ///     }
+    /// async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+    /// Ok(())
+    /// }
     /// }
     ///
     /// impl PortableToolEmbedding for Nothing {
-    ///     type InitError = InitError;
-    ///     type Context = ();
-    ///     type State = ();
+    /// type InitError = InitError;
+    /// type Context = ();
+    /// type State = ();
     ///
-    ///     fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-    ///         Ok(Nothing)
-    ///     }
+    /// fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+    /// Ok(Nothing)
+    /// }
     ///
-    ///     fn embedding_docs(&self) -> Vec<String> {
-    ///         vec!["Do nothing.".into()]
-    ///     }
+    /// fn embedding_docs(&self) -> Vec<String> {
+    /// vec!["Do nothing.".into()]
+    /// }
     ///
-    ///     fn context(&self) -> Self::Context {}
+    /// fn context(&self) -> Self::Context {}
     /// }
     ///
     /// let tool = ToolSchema::try_from(&Nothing).unwrap();

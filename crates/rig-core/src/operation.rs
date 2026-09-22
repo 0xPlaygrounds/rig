@@ -2,7 +2,7 @@
 //!
 //! One unit struct per operation, each declaring what goes in, what comes
 //! out event by event, and how those events fold into one response. A
-//! provider never implements an operation — it picks one.
+//! provider never implements an operation. it picks one.
 //!
 //! [`Completion`] is the only operation whose replies stream; the rest are
 //! unary, so their `Event` *is* their `Response` and the fold takes the one

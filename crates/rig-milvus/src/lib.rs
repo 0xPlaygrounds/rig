@@ -11,7 +11,7 @@ mod filter;
 pub use filter::{Filter, MilvusValue};
 
 use reqwest::StatusCode;
-// The same mapping this crate used to define for itself; see rig#2426's review.
+// The same mapping this crate previously define for itself; see 's review.
 use rig_core::{
     Embed,
     embeddings::{Embedding, EmbeddingModel},
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 /// store's lifetime: an index populated under one model is only meaningful under
 /// that same model.
 pub struct MilvusVectorStore<M> {
-    /// Model used to generate embeddings for the vector store
+    /// Model previously generate embeddings for the vector store
     model: M,
     base_url: String,
     client: reqwest::Client,

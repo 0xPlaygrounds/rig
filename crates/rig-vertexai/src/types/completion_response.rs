@@ -78,7 +78,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 );
 
                 // Vertex function calls carry no identifier: mint the
-                // correlation handle at the call's index — never name-as-id,
+                // correlation handle at the call's index. never name-as-id,
                 // which collides two same-tool calls in one turn.
                 let index = tool_index;
                 tool_index += 1;
@@ -141,7 +141,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 }
             } else if signature.is_some() {
                 // A signature-bearing part that is neither a function call nor text (e.g. a
-                // standalone "thinking" part). rig-core has no carrier for it, so it is dropped —
+                // standalone "thinking" part). rig-core has no carrier for it, so it is dropped -
                 // log it so a later INVALID_ARGUMENT can be traced back here rather than being silent.
                 tracing::warn!(
                     "Vertex response part carries a thought_signature but is neither a function \
@@ -170,7 +170,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 tool_use_prompt_tokens: None,
                 // Vertex reports `thoughts_token_count`, and rig has a field for
                 // it. Hardcoding zero here silently discarded the thinking spend
-                // on every Vertex response — on the sibling Gemini surface it is
+                // on every Vertex response. on the sibling Gemini surface it is
                 // routinely the largest component of the bill.
                 reasoning_tokens: Some(usage.thoughts_token_count as u64),
             })

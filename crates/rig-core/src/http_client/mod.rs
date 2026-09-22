@@ -18,9 +18,9 @@ pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
     /// The one non-success response shape: the server answered, and the
-    /// transport kept everything it said — status, body and headers — so
+    /// transport kept everything it said. status, body and headers. so
     /// provider layers can read the reply and its transport metadata (their
-    /// request-id contract, `Retry-After`) off the error (rig#2314). A
+    /// request-id contract, `Retry-After`) off the error. A
     /// transport never reports a status without the body behind it; a
     /// response-less failure is [`Self::Instance`] or one of the protocol
     /// variants.
@@ -76,7 +76,7 @@ impl Error {
     /// Build the headers-preserving non-success error from a failed
     /// response's parts. Transports call this with the status, headers and
     /// body they read off the wire, so provider layers can recover transport
-    /// metadata — request ids, rate-limit headers — from the error (rig#2314).
+    /// metadata. request ids, rate-limit headers. from the error.
     pub fn non_success_with_details(status: StatusCode, headers: HeaderMap, body: String) -> Self {
         Self::InvalidStatusCodeWithDetails {
             status,
@@ -90,21 +90,21 @@ impl Error {
     /// Rig's bundled HTTP clients capture the full [`HeaderMap`] whenever a
     /// non-success status error is built from a live response, so rate-limit
     /// metadata such as `Retry-After` or `x-ratelimit-*` stays readable
-    /// (rig#2210). This is the accessor a caller's retry policy uses to honor
+    ///. This is the accessor a caller's retry policy uses to honor
     /// a server-supplied backoff, since it is handed this error directly:
     ///
     /// ```
     /// # use rig_core::http_client::Error;
     /// # use std::time::Duration;
     /// fn retry_after(error: &Error) -> Option<Duration> {
-    ///     let seconds = error
-    ///         .non_success_headers()?
-    ///         .get(http::header::RETRY_AFTER)?
-    ///         .to_str()
-    ///         .ok()?
-    ///         .parse()
-    ///         .ok()?;
-    ///     Some(Duration::from_secs(seconds))
+    /// let seconds = error
+    ///.non_success_headers()?
+    ///.get(http::header::RETRY_AFTER)?
+    ///.to_str()
+    ///.ok()?
+    ///.parse()
+    ///.ok()?;
+    /// Some(Duration::from_secs(seconds))
     /// }
     /// ```
     ///

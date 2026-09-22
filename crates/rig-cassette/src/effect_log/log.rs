@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 pub const CHECKPOINT_FORMAT: u32 = 6;
 
 /// Recorded run identity, handler declarations, and optional delivery metadata
-/// used to validate replay compatibility. Deserialization rejects unknown fields;
+/// previously validate replay compatibility. Deserialization rejects unknown fields;
 /// headers have no global format number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

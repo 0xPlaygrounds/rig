@@ -1,5 +1,5 @@
 //! `examples/agent_with_tools` side by side: an agent with two tools
-//! answers "Calculate 2 - 5." — there the builder's `dynamic_tools`, here
+//! answers "Calculate 2 - 5.". there the builder's `dynamic_tools`, here
 //! a `Grant` link per tool entity and a run entity. The model is scripted
 //! (`support`), so no key.
 

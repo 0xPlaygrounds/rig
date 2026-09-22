@@ -127,7 +127,7 @@ impl Wire for Embeddings {
 /// Decodes one `batchEmbedContents` reply.
 ///
 /// No `project` impl: the reply carries no verdict, usage or identity for
-/// observation to record — only vectors.
+/// observation to record. only vectors.
 #[derive(Default)]
 pub struct EmbeddingsDecoder;
 

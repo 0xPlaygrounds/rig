@@ -175,10 +175,10 @@ pub(crate) async fn build_prepared_completion_request(
 /// let openai = OpenAI::from_env()?.bound()?;
 ///
 /// let comedian_agent = openai
-///     .agent(openai::GPT_5_2)
-///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
-///     .temperature(0.9)
-///     .build();
+///.agent(openai::GPT_5_2)
+///.preamble("You are a comedian here to entertain the user using humour and jokes.")
+///.temperature(0.9)
+///.build();
 ///
 /// let response = comedian_agent.prompt("Entertain me!").await?;
 /// # Ok(())
@@ -441,7 +441,7 @@ impl Agent {
     }
 
     /// The owner segment of the keys this agent minted
-    /// (`<owner>/model:<label>`, `<owner>/memory`, ...): the label given to
+    /// (`<owner>/model:<label>`, `<owner>/memory`,...): the label given to
     /// [`AgentBuilder::owner`](crate::agent::AgentBuilder::owner), else
     /// `agent#<n>`.
     pub fn owner(&self) -> &str {
@@ -569,11 +569,14 @@ impl Agent {
     /// how to drive it. Nothing happens until it is driven.
     ///
     /// - `.await` (or [`run`](AgentRunner::run)) folds the whole loop to a
-    ///   [`PromptResponse`], whose `output` is the accepted assistant text.
+    ///
+    /// [`PromptResponse`], whose `output` is the accepted assistant text.
     /// - [`stream`](AgentRunner::stream) yields every provider delta, tool
-    ///   event and the final response as a stream.
+    ///
+    /// event and the final response as a stream.
     /// - [`run_channel`](AgentRunner::run_channel) splits the run into a
-    ///   future and an event feed for a host with its own executor or tick.
+    ///
+    /// future and an event feed for a host with its own executor or tick.
     ///
     /// The medium is chosen by the terminal call alone: an awaited runner asks
     /// the provider for a complete response, a streamed one for a stream.
@@ -588,8 +591,8 @@ impl Agent {
     ///
     /// let mut stream = agent.prompt("And 3 + 3?").stream();
     /// while let Some(item) = stream.next().await {
-    ///     let item = item?;
-    ///     // text deltas, tool calls and results, then `FinalResponse`
+    /// let item = item?;
+    /// // text deltas, tool calls and results, then `FinalResponse`
     /// }
     /// # Ok(())
     /// # }
@@ -678,10 +681,10 @@ impl Agent {
     /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
     /// struct WeatherForecast { city: String, temperature_f: f64 }
     /// let forecast = agent
-    ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
-    ///     .max_turns(3)
-    ///     .await?
-    ///     .output;
+    ///.prompt_typed::<WeatherForecast>("What's the weather in NYC?")
+    ///.max_turns(3)
+    ///.await?
+    ///.output;
     /// # Ok(())
     /// # }
     /// ```

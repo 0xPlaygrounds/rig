@@ -13,12 +13,12 @@ use std::{fs, path::Path};
 crate::provider_response::provider_error_enum!(
     TranscriptionError, "transcription" {
         #[cfg(not(target_family = "wasm"))]
-        /// Error building the transcription request
+ /// Error building the transcription request
         #[error("RequestError: {0}")]
         RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
         #[cfg(target_family = "wasm")]
-        /// Error building the transcription request
+ /// Error building the transcription request
         #[error("RequestError: {0}")]
         RequestError(#[from] Box<dyn std::error::Error + 'static>),
     }
@@ -27,7 +27,7 @@ crate::provider_response::provider_error_enum!(
 /// The normalized transcription response: the transcript plus the metadata
 /// every provider can report, attributed to the provider that produced it.
 ///
-/// This type is concrete — it carries no provider type parameter — so the
+/// This type is concrete. it carries no provider type parameter. so the
 /// provider does not leak into [`TranscriptionRequestBuilder`] or into any
 /// caller holding a [`TranscriptionModel`]. The provider's own payload stays
 /// reachable two ways: a model's inherent `raw_transcription` method performs
@@ -54,7 +54,7 @@ pub struct TranscriptionResponse {
     pub response_id: Option<String>,
     /// The provider's transport-level request identifier, taken from the HTTP
     /// response headers (OpenAI `x-request-id`, Mistral
-    /// `mistral-correlation-id`) — the id provider support asks for. `None`
+    /// `mistral-correlation-id`). the id provider support asks for. `None`
     /// means the provider reported none; that is a documented outcome, never
     /// an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -104,7 +104,7 @@ crate::provider_response::modality_response_metadata_setters!(TranscriptionRespo
 /// knows: the OpenAI transcription wire shape is shared by several providers,
 /// and a conversion that hardcoded a name would mislabel every provider but
 /// one. This is a trait rather than `TryFrom<(&str, T)>` so that a provider
-/// extension outside `rig-core` can implement it on its own response type —
+/// extension outside `rig-core` can implement it on its own response type -
 /// a tuple is not a local type, and the orphan rule would reject the `TryFrom`
 /// form anywhere but here.
 pub trait NormalizeTranscriptionResponse {
@@ -112,14 +112,14 @@ pub trait NormalizeTranscriptionResponse {
     fn normalize(self, provider: &str) -> Result<TranscriptionResponse, TranscriptionError>;
 }
 
-/// Trait defining a transcription model that can be used to generate transcription requests.
+/// Trait defining a transcription model that can be previously generate transcription requests.
 /// This trait is meant to be implemented by the user to define a custom transcription model,
 /// either from a third-party provider (e.g: OpenAI) or a local model.
 ///
 /// The trait describes only what a model *does*: it has no associated types.
-/// A model is a provider's transcription wire bound to a transport — bind a
+/// A model is a provider's transcription wire bound to a transport. bind a
 /// provider that declares one and call `transcription(model)` on the resulting
-/// [`Bound`](crate::driver::Bound) — and `Clone` is required only by
+/// [`Bound`](crate::driver::Bound). and `Clone` is required only by
 /// [`TranscriptionModel::transcription_request`], which needs to hand the
 /// builder its own copy. A model behind an `Arc` is a model: the trait is
 /// implemented for `Arc<M>` by forwarding.
@@ -174,8 +174,8 @@ pub struct TranscriptionRequest {
 /// Example usage:
 /// ```ignore
 /// use rig_core::{
-///     providers::openai::{self, wire::OpenAI},
-///     transcription::{TranscriptionModel, TranscriptionRequestBuilder},
+/// providers::openai::{self, wire::OpenAI},
+/// transcription::{TranscriptionModel, TranscriptionRequestBuilder},
 /// };
 /// use rig_reqwest::prelude::*;
 ///
@@ -185,10 +185,10 @@ pub struct TranscriptionRequest {
 ///
 /// // Create the transcription request and execute it separately.
 /// let request = TranscriptionRequestBuilder::new(model.clone())
-///     .data(vec![0; 16])
-///     .filename(Some("audio.mp3".to_string()))
-///     .temperature(0.5)
-///     .build();
+///.data(vec![0; 16])
+///.filename(Some("audio.mp3".to_string()))
+///.temperature(0.5)
+///.build();
 ///
 /// let response = model.transcription(request).await?;
 /// # Ok(())
@@ -198,8 +198,8 @@ pub struct TranscriptionRequest {
 /// Alternatively, you can execute the transcription request directly from the builder:
 /// ```ignore
 /// use rig_core::{
-///     providers::openai::{self, wire::OpenAI},
-///     transcription::TranscriptionRequestBuilder,
+/// providers::openai::{self, wire::OpenAI},
+/// transcription::TranscriptionRequestBuilder,
 /// };
 /// use rig_reqwest::prelude::*;
 ///
@@ -209,11 +209,11 @@ pub struct TranscriptionRequest {
 ///
 /// // Create the transcription request and execute it directly.
 /// let response = TranscriptionRequestBuilder::new(model)
-///     .data(vec![0; 16])
-///     .filename(Some("audio.mp3".to_string()))
-///     .temperature(0.5)
-///     .send()
-///     .await?;
+///.data(vec![0; 16])
+///.filename(Some("audio.mp3".to_string()))
+///.temperature(0.5)
+///.send()
+///.await?;
 /// # Ok(())
 /// # }
 /// ```

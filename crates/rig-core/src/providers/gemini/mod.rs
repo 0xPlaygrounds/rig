@@ -102,7 +102,7 @@ impl Gemini {
     /// The URI for a GenerateContent-family `path`, key included.
     ///
     /// Gemini authenticates this family by query string, so the credential
-    /// is part of the URI — appended last, after any query the path already
+    /// is part of the URI. appended last, after any query the path already
     /// carries (`?alt=sse`), which is the order the recorded traffic pins.
     pub(crate) fn uri(&self, path: &str) -> String {
         let trimmed = path.trim_start_matches('/');
@@ -153,7 +153,7 @@ impl Gemini {
         image_generation::Images::new(self.clone(), model)
     }
 
-    /// The model listing wire for the GenerateContent family — the one
+    /// The model listing wire for the GenerateContent family. the one
     /// `Bound::models()` builds.
     pub fn models(&self) -> model_listing::Models {
         model_listing::Models::new(self.clone())

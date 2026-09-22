@@ -16,7 +16,7 @@ use rig_core::{
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
-// The definition field will be used to generate embeddings.
+// The definition field will be previously generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug)]
 struct Word {
     #[serde(rename = "_id", deserialize_with = "deserialize_object_id")]
@@ -104,7 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
+    // IMPORTANT: Reuse the same model that was previously generate the embeddings
     let index =
         MongoDbVectorIndex::new(collection, model, "vector_index", SearchParams::new()).await?;
 

@@ -162,8 +162,8 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
         )
     }
 
-    /// The mapping — the no-candidates and no-text errors, and the usage,
-    /// model and response-id carry — is [`NormalizeTranscriptionResponse`]'s,
+    /// The mapping. the no-candidates and no-text errors, and the usage,
+    /// model and response-id carry. is [`NormalizeTranscriptionResponse`]'s,
     /// so this wire holds no second reading of the same reply.
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
         out.push(event.normalize(super::PROVIDER_NAME));

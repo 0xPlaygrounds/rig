@@ -9,7 +9,7 @@
 //! `mistralrs` has no module on this branch, so it has no constant. The
 //! OpenAI halves of the dual-dialect providers (Z.AI, MiniMax, Moonshot,
 //! Xiaomi MiMo) are here; their Anthropic halves belong to the Anthropic
-//! wire. The dialects with a module of their own — xAI, ChatGPT, Copilot —
+//! wire. The dialects with a module of their own. xAI, ChatGPT, Copilot -
 //! define their constant there and are listed in [`all`] with the rest.
 
 use super::{
@@ -83,7 +83,7 @@ pub const AZURE: Dialect = Dialect {
 pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
         // DeepSeek accepts only `json_object` response formats, passed
-        // through `additional_params` — not the `json_schema` mapping of
+        // through `additional_params`. not the `json_schema` mapping of
         // `output_schema`.
         supports_response_format: false,
         emits_complete_single_chunk_tool_calls: true,
@@ -247,7 +247,7 @@ pub const LLAMACPP: Dialect = Dialect {
             // base URL already carries `/v1`.
             path: "/rerank",
             // It posts one task per document and waits for all of them,
-            // bounded only by memory — there is no documented cap, so this
+            // bounded only by memory. there is no documented cap, so this
             // is the batching hint, matching the embeddings default rather
             // than a number the server enforces.
             max_documents: 1024,
@@ -394,7 +394,7 @@ pub const VENICE: Dialect = Dialect {
 ///
 /// The bounds are the ones Doubleword's model page documents ("Output
 /// Dimensions: 32-4096 Configurable"), and 4096 is also the width the model
-/// returns when a request names none — one table so the width
+/// returns when a request names none. one table so the width
 /// `ndims()` reports and the widths the encoder will send cannot drift
 /// apart. Without the default, Doubleword's only embedding model reported
 /// `ndims() == 0` while returning 4096-wide vectors, and a vector store
@@ -403,7 +403,7 @@ pub const VENICE: Dialect = Dialect {
 /// Both bounds are worth refusing here rather than on the wire, in opposite
 /// directions. Above the ceiling Doubleword silently clamps to the native
 /// width and answers 200, which would leave `ndims()` describing vectors the
-/// API never returned — the very mismatch a width contract exists to
+/// API never returned. the very mismatch a width contract exists to
 /// prevent, and one no reply-side check can catch. Below the floor it is not
 /// dependable: the identical request answers `422 Unprocessable request` or
 /// `200` with a sub-floor vector at random (six of fifteen live probes at 1,

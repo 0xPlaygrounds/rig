@@ -49,13 +49,13 @@ impl Loadable for Vec<u8> {
 // ================================================================
 
 /// [PdfFileLoader] is a utility for loading pdf files from the filesystem using glob patterns or
-///  directory paths. It provides methods to read file contents and handle errors gracefully.
+/// directory paths. It provides methods to read file contents and handle errors gracefully.
 ///
 /// # Errors
 ///
 /// This module defines a custom error type [PdfLoaderError] which can represent various errors
-///  that might occur during file loading operations, such as any [FileLoaderError] alongside
-///  specific PDF-related errors.
+/// that might occur during file loading operations, such as any [FileLoaderError] alongside
+/// specific PDF-related errors.
 ///
 /// # Example Usage
 ///
@@ -63,29 +63,29 @@ impl Loadable for Vec<u8> {
 /// use rig_core::loaders::PdfFileLoader;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // Create a FileLoader using a glob pattern
-///     let loader = PdfFileLoader::with_glob("tests/data/*.pdf")?;
+/// // Create a FileLoader using a glob pattern
+/// let loader = PdfFileLoader::with_glob("tests/data/*.pdf")?;
 ///
-///     // Load pdf file contents by page, ignoring any errors
-///     let contents: Vec<String> = loader
-///         .load()
-///         .ignore_errors()
-///         .by_page()
-///         .ignore_errors()
-///         .into_iter()
-///         .collect();
+/// // Load pdf file contents by page, ignoring any errors
+/// let contents: Vec<String> = loader
+///.load()
+///.ignore_errors()
+///.by_page()
+///.ignore_errors()
+///.into_iter()
+///.collect();
 ///
-///     for content in contents {
-///         println!("{content}");
-///     }
+/// for content in contents {
+/// println!("{content}");
+/// }
 ///
-///     Ok(())
+/// Ok(())
 /// }
 /// ```
 ///
 /// [PdfFileLoader] uses strict typing between the iterator methods to ensure that transitions
-///  between different implementations of the loaders and it's methods are handled properly by
-///  the compiler.
+/// between different implementations of the loaders and it's methods are handled properly by
+/// the compiler.
 pub struct PdfFileLoader<'a, T> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
@@ -93,8 +93,8 @@ pub struct PdfFileLoader<'a, T> {
 #[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
 impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
-    ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances that can be
-    ///  further processed (by page, etc).
+    /// or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances that can be
+    /// further processed (by page, etc).
     ///
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
@@ -104,10 +104,10 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok(doc) => println!("{doc:?}"),
-    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(doc) => println!("{doc:?}"),
+    /// Err(e) => eprintln!("Error reading pdf: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -119,8 +119,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     }
 
     /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
-    ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances with their path
-    ///  that can be further processed.
+    /// or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances with their path
+    /// that can be further processed.
     ///
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
@@ -130,10 +130,10 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load_with_path().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok((path, doc)) => println!("{path:?} {doc:?}"),
-    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
-    ///     }
+    /// match result {
+    /// Ok((path, doc)) => println!("{path:?} {doc:?}"),
+    /// Err(e) => eprintln!("Error reading pdf: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -167,7 +167,7 @@ fn all_text(doc: &Document) -> Result<String, PdfLoaderError> {
 #[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
 impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// Directly reads the contents of the pdfs within the iterator returned by
-    ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir].
+    /// [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir].
     ///
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and return the contents of the documents.
@@ -177,10 +177,10 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok(content) => println!("{content}"),
-    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(content) => println!("{content}"),
+    /// Err(e) => eprintln!("Error reading pdf: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -192,8 +192,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     }
 
     /// Directly reads the contents of the pdfs within the iterator returned by
-    ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir] and returns the path along with
-    ///  the content.
+    /// [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir] and returns the path along with
+    /// the content.
     ///
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and return the content and paths of the documents.
@@ -203,10 +203,10 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read_with_path().into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok((path, content)) => println!("{path:?} {content}"),
-    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
-    ///     }
+    /// match result {
+    /// Ok((path, content)) => println!("{path:?} {content}"),
+    /// Err(e) => eprintln!("Error reading pdf: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -232,15 +232,15 @@ impl<'a> PdfFileLoader<'a, Document> {
     /// # use rig_core::loaders::PdfFileLoader;
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
-    ///     .load()
-    ///     .ignore_errors()
-    ///     .by_page()
-    ///     .into_iter();
+    ///.load()
+    ///.ignore_errors()
+    ///.by_page()
+    ///.into_iter();
     /// for result in content {
-    ///     match result {
-    ///         Ok(page) => println!("{page}"),
-    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
-    ///     }
+    /// match result {
+    /// Ok(page) => println!("{page}"),
+    /// Err(e) => eprintln!("Error reading pdf: {e}"),
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -258,7 +258,7 @@ impl<'a> PdfFileLoader<'a, Document> {
 type ByPage = (PathBuf, Vec<(usize, Result<String, PdfLoaderError>)>);
 impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     /// Chunks the pages of a loaded document by page, processed as a vector of documents by path
-    ///  which each document container an inner vector of pages by page number.
+    /// which each document container an inner vector of pages by page number.
     ///
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and chunk all documents by path by it's pages.
@@ -267,19 +267,19 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     /// # use rig_core::loaders::PdfFileLoader;
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
-    ///     .load_with_path()
-    ///     .ignore_errors()
-    ///     .by_page()
-    ///     .into_iter();
+    ///.load_with_path()
+    ///.ignore_errors()
+    ///.by_page()
+    ///.into_iter();
     ///
     /// for (path, pages) in content {
-    ///     println!("{}", path.display());
-    ///     for (pageno, result) in pages {
-    ///         match result {
-    ///             Ok(content) => println!("Page {pageno}: {content}"),
-    ///             Err(e) => eprintln!("Error reading page: {e}"),
-    ///         }
-    ///     }
+    /// println!("{}", path.display());
+    /// for (pageno, result) in pages {
+    /// match result {
+    /// Ok(content) => println!("Page {pageno}: {content}"),
+    /// Err(e) => eprintln!("Error reading page: {e}"),
+    /// }
+    /// }
     /// }
     /// # Ok(())
     /// # }
@@ -293,7 +293,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
 
 impl<'a> PdfFileLoader<'a, ByPage> {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
-    ///  [PdfFileLoader] state of iterator whose items are results.
+    /// [PdfFileLoader] state of iterator whose items are results.
     ///
     /// # Example
     /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
@@ -302,12 +302,12 @@ impl<'a> PdfFileLoader<'a, ByPage> {
     /// # use rig_core::loaders::PdfFileLoader;
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
-    ///     .load_with_path()
-    ///     .ignore_errors()
-    ///     .by_page()
-    ///     .ignore_errors();
+    ///.load_with_path()
+    ///.ignore_errors()
+    ///.by_page()
+    ///.ignore_errors();
     /// for (_path, pages) in content {
-    ///     println!("{}", pages.len())
+    /// println!("{}", pages.len())
     /// }
     /// # Ok(())
     /// # }

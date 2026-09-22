@@ -18,14 +18,14 @@ use std::collections::HashMap;
 /// [`classify_tagged_frame`] dispatches on this list: a frame whose `type` is
 /// outside it classifies `Unknown` (driver policy: warn + skip), while a
 /// listed type must pass the full [`StreamingEvent`] decode or classify
-/// `Corrupt`. There is no `#[serde(other)]` fallback — policy lives in the
+/// `Corrupt`. There is no `#[serde(other)]` fallback. policy lives in the
 /// classify layer, never in serde. The one modeled exception is a novel
 /// *nested* delta type inside `content_block_delta`, which decodes to
 /// [`ContentDelta::Unknown`] (a warned no-op) via its hand-written dispatch.
 const KNOWN_EVENT_TYPES: &[&str] = &[
     // The unary reply's own shape: a whole `message` object, which is what
     // `POST /v1/messages` answers without `stream`. Naming it here is the
-    // ONE place the unary shape appears — it is a frame like any other, so
+    // ONE place the unary shape appears. it is a frame like any other, so
     // the unary and streamed paths cannot drift.
     "message",
     "message_start",
@@ -84,8 +84,8 @@ pub enum StreamingEvent {
     /// under `crates/rig-cassette/fixtures/cassettes/anthropic/` nests it, and the flattened
     /// `{"type":"error","message":"…"}` form appears in no recorded traffic.
     Error {
-        /// Decoding it is the whole point — it proves the body is the
-        /// envelope and nothing else — but the error the consumer sees is
+        /// Decoding it is the whole point. it proves the body is the
+        /// envelope and nothing else. but the error the consumer sees is
         /// built from `raw`, so the provider's payload rides out verbatim.
         #[allow(dead_code)]
         error: serde_json::Value,
@@ -95,7 +95,7 @@ pub enum StreamingEvent {
         /// A body rebuilt from the fields this client models is not the
         /// provider's body: re-encoding through `serde_json::Value`
         /// normalizes key order, and every sibling key of `error` is
-        /// dropped — `request_id` among them, the one field a user quotes
+        /// dropped. `request_id` among them, the one field a user quotes
         /// to provider support.
         #[serde(skip)]
         raw: String,
@@ -124,7 +124,7 @@ pub enum ContentDelta {
     /// notice, so an unmodeled nested tag must not fail the whole
     /// `content_block_delta` frame (which would classify it `Corrupt` and
     /// surface an `Err` item per frame). It decodes to a no-op, warned at the
-    /// interpret site — the same shape as
+    /// interpret site. the same shape as
     /// [`ContentPartChunkPart::Unknown`](crate::providers::openai::responses_api::streaming::ContentPartChunkPart).
     Unknown(serde_json::Value),
 }
@@ -145,7 +145,7 @@ impl<'de> Deserialize<'de> for ContentDelta {
         let value = serde_json::Value::deserialize(deserializer)?;
         // A non-object delta is a data-level defect of the tagged shape, not
         // an unmodeled delta kind: it errors (classifying the frame
-        // `Corrupt`) instead of degrading to an `Unknown` no-op — the
+        // `Corrupt`) instead of degrading to an `Unknown` no-op. the
         // conformance corpus pins `"delta": 42` as Corrupt.
         if !value.is_object() {
             return Err(serde::de::Error::custom("content delta must be an object"));
@@ -223,8 +223,8 @@ pub struct PartialUsage {
     #[serde(default)]
     pub cache_read_input_tokens: Option<u64>,
     /// Breakdown of `output_tokens`. Anthropic reports it on the terminal
-    /// `message_delta` — the frame that also carries the final `output_tokens`
-    /// — not on `message_start`, so unlike `cache_creation` it needs no
+    /// `message_delta`. the frame that also carries the final `output_tokens`
+    ///. not on `message_start`, so unlike `cache_creation` it needs no
     /// carry-forward.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_tokens_details: Option<super::completion::OutputTokensDetails>,
@@ -263,7 +263,7 @@ struct ServerToolUseState {
 #[derive(Default)]
 struct ThinkingState {
     /// Signature assembled from this block's `signature_delta`s. Only the
-    /// signature is adapter-side state — the wire fragments it across
+    /// signature is adapter-side state. the wire fragments it across
     /// deltas and delivers no completed form, so the adapter assembles it
     /// for the block's end event. Thinking TEXT accumulates in the shared
     /// accumulator via `Reasoning` deltas; no restatement buffer exists.
@@ -272,7 +272,7 @@ struct ThinkingState {
     ///
     /// Recorded traffic always carries the empty string here and delivers the
     /// whole signature by delta, so this is kept as a FALLBACK for a block
-    /// that never sends a delta — not as a prefix the deltas extend. A wire
+    /// that never sends a delta. not as a prefix the deltas extend. A wire
     /// that ever delivered the signature up front still round-trips; a
     /// delta-bearing block never double-counts the opening value.
     initial_signature: String,
@@ -295,8 +295,8 @@ impl ThinkingState {
 ///
 /// Holds the per-reply assembly state (open tool call, server tool uses,
 /// open thinking block, terminal metadata); frame-triage policy lives in
-/// [`crate::driver`], not here. Every interpretation — content blocks and
-/// the message-level frames alike, buffered reply included — goes through
+/// [`crate::driver`], not here. Every interpretation. content blocks and
+/// the message-level frames alike, buffered reply included. goes through
 /// [`Decoder::interpret`]: one path.
 pub struct MessagesDecoder {
     /// Stable descriptor name stamped on the terminal record. An *input*
@@ -316,7 +316,7 @@ pub struct MessagesDecoder {
     cache_creation: Option<super::completion::CacheCreation>,
     message_id: Option<String>,
     response_model: Option<String>,
-    /// A provider `error` event ended the turn; later frames are dead — the
+    /// A provider `error` event ended the turn; later frames are dead. the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
     failed: bool,
@@ -379,7 +379,7 @@ impl MessagesDecoder {
                         .push_str(&signature);
 
                     // Wire quirk: the signature is not emitted as its own
-                    // event — it closes the thinking block, riding on the
+                    // event. it closes the thinking block, riding on the
                     // `BlockEnd` the `content_block_stop` emits.
                 }
                 ContentDelta::CitationsDelta { citation } => {
@@ -407,7 +407,7 @@ impl MessagesDecoder {
                 // Keep this destructuring exhaustive so new wire fields force
                 // an explicit capture-or-drop decision: block-start `text`
                 // arrives via the deltas, and `cache_control` is a
-                // request-side directive — both deliberately dropped here.
+                // request-side directive. both deliberately dropped here.
                 Content::Text {
                     text: _,
                     citations,
@@ -456,7 +456,7 @@ impl MessagesDecoder {
                     // payload; the old `..` discarded both fields. Adaptive
                     // thinking opens with an empty `thinking`, emits no
                     // `thinking_delta` at all, and delivers the whole
-                    // signature by `signature_delta` — so the block's only
+                    // signature by `signature_delta`. so the block's only
                     // content is a signature, which `content_block_stop`
                     // must still close with.
                     self.current_thinking = Some(ThinkingState {
@@ -497,7 +497,7 @@ impl MessagesDecoder {
                     // the shared accumulator holds the block's accumulated
                     // text, and the end carries the assembled signature
                     // (present for signed and adaptive signature-only blocks
-                    // alike — replay-required provider state either way). A
+                    // alike. replay-required provider state either way). A
                     // wholly empty block (no deltas, no signature) closes
                     // silently.
                     out.reasoning_end(
@@ -581,13 +581,13 @@ impl MessagesDecoder {
         // Anthropic has two ways to end a turn that genuinely carried no
         // content, and an empty list says exactly that:
         //
-        // - `end_turn` after a tool-result round trip — documented, and it
-        //   used to be normalized into a fabricated empty-text part.
+        // - `end_turn` after a tool-result round trip. documented, and it
+        // previously be normalized into a fabricated empty-text part.
         // - `stop_sequence` when the matched sequence is the first thing the
-        //   model emits. Anthropic strips the sequence it stopped on, so a
-        //   turn that produced nothing before it arrives with `content: []`
-        //   and a 200. Rejecting that turned a completed provider turn into
-        //   `EMPTY_RESPONSE_ERROR`.
+        // model emits. Anthropic strips the sequence it stopped on, so a
+        // turn that produced nothing before it arrives with `content: []`
+        // and a 200. Rejecting that turned a completed provider turn into
+        // `EMPTY_RESPONSE_ERROR`.
         //
         // The `stop_sequence` arm additionally requires the sequence itself.
         // Every recorded stop-sequence turn names the sequence that fired, so
@@ -604,7 +604,7 @@ impl MessagesDecoder {
         // still finishes such a turn cleanly with an empty choice and no
         // error. The parity this carve-out protects is for *legal* turns,
         // and widening the rejection to the stream would trade a real guard
-        // for a cosmetic match — so do not "unify" it by moving it into the
+        // for a cosmetic match. so do not "unify" it by moving it into the
         // terminal both modes share.
         let legal_empty_turn = match message.stop_reason.as_deref() {
             Some("end_turn") => true,
@@ -646,7 +646,7 @@ impl MessagesDecoder {
         }
 
         // A buffered reply is the whole turn, so its terminal is
-        // unconditional — unlike a `message_delta`, which is only terminal
+        // unconditional. unlike a `message_delta`, which is only terminal
         // when it carries a stop reason.
         let usage = PartialUsage {
             output_tokens: message.usage.output_tokens as usize,
@@ -719,7 +719,7 @@ impl Decoder<Completion> for MessagesDecoder {
                 };
                 // cache_creation_input_tokens and cache_read_input_tokens are
                 // cumulative totals on message_delta.usage per the Anthropic
-                // streaming API spec — use them directly.
+                // streaming API spec. use them directly.
                 //
                 // `input_tokens` prefers the terminal `message_delta` and falls
                 // back to `message_start`.
@@ -729,24 +729,24 @@ impl Decoder<Completion> for MessagesDecoder {
                 // `crates/rig-cassette/fixtures/cassettes/anthropic/` reporting it on the delta reports
                 // the same value on the start), so the preference is what runs
                 // there and the fallback is inert. The fallback covers the
-                // reverse split — a delta that omits the count, leaving the one
+                // reverse split. a delta that omits the count, leaving the one
                 // `message_start` reported.
                 //
                 // It does *not* rescue the Bedrock-compat body-less
                 // `message_start`: that shape returns early above without
                 // setting `self.input_tokens`, so the fallback yields
                 // `Some(0)`. Preferring the delta is what carries a real count
-                // there — do not drop the preference on the theory that the
+                // there. do not drop the preference on the theory that the
                 // fallback covers that case.
                 //
                 // Anthropic-*compatible* gateways do not all agree. OpenRouter's
                 // Messages endpoint can send `input_tokens: 0` on
                 // `message_start` and the real count on `message_delta`
                 // (recorded in `gateway_message_delta_metadata`, which OpenRouter
-                // served from an Amazon Bedrock upstream — the split follows what
+                // served from an Amazon Bedrock upstream. the split follows what
                 // it routes to, so it is not every response from that endpoint).
                 // Without this preference such a turn surfaces a silent
-                // `Usage { input_tokens: 0 }` — worse than a missing value for a
+                // `Usage { input_tokens: 0 }`. worse than a missing value for a
                 // consumer sizing its context window from it.
                 //
                 // Zero on the delta is read as "not reported" so a gateway with
@@ -755,7 +755,7 @@ impl Decoder<Completion> for MessagesDecoder {
                 // cache-hit prompt legitimately bills zero *uncached* input
                 // tokens, and its real size lives in the cache fields. Nothing
                 // is lost today because both frames then carry the same zero and
-                // the fallback yields it anyway — but do not extend the `> 0`
+                // the fallback yields it anyway. but do not extend the `> 0`
                 // filter to the `message_start` side or the cache fields, where
                 // a genuine zero would be discarded.
                 let usage = PartialUsage {
@@ -795,8 +795,8 @@ impl Decoder<Completion> for MessagesDecoder {
             }
             StreamingEvent::Error { raw, .. } => {
                 // The provider aborted the turn in-band. The envelope is the
-                // error body verbatim — every field it carried, in the order
-                // it carried them — so the consumer reads what Anthropic
+                // error body verbatim. every field it carried, in the order
+                // it carried them. so the consumer reads what Anthropic
                 // said rather than what this client models. The stream
                 // carries it as an in-band `Err` item, and EOF without
                 // `message_delta` then withholds the terminal record.
@@ -866,13 +866,13 @@ impl Decoder<Completion> for MessagesDecoder {
     fn is_finished(&self) -> bool {
         // A provider `error` event is the wire's own terminal failure:
         // `interpret` already pushed the in-band `Err`, so the driver must
-        // stop reading — a later modeled frame (e.g. a stray `message_delta`)
+        // stop reading. a later modeled frame (e.g. a stray `message_delta`)
         // would otherwise dress the aborted turn up as a completed one.
         self.failed
     }
 }
 
-/// One object covers every payload `project` above sees — the unary reply and
+/// One object covers every payload `project` above sees. the unary reply and
 /// each stream event: a `message_start` nests the message, a `message_delta`
 /// carries the stop reason under `delta` and the cumulative output usage
 /// beside it.
@@ -922,7 +922,7 @@ pub struct StreamingCompletionResponse {
     /// strips it from the text, so the wire is its only source. The blocking
     /// twin has carried it on
     /// [`CompletionResponse::stop_sequence`](super::completion::CompletionResponse::stop_sequence)
-    /// all along — the streamed record dropped it after parsing, so the same
+    /// all along. the streamed record dropped it after parsing, so the same
     /// request answered strictly less when streamed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_sequence: Option<String>,
@@ -933,7 +933,7 @@ pub struct StreamingCompletionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// The transport request id from the SSE connection's `request-id`
-    /// response header — not part of any stream frame. The adapter never
+    /// response header. not part of any stream frame. The adapter never
     /// sees connection headers, so on a live stream this is `None` and the
     /// transport stamps the id onto the normalized
     /// [`StreamFinal::provider_request_id`] instead; the field survives for

@@ -45,11 +45,11 @@ where
     /// use rig_core::vector_store::{builder::InMemoryVectorStoreBuilder, IndexStrategy};
     ///
     /// let store = InMemoryVectorStoreBuilder::<String>::new()
-    ///     .index_strategy(IndexStrategy::LSH {
-    ///         num_tables: 5,
-    ///         num_hyperplanes: 10,
-    ///     })
-    ///     .build();
+    ///.index_strategy(IndexStrategy::LSH {
+    /// num_tables: 5,
+    /// num_hyperplanes: 10,
+    /// })
+    ///.build();
     /// ```
     pub fn index_strategy(mut self, index_strategy: IndexStrategy) -> Self {
         self.index_strategy = index_strategy;

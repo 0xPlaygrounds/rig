@@ -6,7 +6,7 @@
 //! gateway serves only the latter. So a [`Dialect`](super::Dialect) names
 //! its flagship [`Route`], a configuration may pick the other one once with
 //! [`OpenAI::with_route`](super::OpenAI::with_route), and [`OpenAiWire`] is
-//! that route's wire — a wire choosing a wire, with every [`Wire`] and
+//! that route's wire. a wire choosing a wire, with every [`Wire`] and
 //! [`Decoder`] method dispatching on the variant. There is no second
 //! request conversion, no second decoder and no second observation
 //! projection: the two arms are the two wires that already exist. Naming a
@@ -33,7 +33,7 @@ use super::chat::{Chat, ChatDecoder, ChatEvent};
 /// Ask whichever route this is.
 ///
 /// Every [`Wire`] and [`Decoder`] method below is the same two-arm match on
-/// the variant — the enum chooses a wire, and the method asks that wire — so
+/// the variant. the enum chooses a wire, and the method asks that wire. so
 /// the match is written once here instead of fourteen times. The two methods
 /// whose arms genuinely differ, `decoder` and `classify`, wrap their result
 /// in the matching variant and are written out.
@@ -58,8 +58,8 @@ pub enum Route {
 /// The dialect's default completion wire: its [`Route`]'s wire.
 ///
 /// Both variants are the shared wire types on the same configuration, so
-/// this is what [`Bound<OpenAI>::completion`](crate::driver::Bound) — and
-/// the agent sugar on top of it — builds. A caller who wants a specific
+/// this is what [`Bound<OpenAI>::completion`](crate::driver::Bound). and
+/// the agent sugar on top of it. builds. A caller who wants a specific
 /// endpoint names it and gets the concrete wire back; every option either
 /// route takes is also forwarded here, and is a no-op on the route that
 /// has no such option, so `map_wire` reaches all of them.

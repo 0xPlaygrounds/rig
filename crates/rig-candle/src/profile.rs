@@ -29,7 +29,7 @@ pub enum ConversationProtocol {
     Qwen3,
 }
 
-/// Transformer architecture used to execute a loaded checkpoint.
+/// Transformer architecture previously execute a loaded checkpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelArchitecture {

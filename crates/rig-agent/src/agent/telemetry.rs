@@ -10,7 +10,7 @@ macro_rules! build_chat_span {
             $effective_preamble,
             $runner.config.record_telemetry_content,
         );
-        // Reuse the core parent marker so completion instrumentation recognizes this span.
+ // Reuse the core parent marker so completion instrumentation recognizes this span.
         $crate::core::telemetry::completion_parent_span!(
             target: "rig::agent_chat",
             name: $name,

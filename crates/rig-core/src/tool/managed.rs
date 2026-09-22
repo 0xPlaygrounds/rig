@@ -1,8 +1,8 @@
 //! Externally managed tool sources.
 //!
-//! A tool registry that wants to accept tools from a source it does not own —
+//! A tool registry that wants to accept tools from a source it does not own -
 //! a remote protocol whose tool list can change or disconnect (MCP is the
-//! first such source, via `rig-rmcp`) — implements [`ManagedToolSink`]. The
+//! first such source, via `rig-rmcp`). implements [`ManagedToolSink`]. The
 //! source hands over [`PortableDynamicTool`]s and keeps the returned
 //! [`ManagedToolToken`]s; on refresh it reconciles against them so a newer
 //! local or peer-source registration under the same name is never clobbered

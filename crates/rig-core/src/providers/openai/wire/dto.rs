@@ -5,7 +5,7 @@
 //! a `chat.completion` whose choice carries a whole `message`. Modelling them
 //! as one [`ChatFrame`] with two choice shapes means the typed decode happens
 //! once per frame and the unary body is *converted to the stream's shape in
-//! `classify`* — there is no second content mapping to drift from the first.
+//! `classify`*. there is no second content mapping to drift from the first.
 
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +109,7 @@ pub(crate) struct StreamingDelta {
     #[serde(default, deserialize_with = "deserialize_delta_content")]
     pub(crate) content: Option<String>,
     /// A structured-output refusal streams here, on its own key, with
-    /// `content` held at `null` for the whole turn — the same sibling-of-
+    /// `content` held at `null` for the whole turn. the same sibling-of-
     /// `content` spelling the unary body uses. Its deltas are the turn's
     /// visible text, so they join the text stream (see [`delta_text`]).
     #[serde(default)]
@@ -151,7 +151,7 @@ impl FinishReason {
     ///
     /// Round-tripping through the wire form keeps `map_openai_finish_reason`
     /// the single place the OpenAI-compatible vocabulary is interpreted, so
-    /// the streaming and unary paths cannot drift — including on the
+    /// the streaming and unary paths cannot drift. including on the
     /// deprecated `function_call` spelling, which this enum captures in
     /// [`FinishReason::Other`].
     pub(crate) fn as_wire(&self) -> &str {
@@ -165,8 +165,8 @@ impl FinishReason {
     }
 }
 
-/// The visible text a delta carries: its `content`, or — when `content` has
-/// none — its `refusal`.
+/// The visible text a delta carries: its `content`, or. when `content` has
+/// none. its `refusal`.
 ///
 /// A refusal turn streams `"content": null` beside the refusal deltas (and
 /// opens with an empty `"refusal": ""`), so preferring non-empty content
@@ -190,7 +190,7 @@ pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
 /// whatever else the dialect added: a gateway's `cost`, DeepSeek's
 /// `prompt_cache_hit_tokens`, llama.cpp's `timings`. The extras ride along so
 /// [`StreamFinal::raw`] loses nothing, which is what the typed escape hatch
-/// used to provide through a per-provider `StreamingUsage` type.
+/// previously provide through a per-provider `StreamingUsage` type.
 // `Default` is load-bearing, not decoration: `StreamingCompletionResponse`
 // declares `#[serde(default)] usage: Option<U>`, and serde's derive
 // propagates that as a `U: Default` bound on the generated `Deserialize`.
@@ -297,7 +297,7 @@ impl ChatFrame {
             // its `delta`, and its terminator is tagged
             // `chat.completion.done`, so keying on "a choice carries a
             // message" read every one of its stream frames as the whole
-            // reply — the first frame emitted a terminal, the driver stopped,
+            // reply. the first frame emitted a terminal, the driver stopped,
             // and the rest of the turn was dropped.
             Some(object) => object == "chat.completion",
             // No tag: several gateways omit it, and then a choice carrying a
@@ -311,7 +311,7 @@ impl ChatFrame {
     /// Read out of the flattened metadata rather than declared as a field on
     /// purpose: a named field would *consume* the key, and `object` would
     /// then be missing from the terminal record's `additional_params` while
-    /// its neighbours (`service_tier`, `system_fingerprint`) survived — the
+    /// its neighbours (`service_tier`, `system_fingerprint`) survived. the
     /// old adapter accumulated all of them.
     pub(crate) fn object(&self) -> Option<&str> {
         self.additional_params
@@ -367,7 +367,7 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Provider-reported model identifier, when the reply emitted one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// The transport request id from the reply's `x-request-id` header — not
+    /// The transport request id from the reply's `x-request-id` header. not
     /// part of any frame; stamped by the driver. `None` when the provider
     /// did not report one.
     #[serde(default, skip_serializing_if = "Option::is_none")]

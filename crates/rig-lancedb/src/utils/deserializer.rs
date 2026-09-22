@@ -19,7 +19,7 @@ use rig_core::vector_store::VectorStoreError;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-/// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
+/// Trait previously deserialize data returned from LanceDB queries into a serde_json::Value vector.
 /// Data returned by LanceDB is a vector of `RecordBatch` items.
 pub(crate) trait RecordBatchDeserializer {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError>;
@@ -37,7 +37,7 @@ impl RecordBatchDeserializer for Vec<RecordBatch> {
     }
 }
 
-/// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
+/// Trait previously deserialize data returned from LanceDB queries into a serde_json::Value vector.
 impl RecordBatchDeserializer for RecordBatch {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
         let schema = self.schema();
@@ -282,7 +282,7 @@ where
         .collect())
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as as list of primitive objects.
+/// Trait previously "deserialize" an arrow_array::Array as as list of primitive objects.
 trait DeserializePrimitiveArray {
     /// Downcast arrow Array into a `PrimitiveArray` with items that implement trait `ArrowPrimitiveType`.
     /// Return the primitive array values.
@@ -314,7 +314,7 @@ impl DeserializePrimitiveArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as as list of str objects.
+/// Trait previously "deserialize" an arrow_array::Array as as list of str objects.
 trait DeserializeByteArray {
     /// Downcast arrow Array into a `GenericByteArray` with items that implement trait `ByteArrayType`.
     /// Return the generic byte array values.
@@ -343,7 +343,7 @@ impl DeserializeByteArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as a list of list objects.
+/// Trait previously "deserialize" an arrow_array::Array as a list of list objects.
 trait DeserializeListArray {
     /// Downcast arrow Array into a `GenericListArray` with items that implement trait `OffsetSizeTrait`.
     /// Return the generic list array values.
@@ -358,7 +358,7 @@ impl DeserializeListArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as a list of dict objects.
+/// Trait previously "deserialize" an arrow_array::Array as a list of dict objects.
 trait DeserializeDictArray {
     /// Downcast arrow Array into a `DictionaryArray` with items that implement trait `ArrowDictionaryKeyType`.
     /// Return the dictionary keys and values as a tuple.
@@ -409,7 +409,7 @@ impl DeserializeDictArray for &Arc<dyn Array> {
     }
 }
 
-/// Trait used to "deserialize" an arrow_array::Array as as list of fixed size list objects.
+/// Trait previously "deserialize" an arrow_array::Array as as list of fixed size list objects.
 trait DeserializeArray {
     /// Downcast arrow Array into a `FixedSizeListArray`.
     /// Return the fixed size list array values.
@@ -429,7 +429,7 @@ type RunArrayParts<T> = (
     Arc<dyn arrow_array::Array>,
 );
 
-/// Trait used to "deserialize" an arrow_array::Array as a list of list objects.
+/// Trait previously "deserialize" an arrow_array::Array as a list of list objects.
 trait DeserializeRunArray {
     /// Downcast arrow Array into a `GenericListArray` with items that implement trait `RunEndIndexType`.
     /// Return the generic list array values.

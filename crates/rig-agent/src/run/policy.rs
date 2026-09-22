@@ -3,7 +3,7 @@
 //! ```
 //! use rig_agent::run::policy::InvalidToolCallAction;
 //! let action = InvalidToolCallAction::retry("Use an advertised tool name.");
-//! assert!(matches!(action, InvalidToolCallAction::Retry { .. }));
+//! assert!(matches!(action, InvalidToolCallAction::Retry {.. }));
 //! ```
 
 use rig_core::message::{Message, ToolChoice};

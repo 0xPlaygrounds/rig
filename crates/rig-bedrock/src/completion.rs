@@ -168,7 +168,7 @@ impl CompletionModel {
     ///
     /// `identifier` is the guardrail id or ARN and `version` its version (or
     /// `DRAFT`). When `trace` is enabled, Bedrock returns its assessment on
-    /// [`InternalConverseOutput::trace`](crate::types::converse_output::InternalConverseOutput::trace) —
+    /// [`InternalConverseOutput::trace`](crate::types::converse_output::InternalConverseOutput::trace) -
     /// the only place it explains *why* a turn came back with
     /// [`StopReason::GuardrailIntervened`](crate::types::converse_output::StopReason::GuardrailIntervened),
     /// which the normalized response reports as a content filter and nothing

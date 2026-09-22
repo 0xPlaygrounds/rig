@@ -37,7 +37,7 @@ pub(crate) const MAX_CONCURRENT_REFRESHES: usize = 2;
 /// server sends a `notifications/tools/list_changed` notification.
 ///
 /// This handler implements [`rmcp::ClientHandler`] and bridges the MCP
-/// notification lifecycle with any [`ManagedToolSink`] — rig-agent's
+/// notification lifecycle with any [`ManagedToolSink`]. rig-agent's
 /// `ToolServerHandle` implements it, so the rig-agent usage is
 /// `McpClientHandler::new(client_info, tool_server_handle.clone())`.
 /// When the MCP server's available tools change, this handler:
@@ -62,7 +62,7 @@ pub struct McpClientHandler<S> {
     client_info: rmcp::model::ClientInfo,
     sink: S,
     /// Per-call timeout applied to every MCP tool this handler registers
-    /// (see issue #1914). Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
+    ///. Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
     timeout: Option<Duration>,
     /// Deadline for initial and list-changed tool-list fetches.
     refresh_timeout: Duration,

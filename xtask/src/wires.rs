@@ -2,7 +2,7 @@
 //! wire.
 //!
 //! A wire is data plus an encoder and a decoder. That is not a style
-//! preference — it is what makes a provider testable from bytes, storable in
+//! preference. it is what makes a provider testable from bytes, storable in
 //! a scene, and portable to a host that owns its own I/O. The moment one
 //! provider grows an `async fn`, a transport type parameter, or its own
 //! consumer-trait impl, the axis it adds multiplies against every other
@@ -17,8 +17,8 @@
 //! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient` | the transport parameter returning |
 //! | no consumer-trait impl | a second way to be a model |
 //!
-//! The one exception is `openai/responses_api/websocket.rs`: a session — one
-//! connection, many turns, warmup — is not a request/response exchange, so it
+//! The one exception is `openai/responses_api/websocket.rs`: a session. one
+//! connection, many turns, warmup. is not a request/response exchange, so it
 //! keeps its own API and decodes every message through the shared driver.
 //! The credential exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from
 //! the `async` rules only.
@@ -28,7 +28,7 @@
 //! than a pass. `syn` does not look inside a macro invocation's tokens,
 //! though, so the `.await` rule runs as a second pass over the file's raw
 //! token stream after the AST pass: the one place the AST cannot see is
-//! exactly where an `async_stream::stream! { … .await … }` hides.
+//! exactly where an `async_stream::stream! { ….await … }` hides.
 //!
 //! `*tests.rs` files and `tests/` directories are skipped: a test that drives
 //! a wire through a fake socket has to await something, and test code is not
@@ -45,7 +45,8 @@ use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct};
 /// be, each with the reason it is not a wire:
 ///
 /// - the Responses websocket is a **connection**: one socket, many turns,
-///   warmup — a session rather than a request/response exchange.
+///
+/// warmup. a session rather than a request/response exchange.
 ///
 /// [`CREDENTIAL_EXCHANGES`] is the other kind, named one file at a time
 /// because every provider could otherwise claim one.
@@ -55,10 +56,10 @@ use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct};
 /// distinguishes it from a wire.
 const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 
-/// The files that may hold a **conversation** — an `async fn`, an `async`
-/// block, an `.await` — because credential exchange is one: a device flow
+/// The files that may hold a **conversation**. an `async fn`, an `async`
+/// block, an `.await`. because credential exchange is one: a device flow
 /// polls, an OAuth refresh round-trips, and a token cache is shared. None of
-/// that fits a pure `encode`, and none of it is a wire — it *produces* the
+/// that fits a pure `encode`, and none of it is a wire. it *produces* the
 /// `Secret` a wire holds. Exempt from the no-`async` rules and only from
 /// those: a credential exchange holds no socket of its own.
 ///
@@ -80,7 +81,7 @@ const CREDENTIAL_EXCHANGES: &[&str] = &[
 ];
 
 /// The traits a consumer calls a model through. Exactly one implementation of
-/// each ships, and it is `driver::Bound` — a provider contributes a wire.
+/// each ships, and it is `driver::Bound`. a provider contributes a wire.
 const CONSUMER_TRAITS: &[&str] = &[
     "CompletionModel",
     "EmbeddingModel",
@@ -152,7 +153,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 struct Wires {
     file: String,
-    /// Whether this file may hold a conversation — `async` and `.await` —
+    /// Whether this file may hold a conversation. `async` and `.await` -
     /// because it is a session or a credential exchange.
     conversation: bool,
     /// Whether this file may hold the socket it is a session over: the
@@ -178,12 +179,12 @@ impl Wires {
     }
 
     /// The transport-parameter rule, stated by **bound** rather than by
-    /// letter: a parameter bounded by `HttpClientExt` — in its own bound list
-    /// or through the item's `where` clause — or defaulted to
+    /// letter: a parameter bounded by `HttpClientExt`. in its own bound list
+    /// or through the item's `where` clause. or defaulted to
     /// `BoxedHttpClient` is the socket, whatever it is named. A parameter
     /// with no such bound cannot be sent through, so it is parametric data (a
     /// `WireEvent<E>`, a reply generic over its answer shape) and needs no
-    /// allowlist — which is why there is no list of letters to maintain.
+    /// allowlist. which is why there is no list of letters to maintain.
     fn check_type_params(&mut self, kind: &str, ident: &syn::Ident, generics: &syn::Generics) {
         if self.session {
             return;
@@ -202,7 +203,7 @@ impl Wires {
 
     /// Every `.await` in `source`, by line, macro bodies included: `syn`
     /// keeps a macro invocation's body as opaque tokens, so the AST pass
-    /// never sees `stream! { … .await … }`. Token-level rather than textual:
+    /// never sees `stream! { ….await … }`. Token-level rather than textual:
     /// a comment is not a token and a string literal is one, so neither can
     /// name an `.await` here.
     fn scan_awaits(&mut self, source: &str) {

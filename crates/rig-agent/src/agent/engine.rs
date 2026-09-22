@@ -173,316 +173,316 @@ where
     S: TurnSource,
 {
     async_stream::stream! {
-        // Hooks must see resumed entries from their first invocation.
-        hook_ctx.seed_entries(run.entries());
-        // Step-boundary flushing includes hook state in serialization; settlement
-        // appends occur after the final flush and remain local.
-        macro_rules! flush_entries {
-            () => {
-                for entry in hook_ctx.drain_pending_entries() {
-                    run.append_entry(entry);
-                }
-            };
-        }
-        // Settle before yielding an error because consumers need not poll again.
-        macro_rules! settle_error {
-            ($err:expr) => {{
-                if runner.config.hooks.observes(StepEventKind::RunSettled) {
-                    let reason = $err.to_string();
-                    runner
-                        .config
-                        .hooks
-                        .on_run_settled(
-                            &hook_ctx,
-                            RunSettled {
-                                outcome: SettledOutcome::Error(&reason),
-                                messages: Some(run.messages()),
-                            },
-                        )
-                        .await;
-                }
-            }};
-        }
-        // Set only after a model turn commits successfully and consumed by its
-        // immediately following CallTools step. This keeps the sans-IO run state
-        // serializable while pinning execution to the definitions sent that turn.
-        let mut pending_tool_snapshot: Option<Arc<ToolCatalog>> = None;
-        // Restore routing history so resumed hooks see the last issued model.
-        let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
+    // Hooks must see resumed entries from their first invocation.
+           hook_ctx.seed_entries(run.entries());
+    // Step-boundary flushing includes hook state in serialization; settlement
+    // appends occur after the final flush and remain local.
+           macro_rules! flush_entries {
+               () => {
+                   for entry in hook_ctx.drain_pending_entries() {
+                       run.append_entry(entry);
+                   }
+               };
+           }
+    // Settle before yielding an error because consumers need not poll again.
+           macro_rules! settle_error {
+               ($err:expr) => {{
+                   if runner.config.hooks.observes(StepEventKind::RunSettled) {
+                       let reason = $err.to_string();
+                       runner
+                           .config
+                           .hooks
+                           .on_run_settled(
+                               &hook_ctx,
+                               RunSettled {
+                                   outcome: SettledOutcome::Error(&reason),
+                                   messages: Some(run.messages()),
+                               },
+                           )
+                           .await;
+                   }
+               }};
+           }
+    // Set only after a model turn commits successfully and consumed by its
+    // immediately following CallTools step. This keeps the sans-IO run state
+    // serializable while pinning execution to the definitions sent that turn.
+           let mut pending_tool_snapshot: Option<Arc<ToolCatalog>> = None;
+    // Restore routing history so resumed hooks see the last issued model.
+           let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
 
-        if runner.config.hooks.observes(StepEventKind::RunStart) {
-            let action = match run.initial_prompt() {
-                Some(prompt) => {
-                    runner
-                        .config
-                        .hooks
-                        .on_run_start(
-                            &hook_ctx,
-                            RunStart {
-                                prompt,
-                                history: run.input_chat_history(),
-                            },
-                        )
-                        .await
-                }
-                // A run resumed past its first model call has no pending
-                // initial prompt to steer.
-                None => RunStartAction::Continue,
-            };
-            let early_stop = match action {
-                RunStartAction::Continue => None,
-                RunStartAction::Rewrite(prompt) => run
-                    .rewrite_initial_prompt(prompt)
-                    .err()
-                    .map(StreamingError::Prompt),
-                RunStartAction::Stop(reason) => {
-                    Some(StreamingError::Prompt(run.cancel_error(reason)))
-                }
-            };
-            if let Some(err) = early_stop {
-                store_error_usage(&runner, &run);
-                settle_error!(err);
-                yield Err(err);
-                return;
-            }
-        }
+           if runner.config.hooks.observes(StepEventKind::RunStart) {
+               let action = match run.initial_prompt() {
+                   Some(prompt) => {
+                       runner
+                           .config
+                           .hooks
+                           .on_run_start(
+                               &hook_ctx,
+                               RunStart {
+                                   prompt,
+                                   history: run.input_chat_history(),
+                               },
+                           )
+                           .await
+                   }
+    // A run resumed past its first model call has no pending
+    // initial prompt to steer.
+                   None => RunStartAction::Continue,
+               };
+               let early_stop = match action {
+                   RunStartAction::Continue => None,
+                   RunStartAction::Rewrite(prompt) => run
+                       .rewrite_initial_prompt(prompt)
+                       .err()
+                       .map(StreamingError::Prompt),
+                   RunStartAction::Stop(reason) => {
+                       Some(StreamingError::Prompt(run.cancel_error(reason)))
+                   }
+               };
+               if let Some(err) = early_stop {
+                   store_error_usage(&runner, &run);
+                   settle_error!(err);
+                   yield Err(err);
+                   return;
+               }
+           }
 
-        // A macro keeps yield and loop termination in the caller's scope;
-        // macro hygiene requires passing the loop label explicitly.
-        macro_rules! drive_step {
-            ($label:lifetime, $step_stream:expr) => {{
-                let mut step_stream = $step_stream;
-                let mut step_error = None;
-                while let Some(item) = step_stream.next().await {
-                    match item {
-                        Ok(item) => yield Ok(DriveItem::Item(item)),
-                        Err(err) => {
-                            step_error = Some(err);
-                            break;
-                        }
-                    }
-                }
-                drop(step_stream);
-                if let Some(err) = step_error {
-                    store_error_usage(&runner, &run);
-                    settle_error!(err);
-                    yield Err(err);
-                    break $label;
-                }
-            }};
-        }
+    // A macro keeps yield and loop termination in the caller's scope;
+    // macro hygiene requires passing the loop label explicitly.
+           macro_rules! drive_step {
+               ($label:lifetime, $step_stream:expr) => {{
+                   let mut step_stream = $step_stream;
+                   let mut step_error = None;
+                   while let Some(item) = step_stream.next().await {
+                       match item {
+                           Ok(item) => yield Ok(DriveItem::Item(item)),
+                           Err(err) => {
+                               step_error = Some(err);
+                               break;
+                           }
+                       }
+                   }
+                   drop(step_stream);
+                   if let Some(err) = step_error {
+                       store_error_usage(&runner, &run);
+                       settle_error!(err);
+                       yield Err(err);
+                       break $label;
+                   }
+               }};
+           }
 
-        'outer: loop {
-            flush_entries!();
-            let step = match run.next_step() {
-                Ok(step) => step,
-                Err(err) => {
-                    store_error_usage(&runner, &run);
-                    let err: StreamingError = err.into();
-                    settle_error!(err);
-                    yield Err(err);
-                    break 'outer;
-                }
-            };
+           'outer: loop {
+               flush_entries!();
+               let step = match run.next_step() {
+                   Ok(step) => step,
+                   Err(err) => {
+                       store_error_usage(&runner, &run);
+                       let err: StreamingError = err.into();
+                       settle_error!(err);
+                       yield Err(err);
+                       break 'outer;
+                   }
+               };
 
-            match step {
-                AgentRunStep::CallModel { prompt, history, turn } => {
-                    drop(pending_tool_snapshot.take());
-                    if runner.config.max_turns > 1 {
-                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns);
-                    }
-                    hook_ctx.set_turn(turn);
+               match step {
+                   AgentRunStep::CallModel { prompt, history, turn } => {
+                       drop(pending_tool_snapshot.take());
+                       if runner.config.max_turns > 1 {
+                           tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns);
+                       }
+                       hook_ctx.set_turn(turn);
 
-                    // Selection must see merged request patches and must not run after a stop.
-                    let request_patch =
-                        match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
-                            CompletionCallOutcome::Terminate(reason) => {
-                                store_error_usage(&runner, &run);
-                                let err = StreamingError::Prompt(run.cancel_error(reason));
-                                settle_error!(err);
-                                yield Err(err);
-                                break 'outer;
-                            }
-                            CompletionCallOutcome::Proceed(request_patch) => request_patch,
-                        };
+    // Selection must see merged request patches and must not run after a stop.
+                       let request_patch =
+                           match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
+                               CompletionCallOutcome::Terminate(reason) => {
+                                   store_error_usage(&runner, &run);
+                                   let err = StreamingError::Prompt(run.cancel_error(reason));
+                                   settle_error!(err);
+                                   yield Err(err);
+                                   break 'outer;
+                               }
+                               CompletionCallOutcome::Proceed(request_patch) => request_patch,
+                           };
 
-                    // Preparation and execution must use the same selected model's capabilities.
-                    let default_label = runner.config.model_ref();
-                    let selected_label = match runner.config.hooks.on_model_select(
-                        &hook_ctx,
-                        ModelSelection {
-                            prompt: &prompt,
-                            history: &history,
-                            request_patch: request_patch.as_ref(),
-                            previous_model: previous_model.as_ref(),
-                            default_model: &default_label,
-                            selected_model: &default_label,
-                        },
-                    ) {
-                        ModelSelectionAction::Continue => default_label.clone(),
-                        ModelSelectionAction::Select(model) => model,
-                        ModelSelectionAction::Stop(reason) => {
-                            store_error_usage(&runner, &run);
-                            let err = StreamingError::Prompt(run.cancel_error(reason));
-                            settle_error!(err);
-                            yield Err(err);
-                            break 'outer;
-                        }
-                    };
-                    // Bind the typed view now: an unregistered label is a
-                    // wiring error, surfaced before any request is built.
-                    let selected_model = if selected_label == default_label {
-                        runner.config.model_handle()
-                    } else {
-                        runner.config.model_by_ref(&selected_label)
-                    };
-                    let selected_model: ModelHandle = match selected_model {
-                        Ok(model) => model,
-                        Err(report) => {
-                            store_error_usage(&runner, &run);
-                            let err = StreamingError::Report(report);
-                            settle_error!(err);
-                            yield Err(err);
-                            break 'outer;
-                        }
-                    };
+    // Preparation and execution must use the same selected model's capabilities.
+                       let default_label = runner.config.model_ref();
+                       let selected_label = match runner.config.hooks.on_model_select(
+                           &hook_ctx,
+                           ModelSelection {
+                               prompt: &prompt,
+                               history: &history,
+                               request_patch: request_patch.as_ref(),
+                               previous_model: previous_model.as_ref(),
+                               default_model: &default_label,
+                               selected_model: &default_label,
+                           },
+                       ) {
+                           ModelSelectionAction::Continue => default_label.clone(),
+                           ModelSelectionAction::Select(model) => model,
+                           ModelSelectionAction::Stop(reason) => {
+                               store_error_usage(&runner, &run);
+                               let err = StreamingError::Prompt(run.cancel_error(reason));
+                               settle_error!(err);
+                               yield Err(err);
+                               break 'outer;
+                           }
+                       };
+    // Bind the typed view now: an unregistered label is a
+    // wiring error, surfaced before any request is built.
+                       let selected_model = if selected_label == default_label {
+                           runner.config.model_handle()
+                       } else {
+                           runner.config.model_by_ref(&selected_label)
+                       };
+                       let selected_model: ModelHandle = match selected_model {
+                           Ok(model) => model,
+                           Err(report) => {
+                               store_error_usage(&runner, &run);
+                               let err = StreamingError::Report(report);
+                               settle_error!(err);
+                               yield Err(err);
+                               break 'outer;
+                           }
+                       };
 
-                    // Telemetry uses the effective preamble before output-mode augmentation.
-                    let effective_preamble = request_patch
-                        .as_ref()
-                        .and_then(|o| o.preamble.as_deref())
-                        .or(runner.config.preamble.as_deref());
+    // Telemetry uses the effective preamble before output-mode augmentation.
+                       let effective_preamble = request_patch
+                           .as_ref()
+                           .and_then(|o| o.preamble.as_deref())
+                           .or(runner.config.preamble.as_deref());
 
-                    let chat_span = source.open_chat_span(&runner, effective_preamble);
+                       let chat_span = source.open_chat_span(&runner, effective_preamble);
 
-                    // Pin output mode across registry changes between turns.
-                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let mut prepared = match build_prepared_completion_request(
-                        &runner,
-                        &hook_ctx,
-                        &selected_model,
-                        prompt.clone(),
-                        &history,
-                        committed_output_tool.as_deref(),
-                        request_patch.as_ref(),
-                    )
-                    .await
-                    {
-                        Ok(prepared) => prepared,
-                        Err(err) => {
-                            store_error_usage(&runner, &run);
-                            let err: StreamingError = err.into();
-                            settle_error!(err);
-                            yield Err(err);
-                            break 'outer;
-                        }
-                    };
-                    if let Some(name) = &prepared.output_tool_name {
-                        // Refused after the first turn by design: the name is pinned.
-                        let _ = run.commit_output_tool_name(name.clone());
-                    }
-                    let turn_tool_snapshot = prepared.tool_snapshot.clone();
-                    // What this request advertises becomes run data, so a
-                    // resumed run or another driver can re-pair the calls
-                    // that come back with the tools that were offered.
-                    run.advertise_tools(turn, std::mem::take(&mut prepared.advertised_tools));
-                    if runner.config.record_telemetry_content {
-                        let input_messages = std::mem::take(&mut prepared.telemetry_messages);
-                        rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
-                    }
+    // Pin output mode across registry changes between turns.
+                       let committed_output_tool = run.output_tool_name().map(str::to_owned);
+                       let mut prepared = match build_prepared_completion_request(
+                           &runner,
+                           &hook_ctx,
+                           &selected_model,
+                           prompt.clone(),
+                           &history,
+                           committed_output_tool.as_deref(),
+                           request_patch.as_ref(),
+                       )
+                       .await
+                       {
+                           Ok(prepared) => prepared,
+                           Err(err) => {
+                               store_error_usage(&runner, &run);
+                               let err: StreamingError = err.into();
+                               settle_error!(err);
+                               yield Err(err);
+                               break 'outer;
+                           }
+                       };
+                       if let Some(name) = &prepared.output_tool_name {
+    // Refused after the first turn by design: the name is pinned.
+                           let _ = run.commit_output_tool_name(name.clone());
+                       }
+                       let turn_tool_snapshot = prepared.tool_snapshot.clone();
+    // What this request advertises becomes run data, so a
+    // resumed run or another driver can re-pair the calls
+    // that come back with the tools that were offered.
+                       run.advertise_tools(turn, std::mem::take(&mut prepared.advertised_tools));
+                       if runner.config.record_telemetry_content {
+                           let input_messages = std::mem::take(&mut prepared.telemetry_messages);
+                           rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
+                       }
 
-                    // Only issued attempts advance routing history, including provider errors.
-                    run.set_previous_model(selected_label.clone());
-                    previous_model = Some(selected_label);
+    // Only issued attempts advance routing history, including provider errors.
+                       run.set_previous_model(selected_label.clone());
+                       previous_model = Some(selected_label);
 
-                    drive_step!('outer, source.run_model_turn(
-                        &runner,
-                        &hook_ctx,
-                        &mut run,
-                        prepared,
-                        chat_span,
-                        &agent_span,
-                        prompt,
-                    ));
-                    pending_tool_snapshot = Some(turn_tool_snapshot);
-                }
-                AgentRunStep::CallTools { calls } => {
-                    // Resume cannot restore registration leases; bind advertised names
-                    // to this process's current implementations.
-                    if pending_tool_snapshot.is_none()
-                        && let Some(advertised) = run.advertised_tools()
-                    {
-                        let names: Vec<String> = advertised
-                            .definitions
-                            .iter()
-                            .map(|definition| definition.name.clone())
-                            .collect();
-                        pending_tool_snapshot = Some(Arc::new(
-                            runner.tool_server_handle.snapshot_with_dynamic(&names),
-                        ));
-                    }
-                    let Some(tool_snapshot) = pending_tool_snapshot.take() else {
-                        store_error_usage(&runner, &run);
-                        let err = StreamingError::Completion(CompletionError::ResponseError(
-                            "agent requested tool execution without a prepared registry snapshot"
-                                .to_string(),
-                        ));
-                        settle_error!(err);
-                        yield Err(err);
-                        break 'outer;
-                    };
-                    drive_step!('outer, source.run_tool_calls(
-                        &runner,
-                        &hook_ctx,
-                        &mut run,
-                        calls,
-                        tool_snapshot,
-                    ));
-                }
-                AgentRunStep::Done(response) => {
-                    flush_entries!();
-                    tracing::info!(
-                        turn = run.turn(),
-                        max_turns = runner.config.max_turns,
-                        "Agent run finished"
-                    );
-                    source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    // Append failure does not discard the answer; expose acknowledgement
-                    // separately without assuming a failed append wrote nothing.
-                    let memory_append = append_run_messages(
-                        &runner,
-                        &hook_ctx,
-                        memory_handle.as_ref(),
-                        response.messages.as_deref().unwrap_or_default(),
-                    )
-                    .await;
-                    let response = response.with_memory_append(memory_append);
-                    if runner.config.hooks.observes(StepEventKind::RunSettled) {
-                        runner
-                            .config
-                            .hooks
-                            .on_run_settled(
-                                &hook_ctx,
-                                RunSettled {
-                                    outcome: SettledOutcome::Response(&response),
-                                    messages: Some(run.messages()),
-                                },
-                            )
-                            .await;
-                    }
-                    // Build the final item only when the surface forwards it
-                    // (streaming). The blocking fold discards it, so its source
-                    // returns `None` and the extra full-response clone is skipped.
-                    if let Some(final_item) = source.final_item(&response) {
-                        yield Ok(DriveItem::Item(final_item));
-                    }
-                    yield Ok(DriveItem::Done(response));
-                    break 'outer;
-                }
-            }
-        }
+                       drive_step!('outer, source.run_model_turn(
+                           &runner,
+                           &hook_ctx,
+                           &mut run,
+                           prepared,
+                           chat_span,
+                           &agent_span,
+                           prompt,
+                       ));
+                       pending_tool_snapshot = Some(turn_tool_snapshot);
+                   }
+                   AgentRunStep::CallTools { calls } => {
+    // Resume cannot restore registration leases; bind advertised names
+    // to this process's current implementations.
+                       if pending_tool_snapshot.is_none()
+                           && let Some(advertised) = run.advertised_tools()
+                       {
+                           let names: Vec<String> = advertised
+                               .definitions
+                               .iter()
+                               .map(|definition| definition.name.clone())
+                               .collect();
+                           pending_tool_snapshot = Some(Arc::new(
+                               runner.tool_server_handle.snapshot_with_dynamic(&names),
+                           ));
+                       }
+                       let Some(tool_snapshot) = pending_tool_snapshot.take() else {
+                           store_error_usage(&runner, &run);
+                           let err = StreamingError::Completion(CompletionError::ResponseError(
+                               "agent requested tool execution without a prepared registry snapshot"
+                                   .to_string(),
+                           ));
+                           settle_error!(err);
+                           yield Err(err);
+                           break 'outer;
+                       };
+                       drive_step!('outer, source.run_tool_calls(
+                           &runner,
+                           &hook_ctx,
+                           &mut run,
+                           calls,
+                           tool_snapshot,
+                       ));
+                   }
+                   AgentRunStep::Done(response) => {
+                       flush_entries!();
+                       tracing::info!(
+                           turn = run.turn(),
+                           max_turns = runner.config.max_turns,
+                           "Agent run finished"
+                       );
+                       source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
+    // Append failure does not discard the answer; expose acknowledgement
+    // separately without assuming a failed append wrote nothing.
+                       let memory_append = append_run_messages(
+                           &runner,
+                           &hook_ctx,
+                           memory_handle.as_ref(),
+                           response.messages.as_deref().unwrap_or_default(),
+                       )
+                       .await;
+                       let response = response.with_memory_append(memory_append);
+                       if runner.config.hooks.observes(StepEventKind::RunSettled) {
+                           runner
+                               .config
+                               .hooks
+                               .on_run_settled(
+                                   &hook_ctx,
+                                   RunSettled {
+                                       outcome: SettledOutcome::Response(&response),
+                                       messages: Some(run.messages()),
+                                   },
+                               )
+                               .await;
+                       }
+    // Build the final item only when the surface forwards it
+    // (streaming). The blocking fold discards it, so its source
+    // returns `None` and the extra full-response clone is skipped.
+                       if let Some(final_item) = source.final_item(&response) {
+                           yield Ok(DriveItem::Item(final_item));
+                       }
+                       yield Ok(DriveItem::Done(response));
+                       break 'outer;
+                   }
+               }
+           }
 
-    }
+       }
 }
 
 /// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
@@ -490,19 +490,29 @@ where
 /// The batch commits and surfaces all-or-nothing:
 ///
 /// - The model tool-call events ([`MultiTurnStreamItem::ToolCall`]) are
-///   emitted up front — they report what the model emitted at turn commit.
+///
+/// emitted up front. they report what the model emitted at turn commit.
 /// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
-///   concurrently bounded by it), with outcomes **collected, not surfaced**.
+///
+/// concurrently bounded by it), with outcomes **collected, not surfaced**.
 /// - On the first hook termination / fail-closed error the batch fails fast: no
-///   new tool starts, not-yet-started concurrent siblings are dropped,
-///   already-started ones are drained, and the deterministic lowest call-index
-///   error is surfaced with **no** successful [`ToolExecutionCommitted`] /
-///   [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
-///   history commit.
+///
+/// new tool starts, not-yet-started concurrent siblings are dropped,
+///
+/// already-started ones are drained, and the deterministic lowest call-index
+///
+/// error is surfaced with **no** successful [`ToolExecutionCommitted`] /
+///
+/// [`StreamUserItem`](MultiTurnStreamItem::StreamUserItem) items and **no**
+///
+/// history commit.
 /// - Only if the whole batch settles successfully are the per-tool
-///   [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted) + result
-///   items surfaced (in call order, only for tools whose body actually ran) and
-///   the results committed to run history.
+///
+/// [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted) + result
+///
+/// items surfaced (in call order, only for tools whose body actually ran) and
+///
+/// the results committed to run history.
 ///
 /// When `forward_items` is `false` (the blocking fold) no stream items are built,
 /// but the collect/commit and fail-fast behavior is identical, so `run()` and
@@ -530,12 +540,12 @@ where
         span: tracing::Span,
     }
     // How a settled tool call is surfaced on the stream once the batch succeeds:
-    //   - `Executed`: `ToolExecutionCommitted` (with the effective, hook-rewritten
-    //     call) + the `ToolResult`.
-    //   - `Skipped`: the `ToolResult` only (a `ToolCall` hook returned `Skip`, so
-    //     nothing ran — no execution commit — but the model still sees the result).
-    //   - `Preresolved`: neither (an invalid-recovery result, already surfaced
-    //     during the model turn); committed to history only.
+    // - `Executed`: `ToolExecutionCommitted` (with the effective, hook-rewritten
+    // call) + the `ToolResult`.
+    // - `Skipped`: the `ToolResult` only (a `ToolCall` hook returned `Skip`, so
+    // nothing ran. no execution commit. but the model still sees the result).
+    // - `Preresolved`: neither (an invalid-recovery result, already surfaced
+    // during the model turn); committed to history only.
     enum ToolSurface {
         Executed(rig_core::message::ToolCall),
         Skipped,
@@ -550,191 +560,191 @@ where
     }
 
     Box::pin(async_stream::stream! {
-        let full_history_for_errors = run.full_history();
-        let call_count = calls.len();
+           let full_history_for_errors = run.full_history();
+           let call_count = calls.len();
 
-        // Assign each call a stable block_id and, for calls that will
-        // actually execute, an execute span. Emit the MODEL tool-call events now,
-        // right after the turn committed: these report what the model emitted and
-        // are *not* execution-lifecycle events. A preresolved call emits no model
-        // tool-call event (its synthetic result was already surfaced during the
-        // model turn) and gets no execute span.
-        let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
-        for pending in calls {
-            let block_id = pending.block_id;
-            let (span, preresolved_result) = match pending.preresolved_result {
-                Some(result) => (tracing::Span::none(), Some(result)),
-                None => {
-                    if forward_items {
-                        yield Ok(MultiTurnStreamItem::ToolCall {
-                            tool_call: pending.tool_call.clone(),
-                            block_id: block_id.clone(),
-                        });
-                    }
-                    (chain_tool_span(new_execute_tool_span()), None)
-                }
-            };
-            prepared.push(PreparedToolCall {
-                tool_call: pending.tool_call,
-                preresolved_result,
-                block_id,
-                span,
-            });
-        }
+    // Assign each call a stable block_id and, for calls that will
+    // actually execute, an execute span. Emit the MODEL tool-call events now,
+    // right after the turn committed: these report what the model emitted and
+    // are *not* execution-lifecycle events. A preresolved call emits no model
+    // tool-call event (its synthetic result was already surfaced during the
+    // model turn) and gets no execute span.
+           let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
+           for pending in calls {
+               let block_id = pending.block_id;
+               let (span, preresolved_result) = match pending.preresolved_result {
+                   Some(result) => (tracing::Span::none(), Some(result)),
+                   None => {
+                       if forward_items {
+                           yield Ok(MultiTurnStreamItem::ToolCall {
+                               tool_call: pending.tool_call.clone(),
+                               block_id: block_id.clone(),
+                           });
+                       }
+                       (chain_tool_span(new_execute_tool_span()), None)
+                   }
+               };
+               prepared.push(PreparedToolCall {
+                   tool_call: pending.tool_call,
+                   preresolved_result,
+                   block_id,
+                   span,
+               });
+           }
 
-        // Run all tools, COLLECTING outcomes in call order — nothing is surfaced
-        // or committed until the whole batch settles (atomic per-batch). On the
-        // first hook termination / fail-closed error we stop starting new tools;
-        // already-started ones are drained; the lowest call-index error wins; and
-        // no successful result is surfaced or committed.
-        let mut collected: Vec<Option<CollectedToolResult>> =
-            (0..call_count).map(|_| None).collect();
-        let mut first_error: Option<(usize, PromptError)> = None;
+    // Run all tools, COLLECTING outcomes in call order. nothing is surfaced
+    // or committed until the whole batch settles (atomic per-batch). On the
+    // first hook termination / fail-closed error we stop starting new tools;
+    // already-started ones are drained; the lowest call-index error wins; and
+    // no successful result is surfaced or committed.
+           let mut collected: Vec<Option<CollectedToolResult>> =
+               (0..call_count).map(|_| None).collect();
+           let mut first_error: Option<(usize, PromptError)> = None;
 
-        {
-            // Bounded by `tool_concurrency` (`0`/`1` poll strictly in call
-            // order, giving sequential fail-fast). A shared `terminating`
-            // flag makes a not-yet-started sibling skip (its side effect never
-            // runs) once any sibling terminates — avoiding the Semantic-Kernel
-            // fail-open — while already-in-flight siblings are drained so the
-            // lowest call-index terminator wins and no task is left detached.
-            let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let unordered = stream::iter(prepared.into_iter().enumerate())
-                .map(|(index, call)| {
-                    let PreparedToolCall { tool_call, preresolved_result, block_id, span } = call;
-                    let tool_snapshot = &tool_snapshot;
-                    let full_history_for_errors = &full_history_for_errors;
-                    let terminating = terminating.clone();
-                    async move {
-                        if let Some(result) = preresolved_result {
-                            return (
-                                index,
-                                Some(Ok(CollectedToolResult {
-                                    content: result,
-                                    block_id,
-                                    surface: ToolSurface::Preresolved,
-                                })),
-                            );
-                        }
-                        // `None` marks a dropped (never-started) sibling.
-                        if terminating.load(std::sync::atomic::Ordering::SeqCst) {
-                            return (index, None);
-                        }
-                        let outcome = run_single_tool(
-                            runner,
-                            hook_ctx,
-                            tool_snapshot,
-                            &tool_call,
-                            &block_id,
-                            full_history_for_errors,
-                        )
-                        .await;
-                        let mapped = outcome.map(|o| {
-                            let surface = match o.execution {
-                                ToolExecution::Executed(effective) => {
-                                    ToolSurface::Executed(effective)
-                                }
-                                ToolExecution::Skipped => ToolSurface::Skipped,
-                            };
-                            CollectedToolResult {
-                                content: o.content,
-                                block_id,
-                                surface,
-                            }
-                        });
-                        (index, Some(mapped))
-                    }
-                    .instrument(span)
-                })
-                .buffer_unordered(runner.concurrency.max(1));
-            futures::pin_mut!(unordered);
+           {
+    // Bounded by `tool_concurrency` (`0`/`1` poll strictly in call
+    // order, giving sequential fail-fast). A shared `terminating`
+    // flag makes a not-yet-started sibling skip (its side effect never
+    // runs) once any sibling terminates. avoiding the Semantic-Kernel
+    // fail-open. while already-in-flight siblings are drained so the
+    // lowest call-index terminator wins and no task is left detached.
+               let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
+               let unordered = stream::iter(prepared.into_iter().enumerate())
+                   .map(|(index, call)| {
+                       let PreparedToolCall { tool_call, preresolved_result, block_id, span } = call;
+                       let tool_snapshot = &tool_snapshot;
+                       let full_history_for_errors = &full_history_for_errors;
+                       let terminating = terminating.clone();
+                       async move {
+                           if let Some(result) = preresolved_result {
+                               return (
+                                   index,
+                                   Some(Ok(CollectedToolResult {
+                                       content: result,
+                                       block_id,
+                                       surface: ToolSurface::Preresolved,
+                                   })),
+                               );
+                           }
+    // `None` marks a dropped (never-started) sibling.
+                           if terminating.load(std::sync::atomic::Ordering::SeqCst) {
+                               return (index, None);
+                           }
+                           let outcome = run_single_tool(
+                               runner,
+                               hook_ctx,
+                               tool_snapshot,
+                               &tool_call,
+                               &block_id,
+                               full_history_for_errors,
+                           )
+                           .await;
+                           let mapped = outcome.map(|o| {
+                               let surface = match o.execution {
+                                   ToolExecution::Executed(effective) => {
+                                       ToolSurface::Executed(effective)
+                                   }
+                                   ToolExecution::Skipped => ToolSurface::Skipped,
+                               };
+                               CollectedToolResult {
+                                   content: o.content,
+                                   block_id,
+                                   surface,
+                               }
+                           });
+                           (index, Some(mapped))
+                       }
+                       .instrument(span)
+                   })
+                   .buffer_unordered(runner.concurrency.max(1));
+               futures::pin_mut!(unordered);
 
-            while let Some((index, outcome)) = unordered.next().await {
-                // A dropped sibling records nothing.
-                let Some(result) = outcome else { continue };
-                match result {
-                    Ok(collected_result) => {
-                        if let Some(slot) = collected.get_mut(index) {
-                            *slot = Some(collected_result);
-                        }
-                    }
-                    Err(err) => {
-                        // Fail-fast: stop starting new siblings; keep draining
-                        // in-flight ones so the lowest call-index terminator wins.
-                        terminating.store(true, std::sync::atomic::Ordering::SeqCst);
-                        if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
-                            first_error = Some((index, err));
-                        }
-                    }
-                }
-            }
-        }
+               while let Some((index, outcome)) = unordered.next().await {
+    // A dropped sibling records nothing.
+                   let Some(result) = outcome else { continue };
+                   match result {
+                       Ok(collected_result) => {
+                           if let Some(slot) = collected.get_mut(index) {
+                               *slot = Some(collected_result);
+                           }
+                       }
+                       Err(err) => {
+    // Fail-fast: stop starting new siblings; keep draining
+    // in-flight ones so the lowest call-index terminator wins.
+                           terminating.store(true, std::sync::atomic::Ordering::SeqCst);
+                           if first_error.as_ref().is_none_or(|(i, _)| index < *i) {
+                               first_error = Some((index, err));
+                           }
+                       }
+                   }
+               }
+           }
 
-        // Settle. On termination: surface only the deterministic error — no
-        // execution commit, no result, no history commit (all-or-nothing).
-        if let Some((_, err)) = first_error {
-            yield Err(StreamingError::Prompt(err));
-            return;
-        }
+    // Settle. On termination: surface only the deterministic error. no
+    // execution commit, no result, no history commit (all-or-nothing).
+           if let Some((_, err)) = first_error {
+               yield Err(StreamingError::Prompt(err));
+               return;
+           }
 
-        // Success: prepare each call's stream items and results in call order,
-        // commit the results, then surface the buffered items. An executed call
-        // surfaces `ToolExecutionCommitted`
-        // (with the effective, hook-rewritten call) then its `ToolResult`; a
-        // hook-skipped call surfaces its `ToolResult` only (nothing ran); a
-        // preresolved call surfaces nothing (already surfaced during the model
-        // turn) but is still committed. Every non-dropped slot is filled; a
-        // dropped slot only occurs after a termination, handled above.
-        let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
-        let mut surface_items: Vec<MultiTurnStreamItem> =
-            Vec::with_capacity(call_count.saturating_mul(2));
-        for slot in collected {
-            let Some(CollectedToolResult { content, block_id, surface }) = slot else {
-                yield Err(StreamingError::Prompt(PromptError::CompletionError(
-                    CompletionError::ResponseError(
-                        "tool execution finished without producing every result".to_string(),
-                    ),
-                )));
-                return;
-            };
-            if forward_items {
-                // An executed call also surfaces its execution commit; a skipped
-                // call surfaces only its result; a preresolved call surfaces
-                // nothing here.
-                let surface_result = match surface {
-                    ToolSurface::Executed(tool_call) => {
-                        surface_items.push(MultiTurnStreamItem::ToolExecutionCommitted {
-                            tool_call,
-                            block_id: block_id.clone(),
-                        });
-                        true
-                    }
-                    ToolSurface::Skipped => true,
-                    ToolSurface::Preresolved => false,
-                };
-                if surface_result
-                    && let UserContent::ToolResult(tool_result) = &content
-                {
-                    surface_items.push(MultiTurnStreamItem::StreamUserItem(
-                        StreamedUserContent::ToolResult {
-                            tool_result: tool_result.clone(),
-                            id: block_id,
-                        },
-                    ));
-                }
-            }
-            committed.push(content);
-        }
+    // Success: prepare each call's stream items and results in call order,
+    // commit the results, then surface the buffered items. An executed call
+    // surfaces `ToolExecutionCommitted`
+    // (with the effective, hook-rewritten call) then its `ToolResult`; a
+    // hook-skipped call surfaces its `ToolResult` only (nothing ran); a
+    // preresolved call surfaces nothing (already surfaced during the model
+    // turn) but is still committed. Every non-dropped slot is filled; a
+    // dropped slot only occurs after a termination, handled above.
+           let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
+           let mut surface_items: Vec<MultiTurnStreamItem> =
+               Vec::with_capacity(call_count.saturating_mul(2));
+           for slot in collected {
+               let Some(CollectedToolResult { content, block_id, surface }) = slot else {
+                   yield Err(StreamingError::Prompt(PromptError::CompletionError(
+                       CompletionError::ResponseError(
+                           "tool execution finished without producing every result".to_string(),
+                       ),
+                   )));
+                   return;
+               };
+               if forward_items {
+    // An executed call also surfaces its execution commit; a skipped
+    // call surfaces only its result; a preresolved call surfaces
+    // nothing here.
+                   let surface_result = match surface {
+                       ToolSurface::Executed(tool_call) => {
+                           surface_items.push(MultiTurnStreamItem::ToolExecutionCommitted {
+                               tool_call,
+                               block_id: block_id.clone(),
+                           });
+                           true
+                       }
+                       ToolSurface::Skipped => true,
+                       ToolSurface::Preresolved => false,
+                   };
+                   if surface_result
+                       && let UserContent::ToolResult(tool_result) = &content
+                   {
+                       surface_items.push(MultiTurnStreamItem::StreamUserItem(
+                           StreamedUserContent::ToolResult {
+                               tool_result: tool_result.clone(),
+                               id: block_id,
+                           },
+                       ));
+                   }
+               }
+               committed.push(content);
+           }
 
-        if let Err(err) = run.tool_results(committed) {
-            yield Err(err.into());
-            return;
-        }
+           if let Err(err) = run.tool_results(committed) {
+               yield Err(err.into());
+               return;
+           }
 
-        for item in surface_items {
-            yield Ok(item);
-        }
-    })
+           for item in surface_items {
+               yield Ok(item);
+           }
+       })
 }
 
 /// [`TurnSource`] for the streaming surface: each turn opens a provider stream,
@@ -757,7 +767,7 @@ pub(crate) struct StreamingTurnSource {
     observes_text_delta: bool,
     observes_reasoning_delta: bool,
     observes_tool_call_delta: bool,
-    /// Whether any hook is present — gates building the (history-cloning)
+    /// Whether any hook is present. gates building the (history-cloning)
     /// invalid-tool diagnostic context.
     has_hooks: bool,
 }
@@ -773,7 +783,7 @@ impl StreamingTurnSource {
             // Nothing has streamed yet, so the last final choice is nothing.
             // This was a fabricated empty-text part for want of an empty
             // representation; `is_empty_assistant_turn` treated it as empty
-            // anyway, so the two are equivalent — this one is just honest.
+            // anyway, so the two are equivalent. this one is just honest.
             last_final_choice: Vec::new(),
             last_message_id: None,
             agent_name,
@@ -823,532 +833,532 @@ impl TurnSource for StreamingTurnSource {
         _current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            // Bound before the builder is consumed: the cap this attempt was
-            // prepared with, completion-call patches included.
-            let attempt_max_tokens = prepared.max_tokens;
+        // Bound before the builder is consumed: the cap this attempt was
+        // prepared with, completion-call patches included.
+                   let attempt_max_tokens = prepared.max_tokens;
 
-            let request = prepared.request;
-            let model = prepared.model;
-            let (dispatch_id, dispatched_kind, mut stream) = match dispatch_completion(runner, hook_ctx, &model, request, true)
-                .instrument(chat_span.clone())
-                .await
-            {
-                Ok(CompletionDispatch::Stream { id, kind, stream }) => (id, kind, stream),
-                Ok(CompletionDispatch::Response { .. }) => {
-                    yield Err(StreamingError::Report(
-                        ErrorReport::new(
-                            ErrorKind::Internal,
-                            "a streaming completion dispatch answered unary",
-                        ),
-                    ));
-                    return;
-                }
-                Err(CompletionDispatchError::Cancelled(reason)) => {
-                    yield Err(StreamingError::Prompt(run.cancel_error(reason)));
-                    return;
-                }
-                Err(CompletionDispatchError::Failed(report)) => {
-                    yield Err(StreamingError::Report(report));
-                    return;
-                }
-            };
-            // Captured from each completion-call emission so the normalized
-            // `ModelTurnFinished` event carries the turn's usage.
-            let mut last_usage = crate::completion::Usage::default();
+                   let request = prepared.request;
+                   let model = prepared.model;
+                   let (dispatch_id, dispatched_kind, mut stream) = match dispatch_completion(runner, hook_ctx, &model, request, true)
+                       .instrument(chat_span.clone())
+                       .await
+                   {
+                       Ok(CompletionDispatch::Stream { id, kind, stream }) => (id, kind, stream),
+                       Ok(CompletionDispatch::Response { .. }) => {
+                           yield Err(StreamingError::Report(
+                               ErrorReport::new(
+                                   ErrorKind::Internal,
+                                   "a streaming completion dispatch answered unary",
+                               ),
+                           ));
+                           return;
+                       }
+                       Err(CompletionDispatchError::Cancelled(reason)) => {
+                           yield Err(StreamingError::Prompt(run.cancel_error(reason)));
+                           return;
+                       }
+                       Err(CompletionDispatchError::Failed(report)) => {
+                           yield Err(StreamingError::Report(report));
+                           return;
+                       }
+                   };
+        // Captured from each completion-call emission so the normalized
+        // `ModelTurnFinished` event carries the turn's usage.
+                   let mut last_usage = crate::completion::Usage::default();
 
-            let mut assembler = StreamedTurnAssembler::new(
-                prepared.executable_tool_names.clone(),
-                prepared.allowed_tool_names.clone(),
-            );
-            let mut completion_call_emitted = false;
-            let mut turn_abandoned = false;
-            let mut provider_final_seen = false;
-            let mut pending_final = None;
-            // A turn whose invalid tool call was repaired is a recovered turn:
-            // neither the response hook nor `ModelTurnFinished` fires for it.
-            let mut turn_recovered = false;
+                   let mut assembler = StreamedTurnAssembler::new(
+                       prepared.executable_tool_names.clone(),
+                       prepared.allowed_tool_names.clone(),
+                   );
+                   let mut completion_call_emitted = false;
+                   let mut turn_abandoned = false;
+                   let mut provider_final_seen = false;
+                   let mut pending_final = None;
+        // A turn whose invalid tool call was repaired is a recovered turn:
+        // neither the response hook nor `ModelTurnFinished` fires for it.
+                   let mut turn_recovered = false;
 
-            // Emit the turn's single `CompletionCall` exactly once, recording its
-            // usage onto the chat span and into the run. Defined here (not a free
-            // fn) so it captures `completion_call_emitted`/`chat_span`/`run`; the
-            // `yield` stays at each call site because `async_stream::stream!`
-            // cannot see a `yield` produced inside a nested macro expansion.
-            // Returns the item to yield (`Some` the first time, `None` after), or
-            // the terminal error to surface.
-            macro_rules! emit_completion_call {
-                ($usage:expr) => {{
-                    // Same source as identity below: the provider's terminal
-                    // record. A path that never saw one yields `None`, which is
-                    // "the provider reported no reason" — not "the turn stopped
-                    // normally".
-                    let reason = stream
-                        .response
-                        .as_ref()
-                        .and_then(|response| response.finish_reason.clone());
-                    emit_completion_call!($usage, reason)
-                }};
-                ($usage:expr, $finish_reason:expr) => {{
-                    let usage = $usage;
-                    last_usage = usage;
-                    if !completion_call_emitted {
-                        chat_span.record_token_usage(&usage);
-                        // The terminal record carries this attempt's identity
-                        // metadata and its captured raw payload, read from the
-                        // same terminal so the recorded call carries *this*
-                        // attempt's response, never a previous attempt's. A
-                        // stream that delivered no terminal is truncated per
-                        // the emission contract and has no call to record.
-                        match stream.response.as_ref().map(|response| response.raw.clone()) {
-                            None => Err(truncated_stream_error().into()),
-                            Some(raw) => match run.record_streamed_completion_call(
-                                usage,
-                                stream.identity(),
-                                $finish_reason,
-                                raw,
-                            ) {
-                                Ok(call) => {
-                                    completion_call_emitted = true;
-                                    Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
-                                }
-                                Err(err) => Err(err.into()),
-                            },
-                        }
-                    } else {
-                        Ok(None)
-                    }
-                }};
-            }
+        // Emit the turn's single `CompletionCall` exactly once, recording its
+        // usage onto the chat span and into the run. Defined here (not a free
+        // fn) so it captures `completion_call_emitted`/`chat_span`/`run`; the
+        // `yield` stays at each call site because `async_stream::stream!`
+        // cannot see a `yield` produced inside a nested macro expansion.
+        // Returns the item to yield (`Some` the first time, `None` after), or
+        // the terminal error to surface.
+                   macro_rules! emit_completion_call {
+                       ($usage:expr) => {{
+        // Same source as identity below: the provider's terminal
+        // record. A path that never saw one yields `None`, which is
+        // "the provider reported no reason". not "the turn stopped
+        // normally".
+                           let reason = stream
+                               .response
+                               .as_ref()
+                               .and_then(|response| response.finish_reason.clone());
+                           emit_completion_call!($usage, reason)
+                       }};
+                       ($usage:expr, $finish_reason:expr) => {{
+                           let usage = $usage;
+                           last_usage = usage;
+                           if !completion_call_emitted {
+                               chat_span.record_token_usage(&usage);
+        // The terminal record carries this attempt's identity
+        // metadata and its captured raw payload, read from the
+        // same terminal so the recorded call carries *this*
+        // attempt's response, never a previous attempt's. A
+        // stream that delivered no terminal is truncated per
+        // the emission contract and has no call to record.
+                               match stream.response.as_ref().map(|response| response.raw.clone()) {
+                                   None => Err(truncated_stream_error().into()),
+                                   Some(raw) => match run.record_streamed_completion_call(
+                                       usage,
+                                       stream.identity(),
+                                       $finish_reason,
+                                       raw,
+                                   ) {
+                                       Ok(call) => {
+                                           completion_call_emitted = true;
+                                           Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
+                                       }
+                                       Err(err) => Err(err.into()),
+                                   },
+                               }
+                           } else {
+                               Ok(None)
+                           }
+                       }};
+                   }
 
-            'turn: while let Some(item) = stream.next().await {
-                // A provider stream's `Err` item is normally fatal. One
-                // shape is not: the model closed a tool call with input that
-                // is not JSON (rig#2447). That is the model's mistake, and
-                // the same recovery the run offers for an unknown tool name
-                // applies — so it is routed into that seam with the raw text
-                // and the parser's reason, and `Fail` reproduces the error
-                // that used to end the run here. Every other error stays
-                // fatal.
-                // At most one event per ingested item forwards the item itself;
-                // moving it out of the slot avoids a clone per streamed delta.
-                let (mut item_slot, mut events): (Option<StreamEvent>, VecDeque<StreamedTurnEvent>) =
-                    match item {
-                        Ok(item) => {
-                            // Only *content* after the terminal record is a
-                            // defect: block bookkeeping (a late message-id
-                            // start, a text block closing) is not.
-                            let visible_content = !matches!(
-                                &item,
-                                StreamEvent::BlockStart { .. }
-                                    | StreamEvent::BlockEnd { block: None, .. }
-                            );
-                            if provider_final_seen && visible_content {
-                                yield Err(CompletionError::ResponseError(
-                                    "provider stream emitted visible assistant content after its final response"
-                                        .to_string(),
-                                )
-                                .into());
-                                return;
-                            }
-                            match assembler.ingest(&item) {
-                                Ok(events) => (Some(item), events.into()),
-                                Err(err) => {
-                                    yield Err(err.into());
-                                    return;
-                                }
-                            }
-                        }
-                        Err(err) => match &err.detail {
-                            Some(rig_core::error::ErrorDetail::MalformedToolInput(detail)) => {
-                                (None, assembler.surface_malformed_input(detail).into())
-                            }
-                            _ => {
-                                yield Err(err.into());
-                                return;
-                            }
-                        },
-                    };
-                while let Some(event) = events.pop_front() {
-                    match event {
-                        StreamedTurnEvent::EmitIngested => {
-                            if self.observes_text_delta
-                                && let Some(StreamEvent::BlockDelta {
-                                    delta: Delta::Text { text },
-                                    ..
-                                }) = item_slot.as_ref()
-                                && let Some(reason) = observe_action(
-                                    runner
-                                        .config.hooks
-                                        .on_text_delta(
-                                            hook_ctx,
-                                            TextDelta {
-                                                delta: text,
-                                                aggregated: assembler.aggregated_text(),
-                                            },
-                                        )
-                                        .await,
-                                )
-                            {
-                                // The stop is the run's: the dispatch in flight is
-                                // cancelled here, before the error surfaces, so the
-                                // record is the same cancel on every transport (it
-                                // used to depend on whether the provider had finished
-                                // before the consumer dropped the run).
-                                drop(stream);
-                                yield Err(StreamingError::Prompt(
-                                    run.cancel_error(reason),
-                                ));
-                                return;
-                            }
-                            if self.observes_reasoning_delta
-                                && let Some(StreamEvent::BlockDelta {
-                                    id,
-                                    delta: Delta::Reasoning { text: reasoning },
-                                }) = item_slot.as_ref()
-                            {
-                                let Some(aggregated) = assembler.aggregated_reasoning(id) else {
-                                    yield Err(CompletionError::ResponseError(format!(
-                                        "reasoning delta `{id}` was ingested without a pending aggregate"
-                                    ))
-                                    .into());
-                                    return;
-                                };
-                                if let Some(reason) = observe_action(
-                                    runner
-                                        .config.hooks
-                                        .on_reasoning_delta(
-                                            hook_ctx,
-                                            ReasoningDelta {
-                                                id,
-                                                provider_id: assembler.reasoning_provider_id(id),
-                                                delta: reasoning,
-                                                aggregated,
-                                            },
-                                        )
-                                        .await,
-                                ) {
-                                    // The stop is the run's: the dispatch in flight is
-                                    // cancelled here, before the error surfaces, so the
-                                    // record is the same cancel on every transport (it
-                                    // used to depend on whether the provider had finished
-                                    // before the consumer dropped the run).
-                                    drop(stream);
-                                    yield Err(StreamingError::Prompt(
-                                        run.cancel_error(reason),
-                                    ));
-                                    return;
-                                }
-                            }
-                            if let Some(item) = item_slot.take() {
-                                yield Ok(MultiTurnStreamItem::stream_item(item));
-                            }
-                        }
-                        StreamedTurnEvent::EmitToolCallDelta { block_id, delta } => {
-                            if self.observes_tool_call_delta {
-                                let (delta_name, delta_text) = match &delta {
-                                    Delta::ToolName { name } => (Some(name.as_str()), ""),
-                                    Delta::ToolArguments { arguments } => (None, arguments.as_str()),
-                                    // The assembler emits only tool deltas here.
-                                    Delta::Text { .. }
-                                    | Delta::TextMeta { .. }
-                                    | Delta::Reasoning { .. } => (None, ""),
-                                };
-                                if let Some(reason) = observe_action(
-                                    runner
-                                        .config.hooks
-                                        .on_tool_call_delta(
-                                            hook_ctx,
-                                            ToolCallDelta {
-                                                block_id: &block_id,
-                                                tool_name: delta_name,
-                                                delta: delta_text,
-                                            },
-                                        )
-                                        .await,
-                                ) {
-                                    // The stop is the run's: the dispatch in flight is
-                                    // cancelled here, before the error surfaces, so the
-                                    // record is the same cancel on every transport (it
-                                    // used to depend on whether the provider had finished
-                                    // before the consumer dropped the run).
-                                    drop(stream);
-                                    yield Err(StreamingError::Prompt(
-                                        run.cancel_error(reason),
-                                    ));
-                                    return;
-                                }
-                            }
+                   'turn: while let Some(item) = stream.next().await {
+        // A provider stream's `Err` item is normally fatal. One
+        // shape is not: the model closed a tool call with input that
+        // is not JSON. That is the model's mistake, and
+        // the same recovery the run offers for an unknown tool name
+        // applies. so it is routed into that seam with the raw text
+        // and the parser's reason, and `Fail` reproduces the error
+        // that previously end the run here. Every other error stays
+        // fatal.
+        // At most one event per ingested item forwards the item itself;
+        // moving it out of the slot avoids a clone per streamed delta.
+                       let (mut item_slot, mut events): (Option<StreamEvent>, VecDeque<StreamedTurnEvent>) =
+                           match item {
+                               Ok(item) => {
+        // Only *content* after the terminal record is a
+        // defect: block bookkeeping (a late message-id
+        // start, a text block closing) is not.
+                                   let visible_content = !matches!(
+                                       &item,
+                                       StreamEvent::BlockStart { .. }
+                                           | StreamEvent::BlockEnd { block: None, .. }
+                                   );
+                                   if provider_final_seen && visible_content {
+                                       yield Err(CompletionError::ResponseError(
+                                           "provider stream emitted visible assistant content after its final response"
+                                               .to_string(),
+                                       )
+                                       .into());
+                                       return;
+                                   }
+                                   match assembler.ingest(&item) {
+                                       Ok(events) => (Some(item), events.into()),
+                                       Err(err) => {
+                                           yield Err(err.into());
+                                           return;
+                                       }
+                                   }
+                               }
+                               Err(err) => match &err.detail {
+                                   Some(rig_core::error::ErrorDetail::MalformedToolInput(detail)) => {
+                                       (None, assembler.surface_malformed_input(detail).into())
+                                   }
+                                   _ => {
+                                       yield Err(err.into());
+                                       return;
+                                   }
+                               },
+                           };
+                       while let Some(event) = events.pop_front() {
+                           match event {
+                               StreamedTurnEvent::EmitIngested => {
+                                   if self.observes_text_delta
+                                       && let Some(StreamEvent::BlockDelta {
+                                           delta: Delta::Text { text },
+                                           ..
+                                       }) = item_slot.as_ref()
+                                       && let Some(reason) = observe_action(
+                                           runner
+                                               .config.hooks
+                                               .on_text_delta(
+                                                   hook_ctx,
+                                                   TextDelta {
+                                                       delta: text,
+                                                       aggregated: assembler.aggregated_text(),
+                                                   },
+                                               )
+                                               .await,
+                                       )
+                                   {
+        // The stop is the run's: the dispatch in flight is
+        // cancelled here, before the error surfaces, so the
+        // record is the same cancel on every transport (it
+        // previously depend on whether the provider had finished
+        // before the consumer dropped the run).
+                                       drop(stream);
+                                       yield Err(StreamingError::Prompt(
+                                           run.cancel_error(reason),
+                                       ));
+                                       return;
+                                   }
+                                   if self.observes_reasoning_delta
+                                       && let Some(StreamEvent::BlockDelta {
+                                           id,
+                                           delta: Delta::Reasoning { text: reasoning },
+                                       }) = item_slot.as_ref()
+                                   {
+                                       let Some(aggregated) = assembler.aggregated_reasoning(id) else {
+                                           yield Err(CompletionError::ResponseError(format!(
+                                               "reasoning delta `{id}` was ingested without a pending aggregate"
+                                           ))
+                                           .into());
+                                           return;
+                                       };
+                                       if let Some(reason) = observe_action(
+                                           runner
+                                               .config.hooks
+                                               .on_reasoning_delta(
+                                                   hook_ctx,
+                                                   ReasoningDelta {
+                                                       id,
+                                                       provider_id: assembler.reasoning_provider_id(id),
+                                                       delta: reasoning,
+                                                       aggregated,
+                                                   },
+                                               )
+                                               .await,
+                                       ) {
+        // The stop is the run's: the dispatch in flight is
+        // cancelled here, before the error surfaces, so the
+        // record is the same cancel on every transport (it
+        // previously depend on whether the provider had finished
+        // before the consumer dropped the run).
+                                           drop(stream);
+                                           yield Err(StreamingError::Prompt(
+                                               run.cancel_error(reason),
+                                           ));
+                                           return;
+                                       }
+                                   }
+                                   if let Some(item) = item_slot.take() {
+                                       yield Ok(MultiTurnStreamItem::stream_item(item));
+                                   }
+                               }
+                               StreamedTurnEvent::EmitToolCallDelta { block_id, delta } => {
+                                   if self.observes_tool_call_delta {
+                                       let (delta_name, delta_text) = match &delta {
+                                           Delta::ToolName { name } => (Some(name.as_str()), ""),
+                                           Delta::ToolArguments { arguments } => (None, arguments.as_str()),
+        // The assembler emits only tool deltas here.
+                                           Delta::Text { .. }
+                                           | Delta::TextMeta { .. }
+                                           | Delta::Reasoning { .. } => (None, ""),
+                                       };
+                                       if let Some(reason) = observe_action(
+                                           runner
+                                               .config.hooks
+                                               .on_tool_call_delta(
+                                                   hook_ctx,
+                                                   ToolCallDelta {
+                                                       block_id: &block_id,
+                                                       tool_name: delta_name,
+                                                       delta: delta_text,
+                                                   },
+                                               )
+                                               .await,
+                                       ) {
+        // The stop is the run's: the dispatch in flight is
+        // cancelled here, before the error surfaces, so the
+        // record is the same cancel on every transport (it
+        // previously depend on whether the provider had finished
+        // before the consumer dropped the run).
+                                           drop(stream);
+                                           yield Err(StreamingError::Prompt(
+                                               run.cancel_error(reason),
+                                           ));
+                                           return;
+                                       }
+                                   }
 
-                            yield Ok(MultiTurnStreamItem::StreamAssistantItem(
-                                StreamEvent::BlockDelta {
-                                    id: block_id,
-                                    delta,
-                                },
-                            ));
-                        }
-                        StreamedTurnEvent::Completed {
-                            usage,
-                            emit_final,
-                            finish_reason,
-                            raw: _,
-                        } => {
-                            match emit_completion_call!(usage, finish_reason) {
-                                Ok(Some(item)) => yield Ok(item),
-                                Ok(None) => {}
-                                Err(err) => {
-                                    yield Err(err);
-                                    return;
-                                }
-                            }
-                            provider_final_seen = true;
+                                   yield Ok(MultiTurnStreamItem::StreamAssistantItem(
+                                       StreamEvent::BlockDelta {
+                                           id: block_id,
+                                           delta,
+                                       },
+                                   ));
+                               }
+                               StreamedTurnEvent::Completed {
+                                   usage,
+                                   emit_final,
+                                   finish_reason,
+                                   raw: _,
+                               } => {
+                                   match emit_completion_call!(usage, finish_reason) {
+                                       Ok(Some(item)) => yield Ok(item),
+                                       Ok(None) => {}
+                                       Err(err) => {
+                                           yield Err(err);
+                                           return;
+                                       }
+                                   }
+                                   provider_final_seen = true;
 
-                            if emit_final
-                                && matches!(
-                                    item_slot.as_ref(),
-                                    Some(StreamEvent::Final(_))
-                                )
-                            {
-                                pending_final = item_slot.take();
-                            }
-                        }
-                        StreamedTurnEvent::InvalidToolCall(invalid) => {
-                            let partial = assembler.partial_turn(stream.message_id.clone());
-                            // Gated on `has_hooks`: building the diagnostic context
-                            // clones the chat history, so an empty stack skips it and
-                            // fails fast.
-                            let hook_action = if self.has_hooks {
-                                let context =
-                                    run.streamed_invalid_tool_call_context(&partial, &invalid);
-                                runner
-                                    .config.hooks
-                                    .on_invalid_tool_call(hook_ctx, &context)
-                                    .await
-                            } else {
-                                None
-                            };
-                            // No hook resolved it: the runner's policy, as the
-                            // unary surface applies it (`Ignore` drops the call
-                            // and goes on; `Fail` fails the run). This surface
-                            // used to fail regardless of the policy.
-                            let resolved = match hook_action {
-                                Some(action) => {
-                                    run.resolve_streamed_invalid_tool_call(&partial, &invalid, action)
-                                }
-                                None => match runner.unhandled_invalid_tool_call {
-                                    UnhandledInvalidToolCall::Fail => run
-                                        .resolve_streamed_invalid_tool_call(
-                                            &partial,
-                                            &invalid,
-                                            InvalidToolCallAction::fail(),
-                                        ),
-                                    UnhandledInvalidToolCall::Ignore => {
-                                        run.ignore_streamed_invalid_tool_call()
-                                    }
-                                },
-                            };
-                            let resolution = match resolved {
-                                Ok(resolution) => resolution,
-                                Err(err) => {
-                                    yield Err(err.into());
-                                    return;
-                                }
-                            };
+                                   if emit_final
+                                       && matches!(
+                                           item_slot.as_ref(),
+                                           Some(StreamEvent::Final(_))
+                                       )
+                                   {
+                                       pending_final = item_slot.take();
+                                   }
+                               }
+                               StreamedTurnEvent::InvalidToolCall(invalid) => {
+                                   let partial = assembler.partial_turn(stream.message_id.clone());
+        // Gated on `has_hooks`: building the diagnostic context
+        // clones the chat history, so an empty stack skips it and
+        // fails fast.
+                                   let hook_action = if self.has_hooks {
+                                       let context =
+                                           run.streamed_invalid_tool_call_context(&partial, &invalid);
+                                       runner
+                                           .config.hooks
+                                           .on_invalid_tool_call(hook_ctx, &context)
+                                           .await
+                                   } else {
+                                       None
+                                   };
+        // No hook resolved it: the runner's policy, as the
+        // unary surface applies it (`Ignore` drops the call
+        // and goes on; `Fail` fails the run). This surface
+        // previously fail regardless of the policy.
+                                   let resolved = match hook_action {
+                                       Some(action) => {
+                                           run.resolve_streamed_invalid_tool_call(&partial, &invalid, action)
+                                       }
+                                       None => match runner.unhandled_invalid_tool_call {
+                                           UnhandledInvalidToolCall::Fail => run
+                                               .resolve_streamed_invalid_tool_call(
+                                                   &partial,
+                                                   &invalid,
+                                                   InvalidToolCallAction::fail(),
+                                               ),
+                                           UnhandledInvalidToolCall::Ignore => {
+                                               run.ignore_streamed_invalid_tool_call()
+                                           }
+                                       },
+                                   };
+                                   let resolution = match resolved {
+                                       Ok(resolution) => resolution,
+                                       Err(err) => {
+                                           yield Err(err.into());
+                                           return;
+                                       }
+                                   };
 
-                            match resolution {
-                                StreamedResolution::Ignored => {
-                                    assembler.resolve_pending_invalid(&resolution);
-                                }
-                                StreamedResolution::Repaired { .. } => {
-                                    // Replayed deltas flow through the same event
-                                    // handling above; the turn is now recovered.
-                                    turn_recovered = true;
-                                    events.extend(assembler.resolve_pending_invalid(&resolution));
-                                }
-                                StreamedResolution::TurnAbandoned {
-                                    ref skipped_tool_result,
-                                } => {
-                                    let skipped_tool_result = skipped_tool_result.clone();
-                                    assembler.resolve_pending_invalid(&resolution);
+                                   match resolution {
+                                       StreamedResolution::Ignored => {
+                                           assembler.resolve_pending_invalid(&resolution);
+                                       }
+                                       StreamedResolution::Repaired { .. } => {
+        // Replayed deltas flow through the same event
+        // handling above; the turn is now recovered.
+                                           turn_recovered = true;
+                                           events.extend(assembler.resolve_pending_invalid(&resolution));
+                                       }
+                                       StreamedResolution::TurnAbandoned {
+                                           ref skipped_tool_result,
+                                       } => {
+                                           let skipped_tool_result = skipped_tool_result.clone();
+                                           assembler.resolve_pending_invalid(&resolution);
 
-                                    if let Some(err) = assembler.pending_delta_error() {
-                                        yield Err(err.into());
-                                        return;
-                                    }
-                                    let drained_usage = match drain_stream_usage(&mut stream).await {
-                                        Ok(usage) => usage,
-                                        Err(err) => {
-                                            yield Err(err);
-                                            return;
-                                        }
-                                    };
-                                    match emit_completion_call!(drained_usage) {
-                                        Ok(Some(item)) => yield Ok(item),
-                                        Ok(None) => {}
-                                        Err(err) => {
-                                            yield Err(err);
-                                            return;
-                                        }
-                                    }
-                                    if let Some(tool_result) = skipped_tool_result {
-                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
-                                            StreamedUserContent::ToolResult {
-                                                tool_result,
-                                                id: invalid.block_id.clone(),
-                                            },
-                                        ));
-                                    }
-                                    turn_abandoned = true;
-                                    break 'turn;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+                                           if let Some(err) = assembler.pending_delta_error() {
+                                               yield Err(err.into());
+                                               return;
+                                           }
+                                           let drained_usage = match drain_stream_usage(&mut stream).await {
+                                               Ok(usage) => usage,
+                                               Err(err) => {
+                                                   yield Err(err);
+                                                   return;
+                                               }
+                                           };
+                                           match emit_completion_call!(drained_usage) {
+                                               Ok(Some(item)) => yield Ok(item),
+                                               Ok(None) => {}
+                                               Err(err) => {
+                                                   yield Err(err);
+                                                   return;
+                                               }
+                                           }
+                                           if let Some(tool_result) = skipped_tool_result {
+                                               yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                                   StreamedUserContent::ToolResult {
+                                                       tool_result,
+                                                       id: invalid.block_id.clone(),
+                                                   },
+                                               ));
+                                           }
+                                           turn_abandoned = true;
+                                           break 'turn;
+                                       }
+                                   }
+                               }
+                           }
+                       }
+                   }
 
-            if turn_abandoned {
-                return;
-            }
+                   if turn_abandoned {
+                       return;
+                   }
 
-            // The provider stream ended without its terminal record. Per the
-            // emission contract (`rig_core::streaming`), that absence means
-            // truncation and must never be treated as a successful zero-usage
-            // completion: reject the turn before any usage fallback, assembly,
-            // history mutation, or tool dispatch can occur.
-            // The terminal record is this attempt's: its identity, finish
-            // reason and payload are read from it below, never from a
-            // previous attempt's stream.
-            let Some(terminal) = stream.response.clone() else {
-                yield Err(truncated_stream_error().into());
-                return;
-            };
+        // The provider stream ended without its terminal record. Per the
+        // emission contract (`rig_core::streaming`), that absence means
+        // truncation and must never be treated as a successful zero-usage
+        // completion: reject the turn before any usage fallback, assembly,
+        // history mutation, or tool dispatch can occur.
+        // The terminal record is this attempt's: its identity, finish
+        // reason and payload are read from it below, never from a
+        // previous attempt's stream.
+                   let Some(terminal) = stream.response.clone() else {
+                       yield Err(truncated_stream_error().into());
+                       return;
+                   };
 
-            if let Some(err) = assembler.pending_delta_error() {
-                yield Err(err.into());
-                return;
-            }
+                   if let Some(err) = assembler.pending_delta_error() {
+                       yield Err(err.into());
+                       return;
+                   }
 
-            // Final fallback: no usage was ever learned, so there is nothing to
-            // record onto the span (every counter stays `None`)
-            // and this is the last read of the flag — kept inline (not
-            // `emit_completion_call!`) so it doesn't emit a dead
-            // `completion_call_emitted = true` write, which `unused_assignments`
-            // rejects. Identity and payload come from the terminal record the
-            // macro reads too, so `completion_calls` and hook observations
-            // agree on this path.
-            if !completion_call_emitted {
-                match run.record_streamed_completion_call(
-                    crate::completion::Usage::default(),
-                    stream.identity(),
-                    terminal.finish_reason.clone(),
-                    terminal.raw.clone(),
-                ) {
-                    Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
-                    Err(err) => {
-                        yield Err(err.into());
-                        return;
-                    }
-                }
-            }
+        // Final fallback: no usage was ever learned, so there is nothing to
+        // record onto the span (every counter stays `None`)
+        // and this is the last read of the flag. kept inline (not
+        // `emit_completion_call!`) so it doesn't emit a dead
+        // `completion_call_emitted = true` write, which `unused_assignments`
+        // rejects. Identity and payload come from the terminal record the
+        // macro reads too, so `completion_calls` and hook observations
+        // agree on this path.
+                   if !completion_call_emitted {
+                       match run.record_streamed_completion_call(
+                           crate::completion::Usage::default(),
+                           stream.identity(),
+                           terminal.finish_reason.clone(),
+                           terminal.raw.clone(),
+                       ) {
+                           Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
+                           Err(err) => {
+                               yield Err(err.into());
+                               return;
+                           }
+                       }
+                   }
 
-            let mut final_turn_content = stream.snapshot();
-            let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
-            // This attempt's identity, read from *this* stream's terminal
-            // record (each attempt — including a retry — opens its own
-            // stream, so a previous attempt's ids can never leak in). The
-            // message id prefers the assembled turn's, which folds in an
-            // explicit `MessageId` event; the terminal's ids fill the rest.
-            let identity = rig_core::completion::ResponseIdentity {
-                message_id: streamed_turn.message_id.clone(),
-                ..stream.identity()
-            };
-            // This attempt's raw payload, from the same terminal record as the
-            // identity above — so a retry never observes a previous attempt's
-            // response.
-            let attempt_raw = &terminal.raw;
-            self.last_message_id.clone_from(&streamed_turn.message_id);
-            // The canonical assistant content: `finish` normalizes
-            // reasoning/text/tool ordering, so this can differ from the raw
-            // provider aggregate (`stream.snapshot()`). The hooks and run
-            // history see this.
-            let canonical_choice = streamed_turn.choice.clone();
-            // `streamed_turn` is moved into run state on the next line and the
-            // hooks fire after that. `FinishReason::Other` carries a `String`,
-            // so this is a clone rather than a copy.
-            let attempt_finish_reason = streamed_turn.finish_reason.clone();
-            if let Err(err) = run.streamed_turn(streamed_turn) {
-                yield Err(err.into());
-                return;
-            }
-            if !turn_recovered {
-                let settlement = settle_model_turn(
-                    &runner.config.hooks,
-                    hook_ctx,
-                    run,
-                    AssembledTurn {
-                        dispatch_id,
-                        dispatch_kind: &dispatched_kind,
-                        provider: stream.provider(),
-                        content: &canonical_choice,
-                        usage: last_usage,
-                        identity: &identity,
-                        finish_reason: attempt_finish_reason.as_ref(),
-                        max_tokens: attempt_max_tokens,
-                        raw: attempt_raw,
-                    },
-                )
-                .await;
-                match settlement {
-                    Ok(ModelTurnDecision::Advance { replaced }) => {
-                        // The run keeps the replacement, and so does the final
-                        // item the consumer receives: the deltas it saw were
-                        // the provider's, the answer is the hook's.
-                        if let Some(choice) = replaced {
-                            final_turn_content = choice;
-                        }
-                    }
-                    Ok(ModelTurnDecision::Retried) => {
-                        yield Ok(MultiTurnStreamItem::ModelTurnRetried {
-                            turn: hook_ctx.turn(),
-                        });
-                        return;
-                    }
-                    Ok(ModelTurnDecision::Terminate(reason)) => {
-                        // A stop observes an already completed provider turn:
-                        // its buffered final and content telemetry stay
-                        // visible before the cancellation. Retry alone
-                        // suppresses the provisional final.
-                        self.record_turn_telemetry(
-                            agent_span,
-                            &chat_span,
-                            &canonical_choice,
-                            runner.config.record_telemetry_content,
-                        );
-                        if let Some(item) = pending_final.take() {
-                            yield Ok(MultiTurnStreamItem::stream_item(item));
-                        }
-                        yield Err(StreamingError::Prompt(run.cancel_error(reason)));
-                        return;
-                    }
-                    Err(err) => {
-                        yield Err(StreamingError::Prompt(err));
-                        return;
-                    }
-                }
-            }
+                   let mut final_turn_content = stream.snapshot();
+                   let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+        // This attempt's identity, read from *this* stream's terminal
+        // record (each attempt. including a retry. opens its own
+        // stream, so a previous attempt's ids can never leak in). The
+        // message id prefers the assembled turn's, which folds in an
+        // explicit `MessageId` event; the terminal's ids fill the rest.
+                   let identity = rig_core::completion::ResponseIdentity {
+                       message_id: streamed_turn.message_id.clone(),
+                       ..stream.identity()
+                   };
+        // This attempt's raw payload, from the same terminal record as the
+        // identity above. so a retry never observes a previous attempt's
+        // response.
+                   let attempt_raw = &terminal.raw;
+                   self.last_message_id.clone_from(&streamed_turn.message_id);
+        // The canonical assistant content: `finish` normalizes
+        // reasoning/text/tool ordering, so this can differ from the raw
+        // provider aggregate (`stream.snapshot()`). The hooks and run
+        // history see this.
+                   let canonical_choice = streamed_turn.choice.clone();
+        // `streamed_turn` is moved into run state on the next line and the
+        // hooks fire after that. `FinishReason::Other` carries a `String`,
+        // so this is a clone rather than a copy.
+                   let attempt_finish_reason = streamed_turn.finish_reason.clone();
+                   if let Err(err) = run.streamed_turn(streamed_turn) {
+                       yield Err(err.into());
+                       return;
+                   }
+                   if !turn_recovered {
+                       let settlement = settle_model_turn(
+                           &runner.config.hooks,
+                           hook_ctx,
+                           run,
+                           AssembledTurn {
+                               dispatch_id,
+                               dispatch_kind: &dispatched_kind,
+                               provider: stream.provider(),
+                               content: &canonical_choice,
+                               usage: last_usage,
+                               identity: &identity,
+                               finish_reason: attempt_finish_reason.as_ref(),
+                               max_tokens: attempt_max_tokens,
+                               raw: attempt_raw,
+                           },
+                       )
+                       .await;
+                       match settlement {
+                           Ok(ModelTurnDecision::Advance { replaced }) => {
+        // The run keeps the replacement, and so does the final
+        // item the consumer receives: the deltas it saw were
+        // the provider's, the answer is the hook's.
+                               if let Some(choice) = replaced {
+                                   final_turn_content = choice;
+                               }
+                           }
+                           Ok(ModelTurnDecision::Retried) => {
+                               yield Ok(MultiTurnStreamItem::ModelTurnRetried {
+                                   turn: hook_ctx.turn(),
+                               });
+                               return;
+                           }
+                           Ok(ModelTurnDecision::Terminate(reason)) => {
+        // A stop observes an already completed provider turn:
+        // its buffered final and content telemetry stay
+        // visible before the cancellation. Retry alone
+        // suppresses the provisional final.
+                               self.record_turn_telemetry(
+                                   agent_span,
+                                   &chat_span,
+                                   &canonical_choice,
+                                   runner.config.record_telemetry_content,
+                               );
+                               if let Some(item) = pending_final.take() {
+                                   yield Ok(MultiTurnStreamItem::stream_item(item));
+                               }
+                               yield Err(StreamingError::Prompt(run.cancel_error(reason)));
+                               return;
+                           }
+                           Err(err) => {
+                               yield Err(StreamingError::Prompt(err));
+                               return;
+                           }
+                       }
+                   }
 
-            // Only hook-accepted canonical output belongs in content telemetry.
-            self.record_turn_telemetry(
-                agent_span,
-                &chat_span,
-                &canonical_choice,
-                runner.config.record_telemetry_content,
-            );
+        // Only hook-accepted canonical output belongs in content telemetry.
+                   self.record_turn_telemetry(
+                       agent_span,
+                       &chat_span,
+                       &canonical_choice,
+                       runner.config.record_telemetry_content,
+                   );
 
-            if let Some(item) = pending_final {
-                yield Ok(MultiTurnStreamItem::stream_item(item));
-            }
-            self.last_final_choice = final_turn_content;
-        })
+                   if let Some(item) = pending_final {
+                       yield Ok(MultiTurnStreamItem::stream_item(item));
+                   }
+                   self.last_final_choice = final_turn_content;
+               })
     }
 
     fn run_tool_calls<'a>(
@@ -1384,7 +1394,7 @@ impl TurnSource for StreamingTurnSource {
     }
 
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
-        // Tool output mode (#1928): when the finishing turn made the output-tool
+        // Tool output mode: when the finishing turn made the output-tool
         // call, surface the run's structured output as the final content.
         let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
             .unwrap_or_else(|| {
@@ -1424,7 +1434,7 @@ pub(crate) fn observe_action(action: ObservationAction) -> Option<String> {
 /// Resolved outcome of the shared, medium-neutral model-turn hook.
 pub(crate) enum ModelTurnDecision {
     /// Accept the turn and advance normally. Carries the content a hook
-    /// replaced the turn with, when one did — the streaming surface's final
+    /// replaced the turn with, when one did. the streaming surface's final
     /// item follows it.
     Advance {
         replaced: Option<Vec<AssistantContent>>,
@@ -1437,7 +1447,7 @@ pub(crate) enum ModelTurnDecision {
 
 /// One attempt's assembled response, as both drivers hand it to
 /// [`settle_model_turn`]: the unary response under `run()`, the finished
-/// stream under `stream()`. Every field is this attempt's own — a retry
+/// stream under `stream()`. Every field is this attempt's own. a retry
 /// re-enters with a fresh response, so a stale attempt's ids or payload can
 /// never be attributed here.
 pub(crate) struct AssembledTurn<'a> {
@@ -1462,7 +1472,7 @@ pub(crate) struct AssembledTurn<'a> {
 /// `Cancelled` replacement terminates), then
 /// [`AgentHook::on_model_turn_finished`] and apply its action to the sans-IO
 /// run. The outcome hook fires here rather than at the dispatch so that both
-/// media fire it in one slot — after the run validated the answer's tool
+/// media fire it in one slot. after the run validated the answer's tool
 /// calls (a recovered turn fires neither hook, on either medium) and while
 /// the turn can still be replaced. Both drivers call this once per accepted attempt, so retry history,
 /// tool-turn rejection, and state transitions cannot diverge by medium. The
@@ -1586,7 +1596,7 @@ pub(crate) async fn append_run_messages(
     memory_handle: Option<&(MemoryHandle, rig_core::id::ConversationId)>,
     messages: &[Message],
 ) -> Option<MemoryAppend> {
-    // Clone into an owned vec only when there is a backend to append to — the
+    // Clone into an owned vec only when there is a backend to append to. the
     // common no-memory path pays nothing.
     let (memory, id) = memory_handle?;
     let appended = dispatch_effect(
@@ -1685,14 +1695,14 @@ pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
 
 /// Whether (and how) a tool call executed, for [`run_single_tool`].
 pub(crate) enum ToolExecution {
-    /// The tool's body ran. Carries the **effective** tool call — the model's
+    /// The tool's body ran. Carries the **effective** tool call. the model's
     /// call with any [`DispatchAction::Patch`] hook
-    /// rewrite applied — so the driver can surface it in the
+    /// rewrite applied. so the driver can surface it in the
     /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted)
     /// event (what actually ran, not the model's original arguments).
     Executed(ToolCall),
     /// A dispatch hook denied the call ([`DispatchAction::skip`]): the
-    /// body did not run, so no execution-commit is surfaced — but the skip result
+    /// body did not run, so no execution-commit is surfaced. but the skip result
     /// is still delivered to the model (and surfaced as a `ToolResult`).
     Skipped,
 }
@@ -1825,7 +1835,7 @@ pub(crate) struct UnaryTurnSource {
     /// task: `run_tool_calls` passes `chain_span` as a closure into
     /// `drive_tool_calls`, whose returned `DriveStream` is `Send`. That makes the
     /// closure capture `&self`, so `&UnaryTurnSource` must be `Send`, i.e.
-    /// `UnaryTurnSource: Sync` — which `AtomicU64` provides and `Cell` does not.
+    /// `UnaryTurnSource: Sync`. which `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
     record_telemetry_content: bool,
 }
@@ -1876,130 +1886,130 @@ impl TurnSource for UnaryTurnSource {
         _current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            // Content telemetry for the accepted provider turn. Called at each
-            // terminal site (stop, terminate, accept) rather than hoisted: a
-            // retried turn must not record output for the discarded attempt.
-            let record_accepted_turn = |run: &AgentRun| {
-                if runner.config.record_telemetry_content
-                    && let Some(choice) = run.accepted_turn_choice()
-                {
-                    rig_core::telemetry::record_model_output(&chat_span, &choice, true);
-                }
-            };
+        // Content telemetry for the accepted provider turn. Called at each
+        // terminal site (stop, terminate, accept) rather than hoisted: a
+        // retried turn must not record output for the discarded attempt.
+                   let record_accepted_turn = |run: &AgentRun| {
+                       if runner.config.record_telemetry_content
+                           && let Some(choice) = run.accepted_turn_choice()
+                       {
+                           rig_core::telemetry::record_model_output(&chat_span, &choice, true);
+                       }
+                   };
 
-            // Bound before the builder is consumed: this is the cap this exact
-            // attempt was prepared with, patches included, and it is what the
-            // per-turn hook reports. Reading it later off the agent config would
-            // silently drop a completion-call hook's patch.
-            let attempt_max_tokens = prepared.max_tokens;
+        // Bound before the builder is consumed: this is the cap this exact
+        // attempt was prepared with, patches included, and it is what the
+        // per-turn hook reports. Reading it later off the agent config would
+        // silently drop a completion-call hook's patch.
+                   let attempt_max_tokens = prepared.max_tokens;
 
-            let request = prepared.request;
-            let model = prepared.model;
-            let (dispatch_id, dispatched_kind, resp) = match dispatch_completion(runner, hook_ctx, &model, request, false)
-                .instrument(chat_span.clone())
-                .await
-            {
-                Ok(CompletionDispatch::Response { id, kind, response }) => (id, kind, response),
-                Ok(CompletionDispatch::Stream { .. }) => {
-                    yield Err(StreamingError::Report(
-                        ErrorReport::new(
-                            ErrorKind::Internal,
-                            "a unary completion dispatch answered with a stream",
-                        ),
-                    ));
-                    return;
-                }
-                Err(CompletionDispatchError::Cancelled(reason)) => {
-                    yield Err(StreamingError::Prompt(run.cancel_error(reason)));
-                    return;
-                }
-                Err(CompletionDispatchError::Failed(err)) => {
-                    yield Err(StreamingError::from(err));
-                    return;
-                }
-            };
+                   let request = prepared.request;
+                   let model = prepared.model;
+                   let (dispatch_id, dispatched_kind, resp) = match dispatch_completion(runner, hook_ctx, &model, request, false)
+                       .instrument(chat_span.clone())
+                       .await
+                   {
+                       Ok(CompletionDispatch::Response { id, kind, response }) => (id, kind, response),
+                       Ok(CompletionDispatch::Stream { .. }) => {
+                           yield Err(StreamingError::Report(
+                               ErrorReport::new(
+                                   ErrorKind::Internal,
+                                   "a unary completion dispatch answered with a stream",
+                               ),
+                           ));
+                           return;
+                       }
+                       Err(CompletionDispatchError::Cancelled(reason)) => {
+                           yield Err(StreamingError::Prompt(run.cancel_error(reason)));
+                           return;
+                       }
+                       Err(CompletionDispatchError::Failed(err)) => {
+                           yield Err(StreamingError::from(err));
+                           return;
+                       }
+                   };
 
-            // Normalized once, then shared by run state and the per-turn hook, so
-            // the two cannot report different reasons for one attempt.
-            let attempt_finish_reason = resp.finish_reason();
+        // Normalized once, then shared by run state and the per-turn hook, so
+        // the two cannot report different reasons for one attempt.
+                   let attempt_finish_reason = resp.finish_reason();
 
-            let mut outcome = match run.model_response(ModelTurn::from_response_parts(
-                &resp,
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
-            )) {
-                Ok(outcome) => outcome,
-                Err(err) => {
-                    yield Err(err.into());
-                    return;
-                }
-            };
+                   let mut outcome = match run.model_response(ModelTurn::from_response_parts(
+                       &resp,
+                       prepared.executable_tool_names,
+                       prepared.allowed_tool_names,
+                   )) {
+                       Ok(outcome) => outcome,
+                       Err(err) => {
+                           yield Err(err.into());
+                           return;
+                       }
+                   };
 
-            loop {
-                match outcome {
-                    ModelTurnOutcome::NeedsResolution(context) => {
-                        let action = runner
-                            .config.hooks
-                            .on_invalid_tool_call(hook_ctx, &context)
-                            .await;
-                        let resolution = match action {
-                            Some(action) => run.resolve_invalid_tool_call(action),
-                            None => run.resolve_unhandled_invalid_tool_call(),
-                        };
-                        outcome = match resolution {
-                            Ok(outcome) => outcome,
-                            Err(err) => {
-                                yield Err(err.into());
-                                return;
-                            }
-                        };
-                    }
-                    ModelTurnOutcome::TurnRetried => break,
-                    ModelTurnOutcome::Continue {
-                        response_hook_suppressed,
-                    } => {
-                        if !response_hook_suppressed {
-                            let identity = resp.identity();
-                            let settlement = settle_model_turn(
-                                &runner.config.hooks,
-                                hook_ctx,
-                                run,
-                                AssembledTurn {
-                                    dispatch_id,
-                                    dispatch_kind: &dispatched_kind,
-                                    provider: &resp.provider,
-                                    content: &resp.choice,
-                                    usage: resp.usage,
-                                    identity: &identity,
-                                    finish_reason: attempt_finish_reason.as_ref(),
-                                    max_tokens: attempt_max_tokens,
-                                    raw: &resp.raw,
-                                },
-                            )
-                            .await;
-                            match settlement {
-                                Ok(ModelTurnDecision::Advance { .. }) => {}
-                                Ok(ModelTurnDecision::Retried) => break,
-                                Ok(ModelTurnDecision::Terminate(reason)) => {
-                                    record_accepted_turn(run);
-                                    yield Err(StreamingError::Prompt(
-                                        run.cancel_error(reason),
-                                    ));
-                                    return;
-                                }
-                                Err(err) => {
-                                    yield Err(StreamingError::Prompt(err));
-                                    return;
-                                }
-                            }
-                        }
+                   loop {
+                       match outcome {
+                           ModelTurnOutcome::NeedsResolution(context) => {
+                               let action = runner
+                                   .config.hooks
+                                   .on_invalid_tool_call(hook_ctx, &context)
+                                   .await;
+                               let resolution = match action {
+                                   Some(action) => run.resolve_invalid_tool_call(action),
+                                   None => run.resolve_unhandled_invalid_tool_call(),
+                               };
+                               outcome = match resolution {
+                                   Ok(outcome) => outcome,
+                                   Err(err) => {
+                                       yield Err(err.into());
+                                       return;
+                                   }
+                               };
+                           }
+                           ModelTurnOutcome::TurnRetried => break,
+                           ModelTurnOutcome::Continue {
+                               response_hook_suppressed,
+                           } => {
+                               if !response_hook_suppressed {
+                                   let identity = resp.identity();
+                                   let settlement = settle_model_turn(
+                                       &runner.config.hooks,
+                                       hook_ctx,
+                                       run,
+                                       AssembledTurn {
+                                           dispatch_id,
+                                           dispatch_kind: &dispatched_kind,
+                                           provider: &resp.provider,
+                                           content: &resp.choice,
+                                           usage: resp.usage,
+                                           identity: &identity,
+                                           finish_reason: attempt_finish_reason.as_ref(),
+                                           max_tokens: attempt_max_tokens,
+                                           raw: &resp.raw,
+                                       },
+                                   )
+                                   .await;
+                                   match settlement {
+                                       Ok(ModelTurnDecision::Advance { .. }) => {}
+                                       Ok(ModelTurnDecision::Retried) => break,
+                                       Ok(ModelTurnDecision::Terminate(reason)) => {
+                                           record_accepted_turn(run);
+                                           yield Err(StreamingError::Prompt(
+                                               run.cancel_error(reason),
+                                           ));
+                                           return;
+                                       }
+                                       Err(err) => {
+                                           yield Err(StreamingError::Prompt(err));
+                                           return;
+                                       }
+                                   }
+                               }
 
-                        record_accepted_turn(run);
-                        break;
-                    }
-                }
-            }
-        })
+                               record_accepted_turn(run);
+                               break;
+                           }
+                       }
+                   }
+               })
     }
 
     fn run_tool_calls<'a>(
@@ -2031,7 +2041,7 @@ impl TurnSource for UnaryTurnSource {
         created_agent_span: bool,
     ) {
         // Record run-level completion + usage onto the agent span, but only when
-        // we created it — never pollute a caller-supplied outer span. The usage
+        // we created it. never pollute a caller-supplied outer span. The usage
         // fields go through the same recorder the streaming surface uses; the
         // blocking surface additionally records the final completion text.
         if created_agent_span {
@@ -2094,7 +2104,7 @@ fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
 /// Dispatch a completion through the agent's bus at the dispatch boundary:
 /// `on_dispatch` before (patch or deny), then the bus. The outcome hook is
 /// not fired here: on either medium it fires in [`settle_model_turn`], once
-/// the run has validated the answer's tool calls and parked the turn — the
+/// the run has validated the answer's tool calls and parked the turn. the
 /// slot where a hook can still replace what history keeps, and the same
 /// slot on both media.
 pub(crate) async fn dispatch_completion(
@@ -2192,7 +2202,7 @@ pub(crate) struct ToolCallDispatch {
 /// the model sees.
 /// Why a tool dispatch produced no result for the model: a hook cancelled
 /// the run, or the bus could not serve the call (closed, or the tool's
-/// handler gone) — a failure of the run, not of the tool.
+/// handler gone). a failure of the run, not of the tool.
 pub(crate) enum ToolDispatchAbort {
     Cancelled(String),
     Failed(ErrorReport),
@@ -2339,7 +2349,7 @@ pub(crate) async fn dispatch_tool_call(
         }
         // The bus could not serve the call, or a replayer refused it as a
         // divergence: the run fails with the report rather than telling the
-        // model its tool failed — a replay that continues on an answer the
+        // model its tool failed. a replay that continues on an answer the
         // record never gave is a passed test with a different trace.
         Err(report)
             if matches!(

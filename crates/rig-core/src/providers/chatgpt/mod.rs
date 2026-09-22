@@ -19,8 +19,8 @@
 //! # }
 //! ```
 //!
-//! A subscription login rather than a pre-exchanged token runs [`auth`] first —
-//! the exchange is not a wire — and hands the resolved token to
+//! A subscription login rather than a pre-exchanged token runs [`auth`] first -
+//! the exchange is not a wire. and hands the resolved token to
 //! [`OpenAI::with_key`](crate::providers::openai::OpenAI::with_key).
 
 pub mod auth;

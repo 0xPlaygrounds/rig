@@ -6,9 +6,9 @@
 //! use rig_cassette::{agent::replay::register_all, effect_log::EffectLog};
 //!
 //! fn register(log: &EffectLog, driver: &mut rig_agent::bus::BusDriver)
-//!     -> Result<(), rig_core::error::ErrorReport>
+//! -> Result<(), rig_core::error::ErrorReport>
 //! {
-//!     register_all(log, driver)
+//! register_all(log, driver)
 //! }
 //! ```
 

@@ -11,7 +11,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let project_id: String = std::env::var("GOOGLE_CLOUD_PROJECT")
         .context("GOOGLE_CLOUD_PROJECT env var must be set to run this example")?;
 
-    // implicit ADC auth here, but builder can include a .with_credentials method
+    // implicit ADC auth here, but builder can include a.with_credentials method
     let client = vertexai::client::PredictionService::builder()
         .build()
         .await?;

@@ -12,7 +12,7 @@ use super::{Family, HandlerKey};
 /// mints for the registrations it makes (an agent's model, memory and
 /// retrieval keys, a registry's tool generations) and what a typed
 /// registration on the bus returns. A dispatcher binds one with an existence
-/// check only — the family was proven when the key was minted.
+/// check only. the family was proven when the key was minted.
 ///
 /// On the wire a `Key<F>` is the bare string (`serde(transparent)`), so a
 /// log, a scene and a cassette hold exactly what they held before; an

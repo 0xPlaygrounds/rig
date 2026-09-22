@@ -17,10 +17,12 @@ use serde::{Deserialize, Serialize};
 ///
 /// - `extra_context` documents are appended in order.
 /// - JSON-object `additional_params` values are shallow-merged, with later
-///   top-level keys winning; a later non-object value replaces an earlier value.
+///
+/// top-level keys winning; a later non-object value replaces an earlier value.
 /// - `active_tools` allow-lists are intersected.
 /// - Scalar fields and `history` use last-writer-wins semantics, with a warning
-///   when multiple hooks set the same field.
+///
+/// when multiple hooks set the same field.
 ///
 /// The merged patch does not mutate the agent's configured baseline and is not
 /// carried into subsequent turns.
@@ -34,7 +36,7 @@ pub struct RequestPatch {
     pub max_tokens: Option<u64>,
     /// Tool-choice policy to use for this turn.
     pub tool_choice: Option<ToolChoice>,
-    /// Allow-list used to narrow the tools advertised for this turn.
+    /// Allow-list previously narrow the tools advertised for this turn.
     pub active_tools: Option<Vec<String>>,
     /// Provider-specific request parameters to apply for this turn.
     pub additional_params: Option<serde_json::Value>,
@@ -87,7 +89,7 @@ impl RequestPatch {
         self
     }
 
-    /// Sets the allow-list used to narrow the tools advertised for this turn.
+    /// Sets the allow-list previously narrow the tools advertised for this turn.
     pub fn active_tools<I, S>(mut self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,

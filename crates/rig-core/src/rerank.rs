@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 crate::provider_response::provider_error_enum!(
     RerankError, "reranking" {
-        /// URL construction or parsing failed while preparing a provider request.
+ /// URL construction or parsing failed while preparing a provider request.
         #[error("UrlError: {0}")]
         UrlError(#[from] url::ParseError),
     }
@@ -43,13 +43,13 @@ pub struct RerankResult {
     pub index: usize,
     /// The document text, if requested via `return_documents`.
     pub document: Option<String>,
-    /// How relevant this document is to the query — **higher is more
+    /// How relevant this document is to the query. **higher is more
     /// relevant, and that is the only guarantee.**
     ///
     /// Deliberately not "between 0 and 1". The range is the provider's
     /// business and the two implementations in tree disagree: Voyage AI
     /// returns a normalized 0..1 score, while llama.cpp returns the
-    /// cross-encoder's raw logit — measured against `llama-server`
+    /// cross-encoder's raw logit. measured against `llama-server`
     /// b10499-6d05498 with `bge-reranker-v2-m3`, ranking three documents
     /// against "What is a panda?" gives `0.8225`, `-4.7583` and `-8.3761`.
     /// Negative values are normal there, and code that treated this as a
@@ -64,7 +64,7 @@ pub struct RerankResult {
 /// every provider can report, attributed to the provider that produced it.
 ///
 /// Concrete and provider-neutral, so it crosses the bus as
-/// [`Outcome::Reranked`](crate::effect::Outcome::Reranked) unchanged — it is
+/// [`Outcome::Reranked`](crate::effect::Outcome::Reranked) unchanged. it is
 /// the answer of the rerank family. The provider's own payload stays reachable
 /// through a model's inherent `raw_rerank` method, which performs the same
 /// request and returns the provider's native type, and through [`Self::raw`].
@@ -73,7 +73,7 @@ pub struct RerankResponse {
     /// Reranked results sorted by relevance (highest first).
     pub results: Vec<RerankResult>,
     /// Provider-reported model identifier, when the wire response named one.
-    /// `None` when the provider omitted it — a server that omits `model`
+    /// `None` when the provider omitted it. a server that omits `model`
     /// still produced a ranking.
     #[serde(default)]
     pub model: Option<String>,
@@ -88,7 +88,7 @@ pub struct RerankResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
+    /// response headers. the id provider support asks for. `None` means the
     /// provider reported none; that is a documented outcome, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,

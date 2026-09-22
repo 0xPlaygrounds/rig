@@ -14,89 +14,89 @@ use serde::{Deserialize, Serialize};
 
 crate::provider_response::provider_error_enum!(
     EmbeddingError, "embedding" {
-    /// URL construction or parsing failed while preparing a provider request.
+ /// URL construction or parsing failed while preparing a provider request.
     #[error("UrlError: {0}")]
     UrlError(#[from] url::ParseError),
 
     #[cfg(not(target_family = "wasm"))]
-    /// Error processing the document for embedding
+ /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
     DocumentError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     #[cfg(target_family = "wasm")]
-    /// Error processing the document for embedding
+ /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
     DocumentError(#[source] Box<dyn std::error::Error + 'static>),
     } {
-    /// The provider does not support an embedding request parameter configured on the model.
+ /// The provider does not support an embedding request parameter configured on the model.
     #[error("{provider} embeddings do not support the `{parameter}` parameter")]
     UnsupportedParameter {
-        /// Provider whose embedding API rejected the parameter.
+ /// Provider whose embedding API rejected the parameter.
         provider: &'static str,
-        /// Unsupported request parameter.
+ /// Unsupported request parameter.
         parameter: &'static str,
     },
 
-    /// A provider request parameter was configured with a value outside the
-    /// provider's supported range.
+ /// A provider request parameter was configured with a value outside the
+ /// provider's supported range.
     #[error("{provider} embeddings require `{parameter}` {requirement}")]
     InvalidParameterValue {
-        /// Provider whose embedding API constrains the parameter.
+ /// Provider whose embedding API constrains the parameter.
         provider: &'static str,
-        /// Request parameter with the invalid value.
+ /// Request parameter with the invalid value.
         parameter: &'static str,
-        /// Concise description of the accepted values.
+ /// Concise description of the accepted values.
         requirement: &'static str,
     },
 
-    /// Rig cannot decode the requested provider response encoding.
+ /// Rig cannot decode the requested provider response encoding.
     #[error("Rig cannot decode {provider} embedding responses encoded as `{encoding_format}`")]
     UnsupportedResponseEncoding {
-        /// Provider whose response encoding was requested.
+ /// Provider whose response encoding was requested.
         provider: &'static str,
-        /// Response encoding that Rig cannot decode.
+ /// Response encoding that Rig cannot decode.
         encoding_format: &'static str,
     },
 
-    /// A provider that guarantees embedding usage omitted it from the response.
+ /// A provider that guarantees embedding usage omitted it from the response.
     #[error("{provider} embedding response omitted required usage")]
     MissingUsage {
-        /// Provider whose response omitted usage.
+ /// Provider whose response omitted usage.
         provider: &'static str,
     },
 
-    /// The provider returned vectors of a width other than the one the caller
-    /// declared through
-    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
-    /// argument.
-    ///
-    /// Raised only when the width was set *explicitly*: a model handle built
-    /// without one reports whatever the provider's own table says and has
-    /// nothing to disagree with.
-    ///
-    /// The failure this prevents is silent and expensive. `ndims()` is what a
-    /// vector store sizes its index from, so a model reporting one width while
-    /// returning another builds an index that cannot hold its own vectors —
-    /// and nothing on the request path can catch it, because the providers
-    /// where it happens are exactly the ones that *ignore* the `dimensions`
-    /// field instead of rejecting it. Measured on `llama-server`
-    /// b10499-6d05498, whose embeddings handler reads no such field at all: a
-    /// request for 128 dimensions answers 200 with 1024-wide vectors.
+ /// The provider returned vectors of a width other than the one the caller
+ /// declared through
+ /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
+ /// argument.
+ ///
+ /// Raised only when the width was set *explicitly*: a model handle built
+ /// without one reports whatever the provider's own table says and has
+ /// nothing to disagree with.
+ ///
+ /// The failure this prevents is silent and expensive. `ndims()` is what a
+ /// vector store sizes its index from, so a model reporting one width while
+ /// returning another builds an index that cannot hold its own vectors -
+ /// and nothing on the request path can catch it, because the providers
+ /// where it happens are exactly the ones that *ignore* the `dimensions`
+ /// field instead of rejecting it. Measured on `llama-server`
+ /// b10499-6d05498, whose embeddings handler reads no such field at all: a
+ /// request for 128 dimensions answers 200 with 1024-wide vectors.
     #[error(
         "{provider} embedding response returned {returned}-dimension vectors, but the model was \
          created with {requested} dimensions; this provider does not resize embeddings"
     )]
     MismatchedDimensions {
-        /// Provider whose response disagreed with the declared width.
-        ///
-        /// Owned, unlike the `&'static str` the request-shaped variants
-        /// above carry: this one is raised by the shared driver from a
-        /// [`Wire`](crate::wire::Wire)'s name, and the wire model erases the
-        /// provider's `'static` descriptor to `&str` at that seam.
+ /// Provider whose response disagreed with the declared width.
+ ///
+ /// Owned, unlike the `&'static str` the request-shaped variants
+ /// above carry: this one is raised by the shared driver from a
+ /// [`Wire`](crate::wire::Wire)'s name, and the wire model erases the
+ /// provider's `'static` descriptor to `&str` at that seam.
         provider: String,
-        /// Width the caller declared.
+ /// Width the caller declared.
         requested: usize,
-        /// Width the provider actually returned.
+ /// Width the provider actually returned.
         returned: usize,
     },
     }
@@ -200,7 +200,7 @@ pub struct EmbeddingResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
+    /// response headers. the id provider support asks for. `None` means the
     /// provider reported none; that is a documented outcome, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
@@ -245,7 +245,7 @@ crate::provider_response::modality_response_metadata_setters!(EmbeddingResponse)
 /// Convert a provider's own embedding payload into the normalized [`EmbeddingResponse`].
 ///
 /// The provider descriptor name is an *input*, never something the conversion
-/// knows — several providers share one wire shape, and a hardcoded name would
+/// knows. several providers share one wire shape, and a hardcoded name would
 /// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
 /// so that out-of-tree provider extensions can implement it on their own
 /// response type without tripping the orphan rule.
@@ -284,7 +284,7 @@ pub struct ImageEmbeddingResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
+    /// response headers. the id provider support asks for. `None` means the
     /// provider reported none; that is a documented outcome, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
@@ -418,7 +418,7 @@ pub fn image_media_type(bytes: &[u8]) -> Option<&'static str> {
 /// The identifier an image embedding's [`Embedding::document`] carries.
 ///
 /// An image has no text to name it and its bytes must never travel back in
-/// a response, so the identity is its media type and a digest — enough to
+/// a response, so the identity is its media type and a digest. enough to
 /// pair a vector with its input and to tell two inputs apart, and not
 /// reversible. An unsniffable format is named as such rather than guessed;
 /// a wire rejects it before the request is sent.

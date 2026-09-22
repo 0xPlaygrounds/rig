@@ -5,27 +5,28 @@
 //! - classic runtime request patches: per-turn documents supplied by application hooks;
 //! - caller-managed message history supplied directly on completion requests;
 //! - **Memory** (this module): Rig-managed history loaded and saved automatically per
-//!   conversation id.
+//!
+//! conversation id.
 //!
 //! # Example
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! use rig_core::{
-//!     completion::Message,
-//!     memory::{ConversationMemory, InMemoryConversationMemory},
+//! completion::Message,
+//! memory::{ConversationMemory, InMemoryConversationMemory},
 //! };
 //!
 //! let memory = InMemoryConversationMemory::new();
 //! memory
-//!     .append(
-//!         &"thread-1".into(),
-//!         vec![
-//!             Message::user("My name is Alice."),
-//!             Message::assistant("Hello, Alice!"),
-//!         ],
-//!     )
-//!     .await?;
+//!.append(
+//! &"thread-1".into(),
+//! vec![
+//! Message::user("My name is Alice."),
+//! Message::assistant("Hello, Alice!"),
+//! ],
+//! )
+//!.await?;
 //! let history = memory.load(&"thread-1".into()).await?;
 //! assert_eq!(history.len(), 2);
 //! # Ok(()) }
@@ -90,7 +91,7 @@ impl MemoryError {
 ///
 /// Implementations should keep `append` cheap; it runs inline before the agent
 /// returns its response. A load failure fails the run before any model call;
-/// an append failure does not fail the run — the answer stands, the runtime
+/// an append failure does not fail the run. the answer stands, the runtime
 /// reports the refused append beside it (rig-agent's `PromptResponse::memory_append`,
 /// the effect log's record) and nothing is retried. Rig promises no
 /// transactional or exactly-once write: a backend that fails after writing
@@ -272,17 +273,17 @@ forward_memory_trait!(DemotionHook: Arc);
 /// Derives a single [`Message`]-shaped artifact from a slice of messages
 /// that a memory policy has evicted from the active window.
 ///
-/// Where a [`DemotionHook`] is a one-way drain — observe what fell out and
-/// return `()` — a `Compactor` is the inverse: it takes the evicted prefix
+/// Where a [`DemotionHook`] is a one-way drain. observe what fell out and
+/// return `()`. a `Compactor` is the inverse: it takes the evicted prefix
 /// (and optionally the previous summary) and produces a derived artifact
 /// that the composing adapter splices *back into* the active history. The
 /// resulting prompt is no longer a verbatim suffix of the conversation; it
-/// is `[summary, ...recent_window]`.
+/// is `[summary,...recent_window]`.
 ///
 /// Implementations typically wrap an LLM call (`LlmCompactor<M>`) or a
 /// pure template rollup. They run inline on the load path whenever the
 /// policy demotes new messages, so a slow compactor delays the agent's
-/// next turn — keep them fast or offload to a cached/background pipeline.
+/// next turn. keep them fast or offload to a cached/background pipeline.
 ///
 /// # Rolling summaries
 ///

@@ -46,7 +46,7 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
-    /// The transport request id from the `request-id` response header — not
+    /// The transport request id from the `request-id` response header. not
     /// part of the response body; stamped by the request driver. This is the
     /// id Anthropic support asks for. `None` when the provider (or a
     /// compatible gateway) did not report one.
@@ -93,7 +93,7 @@ pub struct Usage {
 /// Breakdown of `usage.output_tokens`.
 ///
 /// The tokens Claude spent on extended thinking are reported here, *inside*
-/// `output_tokens` rather than beside it — the name says `details`, and every
+/// `output_tokens` rather than beside it. the name says `details`, and every
 /// recorded turn has `thinking_tokens <= output_tokens`. Adding them to a total
 /// would double-count. Unknown buckets a provider may add later are ignored on
 /// deserialization.
@@ -143,7 +143,7 @@ impl std::fmt::Display for Usage {
 /// `thinking_tokens` is the exception: it is a *breakdown* of `output_tokens`,
 /// already counted there, so it populates `reasoning_tokens` without entering
 /// the total. Shared with the streaming path, whose `PartialUsage` carries the
-/// same counters — the parameter is required rather than defaulted so a new
+/// same counters. the parameter is required rather than defaulted so a new
 /// caller cannot silently drop it. `input_tokens` is optional because a
 /// streaming `message_delta` frame omits it; without it there is no total.
 pub(super) fn anthropic_usage_totals(
@@ -202,8 +202,8 @@ pub struct ToolDefinition {
 /// TTL for a cache control breakpoint.
 ///
 /// The Anthropic API supports two TTL values:
-/// - `"5m"` — 5 minutes (default when `ttl` is omitted)
-/// - `"1h"` — 1 hour
+/// - `"5m"`. 5 minutes (default when `ttl` is omitted)
+/// - `"1h"`. 1 hour
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
@@ -362,7 +362,7 @@ impl FromStr for Content {
 /// response came from. See the [Anthropic citations documentation][docs] for
 /// details on the request/response shapes.
 ///
-/// Citations must be enabled on **all or none** of the documents in a request —
+/// Citations must be enabled on **all or none** of the documents in a request -
 /// the API returns an error if the setting is mixed.
 ///
 /// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
@@ -376,18 +376,24 @@ pub struct CitationsConfig {
 ///
 /// The variant determines the locator shape, which depends on the source type:
 ///
-/// - [`Citation::CharLocation`] — for plain text documents; character indices
-///   are 0-indexed with an exclusive end.
-/// - [`Citation::PageLocation`] — for PDF documents; page numbers are 1-indexed
-///   with an exclusive end.
-/// - [`Citation::ContentBlockLocation`] — for custom-content documents; block
-///   indices are 0-indexed with an exclusive end.
-/// - [`Citation::SearchResultLocation`] — for user-provided search-result
-///   content blocks.
-/// - [`Citation::WebSearchResultLocation`] — for Anthropic's server-side web
-///   search tool results.
-/// - [`Citation::Unknown`] — a forward-compatible fallback preserving raw
-///   citation JSON for citation types this crate does not yet model.
+/// - [`Citation::CharLocation`]. for plain text documents; character indices
+///
+/// are 0-indexed with an exclusive end.
+/// - [`Citation::PageLocation`]. for PDF documents; page numbers are 1-indexed
+///
+/// with an exclusive end.
+/// - [`Citation::ContentBlockLocation`]. for custom-content documents; block
+///
+/// indices are 0-indexed with an exclusive end.
+/// - [`Citation::SearchResultLocation`]. for user-provided search-result
+///
+/// content blocks.
+/// - [`Citation::WebSearchResultLocation`]. for Anthropic's server-side web
+///
+/// search tool results.
+/// - [`Citation::Unknown`]. a forward-compatible fallback preserving raw
+///
+/// citation JSON for citation types this crate does not yet model.
 ///
 /// See the [Anthropic citations documentation][docs] for the exact wire format.
 ///
@@ -582,7 +588,7 @@ where
 ///
 /// Returns `Ok((None, None, None))` if `additional_params` is empty. Returns
 /// an error only if the `citations` field is present but is not a valid
-/// [`CitationsConfig`] — invalid shapes are reported instead of being silently
+/// [`CitationsConfig`]. invalid shapes are reported instead of being silently
 /// dropped, so users notice typos.
 fn extract_anthropic_doc_params(
     additional_params: Option<message::AdditionalParams>,
@@ -629,12 +635,12 @@ fn extract_anthropic_doc_params(
 /// use rig_core::providers::anthropic::completion::anthropic_citations;
 ///
 /// fn print_citations(content: &AssistantContent) {
-///     if let AssistantContent::Text(text) = content
-///         && let Ok(citations) = anthropic_citations(text)
-///         && !citations.is_empty()
-///     {
-///         println!("{citations:?}");
-///     }
+/// if let AssistantContent::Text(text) = content
+/// && let Ok(citations) = anthropic_citations(text)
+/// && !citations.is_empty()
+/// {
+/// println!("{citations:?}");
+/// }
 /// }
 /// # let _ = message::Text::new("");
 /// ```
@@ -863,8 +869,8 @@ fn anthropic_content_from_assistant_content(
             // the API rejects empty text blocks, so an empty text block
             // with no anthropic-deliverable content (raw server-tool
             // content is the one extras shape this wire replays; foreign
-            // extras — e.g. a block annotated by the OpenAI Responses
-            // ingest — cannot reach this wire) produces no block at all.
+            // extras. e.g. a block annotated by the OpenAI Responses
+            // ingest. cannot reach this wire) produces no block at all.
             // A message left with no blocks fails loudly and locally at
             // the non-empty check below, never as a wire 400.
             if text.text.is_empty() && extract_anthropic_raw_content(&text)?.is_none() {
@@ -1012,8 +1018,8 @@ impl TryFrom<message::Message> for Message {
 
                         let media_type = match media_type {
                             Some(media_type) => media_type,
-                            // Anthropic's URL document source has no media-type field and is
-                            // defined specifically for PDFs, so the source itself is sufficient.
+ // Anthropic's URL document source has no media-type field and is
+ // defined specifically for PDFs, so the source itself is sufficient.
                             None if matches!(&data, DocumentSourceKind::Url(_)) => {
                                 DocumentMediaType::PDF
                             }
@@ -1928,7 +1934,7 @@ pub(super) fn apply_prompt_cache_control(
     let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
 
     // The static prefix (tools + system) must not carry a shorter TTL than the
-    // tail that follows it — Anthropic requires 1h markers before 5-minute
+    // tail that follows it. Anthropic requires 1h markers before 5-minute
     // ones. Catch the typed-knob inversion here with an error that names the
     // knobs; the generic marker-order validator below would otherwise report
     // it in terms of raw markers.

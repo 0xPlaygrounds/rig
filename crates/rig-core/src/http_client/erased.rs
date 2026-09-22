@@ -2,7 +2,7 @@
 //!
 //! [`HttpClientExt`] is generic at the method level (`send<T, U>`), so it is
 //! not object-safe and every client that holds a transport is generic over
-//! `H`. That is the right default for a library — monomorphized, zero-cost —
+//! `H`. That is the right default for a library. monomorphized, zero-cost -
 //! but a *host* that owns one transport for many providers (a worker pool, an
 //! ECS resource, a plugin) does not want `H` leaking into every type it holds
 //! and every signature that touches it. [`BoxedHttpClient`] is that host's
@@ -86,7 +86,7 @@ where
 /// or when a monomorphized transport is what you want. Boxing an already
 /// boxed transport returns a clone of it, never a second layer.
 ///
-/// `Debug` prints only the type name — the inner transport may carry
+/// `Debug` prints only the type name. the inner transport may carry
 /// credentials in its configuration.
 ///
 /// Not serializable: a transport is a live connection pool, not data.
@@ -121,7 +121,7 @@ impl BoxedHttpClient {
 
     /// Attach a transport-boundary [`HttpMiddleware`] to this handle.
     ///
-    /// Middlewares run in attachment order — see the
+    /// Middlewares run in attachment order. see the
     /// [`middleware`](super::middleware) module docs for the exact per-phase
     /// ordering and error semantics. Attaching returns a new handle; existing
     /// clones keep their previous stack. The underlying transport is shared,
@@ -259,7 +259,7 @@ impl HttpClientExt for BoxedHttpClient {
                 .send_streaming_bytes(Request::from_parts(parts, body))
                 .await?;
             // The response hooks run before any of the body stream is
-            // consumed — the point of `after_response` for streaming calls.
+            // consumed. the point of `after_response` for streaming calls.
             self.apply_response_middleware(&method, &uri, response.status(), response.headers())
                 .await?;
             Ok(response)

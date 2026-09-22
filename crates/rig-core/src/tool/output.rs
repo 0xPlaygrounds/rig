@@ -73,7 +73,7 @@ impl ToolOutput {
     ///
     /// Rejects an empty list. On `main` the argument type made emptiness
     /// unrepresentable; as a `Vec` the check lives here instead, because this
-    /// is the one funnel every multi-block construction passes through —
+    /// is the one funnel every multi-block construction passes through -
     /// tools returning [`ToolOutput`] directly and hooks rewriting one
     /// included. A zero-block tool result cannot be sent (the request
     /// boundary rejects it), so rejecting at construction surfaces the
@@ -179,7 +179,7 @@ impl From<ToolResultContent> for ToolOutput {
 impl TryFrom<Vec<ToolResultContent>> for ToolOutput {
     type Error = ToolExecutionError;
 
-    // `From` on `main` — the source type was non-empty by construction, so the
+    // `From` on `main`. the source type was non-empty by construction, so the
     // conversion could not fail. With `Vec` the emptiness check makes it
     // fallible; a `From` here would be the unguarded bypass around
     // [`ToolOutput::content`].

@@ -1,4 +1,4 @@
-//! Best of n: one prompt, three runs, the judge picks — `agent::fork`
+//! Best of n: one prompt, three runs, the judge picks. `agent::fork`
 //! clones the run entity and its subtree, so the three runs share the
 //! prompt and nothing after it; a system judges when all three settled.
 //! In rig's root examples this is `agent_parallelization`'s shape with

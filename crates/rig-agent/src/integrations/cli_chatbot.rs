@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_agent::{Agent, completion::PromptError, integrations::cli_chatbot::ChatBotBuilder};
 //! async fn chat(agent: Agent) -> Result<(), PromptError> {
-//!     ChatBotBuilder::new().agent(agent).max_turns(3).build().run().await
+//! ChatBotBuilder::new().agent(agent).max_turns(3).build().run().await
 //! }
 //! ```
 

@@ -123,8 +123,8 @@ impl HelixDBClient for HelixDB {
 ///
 /// # fn example() -> anyhow::Result<()> {
 /// let openai_model = OpenAI::from_env()?
-///     .bound()?
-///     .embedding("text-embedding-ada-002", None);
+///.bound()?
+///.embedding("text-embedding-ada-002", None);
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
 /// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());

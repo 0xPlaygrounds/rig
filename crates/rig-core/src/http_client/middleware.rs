@@ -5,36 +5,45 @@
 //! see the serialized provider payload, the HTTP headers, or the raw HTTP
 //! response. [`HttpMiddleware`] is the seam below that: it runs inside the
 //! erased transport, so one implementation observes and shapes every provider's
-//! wire traffic — unary, streaming, and multipart — without touching provider
+//! wire traffic. unary, streaming, and multipart. without touching provider
 //! code.
 //!
 //! The three methods mirror the three moments a transport-level extension
 //! cares about:
 //!
 //! - [`before_request_headers`](HttpMiddleware::before_request_headers)
-//!   mutates the outgoing [`HeaderMap`] in place (per-request beta or feature
-//!   headers, auth decoration).
+//!
+//! mutates the outgoing [`HeaderMap`] in place (per-request beta or feature
+//!
+//! headers, auth decoration).
 //! - [`before_request_body`](HttpMiddleware::before_request_body) sees the
-//!   serialized body and may replace it (logging/replay capture, payload
-//!   patching that no semantic knob covers).
+//!
+//! serialized body and may replace it (logging/replay capture, payload
+//!
+//! patching that no semantic knob covers).
 //! - [`after_response`](HttpMiddleware::after_response) sees the response
-//!   status and headers as soon as they arrive — for a streaming call this is
-//!   **before stream consumption**, so rate-limit headers and request ids are
-//!   readable without buffering the body.
+//!
+//! status and headers as soon as they arrive. for a streaming call this is
+//!
+//! **before stream consumption**, so rate-limit headers and request ids are
+//!
+//! readable without buffering the body.
 //!
 //! Middlewares attach with
 //! [`BoxedHttpClient::with_middleware`](super::BoxedHttpClient::with_middleware)
 //! and compose in attachment order:
 //!
 //! - all `before_request_headers` run first, in order, each seeing the
-//!   previous one's mutations;
+//!
+//! previous one's mutations;
 //! - then all `before_request_body` run in order, each seeing the previous
-//!   one's replacement body (and the final headers);
+//!
+//! one's replacement body (and the final headers);
 //! - after the transport returns, all `after_response` run in order.
 //!
 //! `after_response` is observe-only for the response itself, but any method
 //! may *fail* the request by returning an error, which surfaces through the
-//! normal [`Error`](super::Error) path — a middleware can reject a response it
+//! normal [`Error`](super::Error) path. a middleware can reject a response it
 //! refuses to accept, but cannot silently swallow or alter one.
 //!
 //! Multipart requests run the header and response methods; the body method is

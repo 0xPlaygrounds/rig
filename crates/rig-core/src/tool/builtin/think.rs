@@ -23,7 +23,7 @@ pub struct ThinkError(String);
 /// provides a space for the model to reason through complex problems.
 ///
 /// This tool is original derived from the
-///  [Think tool](https://anthropic.com/engineering/claude-think-tool) blog post from Anthropic.
+/// [Think tool](https://anthropic.com/engineering/claude-think-tool) blog post from Anthropic.
 #[derive(Deserialize, Serialize)]
 pub struct ThinkTool;
 

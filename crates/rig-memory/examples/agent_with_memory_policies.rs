@@ -2,9 +2,10 @@
 //!
 //! Two backends are configured against the same prompt:
 //!
-//! * `SlidingWindowMemory` — keeps the most recent fixed number of messages.
-//! * `TokenWindowMemory` — keeps the most recent messages that fit within a
-//!   token budget supplied by a [`TokenCounter`].
+//! * `SlidingWindowMemory`. keeps the most recent fixed number of messages.
+//! * `TokenWindowMemory`. keeps the most recent messages that fit within a
+//!
+//! token budget supplied by a [`TokenCounter`].
 //!
 //! Both policies are converted into a `MessageFilter` via
 //! [`IntoFilter::into_filter`] and attached to an

@@ -323,25 +323,25 @@ impl Noul {
 /// // The fields are declared once, for both questions and answers.
 /// #[derive(Serialize, Deserialize)]
 /// struct Assessment<R, V> {
-///     ready: R,
-///     needs_review: V,
+/// ready: R,
+/// needs_review: V,
 /// }
 ///
 /// impl<R: Query, V: Query> Query for Assessment<R, V> {
-///     type Response = Assessment<R::Response, V::Response>;
-///     type Output = Assessment<R::Output, V::Output>;
+/// type Response = Assessment<R::Response, V::Response>;
+/// type Output = Assessment<R::Output, V::Output>;
 ///
-///     fn decode(&self, response: Self::Response) -> Result<Self::Output, Error> {
-///         Ok(Assessment {
-///             ready: self.ready.decode(response.ready)?,
-///             needs_review: self.needs_review.decode(response.needs_review)?,
-///         })
-///     }
+/// fn decode(&self, response: Self::Response) -> Result<Self::Output, Error> {
+/// Ok(Assessment {
+/// ready: self.ready.decode(response.ready)?,
+/// needs_review: self.needs_review.decode(response.needs_review)?,
+/// })
+/// }
 /// }
 ///
 /// let query = Assessment {
-///     ready: Noul::new("Is this ready to ship?")?,
-///     needs_review: Noul::new("Does this need human review?")?,
+/// ready: Noul::new("Is this ready to ship?")?,
+/// needs_review: Noul::new("Does this need human review?")?,
 /// };
 /// # Ok::<(), Error>(())
 /// ```

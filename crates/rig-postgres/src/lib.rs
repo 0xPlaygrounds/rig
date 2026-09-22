@@ -66,8 +66,8 @@ impl Display for PgVectorDistanceFunction {
 
 impl PgVectorDistanceFunction {
     /// A SQL expression that grows with similarity, so
-    /// [`VectorSearchRequest::threshold`] — documented as a *minimum
-    /// similarity* — can be applied as `score >= $n`. pgvector only exposes
+    /// [`VectorSearchRequest::threshold`]. documented as a *minimum
+    /// similarity*. can be applied as `score >= $n`. pgvector only exposes
     /// distances, so the expression is derived per operator: cosine and
     /// jaccard distances are complements of a similarity in `[0, 1]`; `<#>`
     /// is already the negated inner product; the metric distances are negated
@@ -87,8 +87,8 @@ impl PgVectorDistanceFunction {
 }
 
 /// Placeholder token emitted for every bind parameter. `search_query` rewrites
-/// each occurrence into its numbered form (`$3`, `$4`, ...), so every constructor
-/// below must use this token and nothing else — a stray `?` would reach Postgres
+/// each occurrence into its numbered form (`$3`, `$4`,...), so every constructor
+/// below must use this token and nothing else. a stray `?` would reach Postgres
 /// verbatim.
 const PLACEHOLDER: &str = "$";
 

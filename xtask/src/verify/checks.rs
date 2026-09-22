@@ -494,8 +494,8 @@ pub(super) fn full_lane(path: &str) -> bool {
         || path.starts_with("tests/integrations/")
         || path.starts_with("test-support/")
         || path.starts_with(".github/actions/")
-        // `crates/*/Cargo.toml`: the workspace members' manifests, not the
-        // nested compile fixtures beneath them (those have their own owners).
+ // `crates/*/Cargo.toml`: the workspace members' manifests, not the
+ // nested compile fixtures beneath them (those have their own owners).
         || path
             .strip_prefix("crates/")
             .and_then(|rest| rest.strip_suffix("/Cargo.toml"))

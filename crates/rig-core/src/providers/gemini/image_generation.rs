@@ -145,7 +145,7 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Imag
 ///
 /// Gemini generates images through the same `generateContent` endpoint as
 /// text, asking for them with `responseModalities: ["IMAGE"]`, and answers
-/// with one whole document either way — so both [`Mode`]s send the same
+/// with one whole document either way. so both [`Mode`]s send the same
 /// request.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Images {

@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .documents(words())?
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+ // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
         .documents(
             (0..256)
                 .map(|i| Word {

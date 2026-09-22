@@ -10,12 +10,12 @@ use std::sync::Arc;
 crate::provider_response::provider_error_enum!(
     ImageGenerationError, "image generation" {
         #[cfg(not(target_family = "wasm"))]
-        /// Error building the image generation request
+ /// Error building the image generation request
         #[error("RequestError: {0}")]
         RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
         #[cfg(target_family = "wasm")]
-        /// Error building the image generation request
+ /// Error building the image generation request
         #[error("RequestError: {0}")]
         RequestError(#[from] Box<dyn std::error::Error + 'static>),
     }
@@ -24,7 +24,7 @@ crate::provider_response::provider_error_enum!(
 /// The normalized image generation response: the image plus the metadata
 /// every provider can report, attributed to the provider that produced it.
 ///
-/// This type is concrete — it carries no provider type parameter — so the
+/// This type is concrete. it carries no provider type parameter. so the
 /// provider does not leak into the request builder or into any caller holding
 /// a model. The provider's own payload stays reachable through a model's
 /// inherent `raw_image_generation` method, which performs the same request and
@@ -47,7 +47,7 @@ pub struct ImageGenerationResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// The provider's transport-level request identifier, taken from the HTTP
-    /// response headers — the id provider support asks for. `None` means the
+    /// response headers. the id provider support asks for. `None` means the
     /// provider reported none; that is a documented outcome, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
@@ -95,7 +95,7 @@ crate::provider_response::modality_response_metadata_setters!(ImageGenerationRes
 /// [`ImageGenerationResponse`].
 ///
 /// The provider descriptor name is an *input*, never something the conversion
-/// knows — several providers share one wire shape, and a hardcoded name would
+/// knows. several providers share one wire shape, and a hardcoded name would
 /// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
 /// so that out-of-tree provider extensions can implement it on their own
 /// response type without tripping the orphan rule.

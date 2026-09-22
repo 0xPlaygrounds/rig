@@ -3,20 +3,26 @@
 //! rig-core names no transport. [`http_client::HttpClientExt`](crate::http_client::HttpClientExt)
 //! states what a request/response transport must do and `rig-reqwest` supplies
 //! one; this module is the same arrangement for websockets, so a provider's
-//! websocket protocol — its event envelopes, its session state machine — can
+//! websocket protocol. its event envelopes, its session state machine. can
 //! live beside the provider's other code instead of inside whichever crate
 //! happens to own the socket library.
 //!
 //! Two traits, split by lifetime:
 //!
 //! - [`WebSocketClientExt`] is the *backend*: it performs one handshake and
-//!   hands back a live connection. Hosts hold it the way they hold an
-//!   `HttpClientExt`.
+//!
+//! hands back a live connection. Hosts hold it the way they hold an
+//!
+//! `HttpClientExt`.
 //! - [`WebSocketConnection`] is one open socket. It is **object-safe**, and
-//!   sessions hold it erased as a [`BoxedWebSocketConnection`], so a provider
-//!   session type keeps a single generic parameter instead of gaining one per
-//!   transport. A session exchanges a handful of frames per turn, so the
-//!   indirection is not on any hot path.
+//!
+//! sessions hold it erased as a [`BoxedWebSocketConnection`], so a provider
+//!
+//! session type keeps a single generic parameter instead of gaining one per
+//!
+//! transport. A session exchanges a handful of frames per turn, so the
+//!
+//! indirection is not on any hot path.
 //!
 //! Object safety is why [`WebSocketConnection`]'s methods return boxed futures
 //! while [`WebSocketClientExt::connect`] returns an `impl Future`: only the
@@ -28,7 +34,7 @@
 //! is deliberate: a *rejected* websocket upgrade is not a websocket at all, it
 //! is an ordinary HTTP response with a status, headers and a provider error
 //! body, and [`Error::non_success_with_details`](crate::http_client::Error::non_success_with_details)
-//! is already the shape that keeps all three inspectable (rig#2314). A backend
+//! is already the shape that keeps all three inspectable. A backend
 //! that flattens a rejection to a display string throws away the provider's
 //! own diagnosis; do not.
 
@@ -45,7 +51,7 @@ use std::time::Duration;
 /// rather than by accident.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
-    /// A UTF-8 text frame — how every JSON websocket protocol talks.
+    /// A UTF-8 text frame. how every JSON websocket protocol talks.
     Text(String),
     /// A binary frame.
     Binary(Bytes),
@@ -98,8 +104,8 @@ impl ConnectOptions {
 
 /// A websocket backend: opens connections, then gets out of the way.
 ///
-/// The handshake is an ordinary HTTP request — the URI carries the `ws`/`wss`
-/// scheme and the headers carry the provider's authentication — so a backend
+/// The handshake is an ordinary HTTP request. the URI carries the `ws`/`wss`
+/// scheme and the headers carry the provider's authentication. so a backend
 /// takes the same [`Request`] type the HTTP transport does. Implementations
 /// supply the websocket-specific handshake headers (`Sec-WebSocket-Key` and
 /// friends) themselves; callers must not.
@@ -116,8 +122,8 @@ pub trait WebSocketClientExt: Clone + WasmCompatSend + WasmCompatSync + 'static 
 /// One open websocket connection.
 ///
 /// Object-safe by construction: sessions hold this erased (see
-/// [`BoxedWebSocketConnection`]). The contract is sequential — a session drives
-/// one turn at a time and never polls `send` and `recv` concurrently — so
+/// [`BoxedWebSocketConnection`]). The contract is sequential. a session drives
+/// one turn at a time and never polls `send` and `recv` concurrently. so
 /// `&mut self` is enough and no backend needs an internal split.
 ///
 /// `WasmCompatSync` is required so that a session holding one erased stays

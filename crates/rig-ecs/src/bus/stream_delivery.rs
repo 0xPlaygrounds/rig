@@ -4,7 +4,7 @@
 //! use bevy_ecs::prelude::*;
 //! use rig_ecs::bus::StreamItemsDelivered;
 //! fn observe(batch: On<StreamItemsDelivered>) {
-//!     let item_count = batch.items.len();
+//! let item_count = batch.items.len();
 //! }
 //! ```
 
@@ -46,15 +46,15 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 /// let mut world = World::new();
 /// world.init_resource::<TextByEffect>();
 /// world.add_observer(
-///     |delivery: On<StreamItemsDelivered>, mut text: ResMut<TextByEffect>| {
-///         for item in &delivery.items {
-///             if let Ok(StreamEvent::BlockDelta {
-///                 delta: Delta::Text { text: piece }, ..
-///             }) = item {
-///                 text.0.entry(delivery.effect).or_default().push_str(piece);
-///             }
-///         }
-///     },
+/// |delivery: On<StreamItemsDelivered>, mut text: ResMut<TextByEffect>| {
+/// for item in &delivery.items {
+/// if let Ok(StreamEvent::BlockDelta {
+/// delta: Delta::Text { text: piece },..
+/// }) = item {
+/// text.0.entry(delivery.effect).or_default().push_str(piece);
+/// }
+/// }
+/// },
 /// );
 /// // Late observers need prior text restored separately; notifications are not retained.
 /// ```

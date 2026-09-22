@@ -249,7 +249,7 @@ impl CassetteMode {
 /// # use rig_cassette::http::skip_when_recording;
 /// # async fn test() {
 /// if skip_when_recording("fixture is hand-corrupted tool JSON") {
-///     return;
+/// return;
 /// }
 /// # }
 /// ```

@@ -1,5 +1,5 @@
 //! `examples/agent_stream_chat` side by side: a streamed answer shown as
-//! it arrives — there a `StreamingResult` polled in a loop, here a run
+//! it arrives. there a `StreamingResult` polled in a loop, here a run
 //! spawned streamed and a system after `RigSet::Fold` printing what the
 //! effect's `Streamed` fold gained since the last tick.
 

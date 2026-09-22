@@ -22,7 +22,7 @@ pub use writer::StreamWriter;
 
 /// A driver's sizing and serving policy: what a program was recorded
 /// under and what a host runs it under. Serve-side data, so a log names no
-/// runtime and any driver — rig-agent's, a host's own — states its policy in
+/// runtime and any driver. rig-agent's, a host's own. states its policy in
 /// the same terms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServingPolicy {
@@ -36,7 +36,7 @@ pub struct ServingPolicy {
     /// Source-internal buffers and collection work limits are separate.
     pub stream_capacity: usize,
     /// Serve one command at a time per key. `false` serves every command
-    /// concurrently; `true` is the cassette-ordered property — a handler
+    /// concurrently; `true` is the cassette-ordered property. a handler
     /// sees its dispatches in the order they arrived.
     ///
     /// Under serial serving a handler must not dispatch to **its own key**

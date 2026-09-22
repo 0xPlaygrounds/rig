@@ -118,7 +118,7 @@ pub fn resolve_output(
 
 /// The output tool's name for a run: the default, numbered from 1 on a
 /// collision with a granted tool's name (`final_result`, `final_result_1`,
-/// `final_result_2`, ...).
+/// `final_result_2`,...).
 pub fn output_tool_name(granted: &[&str]) -> String {
     let base = text::OUTPUT_TOOL_NAME;
     if !granted.contains(&base) {

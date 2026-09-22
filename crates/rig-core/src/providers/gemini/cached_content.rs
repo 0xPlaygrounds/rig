@@ -1,15 +1,15 @@
-//! Gemini explicit context caching — the `cachedContents` resource.
+//! Gemini explicit context caching. the `cachedContents` resource.
 //!
 //! Gemini has two caching features and they are not interchangeable.
 //!
 //! **Implicit caching** is automatic and best-effort: send a long prefix twice
 //! and the provider *may* serve the second one from cache. There is no API
-//! surface and no guarantee, and the warm-up is real — measured on
+//! surface and no guarantee, and the warm-up is real. measured on
 //! `gemini-2.5-flash` against an 18.5k-token corpus, five consecutive turns
 //! reusing that corpus read **zero** cached tokens, and only a sixth request saw
 //! 99.6%. Those five turns were billed at full price for ~92k prompt tokens.
 //!
-//! **Explicit caching** — this module — uploads the content once, gives you a
+//! **Explicit caching**. this module. uploads the content once, gives you a
 //! handle, and bills the handle for storage. The same corpus, measured the same
 //! day through this API:
 //!
@@ -20,7 +20,7 @@
 //! | fresh conversation | 36,976 | 36,970 | **100.0%** |
 //!
 //! It hits on the *first* request, and it keeps hitting across conversations
-//! that share nothing but the handle — which is the thing implicit caching
+//! that share nothing but the handle. which is the thing implicit caching
 //! structurally cannot do, because implicit keys on a prefix that a new
 //! conversation does not have yet.
 //!
@@ -28,7 +28,7 @@
 //!
 //! Explicit caching bills storage per token-hour on top of the (reduced) cached
 //! input rate, so an idle cache is not free. It pays when one large fixed
-//! payload — a document corpus, a long system prompt, a video transcript — is
+//! payload. a document corpus, a long system prompt, a video transcript. is
 //! reused across enough calls to beat the storage cost, and it pays immediately
 //! rather than after a warm-up. For a single short conversation, implicit
 //! caching costs nothing and is the better default.
@@ -44,13 +44,13 @@
 //! system_instruction, tools or tool_config.
 //! ```
 //!
-//! rig checks that before the request leaves the process — see
-//! [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`] — so the
+//! rig checks that before the request leaves the process. see
+//! [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`]. so the
 //! failure names the conflict instead of surfacing a provider 400.
 //!
 //! ## What that means for an `Agent`
 //!
-//! An agent mostly does not choose which of the three it sends — it sends what
+//! An agent mostly does not choose which of the three it sends. it sends what
 //! it holds. A preamble becomes `systemInstruction`; every always-exposed tool
 //! is advertised on every turn (one registered through `retrieved_tools` is
 //! advertised on the turns retrieval selects it, so such an agent is refused
@@ -60,14 +60,14 @@
 //! The one lever that does exist is a per-turn `RequestPatch::active_tools`
 //! allow-list: an empty one empties the tool snapshot, so a tool-holding agent
 //! builds a request with no `tools` and the handle is accepted. That is a
-//! supported configuration, not a loophole — but it buys only the *request*,
+//! supported configuration, not a loophole. but it buys only the *request*,
 //! never the dispatch. The tools it suppressed are still the agent's, and the
 //! ones in the cache are still unreachable, so an agent that has to empty its
 //! allow-list to use a cache is an agent whose tools do nothing on that turn.
 //!
 //! The agent derives the declarations it sends and the handles it dispatches
 //! through from a single registry snapshot, so it can only ever dispatch a tool
-//! it advertised — a call to a tool it never advertised is an invalid tool call,
+//! it advertised. a call to a tool it never advertised is an invalid tool call,
 //! not a dispatch. The converse is representable and rig uses it:
 //! `OutputMode::Tool` advertises a synthetic output tool that is deliberately
 //! not executable. But that only ever adds declarations, never dispatch reach,
@@ -75,7 +75,7 @@
 //! hands.
 //!
 //! Leaving the allow-list aside, then, an agent reads from a cache when it has
-//! no preamble, no tools and no tool choice. Native structured output is fine — the schema
+//! no preamble, no tools and no tool choice. Native structured output is fine. the schema
 //! rides in `generationConfig`, and the default `OutputMode::Auto` resolves
 //! there for a tool-less agent. `OutputMode::Tool` is not, because it advertises
 //! that synthetic tool *and* extends the preamble; `Extractor` pins that mode,
@@ -102,16 +102,16 @@
 //! // What to cache. `provider.bind(transport).cached_contents().create(..)`
 //! // uploads it and hands back a `CachedContent` whose `name` is the handle.
 //! let corpus = NewCachedContent::new(gemini::completion::GEMINI_2_5_FLASH)
-//!     .system_instruction("You answer questions about the attached corpus.")
-//!     .content(std::fs::read_to_string("corpus.txt")?)
-//!     .expiry(CacheExpiry::ttl(Duration::from_secs(600)))
-//!     .display_name("corpus-v1");
+//!.system_instruction("You answer questions about the attached corpus.")
+//!.content(std::fs::read_to_string("corpus.txt")?)
+//!.expiry(CacheExpiry::ttl(Duration::from_secs(600)))
+//!.display_name("corpus-v1");
 //!
 //! // Every request this wire sends reads the cache. Delete the handle when
-//! // you are done — storage bills until you do.
+//! // you are done. storage bills until you do.
 //! let wire = provider
-//!     .generate_content(gemini::completion::GEMINI_2_5_FLASH)
-//!     .with_cached_content("cachedContents/n3v1qk0nqz9k");
+//!.generate_content(gemini::completion::GEMINI_2_5_FLASH)
+//!.with_cached_content("cachedContents/n3v1qk0nqz9k");
 //! # let _ = (corpus, wire);
 //! # Ok(())
 //! # }
@@ -138,25 +138,25 @@ const CACHED_CONTENTS_PATH: &str = "/v1beta/cachedContents";
 const MAX_PAGE_SIZE: usize = 1000;
 
 crate::provider_response::provider_error_enum! {
-    /// A non-success reply is preserved verbatim as [`Self::ProviderResponse`]
-    /// with its status, and the status triage every `cachedContents` call
-    /// shares — 403 and 404 on an existing handle are the handle being gone —
-    /// is `on_handle`, derived from it once the driver has funnelled
-    /// every transport shape to the same variant.
+ /// A non-success reply is preserved verbatim as [`Self::ProviderResponse`]
+ /// with its status, and the status triage every `cachedContents` call
+ /// shares. 403 and 404 on an existing handle are the handle being gone -
+ /// is `on_handle`, derived from it once the driver has funnelled
+ /// every transport shape to the same variant.
     CachedContentError, "cached content" {
-        /// The cache handle no longer exists — almost always because its TTL
-        /// elapsed.
-        ///
-        /// Separated from the other failures because it is the one a caller is
-        /// expected to *handle* rather than propagate: a cache that expired
-        /// mid-run is recreated, not reported. Gemini answers an expired handle
-        /// with 403 or 404 depending on how long ago it lapsed, which is why
-        /// matching on a status code is not something callers should have to
-        /// do. `message` is the provider's own text.
+ /// The cache handle no longer exists. almost always because its TTL
+ /// elapsed.
+ ///
+ /// Separated from the other failures because it is the one a caller is
+ /// expected to *handle* rather than propagate: a cache that expired
+ /// mid-run is recreated, not reported. Gemini answers an expired handle
+ /// with 403 or 404 depending on how long ago it lapsed, which is why
+ /// matching on a status code is not something callers should have to
+ /// do. `message` is the provider's own text.
         #[error("gemini cached content `{name}` is expired or was deleted: {message}")]
         Expired { name: String, message: String },
 
-        /// A caller-side mistake caught before the request went out.
+ /// A caller-side mistake caught before the request went out.
         #[error("invalid gemini cached content request: {0}")]
         Invalid(String),
 
@@ -198,9 +198,9 @@ impl CachedContentError {
 
 crate::error::impl_report_for_provider_error!(
     CachedContentError,
-    // An expiry is the provider's verdict on the handle, with its status
-    // folded into the variant, so it reports as a provider response rather
-    // than as the request fault the table's default arm assumes.
+ // An expiry is the provider's verdict on the handle, with its status
+ // folded into the variant, so it reports as a provider response rather
+ // than as the request fault the table's default arm assumes.
     CachedContentError::Expired { .. } => ErrorKind::ProviderResponse,
 );
 
@@ -245,8 +245,8 @@ impl CacheExpiry {
 ///
 /// Every field is private and reachable only through the builder. That is what
 /// makes [`CacheExpiry`]'s guarantee real: with public `ttl` and `expire_time`,
-/// `NewCachedContent { ttl: Some(..), expire_time: Some(..), ..Default::default() }`
-/// compiles and the API rejects it — exactly the state the enum exists to make
+/// `NewCachedContent { ttl: Some(..), expire_time: Some(..),..Default::default() }`
+/// compiles and the API rejects it. exactly the state the enum exists to make
 /// unrepresentable. Keeping them private also avoids freezing untyped JSON into
 /// the public API for `tools`/`tool_config`.
 #[derive(Debug, Default, Serialize)]
@@ -310,16 +310,16 @@ impl NewCachedContent {
     /// Attach the tool set this cache owns.
     ///
     /// Every request using the handle inherits these; a request may not send its
-    /// own (Gemini rejects that, and so does rig — see
+    /// own (Gemini rejects that, and so does rig. see
     /// [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`]).
     ///
     /// Function declarations here are *declarations*, not implementations, which
-    /// is what puts them out of reach of rig's `Agent` — see the module docs
+    /// is what puts them out of reach of rig's `Agent`. see the module docs
     /// above for why. A cached function tool set is usable only when you drive
     /// [`super::completion::GenerateContent`] yourself and run the tool loop by
     /// hand: read the `functionCall` parts off the response and append the
     /// matching `functionResponse` parts to the next request. A provider-hosted
-    /// tool such as `codeExecution` is different — Gemini runs it, so a cache
+    /// tool such as `codeExecution` is different. Gemini runs it, so a cache
     /// carrying one needs no loop and works from an agent.
     pub fn tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
@@ -330,7 +330,7 @@ impl NewCachedContent {
     ///
     /// Same reachability caveat as [`Self::tools`]: a request carrying its own
     /// tool choice alongside the handle is refused, and rig's `Agent` sends one
-    /// whenever it is configured with one — even a tool-less agent — so this is
+    /// whenever it is configured with one. even a tool-less agent. so this is
     /// for callers driving [`super::completion::GenerateContent`] directly. A
     /// tool-less agent does at least lose nothing by dropping its tool choice,
     /// which is not true of a tool set. Gemini accepts a
@@ -429,7 +429,7 @@ pub enum CachedContentRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedContentPage {
-    /// The entries of every page read, in arrival order — the fold
+    /// The entries of every page read, in arrival order. the fold
     /// concatenates them.
     ///
     /// Required, deliberately: this key is what makes a page a page, so a
@@ -443,14 +443,14 @@ pub struct CachedContentPage {
 }
 
 /// One `cachedContents` reply: exactly one of the three answers Gemini
-/// gives, decided by the shape the body actually has — a page carries
+/// gives, decided by the shape the body actually has. a page carries
 /// `cachedContents`, a resource carries `name`, and an acknowledgement is
 /// the empty object.
 ///
 /// Three variants rather than one envelope holding an
 /// `Option<CachedContent>` beside a `Vec` and a cursor: that shape let a
-/// `delete` carry a resource and a `get` carry a page, and — because a
-/// flattened `Option` swallows the deserialization error — read
+/// `delete` carry a resource and a `get` carry a page, and. because a
+/// flattened `Option` swallows the deserialization error. read
 /// `{"name": 5}` as a resource that was *missing*. Here each shape's
 /// decode is strict and none of them accepts another's body, so a
 /// malformed resource is the JSON error it is.
@@ -460,7 +460,7 @@ pub enum CachedContentReply {
     Resource(CachedContent),
     /// `list`: one page of the collection.
     Page(CachedContentPage),
-    /// A 2xx with nothing to read — what `delete` is acknowledged with,
+    /// A 2xx with nothing to read. what `delete` is acknowledged with,
     /// and what an empty collection lists as. The default, so a fold that
     /// absorbed nothing holds the reply an empty 2xx already is.
     #[default]
@@ -494,7 +494,7 @@ impl CachedContentReply {
     }
 
     /// This reply is not what the verb asked for, and both halves of that
-    /// are named — the reply the provider sent is as much of the
+    /// are named. the reply the provider sent is as much of the
     /// diagnosis as the one it was supposed to send.
     fn mismatch(&self, wanted: &str) -> CachedContentError {
         let carried = match self {
@@ -516,11 +516,11 @@ impl CachedContentReply {
 pub struct CachedContents {
     /// The provider this wire speaks to.
     pub provider: super::Gemini,
-    /// Entries per listing page, at most 1,000 (Gemini's cap) — the default,
+    /// Entries per listing page, at most 1,000 (Gemini's cap). the default,
     /// which makes every realistic listing one request.
     ///
-    /// A caller holding thousands of caches may want smaller responses, and —
-    /// less obviously but more importantly — the cursor-following loop is
+    /// A caller holding thousands of caches may want smaller responses, and -
+    /// less obviously but more importantly. the cursor-following loop is
     /// otherwise unreachable in a test: proving it works against the live
     /// API would mean creating a thousand billed caches. With a page size of
     /// 1 and three caches it is three pages.
@@ -546,8 +546,8 @@ impl CachedContents {
     ///
     /// Percent-encoded through the same helper the model listing uses:
     /// concatenating the cursor raw would let a `+`, `&`, `=` or `/` in it
-    /// truncate the cursor or inject a query parameter — next to the
-    /// credential `Gemini::uri` appends — silently dropping pages.
+    /// truncate the cursor or inject a query parameter. next to the
+    /// credential `Gemini::uri` appends. silently dropping pages.
     fn list_request(&self, page_token: Option<&str>) -> Result<http::Request<Body>, http::Error> {
         let page_size = self.page_size.to_string();
         let mut pairs = vec![("pageSize", page_size.as_str())];
@@ -646,8 +646,8 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
     /// fails the resource decode and is reported as the defect it is
     /// rather than as a resource that went missing.
     ///
-    /// The composition — read one classifier's verdict, try the next shape
-    /// when the body was not its kind — is
+    /// The composition. read one classifier's verdict, try the next shape
+    /// when the body was not its kind. is
     /// [`classify_or`]'s, which is where a wire with several reply shapes
     /// is allowed to state it.
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -699,7 +699,7 @@ fn as_resource(data: &str) -> WireEvent<CachedContentReply> {
 /// The `PATCH` body and its `updateMask` for one expiry.
 ///
 /// One `match` names the field, which is then both the body's only key and
-/// the mask — so the two cannot disagree about which field is written.
+/// the mask. so the two cannot disagree about which field is written.
 fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), CachedContentError> {
     let (field, value) = match expiry {
         CacheExpiry::Ttl(ttl) => ("ttl", CacheExpiry::ttl_string(ttl)),
@@ -728,7 +728,7 @@ fn qualify_model(model: &str) -> String {
 /// out: no observed id carries one, and a `..` segment is path traversal.
 ///
 /// Validates rather than interpolating, because this is the path `get`,
-/// `update_expiry` and — the one that matters — `delete` send. A handle
+/// `update_expiry` and. the one that matters. `delete` send. A handle
 /// carrying a `?` does not produce a malformed URL the provider rejects:
 /// `Gemini::uri` switches its key separator to `&` the moment it sees
 /// a `?` in the path, so `delete("abc?stale")` would issue a perfectly
@@ -739,7 +739,7 @@ fn qualify_model(model: &str) -> String {
 /// Refusing beats percent-encoding here. The id is server-assigned and opaque,
 /// so a caller holding one that needs escaping is holding a bug; and encoding
 /// would have to escape the id while leaving the optional `cachedContents/`
-/// prefix intact — two rules for one string, in service of quietly rewriting
+/// prefix intact. two rules for one string, in service of quietly rewriting
 /// input that is always wrong.
 ///
 /// The prefix stays optional here, unlike

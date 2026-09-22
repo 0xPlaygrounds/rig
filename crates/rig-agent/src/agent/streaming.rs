@@ -104,10 +104,10 @@ pub enum MultiTurnStreamItem {
     /// ```
     /// use rig_agent::agent::MultiTurnStreamItem;
     /// fn input_tokens(item: &MultiTurnStreamItem) -> Option<u64> {
-    ///     match item {
-    ///         MultiTurnStreamItem::CompletionCall(call) => call.usage.input_tokens,
-    ///         _ => None,
-    ///     }
+    /// match item {
+    /// MultiTurnStreamItem::CompletionCall(call) => call.usage.input_tokens,
+    /// _ => None,
+    /// }
     /// }
     /// ```
     CompletionCall(CompletionCall),
@@ -279,8 +279,8 @@ impl AgentRunner {
     /// ```rust,no_run
     /// # use rig_agent::{Agent, agent::StreamingResult};
     /// fn start(agent: &Agent, prompt: &str) -> StreamingResult {
-    ///     // Nothing runs until whoever holds this polls it.
-    ///     agent.prompt(prompt).stream()
+    /// // Nothing runs until whoever holds this polls it.
+    /// agent.prompt(prompt).stream()
     /// }
     /// ```
     ///

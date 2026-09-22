@@ -91,7 +91,7 @@ async fn context() -> Result<(), anyhow::Error> {
 /// Based upon the `loaders` example
 ///
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
-///  context for the agent
+/// context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
     let model = client()?.completion(AMAZON_NOVA_LITE);
 

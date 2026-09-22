@@ -9,7 +9,7 @@
 //! use rig_cassette::{agent::AgentReplayExt, effect_log::EffectLog};
 //!
 //! fn stamp(agent: &rig_agent::Agent, log: EffectLog) -> EffectLog {
-//!     agent.stamp(log)
+//! agent.stamp(log)
 //! }
 //! ```
 

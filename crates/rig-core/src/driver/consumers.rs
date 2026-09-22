@@ -1,6 +1,6 @@
 //! The consumer-facing traits, implemented once each for [`Bound`].
 //!
-//! Seven impls, total: one per trait. A provider contributes none of them —
+//! Seven impls, total: one per trait. A provider contributes none of them -
 //! it contributes a [`Wire`], and `Bound<W, H>` is the model.
 //!
 //! The `Has*` traits below are the other half: a provider *config* names the
@@ -248,8 +248,8 @@ pub use crate::wire::HasCompletion;
 /// This is what the six deleted `*Client` traits were really for, reduced to
 /// the one thing a caller wanted from them, and it is the seam the agent
 /// sugar (`provider.agent(model)`) hangs on. `Bound<P, H>` satisfies it for
-/// every wire-backed provider; the typed-transport providers — Bedrock's
-/// Converse event stream, Vertex AI, gemini-grpc, in-process inference —
+/// every wire-backed provider; the typed-transport providers. Bedrock's
+/// Converse event stream, Vertex AI, gemini-grpc, in-process inference -
 /// implement it directly, because their frames are an SDK's types rather
 /// than bytes and they are not wires. Same spelling either way, which is the
 /// point: a caller does not need to know which kind it has.
@@ -419,7 +419,7 @@ where
 
 /// The calls on Gemini's explicit context cache: one verb each through
 /// [`call`]. The ones that address an existing handle read a 403 or 404 as
-/// [`CachedContentError::Expired`] — see
+/// [`CachedContentError::Expired`]. see
 /// `CachedContentError::on_handle` for why `create` does not.
 impl<H> Bound<CachedContents, H>
 where
@@ -428,7 +428,7 @@ where
     /// Upload content and get a handle back.
     ///
     /// The returned [`CachedContent::usage_metadata`] reports how many tokens
-    /// are now being stored — and therefore billed — so log it if cost
+    /// are now being stored. and therefore billed. so log it if cost
     /// matters.
     pub async fn create(
         &self,
@@ -457,7 +457,7 @@ where
             .entries()
     }
 
-    /// [`Self::list`] at an explicit page size — see
+    /// [`Self::list`] at an explicit page size. see
     /// [`CachedContents::page_size`] for when one is wanted.
     pub async fn list_with_page_size(
         &self,
@@ -471,7 +471,7 @@ where
 
     /// Extend (or shorten) a cache's life.
     ///
-    /// Expiry is the only mutable part of the resource — the content itself
+    /// Expiry is the only mutable part of the resource. the content itself
     /// is immutable, so refreshing a corpus means creating a new cache and
     /// deleting the old one.
     pub async fn update_expiry(

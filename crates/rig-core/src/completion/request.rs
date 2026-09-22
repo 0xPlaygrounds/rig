@@ -7,8 +7,8 @@
 //!
 //! ```ignore
 //! use rig_core::{
-//!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai::{self, wire::OpenAI},
+//! completion::{AssistantContent, CompletionModel},
+//! providers::openai::{self, wire::OpenAI},
 //! };
 //! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
 //! use rig_reqwest::prelude::*;
@@ -17,16 +17,16 @@
 //! let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
 //!
 //! let request = model
-//!     .completion_request("Who are you?")
-//!     .preamble("You are a concise assistant.".to_string())
-//!     .temperature(0.5)
-//!     .build();
+//!.completion_request("Who are you?")
+//!.preamble("You are a concise assistant.".to_string())
+//!.temperature(0.5)
+//!.build();
 //!
 //! let response = model.completion(request).await?;
 //! for item in response.choice {
-//!     if let AssistantContent::Text(text) = item {
-//!         println!("{}", text.text);
-//!     }
+//! if let AssistantContent::Text(text) = item {
+//! println!("{}", text.text);
+//! }
 //! }
 //! # Ok(())
 //! # }
@@ -63,19 +63,19 @@ use thiserror::Error;
 ///
 /// /// Log the provider's raw error response when a completion fails.
 /// fn report(error: &CompletionError) {
-///     if let Some(status) = error.provider_response_status() {
-///         // Note: this can be a 2xx status for providers that return an error
-///         // envelope alongside a success status — the error itself means failure.
-///         eprintln!("provider returned HTTP {status}");
-///     }
-///     match error.provider_response_json() {
-///         Ok(Some(json)) => eprintln!("provider error payload: {json}"),
-///         Ok(None) => eprintln!("no provider response body (e.g. a transport error)"),
-///         Err(_) => eprintln!(
-///             "provider response body was not valid JSON: {:?}",
-///             error.provider_response_body(),
-///         ),
-///     }
+/// if let Some(status) = error.provider_response_status() {
+/// // Note: this can be a 2xx status for providers that return an error
+/// // envelope alongside a success status. the error itself means failure.
+/// eprintln!("provider returned HTTP {status}");
+/// }
+/// match error.provider_response_json() {
+/// Ok(Some(json)) => eprintln!("provider error payload: {json}"),
+/// Ok(None) => eprintln!("no provider response body (e.g. a transport error)"),
+/// Err(_) => eprintln!(
+/// "provider response body was not valid JSON: {:?}",
+/// error.provider_response_body(),
+/// ),
+/// }
 /// }
 /// ```
 #[derive(Debug, Error)]
@@ -217,7 +217,7 @@ impl ProviderToolDefinition {
 /// (`finish_reason`, `stop_reason`, `stopReason`, …). Each provider's response
 /// conversion maps its wire value onto these variants and preserves anything
 /// unmapped verbatim in [`FinishReason::Other`], so a provider adding a new
-/// terminal reason never silently reads as a natural stop. Closes #2090/#1886.
+/// terminal reason never silently reads as a natural stop..
 ///
 /// Provider *failure* statuses that arrive with parseable output (a Gemini
 /// Interactions `failed`/`cancelled` interaction, a Cohere `ERROR`) follow one
@@ -271,16 +271,16 @@ impl FinishReason {
     /// Whether the provider cut the turn short instead of letting the model
     /// finish.
     ///
-    /// A turn that ended this way can legitimately carry *no content at all* —
+    /// A turn that ended this way can legitimately carry *no content at all* -
     /// an output-token cap consumed entirely by hidden reasoning tokens, or a
-    /// filter that removed everything the model produced — and the reason is
+    /// filter that removed everything the model produced. and the reason is
     /// then the only diagnostic the caller has. Normalization keeps such an
     /// empty turn rather than rejecting it as a malformed response, so a
     /// caller can tell "you hit the cap" from "the provider misbehaved".
     ///
     /// [`Stop`](Self::Stop) and [`ToolCalls`](Self::ToolCalls) describe turns
     /// that ran to completion, so an empty one really is a provider defect;
-    /// [`Other`](Self::Other) is unclassified and gets the strict treatment —
+    /// [`Other`](Self::Other) is unclassified and gets the strict treatment -
     /// it carries a provider's own wire spelling with no normalized meaning.
     ///
     /// This is also the set rig-agent has a remedy for when a turn arrives
@@ -320,12 +320,12 @@ impl FinishReason {
 /// response metadata. The completion choice contains one or more assistant
 /// content items.
 ///
-/// This type is concrete — it carries no provider-typed payload. A caller who
+/// This type is concrete. it carries no provider-typed payload. A caller who
 /// needs the provider's own reply *typed* deserializes it out of
 /// [`CompletionResponse::raw`], which every provider seam populates with the
 /// document its decoder folded; provider reply types are `Deserialize`, so the
 /// typed read is one `serde_json::from_value` away, and it needs no concrete
-/// model — an agent erases the model at construction and still has the value.
+/// model. an agent erases the model at construction and still has the value.
 /// A provider over a non-HTTP transport (the Bedrock SDK, a local Candle
 /// model) may additionally expose an inherent method returning its SDK's
 /// typed reply.
@@ -338,7 +338,7 @@ pub struct CompletionResponse {
     /// Tokens used during prompting and responding
     pub usage: Usage,
     /// The identifier the provider assigned to the *assistant message* itself,
-    /// when it issued one — an OpenAI Responses output-message `msg_` ID or an
+    /// when it issued one. an OpenAI Responses output-message `msg_` ID or an
     /// Anthropic `msg_` ID. Only IDs the provider would recognize on a replayed
     /// assistant message belong here; identifiers that name the whole response
     /// (an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`) go in
@@ -350,7 +350,7 @@ pub struct CompletionResponse {
     #[serde(default)]
     pub message_id: Option<String>,
     /// The identifier the provider assigned to the response as a whole, when it
-    /// reported one — an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`, a
+    /// reported one. an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`, a
     /// Cohere generation ID. Response-scoped: useful for logging, telemetry
     /// (`gen_ai.response.id`), and support requests, but never replayed to a
     /// provider as a message ID.
@@ -358,10 +358,10 @@ pub struct CompletionResponse {
     pub response_id: Option<String>,
     /// The provider's transport-level request identifier, taken from the HTTP
     /// response headers (Anthropic `request-id`, OpenAI/xAI `x-request-id`) or
-    /// the provider SDK's response metadata (Bedrock) — the id provider
+    /// the provider SDK's response metadata (Bedrock). the id provider
     /// support asks for when investigating a request. Never the body's
     /// `message.id`/response id; those are [`Self::message_id`] and
-    /// [`Self::response_id`]. `None` means the provider did not report one —
+    /// [`Self::response_id`]. `None` means the provider did not report one -
     /// that is a documented outcome (e.g. Gemini sends no id header), never an
     /// error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -371,7 +371,7 @@ pub struct CompletionResponse {
     /// Private so that every write flows through
     /// [`CompletionResponse::with_finish_reason`] /
     /// [`CompletionResponse::with_optional_finish_reason`], which apply
-    /// [`FinishReason::reconcile_with_output`] — a direct assignment would
+    /// [`FinishReason::reconcile_with_output`]. a direct assignment would
     /// silently skip the tool-call upgrade. Read via
     /// [`CompletionResponse::finish_reason`].
     #[serde(default)]
@@ -387,11 +387,11 @@ pub struct CompletionResponse {
     #[serde(default)]
     pub model: Option<String>,
     /// The provider's own response for this call: its reply document as the
-    /// provider's decoder parsed it — fields that wire type does not model are
-    /// not here. Every provider seam populates it, unconditionally — the same
+    /// provider's decoder parsed it. fields that wire type does not model are
+    /// not here. Every provider seam populates it, unconditionally. the same
     /// parity the pre-normalization `raw_response: T` had.
     ///
-    /// An escape hatch for provider-specific data rig does not normalize — it
+    /// An escape hatch for provider-specific data rig does not normalize. it
     /// never replaces a normalized field, and every normalized field means the
     /// same thing whatever this holds. Required at construction: a response
     /// is built from the document that produced it, so there is no response
@@ -400,29 +400,29 @@ pub struct CompletionResponse {
     /// Typed access is recoverable: provider reply types are `Deserialize`,
     /// so `provider::CompletionResponse::deserialize(&raw)` returns the
     /// provider's own type. There is no second mapping to convert it
-    /// forward — this response IS the fold of that document, produced once
+    /// forward. this response IS the fold of that document, produced once
     /// by the provider's decoder.
     pub raw: serde_json::Value,
 }
 
 /// Response identity metadata for one completed model call: which provider
-/// objects this exact attempt produced. The three axes stay distinct —
-/// message-scoped, response-scoped, and transport — and every field is `None`
+/// objects this exact attempt produced. The three axes stay distinct -
+/// message-scoped, response-scoped, and transport. and every field is `None`
 /// when the provider did not report it: a documented outcome, never an error.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResponseIdentity {
     /// Provider-assigned *assistant message* ID (e.g. an Anthropic or OpenAI
-    /// Responses `msg_…`) — an ID the provider would recognize on a replayed
+    /// Responses `msg_…`). an ID the provider would recognize on a replayed
     /// assistant message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// Provider-assigned *response-scoped* ID (e.g. an OpenAI `chatcmpl-` or
-    /// `resp_…` ID) — names the whole response, never replayed as a message
+    /// `resp_…` ID). names the whole response, never replayed as a message
     /// ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// The provider's *transport* request id (HTTP response header such as
-    /// Anthropic `request-id`, or provider SDK response metadata) — the id
+    /// Anthropic `request-id`, or provider SDK response metadata). the id
     /// provider support asks for. Never the body's message/response id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
@@ -629,7 +629,7 @@ pub struct ProviderCapabilities {
     /// multi-turn request without suppressing them.
     ///
     /// `false` is the safe assumption: the native constraint may make the model
-    /// emit schema JSON instead of calling its tools — see issue #1928.
+    /// emit schema JSON instead of calling its tools. see issue.
     /// Providers that enforce structured output *and* tool use together (e.g.
     /// OpenAI, Anthropic) set this to `true`, which lets runtimes keep
     /// guaranteed native structured output active when tools are present.
@@ -651,7 +651,7 @@ impl ProviderCapabilities {
     }
 }
 
-/// Trait defining a completion model that can be used to generate completion responses.
+/// Trait defining a completion model that can be previously generate completion responses.
 /// This trait is meant to be implemented by the user to define a custom completion model,
 /// either from a third party provider (e.g.: OpenAI) or a local model.
 ///
@@ -663,7 +663,7 @@ impl ProviderCapabilities {
 /// model as `completion(model)` on the [`Bound`](crate::driver::Bound) that
 /// joins that config to a transport.
 ///
-/// The trait demands only async service behavior — no `Clone` supertrait, in
+/// The trait demands only async service behavior. no `Clone` supertrait, in
 /// the spirit of `tower::Service`: cloning or sharing a model is the caller's
 /// concern (wrap it in an `Arc` if needed). The [`Self::completion_request`]
 /// convenience gates on `Self: Clone` individually, which every built-in
@@ -722,7 +722,7 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
 
     /// Provider behavior a runtime should account for when preparing requests.
     ///
-    /// The default is conservative — see [`ProviderCapabilities`]. Override
+    /// The default is conservative. see [`ProviderCapabilities`]. Override
     /// this to declare the capabilities a provider actually supports.
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities::default()
@@ -733,7 +733,7 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
 /// "wrap it in an `Arc` if needed" guidance holds through the generic APIs
 /// (`CompletionRequestBuilder`, agent construction), not just at direct call
 /// sites. `Arc<M>: Clone` always holds, so [`CompletionModel::completion_request`]
-/// clones the `Arc` — never the model.
+/// clones the `Arc`. never the model.
 impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     fn completion(
         &self,
@@ -782,7 +782,7 @@ pub struct CompletionRequest {
     /// The chat history to be sent to the completion model provider.
     /// The very last message is the prompt.
     ///
-    /// This used to be a non-empty container, so "there is always at least one"
+    /// This previously be a non-empty container, so "there is always at least one"
     /// was a type guarantee. It is a `Vec` now and the field is public, so the
     /// guarantee is a *rule* instead: it is checked by
     /// [`CompletionRequest::validate_message_content`] at the request boundary.
@@ -840,23 +840,27 @@ impl CompletionRequest {
     /// is where both are restated:
     ///
     /// - `chat_history` was non-empty by construction. As a `Vec` it is not, and
-    ///   the field is public, so `CompletionRequest { chat_history: vec![], .. }`
-    ///   is constructible and would reach a provider as `messages: []` — a remote
-    ///   400 in place of a local error that names the problem.
+    ///
+    /// the field is public, so `CompletionRequest { chat_history: vec![],.. }`
+    ///
+    /// is constructible and would reach a provider as `messages: []`. a remote
+    ///
+    /// 400 in place of a local error that names the problem.
     /// - Message content was likewise non-empty by construction, and every wire
-    ///   rejects an empty content block.
+    ///
+    /// rejects an empty content block.
     ///
     /// The rule also covers the block list *inside* a tool result. A user
     /// message carrying one `UserContent::ToolResult` is itself non-empty, but
     /// `ToolResult::content` was non-empty by construction under the removed
     /// container and is request-direction data just like the message content
-    /// around it — so its check is relocated here rather than dropped. Only a
+    /// around it. so its check is relocated here rather than dropped. Only a
     /// tool result with *zero* blocks is rejected; a tool that legitimately
     /// returned an empty string produces one block and still sends.
     ///
     /// This is the **request** direction only, and the asymmetry is deliberate.
     /// Empty *assistant* content is a real provider outcome on the response path
-    /// — a tool-call-only turn, a content-filtered turn, a truncated stream — and
+    ///. a tool-call-only turn, a content-filtered turn, a truncated stream. and
     /// the agent layer drops such a turn rather than sending it, so it never
     /// reaches here. The response direction is guarded per-wire instead, by
     /// [`crate::message::require_non_empty`], because "this provider returned
@@ -1043,8 +1047,8 @@ fn merge_provider_tools_into_additional_params(
 /// Example usage:
 /// ```ignore
 /// use rig_core::{
-///     completion::{CompletionModel, CompletionRequestBuilder},
-///     providers::openai::{self, wire::OpenAI},
+/// completion::{CompletionModel, CompletionRequestBuilder},
+/// providers::openai::{self, wire::OpenAI},
 /// };
 /// use rig_reqwest::prelude::*;
 ///
@@ -1053,9 +1057,9 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// // Create the completion request and execute it separately
 /// let request = CompletionRequestBuilder::new(model.clone(), "Who are you?".to_string())
-///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
-///     .temperature(0.5)
-///     .build();
+///.preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
+///.temperature(0.5)
+///.build();
 ///
 /// let response = model.completion(request).await?;
 /// # Ok(())
@@ -1065,8 +1069,8 @@ fn merge_provider_tools_into_additional_params(
 /// Alternatively, you can execute the completion request directly from the builder:
 /// ```ignore
 /// use rig_core::{
-///     completion::CompletionRequestBuilder,
-///     providers::openai::{self, wire::OpenAI},
+/// completion::CompletionRequestBuilder,
+/// providers::openai::{self, wire::OpenAI},
 /// };
 /// use rig_reqwest::prelude::*;
 ///
@@ -1075,10 +1079,10 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// // Create the completion request and execute it directly
 /// let response = CompletionRequestBuilder::new(model, "Who are you?".to_string())
-///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
-///     .temperature(0.5)
-///     .send()
-///     .await?;
+///.preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
+///.temperature(0.5)
+///.send()
+///.await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -1202,21 +1206,21 @@ impl<M> CompletionRequestBuilder<M> {
 
     /// Merges provider-specific parameters into the completion request
     /// (`None` merges nothing). For example, Cohere's completion models accept
-    /// a `connectors` parameter that can be used to specify the data
+    /// a `connectors` parameter that can be previously specify the data
     /// connectors used by Cohere when executing the completion (see
     /// `examples/cohere_connectors.rs`).
     ///
     /// These parameters are passed through to the provider's request body
     /// **after** the typed fields, so a key that names a typed sampling field
     /// (`temperature`, `max_tokens`, `tool_choice`, `model`) overrides the
-    /// typed value. That precedence is deliberate — it is the escape hatch for
-    /// a provider knob rig does not model — but it is easy to hit by accident,
+    /// typed value. That precedence is deliberate. it is the escape hatch for
+    /// a provider knob rig does not model. but it is easy to hit by accident,
     /// so [`build`](Self::build) logs a warning naming each such key. `tools`
     /// and `response_format` are the exception: most providers (OpenAI,
     /// Gemini, Anthropic, xAI) merge a passthrough `tools` list into the
     /// typed one, a few (Cohere) let it replace the typed list, and each
     /// reconciles `response_format` with the typed `output_schema` its own
-    /// way — so for those two the warning only says both were supplied.
+    /// way. so for those two the warning only says both were supplied.
     pub fn additional_params(
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,
@@ -1322,7 +1326,7 @@ impl<M> CompletionRequestBuilder<M> {
         }
 
         // The push is what makes the history non-empty, so the fallback that
-        // used to follow could never be taken — and it forced a clone of the
+        // previously follow could never be taken. and it forced a clone of the
         // prompt to feed it.
         chat_history.push(prompt);
         // Checked before provider tools are merged in: that merge writes a

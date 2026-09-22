@@ -3,13 +3,19 @@
 //! This crate depends on rig-core only. It provides:
 //!
 //! - `McpTool`, one MCP server tool, usable as a rig-core
-//!   [`PortableDynamicTool`](rig_core::tool::PortableDynamicTool) via `From`
-//!   (with a liveness probe bound to the MCP transport), and
-//!   `tools_from_server` for a whole tool list;
+//!
+//! [`PortableDynamicTool`](rig_core::tool::PortableDynamicTool) via `From`
+//!
+//! (with a liveness probe bound to the MCP transport), and
+//!
+//! `tools_from_server` for a whole tool list;
 //! - `McpClientHandler`, an rmcp client handler that keeps any
-//!   [`ManagedToolSink`](rig_core::tool::ManagedToolSink) — rig-agent's
-//!   `ToolServerHandle`, for example — in sync with the server's tool list,
-//!   reacting to `notifications/tools/list_changed`.
+//!
+//! [`ManagedToolSink`](rig_core::tool::ManagedToolSink). rig-agent's
+//!
+//! `ToolServerHandle`, for example. in sync with the server's tool list,
+//!
+//! reacting to `notifications/tools/list_changed`.
 //!
 //! Per call, an [`rmcp::model::Meta`] placed in the runtime's
 //! [`ToolContext`](rig_core::tool::ToolContext) is forwarded as the request's
@@ -34,17 +40,17 @@
 //!
 //! // 4. Build an agent using the shared tool server handle
 //! let agent = openai_client
-//!     .agent(openai::GPT_5_2)
-//!     .preamble("You are a helpful assistant.")
-//!     .tool_server_handle(tool_server_handle)
-//!     .build();
+//!.agent(openai::GPT_5_2)
+//!.preamble("You are a helpful assistant.")
+//!.tool_server_handle(tool_server_handle)
+//!.build();
 //! ```
 //!
 //! # Per-call metadata
 //!
 //! Rig's MCP adapter forwards an [`rmcp::model::Meta`] (re-exported here as
 //! [`Meta`]) placed in a rig-agent `ToolContext` as the MCP request's `_meta`
-//! (SEP-1319) — the idiomatic channel for per-call values such as auth tokens,
+//! (SEP-1319). the idiomatic channel for per-call values such as auth tokens,
 //! session ids, or A2A `context_id`/`task_id`, which the model never sees:
 //!
 //! ```rust,ignore
@@ -81,8 +87,8 @@
 )]
 
 // MCP is native-only. rmcp's `ClientHandler` is declared
-// `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
-// the future bounds but not the handler itself — and rig's tool registry holds
+// `Sized + Send + Sync + 'static` unconditionally. its `local` feature relaxes
+// the future bounds but not the handler itself. and rig's tool registry holds
 // `Arc<dyn ErasedTool>` values that are deliberately neither `Send` nor `Sync`
 // on wasm (`WasmCompatSend`/`WasmCompatSync` are no-op markers there). The two
 // maybe-`Send` abstractions cannot be reconciled from this side, so raise one

@@ -1,8 +1,8 @@
 //! The one stream vocabulary: what a provider adapter emits and what a
 //! consumer receives are the same [`StreamEvent`].
 //!
-//! A stream is a sequence of **blocks** — text, reasoning, tool calls, and
-//! the assistant message itself — each identified by a [`BlockId`] for the
+//! A stream is a sequence of **blocks**. text, reasoning, tool calls, and
+//! the assistant message itself. each identified by a [`BlockId`] for the
 //! life of the stream. Every block runs `BlockStart → BlockDelta* →
 //! BlockEnd`; a start is optional (a delta for an unseen id opens its block
 //! leniently) and an end may carry the wire's authoritative payload for the
@@ -11,7 +11,7 @@
 //! The accumulator ([`BlockAccumulator`](super::BlockAccumulator)) folds the
 //! same events into the aggregated assistant choice, and fills
 //! [`BlockEnd::block`] on the events it yields to consumers with the block it
-//! just finalized — so a consumer that wants the completed tool call or
+//! just finalized. so a consumer that wants the completed tool call or
 //! reasoning item reads it off the end event, and one that only wants the
 //! deltas ignores it. Adapters always emit `block: None`.
 //!
@@ -62,7 +62,7 @@ pub enum StreamEvent {
     /// The provider's normalized terminal record. At most one per stream,
     /// last among the content events.
     Final(StreamFinal),
-    /// A provider-native item rig does not model — e.g. an OpenAI Responses
+    /// A provider-native item rig does not model. e.g. an OpenAI Responses
     /// hosted-tool result. Passed through verbatim; never folded into the
     /// aggregated choice.
     Unknown(UnknownPayload),
@@ -84,7 +84,7 @@ pub enum BlockKind {
         additional_params: Option<AdditionalParams>,
     },
     /// A reasoning block, with the provider-issued durable id when the wire
-    /// has one — the value that becomes [`Reasoning::id`] and round-trips
+    /// has one. the value that becomes [`Reasoning::id`] and round-trips
     /// upstream. A minted block id never does.
     Reasoning {
         /// The provider-issued reasoning item id.
@@ -159,7 +159,7 @@ pub enum BlockClose {
 /// The end of a streamed tool call's input.
 ///
 /// Optional fields are authoritative wire values that supersede the
-/// assembled state — a wire whose completed item restates the call (OpenAI
+/// assembled state. a wire whose completed item restates the call (OpenAI
 /// Responses `output_item.done`, a whole-call wire) carries them; delta-only
 /// wires leave them `None` and the assembled fragments are parsed instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -270,7 +270,7 @@ impl StreamEvent {
         }
     }
 
-    /// Stable variant name for logs and law-violation messages — never the
+    /// Stable variant name for logs and law-violation messages. never the
     /// payload (events carry wire content that must not reach logs).
     pub const fn name(&self) -> &'static str {
         match self {

@@ -1,7 +1,7 @@
 //! Stream-block identity: the one key a streamed part is known by.
 //!
-//! One streamed part — a text block, a reasoning block, a tool call under
-//! assembly — has exactly one identity for the life of its stream, the
+//! One streamed part. a text block, a reasoning block, a tool call under
+//! assembly. has exactly one identity for the life of its stream, the
 //! [`BlockId`]. Every event about the part carries it: the accumulator keys
 //! its maps by it, and the public stream items carry the same value, so a
 //! consumer correlates a part's deltas with its completed block by simple
@@ -11,8 +11,8 @@
 //! The id keeps its **provenance**: a [`BlockId::Wire`] is an identifier the
 //! provider actually issued; a [`BlockId::Minted`] was fabricated at the
 //! adapter boundary because the wire supplied none. Provenance is data (the
-//! id is serde) and it is load-bearing — the accumulator's adoption rule and
-//! the sequence laws ask [`BlockId::is_minted`] — but it is never a *durable*
+//! id is serde) and it is load-bearing. the accumulator's adoption rule and
+//! the sequence laws ask [`BlockId::is_minted`]. but it is never a *durable*
 //! provider handle: the identifiers that travel back on a provider's wire
 //! are the plain strings on the replayable message types
 //! ([`crate::message::Reasoning::id`], [`crate::message::ToolCall::id`]),
@@ -34,8 +34,8 @@ pub enum MintKind {
     Reasoning,
     /// Encrypted/opaque reasoning payloads on id-less wires (openrouter's
     /// `reasoning.encrypted` detail). A distinct kind from
-    /// [`MintKind::Reasoning`] so a whole encrypted block can never restate —
-    /// and replace — the text block accumulating under the wire's constant
+    /// [`MintKind::Reasoning`] so a whole encrypted block can never restate -
+    /// and replace. the text block accumulating under the wire's constant
     /// reasoning key.
     EncryptedReasoning,
     /// Content blocks on index-as-id wires (anthropic, bedrock).
@@ -95,7 +95,7 @@ impl MintKind {
 ///
 /// The serde form is one string, so a block id can key a JSON map:
 /// `"wire:<id>"` or `"minted:<kind>:<index>"`. Decoding rejects anything
-/// else — provenance is never guessed from the shape of an id.
+/// else. provenance is never guessed from the shape of an id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BlockId {
     /// An identifier the provider put on the wire.
@@ -112,7 +112,7 @@ pub enum BlockId {
         /// The subsystem that minted this key.
         kind: MintKind,
         /// Position within the mint's own sequence (a counter or the wire's
-        /// unsigned index) — restarted for every stream.
+        /// unsigned index). restarted for every stream.
         index: u64,
     },
 }
@@ -132,7 +132,7 @@ impl From<&str> for BlockId {
 impl BlockId {
     /// A key derived from a wire-supplied identifier. The identifier is
     /// non-empty: an absent id is not an id, and an adapter whose wire may
-    /// omit one mints ([`SyntheticIds`]) instead — an empty wire key would
+    /// omit one mints ([`SyntheticIds`]) instead. an empty wire key would
     /// make every id-less block of a stream the same block.
     pub fn wire(id: impl Into<String>) -> Self {
         let id = id.into();
@@ -154,7 +154,7 @@ impl BlockId {
     /// interleaving output).
     /// The minted block a minted id names: `tool-3` is the third tool
     /// block, the inverse of [`Display`](fmt::Display) for a minted id.
-    /// `None` for anything else — a provider's id is a wire id.
+    /// `None` for anything else. a provider's id is a wire id.
     pub fn from_minted_name(id: &str) -> Option<Self> {
         let (kind, index) = id.rsplit_once('-')?;
         let kind = MintKind::parse_name(kind)?;
@@ -167,7 +167,7 @@ impl BlockId {
     }
 
     /// The wire-supplied identifier this key was derived from, when it was.
-    /// A minted key has none — and never becomes a durable provider handle.
+    /// A minted key has none. and never becomes a durable provider handle.
     pub fn wire_str(&self) -> Option<&str> {
         match self {
             Self::Wire(wire) => Some(wire),
@@ -228,8 +228,8 @@ pub fn non_empty_id(id: impl Into<String>) -> Option<String> {
 
 /// Fabricated per-stream keys for wires that carry none.
 ///
-/// Every id-less wire mints keys the same way — a [`MintKind`] plus a
-/// counter or the wire's own unsigned index — and the result is a
+/// Every id-less wire mints keys the same way. a [`MintKind`] plus a
+/// counter or the wire's own unsigned index. and the result is a
 /// [`BlockId::Minted`] that keys the stream and never reaches a request.
 #[derive(Debug)]
 pub struct SyntheticIds {

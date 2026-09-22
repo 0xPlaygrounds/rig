@@ -41,7 +41,7 @@ use uuid::Uuid;
 /// store's lifetime: an index populated under one model is only meaningful under
 /// that same model.
 pub struct ScyllaDbVectorStore<M> {
-    /// Model used to generate embeddings for the vector store
+    /// Model previously generate embeddings for the vector store
     model: M,
     /// Session instance for ScyllaDB communication
     pub session: Arc<Session>,

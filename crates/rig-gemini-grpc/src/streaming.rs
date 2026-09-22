@@ -25,13 +25,13 @@ use super::proto;
 struct GrpcAdapter {
     /// Owns the constant-key thought lifecycle. Thought parts carry no wire id
     /// and this wire announces no block boundaries, so the shared derivation
-    /// emits the signed close and the synthesized boundary end — the same
+    /// emits the signed close and the synthesized boundary end. the same
     /// helper the REST wire uses, so both Gemini surfaces agree.
     reasoning: MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool-call keys — a fresh key per call, so
+    /// Per-stream minter for id-less tool-call keys. a fresh key per call, so
     /// two id-less calls in one turn never collide on one identity.
     tool_ids: streaming::SyntheticIds,
-    /// A tool-protocol finish reason ended the turn; later frames are dead —
+    /// A tool-protocol finish reason ended the turn; later frames are dead -
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn. Mirrors the REST
     /// adapter's identically named latch.
@@ -55,7 +55,7 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
         // prost/tonic already deserialized the frame, and a gRPC decode
         // failure surfaces as a transport `Status` error, so every frame is a
         // modeled event here. The wire's unknown-variant signal is per-part
-        // (a `part.data` oneof decoding to `None`) — sub-frame granularity,
+        // (a `part.data` oneof decoding to `None`). sub-frame granularity,
         // so `interpret` applies the warn-and-skip policy there.
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
@@ -135,7 +135,7 @@ impl GrpcAdapter {
             },
             // A trailing non-thought part can carry the signature of the
             // already-closed thought block, and one lifecycle end signs the
-            // right part in every case (#2258 B4); the text after it closes a
+            // right part in every case ; the text after it closes a
             // still-open block through the derived boundary end.
             Some(proto::part::Data::Text(text)) => ChunkParts {
                 reasoning_signature: encode_signature(&part.thought_signature),
@@ -148,7 +148,7 @@ impl GrpcAdapter {
                     .as_ref()
                     .map_or_else(|| Value::Object(Map::new()), prost_struct_to_json);
 
-                // The wire's id when present; never the tool name — a
+                // The wire's id when present; never the tool name. a
                 // name-as-id would collide two calls to the same tool in one
                 // turn. An id-less call keys the stream by a minted identity,
                 // counted up per stream so two id-less calls stay distinct,
@@ -159,7 +159,7 @@ impl GrpcAdapter {
                 };
 
                 // Gemini is a single-identifier wire: the id above travels as
-                // the part identity and `call_id` stays unset — setting both
+                // the part identity and `call_id` stays unset. setting both
                 // from one id would take the dual-wire arm downstream and
                 // fabricate an item id the wire never issued.
                 let mut end = streaming::ToolCallEnd::whole(function_call.name.clone(), args_json)
@@ -220,7 +220,7 @@ fn terminal_record(
 }
 
 /// Drive already-typed `GenerateContentResponse` events through the full
-/// shared pipeline — driver policy, canonical grammar, terminal
+/// shared pipeline. driver policy, canonical grammar, terminal
 /// normalization.
 ///
 /// The events-first conformance seam: the adapter is a pure
@@ -257,7 +257,7 @@ pub(crate) async fn stream(
         .map_err(|status| super::completion::rpc_error(&status))?
         .into_inner();
 
-    // Transport layer: gRPC messages only — a `Status` error is a transport
+    // Transport layer: gRPC messages only. a `Status` error is a transport
     // error; classification and policy live in the shared driver.
     let transport = stream! {
         while let Some(item) = response_stream.next().await {

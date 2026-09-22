@@ -155,7 +155,7 @@ impl Embeddings {
     }
 
     /// The width this wire reports, which is the caller's when they named
-    /// one and the model's documented width otherwise. Zero means unknown —
+    /// one and the model's documented width otherwise. Zero means unknown -
     /// the model is absent from every table this build knows.
     ///
     /// The dialect's own table wins over OpenAI's `text-embedding-*` one:
@@ -174,7 +174,7 @@ impl Embeddings {
     /// unhonourable width with `200` and a vector of some other width: an
     /// over-wide request to Doubleword is silently clamped to the native
     /// width, so letting it through would leave `ndims()` describing vectors
-    /// the API never returned. That is the reply-side check's blind spot —
+    /// the API never returned. That is the reply-side check's blind spot -
     /// it compares against what the caller declared, which is exactly the
     /// number that would be wrong.
     fn refuse_unhonourable_width(&self) -> Result<(), EmbeddingError> {
@@ -205,7 +205,7 @@ impl Embeddings {
             return Ok(());
         };
         // A model naming its own native width is not a request for
-        // truncation — it is the caller echoing back what `resolved_ndims`
+        // truncation. it is the caller echoing back what `resolved_ndims`
         // reports. Accepted, and suppressed by `requested_width`.
         if width.default == Some(declared) {
             return Ok(());
@@ -230,7 +230,7 @@ impl Embeddings {
             return None;
         }
         // The width the caller named, or the one this model is documented at
-        // — the deleted client sent `ndims.or_else(|| default_ndims(model))`,
+        //. the deleted client sent `ndims.or_else(|| default_ndims(model))`,
         // and every recorded embedding cassette carries the resolved value.
         // A model absent from every width table resolves to 0, which is the
         // sentinel for "unknown", and then nothing is sent.
@@ -253,7 +253,7 @@ impl Embeddings {
 
 /// The embeddings decoder.
 ///
-/// Its event is [`CompatibleEmbeddingResponse`] — the permissive parse of
+/// Its event is [`CompatibleEmbeddingResponse`]. the permissive parse of
 /// this reply, which is also the `raw` document a caller reads back, so the
 /// shape is stated once beside OpenAI's own strict contract rather than
 /// again here.
@@ -325,8 +325,8 @@ impl Wire for Embeddings {
     }
 
     fn capabilities(&self) -> EmbeddingCapabilities {
-        // `ndims` is the resolved width — the caller's, else the model
-        // table's — because that is what goes on the wire and what
+        // `ndims` is the resolved width. the caller's, else the model
+        // table's. because that is what goes on the wire and what
         // `EmbeddingModel::ndims` must report. `declared` is the narrower
         // fact of whether the caller asked for a width at all, which is the
         // only thing that licenses the consumer's mismatch check: a handle
@@ -409,7 +409,7 @@ impl Wire for Embeddings {
 pub struct Transcriptions {
     /// Which provider, and how to reach it.
     pub provider: OpenAI,
-    /// The transcription model, or — for Azure — the deployment.
+    /// The transcription model, or. for Azure. the deployment.
     pub model: String,
 }
 
@@ -448,7 +448,7 @@ impl Transcriptions {
         }
         if let Some(additional_params) = request.additional_params {
             for (name, value) in additional_params_object(&additional_params)? {
-                // String values go on the form verbatim — `Value::to_string`
+                // String values go on the form verbatim. `Value::to_string`
                 // would send them JSON-quoted (`"verbose_json"`), which
                 // providers reject or ignore. Non-string values stay JSON.
                 let value = match value {
@@ -523,7 +523,7 @@ fn additional_params_object(
 }
 
 /// The audio container the gateway is told to expect, from the filename's
-/// extension. `wav` when the extension names nothing this wire knows —
+/// extension. `wav` when the extension names nothing this wire knows -
 /// which is what the route defaults to, and the only answer available: the
 /// normalized request carries a filename and bytes, not a media type.
 fn audio_format_of(filename: &str) -> &'static str {
@@ -741,7 +741,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         match self.body {
             // Not JSON at all: there is nothing to decode, so there is
-            // nothing to classify — the bytes are the answer. A body that
+            // nothing to classify. the bytes are the answer. A body that
             // happened to be valid UTF-8 still arrives as text, so both
             // frame forms are the same payload here.
             ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
@@ -931,7 +931,7 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         // Not JSON at all: there is nothing to decode, so there is nothing
-        // to classify — the bytes are the answer.
+        // to classify. the bytes are the answer.
         WireEvent::Known(match frame {
             WireFrame::Text(text) => text.into_bytes(),
             WireFrame::Bytes(bytes) => bytes,
@@ -1014,8 +1014,8 @@ impl Wire for Speech {
                 "speed": request.speed,
             }),
         };
-        // Last, so a caller can reach the endpoint's other parameters —
-        // `response_format`, `instructions` — and override what is derived
+        // Last, so a caller can reach the endpoint's other parameters -
+        // `response_format`, `instructions`. and override what is derived
         // above. They demonstrably change the reply: `response_format: "wav"`
         // returns RIFF where the default returns MP3.
         if let Some(additional_params) = request.additional_params {
@@ -1060,13 +1060,13 @@ impl Models {
 ///
 /// `id` is the one field every dialect on this wire sends; the rest are
 /// optional so a dialect that omits them still decodes. The dialects do not
-/// agree on how to spell the context window — Groq says `context_window`,
-/// OpenRouter `context_length`, Mistral `max_context_length` — and each sends
+/// agree on how to spell the context window. Groq says `context_window`,
+/// OpenRouter `context_length`, Mistral `max_context_length`. and each sends
 /// only its own, so all three are modelled here and the first one present
 /// becomes [`Model::context_length`]. Same for the output ceiling: Groq
 /// reports `max_completion_tokens` at the top level, OpenRouter one level down
 /// under `top_provider`. Modelling only one dialect's spelling drops the
-/// others on the floor (rig#2079, rig#2322).
+/// others on the floor.
 #[derive(Debug, Deserialize)]
 pub struct ModelEntry {
     pub id: String,
@@ -1131,7 +1131,7 @@ pub struct ModelsReply {
 
 /// The model-listing decoder.
 ///
-/// This endpoint is not paged — it answers with the whole catalogue — so
+/// This endpoint is not paged. it answers with the whole catalogue. so
 /// [`Decoder::continuation`] keeps its default `None`.
 #[derive(Default)]
 pub struct ModelsDecoder;

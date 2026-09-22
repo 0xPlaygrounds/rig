@@ -3,7 +3,7 @@
 //! Gemini rejects `cachedContent` alongside `system_instruction`, `tools` or
 //! `tool_config` with a single 400 that does not say which one you set. Rig
 //! checks all three before the request leaves the process, so the matrix is
-//! exhaustive and free — no socket, no fixture.
+//! exhaustive and free. no socket, no fixture.
 
 use super::gemini_api_types::GenerateContentRequest;
 use crate::completion::{CompletionRequest, ToolDefinition};

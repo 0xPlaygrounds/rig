@@ -37,14 +37,14 @@ use std::fmt;
 ///
 /// // Create a model with all fields
 /// let model = Model {
-///     id: "gpt-4".to_string(),
-///     name: Some("GPT-4".to_string()),
-///     description: Some("A large language model...".to_string()),
-///     r#type: Some("chat".to_string()),
-///     created_at: Some(1677610600),
-///     owned_by: Some("openai".to_string()),
-///     context_length: Some(8192),
-///     max_output_tokens: Some(4096),
+/// id: "gpt-4".to_string(),
+/// name: Some("GPT-4".to_string()),
+/// description: Some("A large language model...".to_string()),
+/// r#type: Some("chat".to_string()),
+/// created_at: Some(1677610600),
+/// owned_by: Some("openai".to_string()),
+/// context_length: Some(8192),
+/// max_output_tokens: Some(4096),
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -83,11 +83,11 @@ pub struct Model {
     /// is the output ceiling, and for most models the output ceiling is far
     /// smaller (Gemini 2.5 Flash: 1,048,576 in, 65,536 out).
     ///
-    /// `None` means the provider's listing does not report one — never a
+    /// `None` means the provider's listing does not report one. never a
     /// default rig invented. Rig does **not** send this value on requests:
     /// omitting an output limit lets the provider apply its own per-model
     /// default, and populating it from here would reintroduce a rig-chosen cap
-    /// by another route (rig#2322). It is for callers and diagnostics.
+    /// by another route. It is for callers and diagnostics.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
 }
@@ -192,13 +192,13 @@ impl fmt::Display for Model {
 /// use rig_core::model::{Model, ModelList};
 ///
 /// let list = ModelList::new(vec![
-///     Model::from_id("gpt-4"),
-///     Model::from_id("gpt-3.5-turbo"),
+/// Model::from_id("gpt-4"),
+/// Model::from_id("gpt-3.5-turbo"),
 /// ]);
 ///
 /// println!("Found {} models", list.len());
 /// for model in list.iter() {
-///     println!("- {}", model.display_name());
+/// println!("- {}", model.display_name());
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,8 +220,8 @@ impl ModelList {
     /// use rig_core::model::{Model, ModelList};
     ///
     /// let list = ModelList::new(vec![
-    ///     Model::from_id("gpt-4"),
-    ///     Model::from_id("gpt-3.5-turbo"),
+    /// Model::from_id("gpt-4"),
+    /// Model::from_id("gpt-3.5-turbo"),
     /// ]);
     /// assert_eq!(list.len(), 2);
     /// ```
@@ -254,8 +254,8 @@ impl ModelList {
     /// use rig_core::model::{Model, ModelList};
     ///
     /// let list = ModelList::new(vec![
-    ///     Model::from_id("gpt-4"),
-    ///     Model::from_id("gpt-3.5-turbo"),
+    /// Model::from_id("gpt-4"),
+    /// Model::from_id("gpt-3.5-turbo"),
     /// ]);
     /// assert_eq!(list.len(), 2);
     /// ```
@@ -271,12 +271,12 @@ impl ModelList {
     /// use rig_core::model::{Model, ModelList};
     ///
     /// let list = ModelList::new(vec![
-    ///     Model::from_id("gpt-4"),
-    ///     Model::from_id("gpt-3.5-turbo"),
+    /// Model::from_id("gpt-4"),
+    /// Model::from_id("gpt-3.5-turbo"),
     /// ]);
     ///
     /// for model in list.iter() {
-    ///     println!("Model: {}", model.display_name());
+    /// println!("Model: {}", model.display_name());
     /// }
     /// ```
     pub fn iter(&self) -> std::slice::Iter<'_, Model> {
@@ -500,7 +500,7 @@ impl crate::wire::WireError for ModelListingError {
 
     /// A failed catalog fetch names no response a caller can inspect, so the
     /// diagnostic has to carry what it was: which provider, which path, and
-    /// the reply's status and body (rig#2079).
+    /// the reply's status and body.
     fn with_route(self, provider: &str, path: &str) -> Self {
         match self {
             Self::ApiError {

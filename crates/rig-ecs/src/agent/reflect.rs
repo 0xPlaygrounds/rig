@@ -17,19 +17,19 @@ use serde::{Deserialize, Serialize};
 pub use crate::bus::reflect::ToolContextReflect;
 
 crate::reflect::opaque_reflect! {
-    /// A `serde_json::Value`, reflected.
+ /// A `serde_json::Value`, reflected.
     enum JsonReflect(serde_json::Value): Default, PartialEq;
-    /// An `Option<serde_json::Value>`, reflected.
+ /// An `Option<serde_json::Value>`, reflected.
     enum OptionalJsonReflect(Option<serde_json::Value>): Default, PartialEq;
-    /// An `Option<ToolChoice>`, reflected.
+ /// An `Option<ToolChoice>`, reflected.
     enum ToolChoiceReflect(Option<ToolChoice>): Default, PartialEq;
-    /// A [`ToolCallId`], reflected.
+ /// A [`ToolCallId`], reflected.
     struct ToolCallIdReflect(ToolCallId): PartialEq;
-    /// An `Option<ProviderCallId>`, reflected.
+ /// An `Option<ProviderCallId>`, reflected.
     enum ProviderCallIdReflect(Option<ProviderCallId>): Default, PartialEq;
-    /// An assistant turn's parts, `Vec<AssistantContent>`, reflected.
+ /// An assistant turn's parts, `Vec<AssistantContent>`, reflected.
     struct AssistantContentsReflect(Vec<AssistantContent>): Default, PartialEq;
-    /// A [`Message`], reflected.
+ /// A [`Message`], reflected.
     enum MessageReflect(Message): PartialEq;
 }
 

@@ -15,7 +15,7 @@
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Secret(String);
 
-/// What a redacted secret renders and serializes as — and the one string
+/// What a redacted secret renders and serializes as. and the one string
 /// that deserializes to no credential.
 const REDACTED: &str = "[redacted]";
 

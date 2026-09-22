@@ -3,10 +3,13 @@
 //! Two authoring surfaces share one execution path:
 //!
 //! * the context-free [`PortableTool`] boundary, adaptable by any runtime
-//!   without importing a registry, mutable context, lifecycle state, or
-//!   executor; and
+//!
+//! without importing a registry, mutable context, lifecycle state, or
+//!
+//! executor; and
 //! * the contextual [`Tool`] trait (every portable tool is one), whose
-//!   [`Tool::call`] also receives the dispatch's [`ToolContext`].
+//!
+//! [`Tool::call`] also receives the dispatch's [`ToolContext`].
 //!
 //! Both erase into [`ErasedTool`], a tool-family handler a bus takes. The
 //! registry that collects tools by name, pins them per model turn and

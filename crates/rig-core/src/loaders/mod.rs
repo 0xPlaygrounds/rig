@@ -50,9 +50,11 @@ macro_rules! loader_dir_doc {
 /// Expands to the directory-entry iterator used by a loader's `with_dir`.
 ///
 /// - `files_only`: skips unreadable entries and non-files (the [`file::FileLoader`]
-///   behavior).
+///
+/// behavior).
 /// - `all_entries`: yields every entry's path, surfacing entry errors as items
-///   (the pdf/epub behavior).
+///
+/// (the pdf/epub behavior).
 macro_rules! loader_dir_entries {
     (files_only, $entries:expr, $Err:ty) => {
         $entries.filter_map(|entry| {
@@ -101,8 +103,8 @@ macro_rules! loader_scaffold {
         }
 
         impl<'a, T: 'a $(, $P)?> $Loader<'a, Result<T, $Err> $(, $P)?> {
-            /// Ignores errors in the iterator, returning only successful results. This
-            ///  can be used on any loader state of iterator whose items are results.
+ /// Ignores errors in the iterator, returning only successful results. This
+ /// can be used on any loader state of iterator whose items are results.
             pub fn ignore_errors(self) -> $Loader<'a, T $(, $P)?> {
                 $Loader {
                     iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
@@ -112,7 +114,7 @@ macro_rules! loader_scaffold {
         }
 
         impl<'a $(, $P)?> $Loader<'a, Result<std::path::PathBuf, $Err> $(, $P)?> {
-            /// Creates a new loader using a glob pattern to match files.
+ /// Creates a new loader using a glob pattern to match files.
             pub fn with_glob(
                 pattern: &str,
             ) -> Result<$Loader<'_, Result<std::path::PathBuf, $Err> $(, $P)?>, $Err> {

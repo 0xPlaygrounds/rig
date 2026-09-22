@@ -1,6 +1,6 @@
 //! What a driver tells about the dispatches it serves: the seam a log
 //! recorder implements. Beside the dispatch observer because it is the same kind
-//! of thing — the handler side's view of a dispatch's life — and so that a
+//! of thing. the handler side's view of a dispatch's life. and so that a
 //! recorder needs no runtime crate: `rig_cassette::effect_log` implements it over
 //! rig-core alone, and any driver (the bus's, an ECS schedule's) feeds one.
 
@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Where a dispatch came from, as data: the dispatch it was made from, if
-/// a handler made it, and the scope of the program that made it — a
+/// a handler made it, and the scope of the program that made it. a
 /// stable serde id of the dispatching run or agent (never a runtime
 /// handle), stamped by a scoped dispatcher. Both ride the record.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -58,11 +58,11 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin);
     /// A dispatch that began is not a record after all: a layer decided it
     /// before any handler served it (a denial, a patch of the wrong
-    /// family). Decisions are program, never record — a replay re-makes
-    /// them — so the recorder forgets the slot `begin` opened.
+    /// family). Decisions are program, never record. a replay re-makes
+    /// them. so the recorder forgets the slot `begin` opened.
     fn discard(&self, id: EffectId);
-    /// A layer serves `kind` in place of the effect that began — a patch of
-    /// the same family — so the record's request is what the innermost
+    /// A layer serves `kind` in place of the effect that began. a patch of
+    /// the same family. so the record's request is what the innermost
     /// handler served, never what a layer saw first.
     fn patch(&self, id: EffectId, kind: EffectKind);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).

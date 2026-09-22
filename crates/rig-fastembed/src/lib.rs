@@ -111,13 +111,13 @@ impl Client {
     /// let fastembed = Client::new();
     ///
     /// let embeddings = fastembed
-    ///     .embeddings(&FastembedModel::AllMiniLML6V2Q)?
-    ///     .documents(vec![
-    ///         "Hello, world!".to_string(),
-    ///         "Goodbye, world!".to_string(),
-    ///     ])?
-    ///     .build()
-    ///     .await?;
+    ///.embeddings(&FastembedModel::AllMiniLML6V2Q)?
+    ///.documents(vec![
+    /// "Hello, world!".to_string(),
+    /// "Goodbye, world!".to_string(),
+    /// ])?
+    ///.build()
+    ///.await?;
     /// # let _ = embeddings;
     /// # Ok(())
     /// # }

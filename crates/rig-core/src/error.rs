@@ -3,8 +3,8 @@
 //! (`CompletionError`, `ToolExecutionError`, `MemoryError`) cannot.
 //!
 //! `ErrorReport` is the *only* error shape the effect protocol speaks. Every
-//! concrete error converts into it losslessly enough for policy — kind,
-//! retryability, HTTP status, provider code, refusal — and carries the
+//! concrete error converts into it losslessly enough for policy. kind,
+//! retryability, HTTP status, provider code, refusal. and carries the
 //! original `Display` chain as text for diagnostics.
 //!
 //! Retryability has one home: [`retryable_status`] is the single place a
@@ -72,13 +72,13 @@ pub enum ErrorKind {
     /// The effect bus's driver is gone: the owner dropped it, so nothing can
     /// serve a dispatch. A lifecycle event; never retryable on the same bus.
     BusClosed,
-    /// The bus is alive but no handler serves the requested key — it was
+    /// The bus is alive but no handler serves the requested key. it was
     /// never registered, was deregistered, or is of another family than the
     /// typed view asked for. A wiring or liveness event; the key is in the
     /// message.
     HandlerUnavailable,
     /// A replay divergence: the program asked for something the record
-    /// does not hold — a different effect at this position, or an effect
+    /// does not hold. a different effect at this position, or an effect
     /// after the log ran out. Never retryable; the run that meets it fails
     /// rather than continuing on an answer the record never gave.
     Divergence,
@@ -125,9 +125,11 @@ impl ErrorKind {
 ///
 /// Field semantics:
 /// - `retryable` is the one policy signal; it is decided at conversion time
-///   from the source's own classification (see [`retryable_status`]).
+///
+/// from the source's own classification (see [`retryable_status`]).
 /// - `message` is the source's `Display`; `source_chain` is the `Display` of
-///   each `source()` link, outermost first, excluding `message` itself.
+///
+/// each `source()` link, outermost first, excluding `message` itself.
 /// - `code`, `http_status`, `refusal` are copied when the source had them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ErrorReport {
@@ -152,8 +154,8 @@ pub struct ErrorReport {
     /// carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
-    /// The provider's response when the failure carries one — status,
-    /// body, headers (`Retry-After` on a 429), and its request id — so a
+    /// The provider's response when the failure carries one. status,
+    /// body, headers (`Retry-After` on a 429), and its request id. so a
     /// failure that crossed the wire loses nothing a caller could read off
     /// the provider error it came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -178,7 +180,7 @@ pub enum ErrorDetail {
     ///
     /// The wire promised a complete block (Anthropic `content_block_stop`,
     /// Bedrock `contentBlockStop`), so this is a response defect rather
-    /// than truncation — but it is the *model's* defect, and an agent can
+    /// than truncation. but it is the *model's* defect, and an agent can
     /// feed it back for a retry instead of ending the run. `raw` is the
     /// exact argument text the accumulator held, unmodified, so a consumer
     /// can log or replay it; `error` is the parser's own description.
@@ -190,7 +192,7 @@ pub enum ErrorDetail {
 pub struct MalformedToolInput {
     /// The tool the model named.
     pub name: String,
-    /// Rig's durable correlation id for the call — the same id the call
+    /// Rig's durable correlation id for the call. the same id the call
     /// would have carried had its input parsed, so a recovery can address
     /// it (a tool result, a rollback) exactly as it would a valid call.
     pub id: crate::message::ToolCallId,
@@ -321,9 +323,9 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 ///
 /// Transient: the stream ended before its terminal (`StreamEnded`) and the
 /// backend's own transport errors (`Instance`: a connect reset, a DNS or
-/// TLS failure, a timeout — the client could not classify them further, and
+/// TLS failure, a timeout. the client could not classify them further, and
 /// the request never reached a decision). Permanent: a request the client
-/// could not even form or a response it could not read — a protocol error,
+/// could not even form or a response it could not read. a protocol error,
 /// an illegal header value, missing headers, an unexpected content type.
 /// A failure that does carry a status is classified by
 /// [`retryable_status`].
@@ -358,9 +360,9 @@ pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<Str
 /// whatever the operation adds is a fault in the request it was asked to
 /// build.
 ///
-/// An operation with a variant that is *not* a request fault — Gemini's
+/// An operation with a variant that is *not* a request fault. Gemini's
 /// `CachedContentError::Expired`, which is the provider's verdict on a
-/// handle with its status folded into the variant — names it after the
+/// handle with its status folded into the variant. names it after the
 /// type, rather than restating the whole table to change one row.
 macro_rules! impl_report_for_provider_error {
     ($error:ident $(, $extra:pat => $extra_kind:expr)* $(,)?) => {

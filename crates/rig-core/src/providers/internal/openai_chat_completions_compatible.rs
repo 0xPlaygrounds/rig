@@ -24,18 +24,18 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     // Treat the chunk as an error only when `error` is present AND carries a
     // payload: either an object (`{"error":{...}}`, the canonical OpenAI-compatible
     // error event) or a non-empty string (`{"error":"oops"}`, used by some
-    // gateways). A `{"error":null}` or `{"error":""}` chunk — which some providers
-    // send alongside the terminal usage event — must not terminate the stream.
+    // gateways). A `{"error":null}` or `{"error":""}` chunk. which some providers
+    // send alongside the terminal usage event. must not terminate the stream.
     let error = value
         .get("error")
         .filter(|error| error.is_object() || error.as_str().is_some_and(|s| !s.is_empty()))?;
     // Only a chunk actually carrying choices is a content chunk that happens
-    // to mention an error field. Mere *presence* of `choices` — including
+    // to mention an error field. Mere *presence* of `choices`. including
     // `[]` and `null`, which error bodies like
-    // `{"error":{"message":"rate limited"},"choices":[]}` carry — must not
+    // `{"error":{"message":"rate limited"},"choices":[]}` carry. must not
     // mask the error: a masked one classifies as a normal chunk and a
     // following `[DONE]` commits a failed turn to history as a successful
-    // usage-less completion (introduced in #1944; #2258 B6).
+    // usage-less completion (introduced in; B6).
     if value
         .get("choices")
         .and_then(serde_json::Value::as_array)
@@ -61,7 +61,7 @@ pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
         "stop" => FinishReason::Stop,
         // `model_length` is Mistral's spelling for generation stopped because
         // the *context window* was exhausted rather than `max_tokens`. Both are
-        // truncation, so both are `Length` — the distinction is which limit was
+        // truncation, so both are `Length`. the distinction is which limit was
         // hit, not whether the turn finished. OpenRouter's own mapper already
         // folds the same spelling in (`openrouter/completion.rs`).
         "length" | "max_tokens" | "model_length" => FinishReason::Length,
@@ -74,8 +74,8 @@ pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
 /// Map a gateway's upstream-native finish reason (OpenRouter's
 /// `native_finish_reason`).
 ///
-/// Its vocabulary is the union of its upstreams' — Anthropic's `end_turn`,
-/// Gemini's `STOP`, the OpenAI-compatible spellings — so it is wider than
+/// Its vocabulary is the union of its upstreams'. Anthropic's `end_turn`,
+/// Gemini's `STOP`, the OpenAI-compatible spellings. so it is wider than
 /// the normalized one and cannot be read through [`map_openai_finish_reason`].
 /// Matched case-insensitively because the upstreams disagree on casing.
 pub(crate) fn map_native_finish_reason(reason: &str) -> FinishReason {

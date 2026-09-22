@@ -40,16 +40,16 @@ pub enum ToolErrorKind {
 macro_rules! kind_defaults {
     ($($variant:ident => ($name:literal, $retryable:expr, $feedback:literal)),+ $(,)?) => {
         impl ToolErrorKind {
-            /// Stable machine-readable name.
+ /// Stable machine-readable name.
             pub const fn as_str(self) -> &'static str {
                 match self { $(Self::$variant => $name,)+ }
             }
 
-            /// The kind's default retryability: `Some(true)`/`Some(false)`
-            /// when the kind decides, `None` when only the tool can know —
-            /// on the wire that reads as not retryable. This is the one
-            /// table; `ToolExecutionError::is_retryable` and the wire
-            /// `ErrorReport` both derive from it.
+ /// The kind's default retryability: `Some(true)`/`Some(false)`
+ /// when the kind decides, `None` when only the tool can know -
+ /// on the wire that reads as not retryable. This is the one
+ /// table; `ToolExecutionError::is_retryable` and the wire
+ /// `ErrorReport` both derive from it.
             pub const fn default_retryable(self) -> Option<bool> {
                 match self { $(Self::$variant => $retryable,)+ }
             }
@@ -88,27 +88,27 @@ macro_rules! kind_ctors {
 }
 
 kind_ctors! {
-    /// Invalid arguments.
+ /// Invalid arguments.
     invalid_args => InvalidArgs,
-    /// Timeout.
+ /// Timeout.
     timeout => Timeout,
-    /// Cancellation.
+ /// Cancellation.
     cancelled => Cancelled,
-    /// Missing tool or resource.
+ /// Missing tool or resource.
     not_found => NotFound,
-    /// An authorization or permission failure.
-    ///
-    /// This is an ordinary execution error. Use [`Self::refused`] when the tool
-    /// intentionally declines the operation so hooks and telemetry can preserve
-    /// the refusal as a distinct disposition.
+ /// An authorization or permission failure.
+ ///
+ /// This is an ordinary execution error. Use [`Self::refused`] when the tool
+ /// intentionally declines the operation so hooks and telemetry can preserve
+ /// the refusal as a distinct disposition.
     permission_denied => PermissionDenied,
-    /// Rate limit.
+ /// Rate limit.
     rate_limited => RateLimited,
-    /// Upstream provider failure.
+ /// Upstream provider failure.
     provider => Provider,
-    /// Network failure.
+ /// Network failure.
     network => Network,
-    /// Catch-all failure.
+ /// Catch-all failure.
     other => Other,
 }
 

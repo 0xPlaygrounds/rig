@@ -116,10 +116,10 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Index exists: {index_exists:?}");
 
     // Create a vector index on our vector store
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
+    // IMPORTANT: Reuse the same model that was previously generate the embeddings
     let index = neo4j_client.get_index(model, "vector_index").await?;
 
-    // The struct that will represent a node in the database. Used to deserialize the results of the query (passed to the `top_n` methods)
+    // The struct that will represent a node in the database. previously deserialize the results of the query (passed to the `top_n` methods)
     // ❗IMPORTANT: The field names must match the property names in the database
     #[derive(serde::Deserialize)]
     struct Document {

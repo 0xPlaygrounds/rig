@@ -3,7 +3,7 @@
 //! ```
 //! use rig_agent::prelude::*;
 //! fn assistant(model: impl CompletionModel + 'static) -> Agent {
-//!     model.into_agent_builder().build()
+//! model.into_agent_builder().build()
 //! }
 //! ```
 

@@ -25,29 +25,29 @@
 //! # Simple example
 //! ```ignore
 //! use rig_core::{
-//!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai::{self, OpenAI},
+//! completion::{AssistantContent, CompletionModel},
+//! providers::openai::{self, OpenAI},
 //! };
 //! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
 //! use rig_reqwest::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
-//!     // transport, and pick a model: a model is a wire plus its socket.
-//!     // OpenAI's default completion route is the Responses API;
-//!     // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
-//!     let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
+//! // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
+//! // transport, and pick a model: a model is a wire plus its socket.
+//! // OpenAI's default completion route is the Responses API;
+//! // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
+//! let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
 //!
-//!     let request = model.completion_request("Who are you?").build();
-//!     let response = model.completion(request).await?;
-//!     for item in response.choice {
-//!         if let AssistantContent::Text(text) = item {
-//!             println!("{}", text.text);
-//!         }
-//!     }
+//! let request = model.completion_request("Who are you?").build();
+//! let response = model.completion(request).await?;
+//! for item in response.choice {
+//! if let AssistantContent::Text(text) = item {
+//! println!("{}", text.text);
+//! }
+//! }
 //!
-//!     Ok(())
+//! Ok(())
 //! }
 //! ```
 //! Note: using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
@@ -57,15 +57,15 @@
 //! ## Providers, wires, and models
 //! Rig provides a consistent API for working with LLMs and embeddings. A
 //! provider is plain configuration data (`openai::wire::OpenAI`,
-//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) — its base URL, its
-//! credential, its dialect — plus one *wire* per API endpoint, saying what to
+//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …). its base URL, its
+//! credential, its dialect. plus one *wire* per API endpoint, saying what to
 //! send and how to read the reply. Nothing generic sits between the two.
 //!
 //! Binding a provider to an HTTP transport yields a
 //! [`Bound`](crate::driver::Bound): `provider.bound()?` builds the bundled
 //! `reqwest` transport (from `rig-reqwest`, whose prelude the `rig` facade
 //! re-exports), and `provider.bind(transport)` takes one you already own.
-//! Every capability hangs off that `Bound` — `completion(model)`,
+//! Every capability hangs off that `Bound`. `completion(model)`,
 //! `embedding(model, ndims)`, `verify()`, one method per capability the
 //! provider declares a wire for. A capability it has no wire for is a method
 //! that does not exist, and the compiler says so.

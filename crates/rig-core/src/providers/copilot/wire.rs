@@ -5,8 +5,8 @@
 //! answers is a property of the model: the Codex-class models take the
 //! Responses request, everything else takes chat completions. The shared
 //! [`OpenAiWire`] is already a wire over both routes, so [`CopilotWire`] is
-//! that enum plus the one thing Copilot adds per turn — the conversation
-//! intent — and every [`Wire`] method delegates to it. The choice itself is
+//! that enum plus the one thing Copilot adds per turn. the conversation
+//! intent. and every [`Wire`] method delegates to it. The choice itself is
 //! made by the shared wire's constructor using [`routes_through_responses`]
 //! through the dialect's model-route hook. Direct and catalog
 //! construction therefore choose the same route and editor envelope.
@@ -60,7 +60,7 @@ const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
 const PRIMARY_API_KEY_ENV: &str = "GITHUB_COPILOT_API_KEY";
 
 /// The credential variables, in precedence order. A fixed-size array so the
-/// first name — the one a missing-variable error reports — is reachable
+/// first name. the one a missing-variable error reports. is reachable
 /// without indexing.
 const API_KEY_ENV: [&str; 2] = ["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
 
@@ -69,8 +69,8 @@ const BASE_URL_ENV: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
 
 /// GitHub Copilot, as an OpenAI dialect.
 ///
-/// Both routes are OpenAI's own contract — Copilot relays the chat and the
-/// Responses wire verbatim, header included — except where the Responses
+/// Both routes are OpenAI's own contract. Copilot relays the chat and the
+/// Responses wire verbatim, header included. except where the Responses
 /// system preamble goes: this backend takes `system` messages inside
 /// `input` rather than top-level `instructions`, which is what
 /// `crates/rig-cassette/fixtures/cassettes/copilot/routing/codex_models_route_through_responses.yaml`
@@ -152,8 +152,8 @@ fn completion_envelope(
 /// `/chat/completions`.
 ///
 /// Copilot routes its Codex-class models through the Responses API and
-/// everything else — the OpenAI chat models, and the Anthropic and Google
-/// models it fronts — through chat completions. The predicate is the model
+/// everything else. the OpenAI chat models, and the Anthropic and Google
+/// models it fronts. through chat completions. The predicate is the model
 /// identifier alone, so it is a function and not a table: Copilot ships new
 /// `*-codex` models without announcing them.
 pub fn routes_through_responses(model: &str) -> bool {
@@ -200,7 +200,7 @@ impl Copilot {
 
     /// Copilot from the environment: `GITHUB_COPILOT_API_KEY` or
     /// `COPILOT_API_KEY` for the session token, `GITHUB_COPILOT_API_BASE` or
-    /// `COPILOT_BASE_URL` for the base URL — the variables the client read.
+    /// `COPILOT_BASE_URL` for the base URL. the variables the client read.
     ///
     /// Only the already-exchanged credential is readable this way. A GitHub
     /// access token or a device-code login is a conversation, not a value:
@@ -276,7 +276,7 @@ impl Copilot {
 /// The first of `names` that is set to something other than blank.
 ///
 /// A blank credential authenticates as nobody and a blank base URL addresses
-/// nothing, so an empty value is "unset" here — the filter the client's
+/// nothing, so an empty value is "unset" here. the filter the client's
 /// `env_value` applied.
 fn first_env(names: &[&'static str]) -> Result<Option<String>, EnvError> {
     for name in names {

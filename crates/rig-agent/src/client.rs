@@ -4,7 +4,7 @@
 //! use rig_agent::{Agent, client::AgentModelExt};
 //! use rig_core::completion::CompletionModel;
 //! fn assistant(model: impl CompletionModel + 'static) -> Agent {
-//!     model.into_agent_builder().preamble("Be concise.").build()
+//! model.into_agent_builder().preamble("Be concise.").build()
 //! }
 //! ```
 

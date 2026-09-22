@@ -3,7 +3,7 @@
 //! ```
 //! use rig_agent::{Agent, tool::DynamicTool};
 //! fn delegate(agent: Agent) -> DynamicTool {
-//!     agent.into_tool()
+//! agent.into_tool()
 //! }
 //! ```
 

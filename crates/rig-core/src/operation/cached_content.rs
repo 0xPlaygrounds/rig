@@ -42,7 +42,7 @@ impl Operation for ContextCache {
 /// in arrival order.
 ///
 /// The starting state is [`CachedContentReply::Acknowledged`], which is
-/// what a 2xx carrying nothing to read *is* — how `delete` is answered, and
+/// what a 2xx carrying nothing to read *is*. how `delete` is answered, and
 /// how an empty collection lists. So there is no "nothing absorbed yet" to
 /// tell apart from it: the fold holds a reply rather than an `Option`, and
 /// finishing cannot fail. A second resource is a provider defect and the

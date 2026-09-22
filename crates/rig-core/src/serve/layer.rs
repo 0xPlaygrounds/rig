@@ -1,10 +1,10 @@
 //! Interception as handler composition: a [`Layer`] is a [`Serve`] that
-//! wraps another handler and an [`Intercept`] — the policy that sees every
+//! wraps another handler and an [`Intercept`]. the policy that sees every
 //! dispatch before the handler does ([`Intercept::before`]) and every
 //! answer after ([`Intercept::after`]). Layers nest by wrapping; a
 //! [`Decision`] and a [`Verdict`] are data. Decisions are program, never
 //! record: the driver's observer moves to the innermost hop, so a denial leaves
-//! no record and a replacement leaves the handler's real answer in it — a
+//! no record and a replacement leaves the handler's real answer in it. a
 //! replay re-makes the decision.
 
 use std::sync::{Arc, Mutex};
@@ -32,8 +32,8 @@ pub enum Decision {
     Patch(EffectKind),
     /// Do not serve it: the consumer's outcome is this report, and the
     /// record holds nothing. [`Decision::deny`] builds the usual one
-    /// (`ErrorKind::Denied`); a report of another kind — `Cancelled`, the
-    /// way a program stops — travels as given.
+    /// (`ErrorKind::Denied`); a report of another kind. `Cancelled`, the
+    /// way a program stops. travels as given.
     Deny(ErrorReport),
 }
 

@@ -66,7 +66,7 @@ impl ContextValue for McpCallToolResult {
     const KEY: &'static str = "rmcp.call_tool_result";
 }
 
-/// Default per-call timeout applied to MCP tools (see issue #1914).
+/// Default per-call timeout applied to MCP tools.
 ///
 /// MCP tool calls await a response that can be silently lost by the transport
 /// (e.g. an rmcp StreamableHttp session re-init dropping an in-flight request),
@@ -88,8 +88,8 @@ const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 /// One MCP server tool, callable through an rmcp [`ServerSink`](rmcp::service::ServerSink).
 ///
 /// Construct with [`McpTool::from_mcp_server`] (or [`tools_from_server`] for a
-/// whole list). Use it as a rig-core [`PortableDynamicTool`] via `From`, or —
-/// with the `agent` feature — register it directly in rig-agent's tool server
+/// whole list). Use it as a rig-core [`PortableDynamicTool`] via `From`, or -
+/// with the `agent` feature. register it directly in rig-agent's tool server
 /// (it implements rig-core's contextual `ErasedTool`, which additionally
 /// forwards MCP `_meta` from the `ToolContext` and preserves the raw result).
 #[derive(Clone)]
@@ -98,7 +98,7 @@ pub struct McpTool {
     pub(crate) client: rmcp::service::ServerSink,
     /// Per-call timeout. When `Some`, an MCP `call_tool` that does not complete
     /// within this duration resolves to a [`ToolExecutionError`] instead of blocking
-    /// forever (see issue #1914). When `None`, the call is unbounded.
+    /// forever. When `None`, the call is unbounded.
     ///
     /// On elapse RMCP sends a cancellation notification so both peers can
     /// release request-scoped resources.
@@ -109,7 +109,7 @@ impl McpTool {
     /// Create an adapter from an MCP tool definition and server sink.
     ///
     /// Applies [`DEFAULT_MCP_TOOL_TIMEOUT`] so a lost/never-answered response
-    /// cannot hang the agent forever (issue #1914).
+    /// cannot hang the agent forever.
     pub fn from_mcp_server(
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
@@ -281,7 +281,7 @@ impl McpTool {
     /// Execute one MCP request.
     ///
     /// `meta`, when present, is attached as the MCP request's `_meta`
-    /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
+    /// (SEP-1319). the idiomatic channel for per-call metadata such as auth
     /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
     /// caller that places an [`rmcp::model::Meta`] into the per-call
     /// [`ToolContext`]; otherwise the call behaves exactly as before.
@@ -434,7 +434,7 @@ pub fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExec
     }
 
     // A content-less MCP result normalizes to one empty text block. This is
-    // deliberately *not* what the native path does — a native tool returning an
+    // deliberately *not* what the native path does. a native tool returning an
     // empty `Vec<ToolResultContent>` gets an eager `ToolExecutionError`,
     // because that shape is the tool author's own type choice and fixable in
     // one read. An empty MCP result is protocol-legal and outside the caller's

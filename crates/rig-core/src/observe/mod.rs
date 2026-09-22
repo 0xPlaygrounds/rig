@@ -1,12 +1,12 @@
 //! Observations: what a runtime, a policy or a host *decided* or *saw* at a
-//! boundary, as typed data beside — never inside — the exchange record.
+//! boundary, as typed data beside. never inside. the exchange record.
 //!
 //! An [`EffectRecord`](crate::effect::EffectRecord) is the replay oracle: the
 //! request a handler served and what it answered. Everything else worth
-//! knowing after a failure is program, not record — a gate held a call
+//! knowing after a failure is program, not record. a gate held a call
 //! and later denied it, a judge replaced an
 //! answer, a stream ended before its terminal record, a run was cancelled
-//! with a tool in flight — and today it is either gone by the time a
+//! with a tool in flight. and today it is either gone by the time a
 //! component is inspected, or scattered over log lines. An [`Observation`]
 //! is one such fact at the moment it happened: its [`Subject`] (which
 //! effect, in which program scope, at which dispatch order), the
@@ -57,7 +57,7 @@ mod tests;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     /// The position in its trace: assigned by the sink, in observation
-    /// order. Meaningful order — two traces that disagree on it diverged.
+    /// order. Meaningful order. two traces that disagree on it diverged.
     pub seq: u64,
     /// What the fact is about.
     pub subject: Subject,
@@ -151,7 +151,7 @@ pub enum Stage {
 /// Who owns a decision or an observation: a stable name and, when the
 /// emitter versions itself, a version. [`Emitter::unknown`] is the explicit
 /// value for a fact the runtime saw land without knowing which policy made
-/// it — it is never inferred from the outcome.
+/// it. it is never inferred from the outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Emitter {
     /// The emitter's stable name (`rig-ecs/bus`, a layer's name, a host

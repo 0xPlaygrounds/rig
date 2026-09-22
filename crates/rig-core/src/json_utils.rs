@@ -18,8 +18,8 @@ pub(crate) fn is_false(value: &bool) -> bool {
 /// `HashMap` seeds its iteration order per instance, so a map serialized into a
 /// request body emits its keys in a *different order on every request*. Provider
 /// prompt caches are prefix matches over the exact request bytes, so a map
-/// anywhere in the cacheable prefix — a tool's JSON Schema `properties`, a
-/// document's metadata — makes every request a guaranteed cache miss, silently
+/// anywhere in the cacheable prefix. a tool's JSON Schema `properties`, a
+/// document's metadata. makes every request a guaranteed cache miss, silently
 /// and permanently.
 ///
 /// This is invisible to almost every test one would think to write: cassette
@@ -71,7 +71,7 @@ where
 ///
 /// `serde_json` keeps insertion order in a build that enables its
 /// `preserve_order` feature and sorts otherwise, so text rendered from a
-/// `serde_json::Value` — a schema quoted into a preamble — would differ
+/// `serde_json::Value`. a schema quoted into a preamble. would differ
 /// between two crates over the same value, and with it the request bytes a
 /// prompt cache is keyed on. Key order carries no meaning, so the sorted
 /// rendering is the rendering.
@@ -136,7 +136,7 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
 
 /// Serialize a JSON value to its compact string form (with `String` scalars kept quoted).
 ///
-/// Unlike [`value_to_json_string`], this never unwraps a `String` value — a JSON
+/// Unlike [`value_to_json_string`], this never unwraps a `String` value. a JSON
 /// string is serialized with its quotes. Used by the classic runtime when
 /// canonicalizing tool-call arguments and hook-rewritten payloads.
 pub fn serialize_json_value(value: &serde_json::Value) -> String {
@@ -148,8 +148,10 @@ pub fn serialize_json_value(value: &serde_json::Value) -> String {
 ///
 /// - A string is taken verbatim.
 /// - Any other JSON value is re-serialized to its compact JSON-string form (via
-///   [`value_to_json_string`]). Object key order is not preserved, which is fine
-///   because callers re-parse the string.
+///
+/// [`value_to_json_string`]). Object key order is not preserved, which is fine
+///
+/// because callers re-parse the string.
 /// - `null` or a missing field becomes `None`.
 ///
 /// Tolerates OpenAI-compatible gateways that stream `tool_calls[].function.arguments`
@@ -176,8 +178,8 @@ pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::V
 }
 
 /// This module is helpful in cases where raw json objects are serialized and deserialized as
-///  strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
-///  some providers such as OpenAI return function arguments (for some reason).
+/// strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
+/// some providers such as OpenAI return function arguments (for some reason).
 pub mod stringified_json {
     use super::parse_tool_arguments;
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -252,7 +254,7 @@ where
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
         }
 
-        /// A bare object where a list is expected is one block, not a defect —
+        /// A bare object where a list is expected is one block, not a defect -
         /// several wires spell single-block content that way. This arm comes
         /// from the removed non-empty container's `string_or_one_or_many`,
         /// whose callers (Anthropic `Message.content`, OpenAI system and user
@@ -260,10 +262,10 @@ where
         ///
         /// The two were not interchangeable: this one also has
         /// `visit_none`/`visit_unit`, so the migrated fields now accept `null`
-        /// where they used to raise a parse error. Those arms are load-bearing
+        /// where they previously raise a parse error. Those arms are load-bearing
         /// for the OpenAI assistant-content field that already used this
-        /// helper — OpenAI sends `"content": null` for a tool-calls-only
-        /// message — so the widening is the price of sharing one helper, and it
+        /// helper. OpenAI sends `"content": null` for a tool-calls-only
+        /// message. so the widening is the price of sharing one helper, and it
         /// is documented in MIGRATING rather than hidden.
         fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
         where

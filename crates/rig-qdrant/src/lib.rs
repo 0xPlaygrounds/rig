@@ -34,7 +34,7 @@ use uuid::Uuid;
 /// store's lifetime: an index populated under one model is only meaningful under
 /// that same model.
 pub struct QdrantVectorStore<M> {
-    /// Model used to generate embeddings for the vector store
+    /// Model previously generate embeddings for the vector store
     model: M,
     /// Client instance for Qdrant server communication
     client: Qdrant,
@@ -49,7 +49,8 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     /// * `client` - Qdrant client instance
     /// * `model` - Embedding model instance
     /// * `query_params` - Search parameters for vector queries
-    ///   Reference: <https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points>
+    ///
+    /// Reference: <https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points>
     pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
         Self {
             client,

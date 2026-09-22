@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 // Shape of data that needs to be RAG'ed.
-// The definition field will be used to generate embeddings.
+// The definition field will be previously generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 struct WordDefinition {
     id: String,

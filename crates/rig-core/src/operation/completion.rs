@@ -201,11 +201,11 @@ impl Fold<Completion> for CompletionFold {
 ///
 /// Adapters push through the helpers so the grammar is stated once: a bare
 /// text delta lands in the active text block (minted on demand, and a new
-/// one after any non-text block — a completed tool call or a reasoning
+/// one after any non-text block. a completed tool call or a reasoning
 /// block is a boundary for anonymous text), a tool/reasoning delta for an
 /// unseen id is preceded by its `BlockStart`, and a whole call or whole
 /// reasoning block is its start and its end. Frame-level defects never reach
-/// `interpret` — the driver surfaces those from `classify` directly.
+/// `interpret`. the driver surfaces those from `classify` directly.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
     items: Vec<Result<StreamEvent, CompletionError>>,
@@ -220,7 +220,7 @@ pub struct AdapterOutput {
     /// explicit reasoning end switches it.
     active_reasoning: Option<BlockId>,
     /// The blocks this output opened itself (minted on demand for a bare
-    /// delta) and therefore closes itself — at the boundary that ends
+    /// delta) and therefore closes itself. at the boundary that ends
     /// them, or at [`close_active_blocks`](Self::close_active_blocks). A
     /// block a provider opened explicitly is the provider's to close.
     auto_text: Option<BlockId>,
@@ -228,7 +228,7 @@ pub struct AdapterOutput {
     /// Whether a block this output opened itself is closed at its boundary
     /// (the bus's `StreamWriter`: a handler that says `text` then
     /// `tool_call` means the text block ended). Off for provider adapters,
-    /// whose wires say where their blocks end — their event sequences are
+    /// whose wires say where their blocks end. their event sequences are
     /// unchanged.
     self_closing: bool,
     /// Blocks a start was emitted for (or that a delta opened leniently),
@@ -597,7 +597,7 @@ impl AdapterOutput {
     ) {
         // A restatement is a whole block: open it under its provider id so
         // every published block has a start. A payload-less or
-        // signature-only end for an unseen id gets none — the accumulator
+        // signature-only end for an unseen id gets none. the accumulator
         // creates no part for the former, and a start would publish an
         // empty block ahead of the latter's signature-only part.
         if let Some(reasoning) = &reasoning {

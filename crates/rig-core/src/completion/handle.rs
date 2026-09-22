@@ -3,7 +3,7 @@
 //! Live model behaviour is reached through the effect bus: a
 //! `ModelHandle` (`rig_agent::bus`) is a typed view bound to the key
 //! a [`CompletionAdapter`](crate::serve::adapters::CompletionAdapter) was
-//! registered under. `ModelRef` is the serializable half — the label under
+//! registered under. `ModelRef` is the serializable half. the label under
 //! which a runtime resolves that key.
 
 use std::{fmt, sync::Arc};
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// The string identity a specification, asset, or registry names a model by.
 ///
 /// A handle is live process state and is never serialized; a `ModelRef` is
-/// the serializable half — the label under which a runtime resolves a
+/// the serializable half. the label under which a runtime resolves a
 /// handle (`ModelRef → HandlerKey → ModelHandle`). It carries no provider
 /// semantics: two refs are equal when their strings are equal.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

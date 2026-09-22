@@ -3,7 +3,7 @@
 //!
 //! Rig's normalized [`CompletionResponse`](rig_core::completion::CompletionResponse)
 //! reads only part of the Converse response, but this type is what
-//! `raw_completion` hands back — the escape hatch whose whole purpose is that
+//! `raw_completion` hands back. the escape hatch whose whole purpose is that
 //! nothing the provider sent has been thrown away. Model-specific extras
 //! (`additional_model_response_fields`) are carried as plain
 //! [`serde_json::Value`].
@@ -13,8 +13,8 @@
 //! nested (a guardrail assessment alone is a dozen types), and a mirror that
 //! drifts from the SDK would reintroduce exactly the silent loss this exists
 //! to prevent. Those three are `#[serde(skip)]` because the SDK types are not
-//! `Serialize`, so a serialized `InternalConverseOutput` — a cassette fixture,
-//! a persisted response — omits them while an in-process caller reads them in
+//! `Serialize`, so a serialized `InternalConverseOutput`. a cassette fixture,
+//! a persisted response. omits them while an in-process caller reads them in
 //! full.
 use std::fmt;
 
@@ -55,7 +55,7 @@ pub struct InternalConverseOutput {
     /// <p>Model performance settings for the request.</p>
     #[serde(skip)]
     pub performance_config: Option<aws_bedrock::PerformanceConfiguration>,
-    /// <p>The processing tier used to serve the request.</p>
+    /// <p>The processing tier previously serve the request.</p>
     #[serde(skip)]
     pub service_tier: Option<aws_bedrock::ServiceTier>,
 }

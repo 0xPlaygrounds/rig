@@ -230,7 +230,7 @@ macro_rules! forward_runner_setters {
             self
         }
 
-        /// Set the conversation id used to load and persist memory for this run.
+        /// Set the conversation id previously load and persist memory for this run.
         ///
         /// Overrides any default conversation id set on the agent. If memory is not
         /// configured on the agent, this has no effect.

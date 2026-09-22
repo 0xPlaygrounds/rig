@@ -412,14 +412,14 @@ pub fn collect_replayed(world: &mut World) {
                 world.entity_mut(*entity).insert(buffered);
             }
         }
-        // A refusal remains terminal for replay effects created by later
-        // policy sets. Buffer them before ordinary collection can expose data.
+ // A refusal remains terminal for replay effects created by later
+ // policy sets. Buffer them before ordinary collection can expose data.
         if let Some(failure) = world.get_resource::<ReplayFailure>().cloned() {
             fail(world, failure.0);
             return;
         }
-        // A request mismatch can change unary/stream shape, so its diagnostic
-        // cannot wait for deliveries that only the matching request produces.
+ // A request mismatch can change unary/stream shape, so its diagnostic
+ // cannot wait for deliveries that only the matching request produces.
         if let Some(report) = replay.refusals.take() {
             fail(world, report);
             return;
@@ -437,8 +437,8 @@ pub fn collect_replayed(world: &mut World) {
         let queued = world.query_filtered::<Entity, (
             With<PendingEffect>, Without<Issued>, Without<EffectOutcome>,
         )>().iter(world).next().is_some();
-        // Give policy its intervening pass to reproduce a recorded cancel.
-        // A bare exchange consumer that remains receives the recorded error.
+ // Give policy its intervening pass to reproduce a recorded cancel.
+ // A bare exchange consumer that remains receives the recorded error.
         for id in &replay.cancelled {
             if replay.pending.iter().any(|step| &step.id == id) {
                 continue;
@@ -447,8 +447,8 @@ pub fn collect_replayed(world: &mut World) {
                 continue;
             };
             if replay.policy_visible {
-                // Judge and later sets may need multiple passes. Diagnose an
-                // unreproduced cancellation only after an idle pass.
+ // Judge and later sets may need multiple passes. Diagnose an
+ // unreproduced cancellation only after an idle pass.
                 continue;
             }
             let count = match world.get::<Buffered>(entity) {
@@ -484,26 +484,26 @@ pub fn collect_replayed(world: &mut World) {
                     })
                 });
                 if blocked {
-                    // Accepted deliveries stay visible before the failure outcome.
+ // Accepted deliveries stay visible before the failure outcome.
                     deliveries.apply(world);
                     fail(world, invalid(format!("replay batch {batch} cannot dispatch {} while another effect in the same batch occupies its serial key", step.id)));
                     return;
                 }
             }
             let Some(entity) = by_id.get(&step.id).copied() else {
-                // A restored subset or a discarded/cancelled entity has
-                // already passed the id counter. It is not a gate to await.
+ // A restored subset or a discarded/cancelled entity has
+ // already passed the id counter. It is not a gate to await.
                 if step.id.as_u64() < world.resource::<IdCounter>().0 {
                     continue;
                 }
-                // Intake is bounded per update. Pending unreserved effects
-                // may mint this id next update; a Held effect may also await
-                // the host's release.
+ // Intake is bounded per update. Pending unreserved effects
+ // may mint this id next update; a Held effect may also await
+ // the host's release.
                 if queued {
                     return;
                 }
-                // Continuations may run after Collect. Diagnose a missing
-                // request only after an idle pass.
+ // Continuations may run after Collect. Diagnose a missing
+ // request only after an idle pass.
                 replay.waiting_for = Some((step.id, batch));
                 return;
             };

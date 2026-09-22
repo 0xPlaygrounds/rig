@@ -76,10 +76,10 @@ struct Field {
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
 /// struct WordDefinition {
-///     #[serde(rename = "_id")]
-///     id: String,
-///     definition: String,
-///     embedding: Vec<f64>,
+/// #[serde(rename = "_id")]
+/// id: String,
+/// definition: String,
+/// embedding: Vec<f64>,
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
@@ -89,22 +89,22 @@ struct Field {
 ///
 /// let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None); // <-- replace with your embedding model.
 /// let index = MongoDbVectorIndex::new(
-///     collection,
-///     model,
-///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
-///     SearchParams::new(), // <-- field name in `Document` that contains the embeddings.
+/// collection,
+/// model,
+/// "vector_index", // <-- replace with the name of the index in your mongodb collection.
+/// SearchParams::new(), // <-- field name in `Document` that contains the embeddings.
 /// )
-/// .await?;
+///.await?;
 ///
 /// let req = VectorSearchRequest::builder()
-///     .query("My boss says I zindle too much, what does that mean?")
-///     .samples(1)
-///     .build();
+///.query("My boss says I zindle too much, what does that mean?")
+///.samples(1)
+///.build();
 ///
 /// // Query the index
 /// let definitions = index
-///     .top_n::<WordDefinition>(req)
-///     .await?;
+///.top_n::<WordDefinition>(req)
+///.await?;
 /// # Ok(())
 /// # }
 /// # let _ = example();
