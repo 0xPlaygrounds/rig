@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -135,10 +135,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_345968"
+                "id": "call_405860"
               },
               "provider": {
-                "call_id": "call_345968"
+                "call_id": "call_405860"
               },
               "function": {
                 "name": "add",
@@ -147,7 +147,7 @@
                   "y": 25
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "EqMCCqACAWkUfROeGts57509v1Wlg1Rwv5AnzST7UsqlZ+0iZyg7eLLpF41pTjV/0ei5V1LSHtYQvQr0EUnAFFZ7zJgAL2PtwUOwFCnVECVFlfqNEaS7+VZ+g+p82ktQMJ85doEFSLnSraVvELSD91YbrLzBpw/SxTrRK3w+gUT5bswgOy0Rq+Qj2czqbhHHnHztuC6V4P6qtsIksHdq6jear00BW6dJK72rhrSLTteMhFfWrAh8HzBkZ9WCRt07jFvDVeKE4INmAMR9fwP1x7zr6ZqjfcPGKI2k13XPAY2d67tq+0BdY1xPj6RjrQBZiJSlMDFeptQzjIhJhPopQRbZUXlhnZeuw0DudrK0GWSStGjsRErw8QKsdKXVKEvYgKbjJ7m0",
               "additional_params": null
             }
           ],
@@ -158,7 +158,7 @@
             "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "YK2yaveGJ_Xpz7IPjbahsAQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -173,10 +173,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_345968",
+                        "id": "call_405860",
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EqMCCqACAWkUfROeGts57509v1Wlg1Rwv5AnzST7UsqlZ+0iZyg7eLLpF41pTjV/0ei5V1LSHtYQvQr0EUnAFFZ7zJgAL2PtwUOwFCnVECVFlfqNEaS7+VZ+g+p82ktQMJ85doEFSLnSraVvELSD91YbrLzBpw/SxTrRK3w+gUT5bswgOy0Rq+Qj2czqbhHHnHztuC6V4P6qtsIksHdq6jear00BW6dJK72rhrSLTteMhFfWrAh8HzBkZ9WCRt07jFvDVeKE4INmAMR9fwP1x7zr6ZqjfcPGKI2k13XPAY2d67tq+0BdY1xPj6RjrQBZiJSlMDFeptQzjIhJhPopQRbZUXlhnZeuw0DudrK0GWSStGjsRErw8QKsdKXVKEvYgKbjJ7m0"
                     }
                   ],
                   "role": "model"
@@ -187,7 +187,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "YK2yaveGJ_Xpz7IPjbahsAQ",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,
@@ -236,10 +236,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_345968"
+                    "id": "call_405860"
                   },
                   "provider": {
-                    "call_id": "call_345968"
+                    "call_id": "call_405860"
                   },
                   "function": {
                     "name": "add",
@@ -248,7 +248,7 @@
                       "y": 25
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "EqMCCqACAWkUfROeGts57509v1Wlg1Rwv5AnzST7UsqlZ+0iZyg7eLLpF41pTjV/0ei5V1LSHtYQvQr0EUnAFFZ7zJgAL2PtwUOwFCnVECVFlfqNEaS7+VZ+g+p82ktQMJ85doEFSLnSraVvELSD91YbrLzBpw/SxTrRK3w+gUT5bswgOy0Rq+Qj2czqbhHHnHztuC6V4P6qtsIksHdq6jear00BW6dJK72rhrSLTteMhFfWrAh8HzBkZ9WCRt07jFvDVeKE4INmAMR9fwP1x7zr6ZqjfcPGKI2k13XPAY2d67tq+0BdY1xPj6RjrQBZiJSlMDFeptQzjIhJhPopQRbZUXlhnZeuw0DudrK0GWSStGjsRErw8QKsdKXVKEvYgKbjJ7m0",
                   "additional_params": null
                 }
               ]
@@ -260,10 +260,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_345968"
+                    "id": "call_405860"
                   },
                   "provider": {
-                    "call_id": "call_345968"
+                    "call_id": "call_405860"
                   },
                   "name": "add",
                   "content": [
@@ -324,7 +324,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_2"
+                    "signature": "EuIBCt8BAWkUfRPjFy+3FDPdfH5FarUb4b3nohbJcoJ+ELo54SKO2A33v2oo9xSyrbXn5SwTeqvySYZRoY1V2N1hzKpIoxrF7CIn7q0rBbrM1YOqw+vTH42jvn3zb03e7MOutViBFe18zygUBldg8HtXepJF61qlE5xfwN3R9hthyzyExz4qjKzKXQ6zO+kmuxXgblV2k84LADE34lUoWEylGFOMa52l0UkL/l2ZW/Et+d2NR5dfT9b+6u4v2w8Ldsim7yZAr7DF27sO0OXz0zxYMhL8j/S0Mawedq9vuKgjkdtsUw=="
                   }
                 }
               ]
@@ -337,7 +337,7 @@
             "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "Ya2yaoOrK7qCz7IP6_DU-AQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -348,7 +348,7 @@
                   "parts": [
                     {
                       "text": "42",
-                      "thoughtSignature": "signature_REDACTED_2"
+                      "thoughtSignature": "EuIBCt8BAWkUfRPjFy+3FDPdfH5FarUb4b3nohbJcoJ+ELo54SKO2A33v2oo9xSyrbXn5SwTeqvySYZRoY1V2N1hzKpIoxrF7CIn7q0rBbrM1YOqw+vTH42jvn3zb03e7MOutViBFe18zygUBldg8HtXepJF61qlE5xfwN3R9hthyzyExz4qjKzKXQ6zO+kmuxXgblV2k84LADE34lUoWEylGFOMa52l0UkL/l2ZW/Et+d2NR5dfT9b+6u4v2w8Ldsim7yZAr7DF27sO0OXz0zxYMhL8j/S0Mawedq9vuKgjkdtsUw=="
                     }
                   ],
                   "role": "model"
@@ -358,7 +358,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_2",
+            "responseId": "Ya2yaoOrK7qCz7IP6_DU-AQ",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 215,

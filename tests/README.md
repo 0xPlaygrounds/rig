@@ -193,7 +193,20 @@ cargo test -p rig-cassette --all-features --test gemini \
 
 Record mode scrubs and safety-checks cassette contents before writing fixtures,
 and the committed cassette safety tests enforce the same scrubbed form during
-normal test runs. Still review every cassette diff for:
+normal test runs. Scrubbing removes credentials (API keys, bearer tokens,
+cookies, OAuth tokens, SigV4 material), AWS account numbers in ARNs and
+home-directory paths, drops response headers outside a small allowlist, and
+normalizes volatile timestamps. Everything else the provider sent is recorded
+verbatim:
+thinking signatures, encrypted and redacted reasoning, tool-call and response
+ids, cache keys, cursors, generated images. Those values are provider-issued
+and carry no secret of ours, and keeping them lets a recording seed a live
+call and lets a replay decode the provider's own bytes. Request matching
+compares the recorded bytes as they are, so a fixture must hold exactly what
+the test sends: a fixture recorded before this policy replays only while its
+placeholders are values a response delivered and the test echoes back, and a
+fixture whose placeholder stands for a value the test itself mints must be
+re-recorded. Still review every cassette diff for:
 
 - no API keys, bearer tokens, cookies, or provider account identifiers;
 - expected request paths, methods, and bodies;

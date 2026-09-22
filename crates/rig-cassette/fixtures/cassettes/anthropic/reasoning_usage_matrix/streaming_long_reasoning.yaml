@@ -16,10 +16,10 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_REDACTED_1
+    value: req_011CfJrGAFgBo6ED3TRMRTzf
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":86,"output_tokens":7,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfJrGBLfZ8gLqSCoCVvqg","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":86,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
@@ -28,19 +28,94 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":"Let me work through this step by","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":"Let","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":" step.\n\n1. A farmer has 17 sheep.\n2. All but 9 run away. \"All but 9\" means all except 9 run away, so 9 remain","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" me work through this step by step","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":".\n3. He buys twice as many as he has left: he has 9, so he buys 2 × 9 = 18 sheep. Now he has 9","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":".\n\n1","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":" + 18 = 27 sheep.\n4. He sells 5: 27 - 5 = 22 sheep.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":". A","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"signature":"signature_REDACTED_1","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" farmer has 17 sheep.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n2. \"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"All but 9 run away","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\" - this means 9","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" remain","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" (","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"all","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" except 9 run away).","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n3. He buys twice","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" as many as he has left:","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" he","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" has","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 9","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":",","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" bu","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"ys 2 ×","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 9 = 18 ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"more","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":".","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Total =","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 9","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" + 18 = ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"27.\n4. He sells","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 5: 27 -","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 5 = 22.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"EvkDCpIBCBIYAipAhrCNoiNRJKRw8x0Wy3rZH867RUmM1jmUnjUR8EmM9S5XISI6zLkRCMFL2WI/fYaLw8fRYPMajQnP1InacaLk6TIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgByO3K1QYSDI1cmpz2OW9LbQ/rtRoMcwyqxBG63BXa2WcsIjAxOGQDxcxK2Vaa4EzQfAtyho2EmgaSrowZVlDEquoonrqpYxmTMq9Jc4XlGtmIngMqkwLO3yXGYYJ7xyw+S1VpnHenQV4EBNphCfqozUEpkQ7ugtxfChqFSFodB18rl8U3b0VRqBlyc5MHmfgPfrZ9Rx8D51rlEb2+vSUVHQOsOzQ/Kai1izZLquoVIcZBoUQrwpnAaQSmg6PKDPPTTL7Bcv8yBuDTJwxMgW/JJtrZpupWkr9M7hd0H5Ng3FzOtGR83PhnXMI1cTtupCPuI2ytXBXnbiQLRMHZKbHdnmgqCrM6VInjP555eUz6Ctd0uoGtvPsKwHFHxD8UQx/UBsg2NEFYCBOmGPBC6U73zJ79xaupcRpQH+PxifUOPt3W5fBtvzCGAzGJQRD6KBkaG9C6IUHWKQapFaSh4gFZOPuLQm16hey7+xgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -49,22 +124,97 @@ then:
     data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"delta":{"text":"## Step-by-Step\n\n**Start:** The farmer has **","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":"##","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"17 sheep**.\n\n**\"All but 9 run away\":** \"All but 9\" means all *except* 9 run away, leaving **9 sheep**.\n\n**Bu","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":" Step-by-Step","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"ys twice as many as he has left:** He has 9, so he buys 2 × 9 = 18 more. 9 + 18 = **27 sheep**.\n\n**Sells 5:** 27 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":"\n\n**Start","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"− 5 = **22 sheep**.\n\n---\n\n22","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":":**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" The","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" farmer has **","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"17 sheep**.\n\n**\"","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"All but 9 run away","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\":**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" This","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" means 9 remain","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" (all *","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"except* 9 leave","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":").","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n→","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"9 sheep**\n\n**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Buys twice as many as he","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" has left:** He has 9","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":", so he buys 2","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" × 9 = ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"18 more.\n→","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"9 + 18 =","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **27 sheep**\n\n**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Sells 5:** 27","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" −","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 5 = **22 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"sheep**\n\n---\n\n22","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":86,"output_tokens":261,"output_tokens_details":{"thinking_tokens":130}}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":86,"output_tokens":254,"output_tokens_details":{"thinking_tokens":119}}}
 
     event: message_stop
     data: {"type":"message_stop"}

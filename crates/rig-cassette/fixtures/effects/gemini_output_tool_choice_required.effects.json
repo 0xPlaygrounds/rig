@@ -92,31 +92,31 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_2160483"
+                "id": "call_198281"
               },
               "provider": {
-                "call_id": "call_2160483"
+                "call_id": "call_198281"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology",
-                  "summary": "A monthly gathering for Rust enthusiasts in Seattle to discuss systems programming, share projects, and network with the local developer community.",
+                  "summary": "A monthly gathering for Rust developers in Seattle to share knowledge, discuss systems programming, and network.",
                   "title": "Seattle Rust Meetup"
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "EtgGCtUGAWkUfRMa1CwMPxPB1hBBq7I6anvLc3b4Orr9yK+DhVgg0k7U51VrXismiHs4kFB202SLp5NM+/aDXiaGd+j7bWaLwfnNLJ5jeKczyrgZn3Ti9YvUmzLci68MN3DRP9F6QGZO89CimRodpIS2vkA7XaeaG+/H5meaxTXyiC+X5m6aC+vHscuOlYtyxo+VaNVruMABqLBnHgUvGHAzQuPyi5pokYwC9TMEcsKwlPFzOsrZ5CxF8bnmSs/uHDAaM5SKfTQuSycfNV0PbENBXBup51fjTkYDNVA3glyYZwJIbKtkmIMD/pbs1/W+vlWJe+QVH/8wNp2O7l/URVZ85iBnbDGYP8KcRoMtCNIMDst/nrbeXVUkFC1vECNv5c5bsf48dWUe/gJvZdwLTm2lS6NBF6yzIA9FeXeOY6umzak44u+9Bb8crvkUOgHCFGu9TNtOKWmmrtBc9exd9Lp9gL8RZ1/wEFEvvMWcJVUyzdnvsUZ4yXsds9wpuSwou0Z5FaAVDacdebc72hIbZ/N4cDTHP721+Ex9c95girw3AwnHb/QeKwO8gtCa7hW5D8MrnMsAjWvyuMQNCmupek7zazMhHWR70g7OsmJlKpSMrG+13duJoVaql+LPDEzJ2XXBZ9k4tn+dz5BfCsax1I5KjbdMnnVsBrpQ/mLHpVYgS9L6xsBFoMiJfUdffJbo9IszC7qu+anoy8mbk4bDW73+stGO6QgQJ3GRc1IIS2vtdS8yz/2Bg8PHGgZJaJ43/w3Im3n0raZucXnr0P9O1Yb9R7a0PBGBQEDUVrYbz3n0hXeYTp7POpniyfD88mGVd+kgjFYs6KTHAz6eMjVQeRRfz2xTOqkOK/AL5bGERQNMWeQHG83V05jVrZa9loYF6PasOoiDGvfA/VHV8ecXvgvEtaD7Lc8pOwK4AmA2qYUI4hWS+7cpNigN55NozB1P5JVKQ93Q5GmjDyEGahiXsHEbZwkL5Vpw6jmnAUzJ2KOR0P+zsBg4gKR7rPxWLwar5QW4AZB4H9+rSYA9xmESNUJTI5lCpfksRKM6rxHN2HVXjlKNSYZugtlpw9zE6ZHmHjDZbhGapSmUvX4laJVTKfcYk63QnipZgSEMIPrgCpVZrRjNt0njuPSe3Q==",
               "additional_params": null
             }
           ],
           "usage": {
             "input_tokens": 160,
-            "output_tokens": 54,
-            "total_tokens": 336,
-            "reasoning_tokens": 122
+            "output_tokens": 49,
+            "total_tokens": 375,
+            "reasoning_tokens": 166
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "ma2yasDCI6Dqz7IP_5bEKQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -129,13 +129,13 @@
                       "functionCall": {
                         "args": {
                           "category": "Technology",
-                          "summary": "A monthly gathering for Rust enthusiasts in Seattle to discuss systems programming, share projects, and network with the local developer community.",
+                          "summary": "A monthly gathering for Rust developers in Seattle to share knowledge, discuss systems programming, and network.",
                           "title": "Seattle Rust Meetup"
                         },
-                        "id": "call_2160483",
+                        "id": "call_198281",
                         "name": "final_result"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EtgGCtUGAWkUfRMa1CwMPxPB1hBBq7I6anvLc3b4Orr9yK+DhVgg0k7U51VrXismiHs4kFB202SLp5NM+/aDXiaGd+j7bWaLwfnNLJ5jeKczyrgZn3Ti9YvUmzLci68MN3DRP9F6QGZO89CimRodpIS2vkA7XaeaG+/H5meaxTXyiC+X5m6aC+vHscuOlYtyxo+VaNVruMABqLBnHgUvGHAzQuPyi5pokYwC9TMEcsKwlPFzOsrZ5CxF8bnmSs/uHDAaM5SKfTQuSycfNV0PbENBXBup51fjTkYDNVA3glyYZwJIbKtkmIMD/pbs1/W+vlWJe+QVH/8wNp2O7l/URVZ85iBnbDGYP8KcRoMtCNIMDst/nrbeXVUkFC1vECNv5c5bsf48dWUe/gJvZdwLTm2lS6NBF6yzIA9FeXeOY6umzak44u+9Bb8crvkUOgHCFGu9TNtOKWmmrtBc9exd9Lp9gL8RZ1/wEFEvvMWcJVUyzdnvsUZ4yXsds9wpuSwou0Z5FaAVDacdebc72hIbZ/N4cDTHP721+Ex9c95girw3AwnHb/QeKwO8gtCa7hW5D8MrnMsAjWvyuMQNCmupek7zazMhHWR70g7OsmJlKpSMrG+13duJoVaql+LPDEzJ2XXBZ9k4tn+dz5BfCsax1I5KjbdMnnVsBrpQ/mLHpVYgS9L6xsBFoMiJfUdffJbo9IszC7qu+anoy8mbk4bDW73+stGO6QgQJ3GRc1IIS2vtdS8yz/2Bg8PHGgZJaJ43/w3Im3n0raZucXnr0P9O1Yb9R7a0PBGBQEDUVrYbz3n0hXeYTp7POpniyfD88mGVd+kgjFYs6KTHAz6eMjVQeRRfz2xTOqkOK/AL5bGERQNMWeQHG83V05jVrZa9loYF6PasOoiDGvfA/VHV8ecXvgvEtaD7Lc8pOwK4AmA2qYUI4hWS+7cpNigN55NozB1P5JVKQ93Q5GmjDyEGahiXsHEbZwkL5Vpw6jmnAUzJ2KOR0P+zsBg4gKR7rPxWLwar5QW4AZB4H9+rSYA9xmESNUJTI5lCpfksRKM6rxHN2HVXjlKNSYZugtlpw9zE6ZHmHjDZbhGapSmUvX4laJVTKfcYk63QnipZgSEMIPrgCpVZrRjNt0njuPSe3Q=="
                     }
                   ],
                   "role": "model"
@@ -146,9 +146,9 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "ma2yasDCI6Dqz7IP_5bEKQ",
             "usageMetadata": {
-              "candidatesTokenCount": 54,
+              "candidatesTokenCount": 49,
               "promptTokenCount": 160,
               "promptTokensDetails": [
                 {
@@ -157,8 +157,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 122,
-              "totalTokenCount": 336
+              "thoughtsTokenCount": 166,
+              "totalTokenCount": 375
             }
           }
         }

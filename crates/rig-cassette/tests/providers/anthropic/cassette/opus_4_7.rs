@@ -286,8 +286,15 @@ fn assert_turn_two_request_carries_a_signed_thinking_block(scenario: &str) {
         "turn-2 request in {} dropped the thinking block:\n{request}",
         path.display()
     );
+    // The signature is recorded verbatim; a fixture recorded before that
+    // policy holds a placeholder. Either way the block must carry one.
+    let carries_signature = request
+        .split(r#""signature":""#)
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .is_some_and(|signature| !signature.is_empty());
     assert!(
-        request.contains(r#""signature":"signature_REDACTED"#),
+        carries_signature,
         "turn-2 request in {} carries a thinking block with no signature:\n{request}",
         path.display()
     );

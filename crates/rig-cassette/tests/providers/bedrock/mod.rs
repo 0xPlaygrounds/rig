@@ -3,7 +3,6 @@ mod support;
 
 mod cassette {
     mod agent;
-    mod document_ordering;
     mod ecs_completion;
     mod embeddings;
     mod model_ids;

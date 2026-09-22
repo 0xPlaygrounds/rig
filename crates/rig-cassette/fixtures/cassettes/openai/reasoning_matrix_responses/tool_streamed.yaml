@@ -14,328 +14,58 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_4db99d94d2164d9cbbe16b8b31c6a1fa
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b4ccd6880bda668006ab2b4caa40c87d084d227f564df910a","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b4ccd6880bda668006ab2b4caa40c87d084d227f564df910a","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"encrypted_content":"encrypted_content_REDACTED_1","id":"rs_REDACTED_1","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
-
-    event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"**Executing the add function**\n\nI","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" need","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_2","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" to","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" use","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" add","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" function","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" which","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" is","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" straightforward","item_id":"rs_REDACTED_1","obfuscation":"","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"!","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" don","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"’t","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" necessarily","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" need","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" to","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" use","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" multi","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"_tool","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"_use","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" unless","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" want","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" to","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" run","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" multiple","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" tools","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" at","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" once","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" For","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" this","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" task","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" calling","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" functions","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".add","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" with","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" x","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"=","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"17","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":46,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" and","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":47,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" y","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":48,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"=","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":49,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"25","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":50,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" should","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":51,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" be","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":52,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" just","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":53,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" fine","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":54,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":55,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" I'll","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":56,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" use","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":57,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":58,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" commentary","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":59,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" channel","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":60,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" for","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":61,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" that","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":62,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":63,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" Once","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":64,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_61","output_index":0,"sequence_number":65,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" have","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":66,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":67,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" result","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":68,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":69,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":70,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"’ll","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":71,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" simply","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":72,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" output","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_69","output_index":0,"sequence_number":73,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":74,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" number","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":75,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" in","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":76,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" my","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":77,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" final","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_74","output_index":0,"sequence_number":78,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" message","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_75","output_index":0,"sequence_number":79,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_76","output_index":0,"sequence_number":80,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" So","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_77","output_index":0,"sequence_number":81,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_78","output_index":0,"sequence_number":82,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" let's","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_79","output_index":0,"sequence_number":83,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" go","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_80","output_index":0,"sequence_number":84,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" ahead","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_81","output_index":0,"sequence_number":85,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" and","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_82","output_index":0,"sequence_number":86,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" make","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_83","output_index":0,"sequence_number":87,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" that","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_84","output_index":0,"sequence_number":88,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" call","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_85","output_index":0,"sequence_number":89,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"!","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_86","output_index":0,"sequence_number":90,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_REDACTED_1","output_index":0,"sequence_number":91,"summary_index":0,"text":"**Executing the add function**\n\nI need to use the add function, which is straightforward! I don’t necessarily need to use multi_tool_use unless I want to run multiple tools at once. For this task, calling functions.add with x=17 and y=25 should be just fine. I'll use the commentary channel for that. Once I have the result, I’ll simply output the number in my final message. So, let's go ahead and make that call!","type":"response.reasoning_summary_text.done"}
-
-    event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"**Executing the add function**\n\nI need to use the add function, which is straightforward! I don’t necessarily need to use multi_tool_use unless I want to run multiple tools at once. For this task, calling functions.add with x=17 and y=25 should be just fine. I'll use the commentary channel for that. Once I have the result, I’ll simply output the number in my final message. So, let's go ahead and make that call!","type":"summary_text"},"sequence_number":92,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item":{"content":[],"encrypted_content":"gAAAAABqsrTL8mYk15M89IUbxb9WoTxZafcEZ3w03Jnb7z270e2GAeJkIpconegVHFUW-T2ms-LfLC8YVXojjF5uvT2LC76dH78wzBXG8QaZVZULjuTA8KFMuv5Yo8YKF8LjGswJWOLmzq2pcpgq_BiL1tSJGjazZTLoFLUaxVPL2TI7tZG6JggRKtYt3xIEeU0qvz9UejDGJoaQX_a4JYXpmRZh8M8qAjc065P5LZ67M6FfWOXY83lpTZQE89d-dzzZdYrpLR0yE80NUYtst7vHWcjtQqhM86IZAE6TWKQcGbTfruhWOiEAAlDxWiPpx8bwH9ufR6bER8dv-wF81kymy-vEq48bJ2fVKmNfF4MFlRLl28S2cfuPgHEoQHCyqiXxY1gwdXNMVkIGK8OyegYud4EldX5-xVBN-EZ9egcJq6rNAJCdcV-b5e3XrgAaSNjPclT6DwVjLp29i5k2h3FVoNvVEY-CKanqO74-tBYvMJWX3dlKtCGFaWNNaJ_2HMbm2K4pbKxypmZmodA3SINodssbg_QgpT5c80xjga3YtknoEQz-kLU1G1FmfAxvPTg8lZCwAV5snXkPJfvUNY3T1mZX8Ne7U6Z8yxRKeGy2vp0LRWvWitP0bYiy0PKNKoBah-SJ6qCN0RbSbxJK763ALfylHO54eoul2qbqY4ZppvaSqx7Ma44PTLFtpGMFiEDht3Td_L5Hrq11fCrv0j4oEKuu0YUpTBVZpq5MW96exXE6J9jTC6dbi8NJp5SNqglP7WxU8pdh4d9tFdZcHikx08KIIAMpU-4zK6Z-gnOHITeef4RjuDyQdoHU8CHWMRRcV6AMcHjfV8GQi0wrRcZC9stWos9GHw7QtJXHjBal9iJXRncF0H3vPiXfe1xRbNMGsyT43qWARVGF9HLf_ZhYpFrcrjgtouNOimZmg9uabMNP3UXhB1tD6Aubn6NDCBxTh6BMxVxVXD5lQtSFbNiwJUHijb5YHCPeJdSa-q7p-fi9Csqrdhi8nHFUGpx__dqoeTiYQ-SIJbpHGbgV5QrCl1RmBgARL4vkiklC2xQnMihc3be6_6BGM_59IwOIRN9br8kyOQ5Evsz-aKBhAsOEIHr-qLmbNtxruEXb-0qUTs8bLN9I5AVQIlDUB6SkSLsRBIr7Hk4rl-lAbC9S2_s06zveZinYMFk-6DmbpGiaHq1FffJeH6M=","id":"rs_0b4ccd6880bda668006ab2b4cb374887d0927bfb6bcd3c5056","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.output_item.done
-    data: {"item":{"content":[],"encrypted_content":"encrypted_content_REDACTED_2","id":"rs_REDACTED_1","summary":[{"text":"**Executing the add function**\n\nI need to use the add function, which is straightforward! I don’t necessarily need to use multi_tool_use unless I want to run multiple tools at once. For this task, calling functions.add with x=17 and y=25 should be just fine. I'll use the commentary channel for that. Once I have the result, I’ll simply output the number in my final message. So, let's go ahead and make that call!","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":93,"type":"response.output_item.done"}
+    data: {"item":{"content":[],"encrypted_content":"gAAAAABqsrTNlEGEwXVj3SxW6AFn-HJDN0ijOLJZ2qU92ogxtZt3_tF-_VWY5iLxfGe5dsNzsegDMshXw6NzJiu3ChlT9YV4ZzvNJCAKMDkrlmmZEKVZozi4MwZ-rg5qpVocwTEN7cmCkAFVUK5CQQp_4eJoz-lNlP7lbYatcM-MhGOzyzcHIKTusWfsr_qgeWoFbvA7aSXhYkObealv8sDjPIm5t3JvlL6rwMBeCBO1vMv2uH4D7F49QvzF0AzQnlstKIl2gfzvriQKpi3XX1gNSl7LkkEhyseOzzxZf6z9FM9f4gdh7x1PNnyhUCuLB8m1zx4BAvNZF07I5P4h6Xhit_yLoXZUxn_KsURSn0RrOHNSObTog64xP4-o9mDauFEP__skb1q2dPImkH99nvH2VzDbj1xWXOVW-UI4ozE6FT2HmL8NcCMGf3HMy_pcPMDu-TMuSZu_nGp4MfTrzuwNsXJjKYsUboDD0UVffmEjV_oVQ2fKq3p29TekafKXbDrfFJEmEZ2n-KVXe-FfYt1IJTgllsH5rd_ei1DD_eA9zy1dZwXQfJZDPwztyrD8hkfxHZX7GHlwfI9B87HhMq1E5isNRIt5iCLiZT3slSuj8WrZqaM7f1OGA09J6eslpG14Z3Ogu4o_nJWZjShId47T0iDpE-WIXm6Sq70i0XM3Rwa2ciqQmeswfYQFvNSk8c_xmeHyfEPAzk_WsH7SBVatDUdPnoky20yr9kCkcWWnHaDa6lYG3VF7ItVL4ttXiLzhjXAYCKQTsx_ReXKUKSpNGpqj2-GoDJfKodsz4ctQhGd1hhBt2CAXTNTTxBXUPL7xbX_DUWT3o0PhuXaSSPdtcymk-7QxBEsOF4NR0eculwR89mfrK7ax5Lc46H719URMRXq-_8vQyn6UjS9PmAnhu3-O5tX3_veEPfE1qYlTM4aJjyfgvCQETxEMUh1LvYXBs79T6hNaSBAUzgTScMyoLkY0FaKWj58q9GHiGiiALWeHeEs3MxUPoB3eRhKssHNpKGXitelJ-D6rJHZ_0XZibOBUG7gkYKI6BWbnMDI12kpIZS5SQVeUYKO6e20OMuQ-T2nO5uJAW_Tr8oyQq038P3sIpYI65ucbh0d7lsDfD5ek7Tb2kbQZPLzcbbaVjjX1dxNa9r5Sn3Pr_5ke4iFkWNQpB0GGY3d9axy87VKjcdR3Cvnzg_ADRqjhuMo58rZZYYu0u25FVMoHjvCf6aovavGyDCxJgjS8DC5s8IMDLbvn2Wjbz2z8rHw7D5dk5mbcB9D4B7BFBxmf6Ra9jyidaGyQ1AJ376DqbB3WgfpOaoVoxtgp_MQs17CLOaXX-9IkaBWZjlX9wlzi2027L5vJHYVHM760fgwzkS0UVQtmmywkgCuuXuTVrfqRjZFBG2LlSGOF5HsmvtowUPhKCXeFF4yhsh7XdSIWE7ouVa6c9L26qIJlUDrb0qOQZioahCII6Or4wgOsQQpsWw_C5vjsxYzlbBHTDgQEGOcA78mtnmGfEfl2QI9aeBojDApkVPg6rSwhwg-ez9QI_cBG1G-eJL_aRMA45cvIrIB8PuOW__FEkATZGagm80GiJfYCbTA5BOzYu_lcfo7wekVvhznnxFQ_Z7jW53326I-n4TQrKQKH82s80t0vfn8LIvSexKr7Tne--CynLEK_MaWePykCsO_kNWvm3AMel-H418qCIIUQiVb-UCXmscm9IAFK3Qm8kn1nxaTaT-1iODDT5VoOI6zg478gzz9pB-8w92wlJlh7KCJ-OAHWlsQpzQoIt8jpAxU0aoxcHMywmmYVtcoht6FAbw8wY_uR6CJInOwM2u547mvOo5ViQPqmRavwPY6YHm8keNKF","id":"rs_0b4ccd6880bda668006ab2b4cb374887d0927bfb6bcd3c5056","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":3,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"add","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":94,"type":"response.output_item.added"}
+    data: {"item":{"arguments":"","call_id":"call_OdwXjJjVehnCXvEiiwWJvsZp","id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","name":"add","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":4,"type":"response.output_item.added"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"{\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_87","output_index":1,"sequence_number":95,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"{\"","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"g270t4hN68vR4I","output_index":1,"sequence_number":5,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"x","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_88","output_index":1,"sequence_number":96,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"x","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"fdTl61rhewaSPMC","output_index":1,"sequence_number":6,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"\":","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_89","output_index":1,"sequence_number":97,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"\":","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"AVRLhsZ7qAhzC5","output_index":1,"sequence_number":7,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"17","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_90","output_index":1,"sequence_number":98,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"17","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"3YHEijFWWvua4B","output_index":1,"sequence_number":8,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":",\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_91","output_index":1,"sequence_number":99,"type":"response.function_call_arguments.delta"}
+    data: {"delta":",\"","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"MOyUPNxry9C6S1","output_index":1,"sequence_number":9,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"y","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_92","output_index":1,"sequence_number":100,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"y","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"DVqmcR3RISacnqe","output_index":1,"sequence_number":10,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"\":","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_93","output_index":1,"sequence_number":101,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"\":","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"2t8OmSXZml587c","output_index":1,"sequence_number":11,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"25","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_94","output_index":1,"sequence_number":102,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"25","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"CwDMNTgnZnCdn9","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"}","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_95","output_index":1,"sequence_number":103,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"}","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","obfuscation":"qmkHdzL2rQaT3Gj","output_index":1,"sequence_number":13,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.done
-    data: {"arguments":"{\"x\":17,\"y\":25}","item_id":"fc_REDACTED_1","output_index":1,"sequence_number":104,"type":"response.function_call_arguments.done"}
+    data: {"arguments":"{\"x\":17,\"y\":25}","item_id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","output_index":1,"sequence_number":14,"type":"response.function_call_arguments.done"}
 
     event: response.output_item.done
-    data: {"item":{"arguments":"{\"x\":17,\"y\":25}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"add","status":"completed","type":"function_call"},"output_index":1,"sequence_number":105,"type":"response.output_item.done"}
+    data: {"item":{"arguments":"{\"x\":17,\"y\":25}","call_id":"call_OdwXjJjVehnCXvEiiwWJvsZp","id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","name":"add","status":"completed","type":"function_call"},"output_index":1,"sequence_number":15,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"encrypted_content_REDACTED_3","id":"rs_REDACTED_1","summary":[{"text":"**Executing the add function**\n\nI need to use the add function, which is straightforward! I don’t necessarily need to use multi_tool_use unless I want to run multiple tools at once. For this task, calling functions.add with x=17 and y=25 should be just fine. I'll use the commentary channel for that. Once I have the result, I’ll simply output the number in my final message. So, let's go ahead and make that call!","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"x\":17,\"y\":25}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"add","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":104,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":98,"output_tokens_details":{"reasoning_tokens":64},"total_tokens":202},"user":null},"sequence_number":106,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b4ccd6880bda668006ab2b4caa40c87d084d227f564df910a","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"gAAAAABqsrTNhHWbJFN0TXlk1Jeqs6vY7vyxxmmA6ARMLGch8x8r_g3pLmNyN5cY5vyixLISvuPwFuakAmcEA2rgFNa59t2M6xMH4ywsoCqr_DQbExmrX1hxCiy6ln75U5nT6YmqsJO448hpzdNyMCENUZHrZLTzWVlUh8birXnNNbe5veKdGnNy9l0mH7nCtYrchBV_ZpAWQqlpZbbs_3wg4ukoRV0DcWNQaeagkk0FsQ2eerayKNUSoDHngacYqetzhqbJBTXZk56Uel8bIz4oAim-VPCj3cZc7vnjqiFjc8ormtICa2qw2AX2pHq3H90vx5tO0lWd1UtopPS8RJWLHuUyWU-R3h926zWos7N0ru-wBY-vRiOZk9iQxKSOhtPAPk7xIIqel-bhLkaEKa5IypgJGvJ2D6psgVNJUZTjga1547dbrk3MdmZk3YL1NTHkMlgcbIGJ1Mm7EWx_kkMxgDeBNX21TJ2MFSnXOXe0MGAw6jvygqP8zyPS3-oUtrJhdqsWe6l_5ZEcG9ssFIgq8QclpctTHzcOiVemGmaiWv-xmToVjRaVsaaSULc8_a0ZenHlXj2kur3O5k2bzkmQ_THmI1WoIsy_rSSzOqmZxcCb3RTd2RPwbHmTu6a8oNo_aE_9K5j08SLksEFnw1XLtb-XdyWsQNjCTsOMl3eBRJSY9jaMsq_aBcK5MVa4ediOoumRPoLqv16Agzjc522dAdKRcG_bWD7myF2c4Nn6aBMAl2lS3INaJi4B9px-f462ZxXnt8XXtlHbUvhW0_Z9dh-5c0Nofe1UA6nJc8i3EhF12a5fwW3E981_tjif33dGsrFSqWvxgeT1q4rpduE0l-Y696aYonXv6hZmHPNCmvrRlYuGj2CIm2m-uQA-KRwMCMvVBp0A_f9-McQThHtVoE9q5wtqbJ6X4kNA81igMeVxyGdhcT20ipAKbLYBY1t26ay15E9qAQJmy1cnaK5LFKRxNNJRbEkXs8Q9rJgKPMlS8Ng8_W8pm5geoD64eoInjLhrxAZ3xqcRzLyZEzvjkrAfnQhMF8r2ull8G8bAG57hXyX3Gqtwz7FDG4d27O-KVITUrv4P9RjmDUFT-eLA0GHP3oTXAwSFKMlDqIAM8nOU5p2atCn4TSjTlcXnlAsQIBC7ZywNqRI6xT1dtOdhxJbFqJt6mfBUfodiEWpH76WFmkJH6meiiwwBIMUMofNhbB67khJQSd8textCHv1u4KOj-x9nD5GTdeEAIqd2o2rG7frXFNxJe5tKGDuwHHNU23QTqQGK7aJwaSuAs_vOI21hG_VZt1wIUYnp3I2PohCV13gXbx07N2lzOwpGQ3WL461UDmC7SZVZ67SYgZ2DsFm3G0dhOvmpBF44tivotBvyuGQubuLzvBCc9BiPmOQKR1xkVw1I1gC9fgdiFs_0aGHBoBGHSUbTqBSqhM1fygUqpchBqZ8cYhU7tT2k6aTGf0tWWMyC6ADwdE22a3O5IEnVTLVYLx5a1sMCkPjhVz3WwrkGOCe_7Pti6qNvxClwYYibit0pfKb_EaMeQIDza3ozqY3Yec0dAwOUxepdKeWKRZtOQjTeDf2eztpDuPZ7jnZ5WCzwtqdirTj1vROnBZpucvQ_j2SvBVxREr_YJ0Rm6foITcOCKE-hzcRTiHTgIkXy4SXfepgxLMuGu4OB2Fi4A0PP43a0uXLjOcULaLkBUUi_ySA5v2KwmFmTfX2ICGd-Wn1UEjoyiWZSjexTNqF9_UMaur3-Kjo1GyrlJyvZuIST4UUxdwEGXSwCW8NA7hr_FSkCiuj9KuwyvuhYC5dEd4p9HwiahlKzv8VQfddhxDZMlhIHpUbHiX-eeaSz4Qm6Q-0w","id":"rs_0b4ccd6880bda668006ab2b4cb374887d0927bfb6bcd3c5056","summary":[],"type":"reasoning"},{"arguments":"{\"x\":17,\"y\":25}","call_id":"call_OdwXjJjVehnCXvEiiwWJvsZp","id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","name":"add","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":104,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":126,"output_tokens_details":{"reasoning_tokens":64},"total_tokens":230},"user":null},"sequence_number":16,"type":"response.completed"}
 
 ---
 when:
@@ -347,39 +77,39 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"input_text"}],"role":"user","type":"message"},{"encrypted_content":"encrypted_content_REDACTED_2","id":"rs_REDACTED_1","summary":[{"text":"**Executing the add function**\n\nI need to use the add function, which is straightforward! I don’t necessarily need to use multi_tool_use unless I want to run multiple tools at once. For this task, calling functions.add with x=17 and y=25 should be just fine. I''ll use the commentary channel for that. Once I have the result, I’ll simply output the number in my final message. So, let''s go ahead and make that call!","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"x\":17,\"y\":25}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"add","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"42","status":"completed","type":"function_call_output"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","max_output_tokens":4096,"model":"gpt-5-mini","reasoning":{"effort":"low","summary":"auto"},"stream":true,"tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}]}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"input_text"}],"role":"user","type":"message"},{"encrypted_content":"gAAAAABqsrTNlEGEwXVj3SxW6AFn-HJDN0ijOLJZ2qU92ogxtZt3_tF-_VWY5iLxfGe5dsNzsegDMshXw6NzJiu3ChlT9YV4ZzvNJCAKMDkrlmmZEKVZozi4MwZ-rg5qpVocwTEN7cmCkAFVUK5CQQp_4eJoz-lNlP7lbYatcM-MhGOzyzcHIKTusWfsr_qgeWoFbvA7aSXhYkObealv8sDjPIm5t3JvlL6rwMBeCBO1vMv2uH4D7F49QvzF0AzQnlstKIl2gfzvriQKpi3XX1gNSl7LkkEhyseOzzxZf6z9FM9f4gdh7x1PNnyhUCuLB8m1zx4BAvNZF07I5P4h6Xhit_yLoXZUxn_KsURSn0RrOHNSObTog64xP4-o9mDauFEP__skb1q2dPImkH99nvH2VzDbj1xWXOVW-UI4ozE6FT2HmL8NcCMGf3HMy_pcPMDu-TMuSZu_nGp4MfTrzuwNsXJjKYsUboDD0UVffmEjV_oVQ2fKq3p29TekafKXbDrfFJEmEZ2n-KVXe-FfYt1IJTgllsH5rd_ei1DD_eA9zy1dZwXQfJZDPwztyrD8hkfxHZX7GHlwfI9B87HhMq1E5isNRIt5iCLiZT3slSuj8WrZqaM7f1OGA09J6eslpG14Z3Ogu4o_nJWZjShId47T0iDpE-WIXm6Sq70i0XM3Rwa2ciqQmeswfYQFvNSk8c_xmeHyfEPAzk_WsH7SBVatDUdPnoky20yr9kCkcWWnHaDa6lYG3VF7ItVL4ttXiLzhjXAYCKQTsx_ReXKUKSpNGpqj2-GoDJfKodsz4ctQhGd1hhBt2CAXTNTTxBXUPL7xbX_DUWT3o0PhuXaSSPdtcymk-7QxBEsOF4NR0eculwR89mfrK7ax5Lc46H719URMRXq-_8vQyn6UjS9PmAnhu3-O5tX3_veEPfE1qYlTM4aJjyfgvCQETxEMUh1LvYXBs79T6hNaSBAUzgTScMyoLkY0FaKWj58q9GHiGiiALWeHeEs3MxUPoB3eRhKssHNpKGXitelJ-D6rJHZ_0XZibOBUG7gkYKI6BWbnMDI12kpIZS5SQVeUYKO6e20OMuQ-T2nO5uJAW_Tr8oyQq038P3sIpYI65ucbh0d7lsDfD5ek7Tb2kbQZPLzcbbaVjjX1dxNa9r5Sn3Pr_5ke4iFkWNQpB0GGY3d9axy87VKjcdR3Cvnzg_ADRqjhuMo58rZZYYu0u25FVMoHjvCf6aovavGyDCxJgjS8DC5s8IMDLbvn2Wjbz2z8rHw7D5dk5mbcB9D4B7BFBxmf6Ra9jyidaGyQ1AJ376DqbB3WgfpOaoVoxtgp_MQs17CLOaXX-9IkaBWZjlX9wlzi2027L5vJHYVHM760fgwzkS0UVQtmmywkgCuuXuTVrfqRjZFBG2LlSGOF5HsmvtowUPhKCXeFF4yhsh7XdSIWE7ouVa6c9L26qIJlUDrb0qOQZioahCII6Or4wgOsQQpsWw_C5vjsxYzlbBHTDgQEGOcA78mtnmGfEfl2QI9aeBojDApkVPg6rSwhwg-ez9QI_cBG1G-eJL_aRMA45cvIrIB8PuOW__FEkATZGagm80GiJfYCbTA5BOzYu_lcfo7wekVvhznnxFQ_Z7jW53326I-n4TQrKQKH82s80t0vfn8LIvSexKr7Tne--CynLEK_MaWePykCsO_kNWvm3AMel-H418qCIIUQiVb-UCXmscm9IAFK3Qm8kn1nxaTaT-1iODDT5VoOI6zg478gzz9pB-8w92wlJlh7KCJ-OAHWlsQpzQoIt8jpAxU0aoxcHMywmmYVtcoht6FAbw8wY_uR6CJInOwM2u547mvOo5ViQPqmRavwPY6YHm8keNKF","id":"rs_0b4ccd6880bda668006ab2b4cb374887d0927bfb6bcd3c5056","summary":[],"type":"reasoning"},{"arguments":"{\"x\":17,\"y\":25}","call_id":"call_OdwXjJjVehnCXvEiiwWJvsZp","id":"fc_0b4ccd6880bda668006ab2b4cd77cc87d090a5d24fed508fd7","name":"add","status":"completed","type":"function_call"},{"call_id":"call_OdwXjJjVehnCXvEiiwWJvsZp","output":"42","status":"completed","type":"function_call_output"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","max_output_tokens":4096,"model":"gpt-5-mini","reasoning":{"effort":"low","summary":"auto"},"stream":true,"tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: x-request-id
-    value: req_REDACTED_2
+    value: req_2093facf57e6415ab2fc4c1cdfc1a812
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b4ccd6880bda668006ab2b4ce91dc87d0bd828a244a00b09e","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b4ccd6880bda668006ab2b4ce91dc87d0bd828a244a00b09e","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_REDACTED_1","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"content":[],"id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+    data: {"content_index":0,"item_id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"42","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_96","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"42","item_id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","logprobs":[],"obfuscation":"NkPtEfzKoEHyFv","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":5,"text":"42","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","logprobs":[],"output_index":0,"sequence_number":5,"text":"42","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"42","type":"output_text"},"sequence_number":6,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"42","type":"output_text"},"sequence_number":6,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"42","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":7,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"42","type":"output_text"}],"id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":7,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"42","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":213,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":218},"user":null},"sequence_number":8,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b4ccd6880bda668006ab2b4ce91dc87d0bd828a244a00b09e","incomplete_details":null,"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.","max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"42","type":"output_text"}],"id":"msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":241,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":246},"user":null},"sequence_number":8,"type":"response.completed"}
 

@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"text":"lantern"},"name":"echo"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":62,"promptTokensDetails":[{"modality":"TEXT","tokenCount":62}],"serviceTier":"standard","thoughtsTokenCount":47,"totalTokenCount":122}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"text":"lantern"},"name":"echo"},"thoughtSignature":"CtUBAWkUfROfvPt43dvvfXsDGGsYXBVYe6r1kqeBN/usYF6Xw9MpwVlLxCvPvqFoST8Pp/ml3Q802Xv38A7R3lMsIVoF/Qr+Q+aJgua3lqri5Elnm5QQ2ERhVh6D4CjTn69BnRo6esd9xe8usIX84/yu5GJi/2g++6vxHkWZ0P4LTsWXrPcbfHFa6M8Jm7VlPYRPKoXCmu1edfFNHeqUexYwmPfZM0ME/mfCKxhkF415pX2H9FhRVTBxHIDPc9EdwdiifjdX0Gov7YobPhelqI7jLsZtAD4O"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zrCyao7_DMPpqtsP-9yWwAE","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":62,"promptTokensDetails":[{"modality":"TEXT","tokenCount":62}],"serviceTier":"standard","thoughtsTokenCount":47,"totalTokenCount":122}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -28,10 +28,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"Echo the word ''lantern''.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"text":"lantern"},"name":"echo"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"echo","response":{"result":"modern:lantern"}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the echo tool, then report its output exactly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Echo the provided text back to the caller.","name":"echo","parameters":{"properties":{"text":{"description":"Text to echo","type":"string"}},"required":["text"],"type":"object"}}]}]}'
+  body: '{"contents":[{"parts":[{"text":"Echo the word ''lantern''.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"text":"lantern"},"name":"echo"},"thought":false,"thoughtSignature":"CtUBAWkUfROfvPt43dvvfXsDGGsYXBVYe6r1kqeBN/usYF6Xw9MpwVlLxCvPvqFoST8Pp/ml3Q802Xv38A7R3lMsIVoF/Qr+Q+aJgua3lqri5Elnm5QQ2ERhVh6D4CjTn69BnRo6esd9xe8usIX84/yu5GJi/2g++6vxHkWZ0P4LTsWXrPcbfHFa6M8Jm7VlPYRPKoXCmu1edfFNHeqUexYwmPfZM0ME/mfCKxhkF415pX2H9FhRVTBxHIDPc9EdwdiifjdX0Gov7YobPhelqI7jLsZtAD4O"}],"role":"model"},{"parts":[{"functionResponse":{"name":"echo","response":{"result":"modern:lantern"}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the echo tool, then report its output exactly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Echo the provided text back to the caller.","name":"echo","parameters":{"properties":{"text":{"description":"Text to echo","type":"string"}},"required":["text"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"The word ''lantern'' has been echoed."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":9,"promptTokenCount":90,"promptTokensDetails":[{"modality":"TEXT","tokenCount":90}],"serviceTier":"standard","totalTokenCount":99}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The word ''lantern'' has been echoed."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zrCyatfdMtayqtsPp8a1mQw","usageMetadata":{"candidatesTokenCount":9,"promptTokenCount":90,"promptTokensDetails":[{"modality":"TEXT","tokenCount":90}],"serviceTier":"standard","totalTokenCount":99}}'

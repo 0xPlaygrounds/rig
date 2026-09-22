@@ -119,10 +119,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_1904447"
+                "id": "call_102319"
               },
               "provider": {
-                "call_id": "call_1904447"
+                "call_id": "call_102319"
               },
               "function": {
                 "name": "add",
@@ -131,7 +131,7 @@
                   "y": 25
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "EqMCCqACAWkUfROvi51glX7bkXGDQNcPgZ5r65+VhSCvFrV5MRbWd4oufegESBCi1dk7KfpkAFB1QoMZgAtEjbwJq9JXWq7Uf0HbuwPVJi18Yhx/zpB4dezbcQVZhFaKJlNuerVkQGcS7oHj8V5pnEhDssAOln15uM0lubLWj0SVTTItyCT9Ceg+hhk+TugEBVjXsH1PNNmlrgigtJOJ3LDk4ko+LlxqZL3MD6t8STXsjr6fVuRIsfE2YHDa9rRmEbEfRV/eKUEttaTcPs/OfWBcHCxlv3pEIUuhJ3Z56fRPmbdbfWSULNJZ/ZVRhqYD+TxaOWeQ/xlmKxwunXDFTZcGkWMFZ5aoYVQqRNJDnksfeUSDJB6MC6c7zb49qZ8a2E2hQ3/Z",
               "additional_params": null
             }
           ],
@@ -142,7 +142,7 @@
             "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "TqyyaubjK9bUz7IPqY2RuQQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -157,10 +157,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_1904447",
+                        "id": "call_102319",
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EqMCCqACAWkUfROvi51glX7bkXGDQNcPgZ5r65+VhSCvFrV5MRbWd4oufegESBCi1dk7KfpkAFB1QoMZgAtEjbwJq9JXWq7Uf0HbuwPVJi18Yhx/zpB4dezbcQVZhFaKJlNuerVkQGcS7oHj8V5pnEhDssAOln15uM0lubLWj0SVTTItyCT9Ceg+hhk+TugEBVjXsH1PNNmlrgigtJOJ3LDk4ko+LlxqZL3MD6t8STXsjr6fVuRIsfE2YHDa9rRmEbEfRV/eKUEttaTcPs/OfWBcHCxlv3pEIUuhJ3Z56fRPmbdbfWSULNJZ/ZVRhqYD+TxaOWeQ/xlmKxwunXDFTZcGkWMFZ5aoYVQqRNJDnksfeUSDJB6MC6c7zb49qZ8a2E2hQ3/Z"
                     }
                   ],
                   "role": "model"
@@ -171,7 +171,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "TqyyaubjK9bUz7IPqY2RuQQ",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,

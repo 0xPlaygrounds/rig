@@ -17,16 +17,16 @@ then:
     value: text/event-stream
   body: |+
     event: interaction.created
-    data: {"event_type":"interaction.created","interaction":{"id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","status":"in_progress"}}
+    data: {"event_type":"interaction.created","interaction":{"id":"v1_ChYwSzZ5YXBpZk5jdlZ6N0lQd1llcEdREhYwSzZ5YXBpZk5jdlZ6N0lQd1llcEdR","model":"gemini-3-flash-preview","object":"interaction","status":"in_progress"}}
 
     event: interaction.status_update
-    data: {"event_type":"interaction.status_update","interaction_id":"v1_REDACTED_1","status":"in_progress"}
+    data: {"event_type":"interaction.status_update","interaction_id":"v1_ChYwSzZ5YXBpZk5jdlZ6N0lQd1llcEdREhYwSzZ5YXBpZk5jdlZ6N0lQd1llcEdR","status":"in_progress"}
 
     event: step.start
     data: {"event_type":"step.start","index":0,"step":{"type":"thought"}}
 
     event: step.delta
-    data: {"delta":{"signature":"signature_REDACTED_1","type":"thought_signature"},"event_type":"step.delta","index":0}
+    data: {"delta":{"signature":"EogDCoUDAWkUfRNT3y29f2Gr5MDW7x5OZU0H/a7EYnaQltVdv4N6PrDSIZt1u18CKWOGee19FHF82U9cFw7cnyw1DvMLS78f9qLET6TB92VI7LptebraCtXtjADBRe9pYhNJ7dyRktDUR2mMIbjDWLLprY0ZmbkIcT93EDbIOuv/5ETcRvwx7e4diT8pQbjn4i1XN+G/PdcWOfSd1fSTrNBZVYv3yvYO6yPrFQIShx+7sD8xfjQKJURpf3Fgo3Okivw5fgna6mFPfZjMQW8txsH3j3td9E9zJzA4T0hct7MA0P5v7wUpHFNK/KNFg30RdrtLS9YEQMdeKuo7LAgPMTWqnDr2g+Ip6SiuCFHeQJCqrGLvWzTlbDpW/pVC9hXSiht/SXE3L4wefm6MdfIGNx5hv1DkCVHP38LmD7yWXr0GuFH5NWSYQZdPuiLpMvkrXMjJQsD29U3yU4QUlCmTM5rHDZi17+O9jM6i+anJSWGY2YVFucQ/Rp1foE7CXzEtNabs3IXVaJPjGkc=","type":"thought_signature"},"event_type":"step.delta","index":0}
 
     event: step.stop
     data: {"event_type":"step.stop","index":0}
@@ -41,7 +41,7 @@ then:
     data: {"event_type":"step.stop","index":1}
 
     event: interaction.completed
-    data: {"event_type":"interaction.completed","interaction":{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":12}],"raw_prompt_token":33,"total_cached_tokens":0,"total_input_tokens":12,"total_output_tokens":2,"total_thought_tokens":116,"total_tokens":130,"total_tool_use_tokens":0}}}
+    data: {"event_type":"interaction.completed","interaction":{"created":"1970-01-01T00:00:00Z","id":"v1_ChYwSzZ5YXBpZk5jdlZ6N0lQd1llcEdREhYwSzZ5YXBpZk5jdlZ6N0lQd1llcEdR","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":12}],"model_invocation_token_counts":[{"candidates_tokens_details":[{"modality":"text","tokens":6}],"prompt_tokens_details":[{"modality":"text","tokens":33}],"thoughts_tokens_details":[{"modality":"text","tokens":58}]}],"non_grounding_model_invocation_token_counts":[{"candidates_tokens_details":[{"modality":"text","tokens":6}],"prompt_tokens_details":[{"modality":"text","tokens":33}],"thoughts_tokens_details":[{"modality":"text","tokens":58}]}],"raw_prompt_token":33,"total_cached_tokens":0,"total_input_tokens":12,"total_output_tokens":2,"total_thought_tokens":58,"total_tokens":72,"total_tool_use_tokens":0}}}
 
     event: done
     data: [DONE]

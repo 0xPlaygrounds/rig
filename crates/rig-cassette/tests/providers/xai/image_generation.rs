@@ -6,7 +6,7 @@ use rig::providers::xai;
 use serde_json::json;
 
 use super::support::with_xai_cassette;
-use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
+use crate::support::{IMAGE_PROMPT, assert_image_bytes};
 
 #[tokio::test]
 async fn image_generation_smoke() {
@@ -34,7 +34,7 @@ async fn image_generation_smoke() {
                 .await
                 .expect("image generation should succeed");
 
-            assert_nonempty_bytes(&response.image);
+            assert_image_bytes(&response.image);
         },
     )
     .await;

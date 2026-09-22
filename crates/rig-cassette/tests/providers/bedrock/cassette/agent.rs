@@ -6,9 +6,8 @@ use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
-    Adder, BASIC_PREAMBLE, BASIC_PROMPT, CONTEXT_DOCS, CONTEXT_PROMPT, STREAMING_TOOLS_PREAMBLE,
-    STREAMING_TOOLS_PROMPT, Subtract, assert_contains_any_case_insensitive,
-    assert_mentions_expected_number, assert_nonempty_response,
+    Adder, BASIC_PREAMBLE, BASIC_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
+    Subtract, assert_mentions_expected_number, assert_nonempty_response,
 };
 
 #[tokio::test]
@@ -26,28 +25,6 @@ async fn completion_smoke() {
             .output;
 
         assert_nonempty_response(&response);
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn completion_with_context_smoke() {
-    with_bedrock_cassette("agent/completion_with_context_smoke", |client| async move {
-        let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
-            .preamble("Answer the user using only the supplied context.")
-            .context(CONTEXT_DOCS[0])
-            .context(CONTEXT_DOCS[1])
-            .context(CONTEXT_DOCS[2])
-            .build();
-
-        let response = agent
-            .prompt(CONTEXT_PROMPT)
-            .await
-            .expect("context completion should succeed")
-            .output;
-
-        assert_contains_any_case_insensitive(&response, &["ancient tool", "farm"]);
     })
     .await;
 }

@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":16,"messages":[{"content":"Checking the ledger.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"pong","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"Now say: history-ok","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":16,"messages":[{"content":"Checking the ledger.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_history_1","index":0,"type":"function"}]},{"content":"pong","role":"tool","tool_call_id":"call_history_1"},{"content":"Now say: history-ok","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"history-ok","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":3,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":310,"prompt_tokens":310,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":313}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"history-ok","role":"assistant"}}],"created":0,"id":"42b1bb86-64a3-44d6-8d16-42f42fbb0a1d","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":3,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":295,"prompt_tokens":295,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":298}}'

@@ -55,33 +55,10 @@ use tokio::task::JoinHandle;
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const REDACTED: &str = "[REDACTED]";
-/// Stand-in for a generated image payload (`"hello"` in base64).
-const IMAGE_PAYLOAD_PLACEHOLDER: &str = "aGVsbG8=";
 const DUMMY_API_KEY: &str = REDACTED;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 type PanicPayload = Box<dyn Any + Send + 'static>;
-
-#[derive(Clone, Copy, Debug)]
-struct TokenPrefix {
-    raw: &'static str,
-    placeholder_prefix: &'static str,
-    min_suffix_len: usize,
-}
-
-impl TokenPrefix {
-    const fn new(
-        raw: &'static str,
-        placeholder_prefix: &'static str,
-        min_suffix_len: usize,
-    ) -> Self {
-        Self {
-            raw,
-            placeholder_prefix,
-            min_suffix_len,
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ReplayMatching {
@@ -131,7 +108,6 @@ struct CassettePolicy {
     sensitive_query_params: &'static [&'static str],
     response_header_allowlist: &'static [&'static str],
     forbidden_patterns: &'static [&'static str],
-    generated_token_prefixes: &'static [TokenPrefix],
     replay_matching: ReplayMatching,
 }
 
@@ -169,29 +145,6 @@ impl CassettePolicy {
     fn is_allowed_response_header(self, name: &str) -> bool {
         contains_case_insensitive(self.response_header_allowlist, name)
     }
-
-    fn generated_prefix_for(self, value: &str) -> Option<TokenPrefix> {
-        // Callers pass a value taken from a known id field, so the
-        // id-position gate is satisfied by construction.
-        self.generated_token_prefixes
-            .iter()
-            .copied()
-            .find(|prefix| is_generated_token(value, *prefix, true))
-    }
-
-    fn matching_generated_prefix(self, text: &str, index: usize) -> Option<TokenPrefix> {
-        if index > 0 {
-            let previous = text[..index].chars().next_back()?;
-            if is_token_char(previous) {
-                return None;
-            }
-        }
-
-        self.generated_token_prefixes
-            .iter()
-            .copied()
-            .find(|prefix| text[index..].starts_with(prefix.raw))
-    }
 }
 
 impl Default for CassettePolicy {
@@ -203,7 +156,6 @@ impl Default for CassettePolicy {
             sensitive_query_params: SENSITIVE_QUERY_PARAMS,
             response_header_allowlist: RESPONSE_HEADER_ALLOWLIST,
             forbidden_patterns: FORBIDDEN_CASSETTE_PATTERNS,
-            generated_token_prefixes: GENERATED_TOKEN_PREFIXES,
             replay_matching: ReplayMatching::Ordered,
         }
     }
@@ -1908,7 +1860,10 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-/// Return YAML with recognized credentials and generated identifiers scrubbed.
+/// Return YAML in recorded form: credentials, AWS account numbers and
+/// home-directory paths scrubbed, everything the provider sent kept verbatim.
+/// Placeholders an older fixture already holds are left in place, so the
+/// function is the identity on every committed cassette.
 /// Panics if the cassette cannot be parsed.
 pub fn scrub_cassette_contents(yaml: &str) -> String {
     scrub_cassette_contents_with_policy(CassettePolicy::default(), yaml)
@@ -1963,8 +1918,8 @@ pub fn artifact_safety_failures(path: &Path, contents: &str) -> Vec<String> {
     artifact_safety_failures_with_policy(CassettePolicy::default(), path, contents)
 }
 
-/// Scrub live diagnostics with the same ID remapping and credential rules as
-/// provider traffic. This is separate evidence, never a canonical effect log.
+/// Scrub live diagnostics with the same credential rules as provider
+/// traffic. This is separate evidence, never a canonical effect log.
 pub fn scrub_artifact(value: &Value) -> Value {
     let mut value = value.clone();
     CassetteScrubber::new(CassettePolicy::default()).scrub_json_value(None, &mut value);
@@ -1983,15 +1938,6 @@ fn artifact_safety_failures_with_policy(
         if lower.contains(pattern) {
             failures.push(format!("{} contains {pattern:?}", cassette_path.display()));
         }
-    }
-
-    let generated_tokens = generated_tokens(policy, contents);
-    if !generated_tokens.is_empty() {
-        failures.push(format!(
-            "{} contains {} unsanitized provider artifact(s)",
-            cassette_path.display(),
-            generated_tokens.len()
-        ));
     }
 
     let openai_api_key_tokens = openai_api_key_tokens(contents);
@@ -2195,7 +2141,7 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
 ];
 
 // AWS SDKs require the error-type header for exception classification and read
-// request IDs from headers; generated ID values are scrubbed separately.
+// request IDs from headers.
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
     "content-type",
     // Replay must retain the provider's retry hint for adapter diagnostics.
@@ -2215,73 +2161,13 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
     "updated_at",
 ];
 
-const SENSITIVE_STRING_KEYS: &[&str] = &[
-    // Token exchanges can expose credentials in response bodies, not just headers.
-    "access_token",
-    "id_token",
-    "refresh_token",
-    "encrypted_content",
-    "encryptedcontent",
-    // These server-tool locators encode stable UUIDs despite looking opaque.
-    // Match both underscore spellings because key normalization only lowercases.
-    "encrypted_index",
-    "encryptedindex",
-    "encrypted_stdout",
-    "encryptedstdout",
-    "obfuscation",
-    "prompt_cache_key",
-    "safety_identifier",
-    "signature",
-    "thoughtsignature",
-];
+/// Credential material a token exchange can return in a body.
+const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
-/// Allowlisted response headers whose value is a generated per-call id.
-const GENERATED_ID_HEADERS: &[&str] = &[
-    "x-amzn-requestid",
-    "request-id",
-    "x-request-id",
-    "mistral-correlation-id",
-];
-
-const GENERATED_ID_KEYS: &[&str] = &[
-    "call_id",
-    // Pagination cursors: opaque to rig, but they encode provider-side resource
-    // ids, so a recorded cursor leaks what the rest of the fixture redacted.
-    "nextpagetoken",
-    "next_page_token",
-    "item_id",
-    "previous_interaction_id",
-    "previous_response_id",
-    "request_id",
-    "response_id",
-    "responseid",
-    "tool_call_id",
-    "tool_use_id",
-    "tooluseid",
-];
-
-const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
-    TokenPrefix::new("chatcmpl-", "chatcmpl-", 8),
-    TokenPrefix::new("resp_", "resp_", 8),
-    TokenPrefix::new("msg_", "msg_", 8),
-    TokenPrefix::new("call_", "call_", 8),
-    TokenPrefix::new("toolu_", "toolu_", 8),
-    TokenPrefix::new("tooluse_", "tooluse_", 8),
-    TokenPrefix::new("file_", "file_", 6),
-    TokenPrefix::new("req_", "req_", 8),
-    TokenPrefix::new("rs_", "rs_", 8),
-    TokenPrefix::new("fc_", "fc_", 8),
-    TokenPrefix::new("fp_", "fp_", 6),
-    TokenPrefix::new("v1_", "v1_", 8),
-    TokenPrefix::new("run_", "run_", 8),
-    TokenPrefix::new("step_", "step_", 8),
-    TokenPrefix::new("thread_", "thread_", 8),
-    TokenPrefix::new("asst_", "asst_", 8),
-    TokenPrefix::new("batch_", "batch_", 8),
-    TokenPrefix::new("upload_", "upload_", 8),
-    TokenPrefix::new("document-", "document-", 8),
-];
-
+/// Removes credentials, AWS account numbers and home-directory paths from a
+/// recording and normalizes its volatile fields. Everything else the provider
+/// sent is kept verbatim, so a fixture can seed a live call and a replay
+/// decodes the provider's own bytes.
 struct CassetteScrubber {
     policy: CassettePolicy,
     placeholders: BTreeMap<String, String>,
@@ -2303,15 +2189,6 @@ impl CassetteScrubber {
         scrub_query_params(self.policy, &mut request.query_param);
 
         for query_param in &mut request.query_param {
-            // Cursors encode resource IDs; distinct placeholders prevent leaks
-            // without changing pagination progress or request/response correlation.
-            if query_param.name.eq_ignore_ascii_case("pageToken") {
-                // Safety checks re-scrub output, so existing placeholders must be stable.
-                if !is_redacted_placeholder(&query_param.value) {
-                    query_param.value = self.placeholder(&query_param.value, "cursor-");
-                }
-                continue;
-            }
             query_param.value = self.scrub_text(&query_param.value);
         }
 
@@ -2346,13 +2223,6 @@ impl CassetteScrubber {
                 false
             }
         });
-
-        // Retain header presence without persisting live request identifiers.
-        for header in response.header.iter_mut() {
-            if contains_case_insensitive(GENERATED_ID_HEADERS, &header.name) {
-                header.value = self.placeholder(&header.value, "req_");
-            }
-        }
 
         if let Some(body) = &mut response.body {
             *body = self.scrub_encoded_body(body, response.body_encoding);
@@ -2462,83 +2332,7 @@ impl CassetteScrubber {
 
         match value {
             Value::Object(map) => {
-                let object_type = map
-                    .get("type")
-                    .and_then(Value::as_str)
-                    .map(str::to_ascii_lowercase);
-                let object_name = map
-                    .get("object")
-                    .and_then(Value::as_str)
-                    .map(str::to_ascii_lowercase);
-                // Require both the account-scoped ID and string image payloads
-                // to avoid scrubbing image-embedding inputs or metadata objects.
-                let venice_image_payload = map.get("id").is_some_and(Value::is_string)
-                    && map.get("images").is_some_and(|images| {
-                        images
-                            .as_array()
-                            .is_some_and(|images| images.iter().all(Value::is_string))
-                    });
-
                 for (key, value) in map {
-                    if key == "data" && object_type.as_deref() == Some("reasoning.encrypted") {
-                        if let Value::String(data) = value {
-                            *data = self.placeholder(data, "encrypted_reasoning_");
-                        }
-                        continue;
-                    }
-
-                    // Opaque redacted-thinking ciphertext must not enter fixtures.
-                    if key == "data" && object_type.as_deref() == Some("redacted_thinking") {
-                        if let Value::String(data) = value {
-                            *data = self.placeholder(data, "redacted_thinking_");
-                        }
-                        continue;
-                    }
-
-                    if key == "id"
-                        && venice_image_payload
-                        && let Value::String(id) = value
-                    {
-                        *id = self.placeholder(id, "id_");
-                        continue;
-                    }
-
-                    // Replace generated media only in the identified response shape;
-                    // input image data URIs must remain available for request matching.
-                    if key == "images"
-                        && venice_image_payload
-                        && let Value::Array(images) = value
-                    {
-                        for image in images.iter_mut() {
-                            if let Value::String(image) = image {
-                                *image = IMAGE_PAYLOAD_PLACEHOLDER.to_string();
-                            }
-                        }
-                        continue;
-                    }
-
-                    if key == "id"
-                        && should_scrub_id_for_object(
-                            self.policy,
-                            value.as_str(),
-                            object_type.as_deref(),
-                            object_name.as_deref(),
-                        )
-                    {
-                        if let Value::String(id) = value {
-                            *id = self.placeholder(
-                                id,
-                                placeholder_kind_for_id(
-                                    self.policy,
-                                    id,
-                                    object_type.as_deref(),
-                                    object_name.as_deref(),
-                                ),
-                            );
-                        }
-                        continue;
-                    }
-
                     self.scrub_json_value(Some(key), value);
                 }
             }
@@ -2558,19 +2352,8 @@ impl CassetteScrubber {
                         return;
                     }
 
-                    if SENSITIVE_STRING_KEYS.contains(&key) || GENERATED_ID_KEYS.contains(&key) {
-                        *text = self
-                            .placeholder(text, placeholder_kind_for_value(self.policy, text, key));
-                        return;
-                    }
-
-                    if key == "url" && text.contains("grounding-api-redirect/") {
-                        *text = self.placeholder(text, "url");
-                        return;
-                    }
-
-                    if key == "b64_json" {
-                        *text = IMAGE_PAYLOAD_PLACEHOLDER.to_string();
+                    if OAUTH_TOKEN_KEYS.contains(&key) {
+                        *text = self.placeholder(text, "id_");
                         return;
                     }
                 }
@@ -2596,55 +2379,8 @@ impl CassetteScrubber {
         for key in self.policy.sensitive_query_params {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
-        let scrubbed = self.scrub_grounding_redirects(&scrubbed);
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
-        let scrubbed = self.scrub_resource_names(&scrubbed);
-        let scrubbed = scrub_local_filesystem_paths(&scrubbed);
-        self.scrub_generated_tokens(&scrubbed)
-    }
-
-    /// Replace account-scoped `cachedContents/<id>` handles in text, including
-    /// request paths, while retaining collection names and existing placeholders.
-    /// The general token scanner cannot span the separating slash.
-    fn scrub_resource_names(&mut self, text: &str) -> String {
-        const RESOURCE_COLLECTIONS: &[&str] = &["cachedContents/"];
-
-        let mut output = String::with_capacity(text.len());
-        let mut index = 0;
-
-        while index < text.len() {
-            if !text.is_char_boundary(index) {
-                index += 1;
-                continue;
-            }
-
-            let matched = RESOURCE_COLLECTIONS
-                .iter()
-                .find(|collection| text[index..].starts_with(**collection));
-
-            if let Some(collection) = matched {
-                let id_start = index + collection.len();
-                let id_end = token_end(text, id_start);
-                let id = &text[id_start..id_end];
-                // Keep bare collection endpoints and reject non-token characters;
-                // token_end otherwise accepts an initial quote and corrupts JSON.
-                if !id.is_empty() && id.chars().all(is_token_char) && !is_redacted_placeholder(id) {
-                    output.push_str(collection);
-                    output.push_str(&self.placeholder(id, "cached-"));
-                    index = id_end;
-                    continue;
-                }
-            }
-
-            let ch = text[index..]
-                .chars()
-                .next()
-                .expect("index should be on a char boundary");
-            output.push(ch);
-            index += ch.len_utf8();
-        }
-
-        output
+        scrub_local_filesystem_paths(&scrubbed)
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,
@@ -2684,59 +2420,6 @@ impl CassetteScrubber {
         }
 
         output.push_str(rest);
-        output
-    }
-
-    fn scrub_grounding_redirects(&mut self, text: &str) -> String {
-        const PREFIX: &str = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/";
-        let mut output = String::with_capacity(text.len());
-        let mut remaining = text;
-
-        while let Some(index) = remaining.find(PREFIX) {
-            let (before, after_before) = remaining.split_at(index);
-            output.push_str(before);
-
-            let end = after_before
-                .find(['"', '\'', '<', ' ', '\n', '\r'])
-                .unwrap_or(after_before.len());
-            let token = &after_before[..end];
-            output.push_str(&self.placeholder(token, "url"));
-            remaining = &after_before[end..];
-        }
-
-        output.push_str(remaining);
-        output
-    }
-
-    fn scrub_generated_tokens(&mut self, text: &str) -> String {
-        let mut output = String::with_capacity(text.len());
-        let mut index = 0;
-
-        while index < text.len() {
-            if !text.is_char_boundary(index) {
-                index += 1;
-                continue;
-            }
-
-            if let Some(prefix) = self.policy.matching_generated_prefix(text, index) {
-                let end = token_end(text, index);
-                let token = &text[index..end];
-
-                if is_generated_token(token, prefix, in_id_field_position(text, index)) {
-                    output.push_str(&self.placeholder(token, prefix.placeholder_prefix));
-                    index = end;
-                    continue;
-                }
-            }
-
-            let ch = text[index..]
-                .chars()
-                .next()
-                .expect("index should be on a char boundary");
-            output.push(ch);
-            index += ch.len_utf8();
-        }
-
         output
     }
 
@@ -2788,88 +2471,6 @@ fn scrub_query_params(policy: CassettePolicy, query_params: &mut [NameValue]) {
     }
 }
 
-fn should_scrub_id_for_object(
-    policy: CassettePolicy,
-    value: Option<&str>,
-    object_type: Option<&str>,
-    object_name: Option<&str>,
-) -> bool {
-    let Some(value) = value else {
-        return false;
-    };
-
-    if is_redacted_placeholder(value) {
-        return false;
-    }
-
-    if placeholder_kind_from_generated_token(policy, value).is_some() {
-        return true;
-    }
-
-    matches!(
-        object_type,
-        Some("function_call")
-            | Some("function")
-            | Some("message")
-            | Some("tool_use")
-            | Some("reasoning")
-            | Some("file")
-    ) || matches!(
-        object_name,
-        Some("response")
-            | Some("chat.completion")
-            | Some("chat.completion.chunk")
-            | Some("interaction")
-    )
-}
-
-fn placeholder_kind_for_value(policy: CassettePolicy, value: &str, fallback: &str) -> &'static str {
-    placeholder_kind_from_generated_token(policy, value).unwrap_or(match fallback {
-        "call_id" | "tool_call_id" => "call_",
-        "encrypted_content" | "encryptedcontent" => "encrypted_content_",
-        "item_id" => "item_",
-        "obfuscation" => "obfuscation_",
-        "previous_interaction_id" | "previous_response_id" | "response_id" | "responseid" => "id_",
-        "request_id" => "req_",
-        "signature" | "thoughtsignature" => "signature_",
-        "system_fingerprint" => "fp_",
-        "tool_use_id" => "toolu_",
-        "tooluseid" => "tooluse_",
-        "url" => "url_",
-        _ => "id_",
-    })
-}
-
-fn placeholder_kind_for_id(
-    policy: CassettePolicy,
-    value: &str,
-    object_type: Option<&str>,
-    object_name: Option<&str>,
-) -> &'static str {
-    placeholder_kind_from_generated_token(policy, value).unwrap_or(match object_type {
-        Some("file") => "file_",
-        Some("function") => "call_",
-        Some("function_call") => "fc_",
-        Some("message") => "msg_",
-        Some("tool_use") => "toolu_",
-        _ => match object_name {
-            Some("chat.completion") | Some("chat.completion.chunk") => "chatcmpl-",
-            Some("interaction") => "v1_",
-            Some("response") => "resp_",
-            _ => "id_",
-        },
-    })
-}
-
-fn placeholder_kind_from_generated_token(
-    policy: CassettePolicy,
-    value: &str,
-) -> Option<&'static str> {
-    policy
-        .generated_prefix_for(value)
-        .map(|prefix| prefix.placeholder_prefix)
-}
-
 fn token_end(text: &str, start: usize) -> usize {
     let mut end = start;
 
@@ -2888,56 +2489,6 @@ fn is_token_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
 }
 
-fn is_generated_token(token: &str, prefix: TokenPrefix, in_id_field: bool) -> bool {
-    if is_redacted_placeholder(token) {
-        return false;
-    }
-
-    let Some(suffix) = token.strip_prefix(prefix.raw) else {
-        return false;
-    };
-
-    if suffix.len() < prefix.min_suffix_len
-        || !suffix
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-    {
-        return false;
-    }
-
-    // Requiring digits avoids scrubbing prose identifiers; digitless lowercase
-    // call IDs are accepted only in ID fields so tool names remain unchanged.
-    suffix.chars().any(|ch| ch.is_ascii_digit())
-        || (prefix.raw == "call_"
-            && in_id_field
-            && suffix.len() >= 8
-            && suffix.chars().all(|ch| ch.is_ascii_lowercase()))
-}
-
-/// Whether the token starting at `token_start` is the value of an
-/// id-bearing JSON field (`"id":"…"`, `"tool_call_id":"…"`, `"toolCallId":"…"`),
-/// tolerating the escaped-quote spelling of bodies that are themselves
-/// JSON-encoded (`\"id\":\"…\"`).
-fn in_id_field_position(text: &str, token_start: usize) -> bool {
-    let Some(rest) = text[..token_start].strip_suffix('"') else {
-        return false;
-    };
-    let rest = rest.strip_suffix('\\').unwrap_or(rest);
-    let rest = rest.trim_end();
-    let Some(rest) = rest.strip_suffix(':') else {
-        return false;
-    };
-    let Some(rest) = rest.trim_end().strip_suffix('"') else {
-        return false;
-    };
-    let rest = rest.strip_suffix('\\').unwrap_or(rest);
-    let name_start = rest
-        .rfind(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
-        .map_or(0, |at| at + 1);
-    let name = &rest[name_start..];
-    name == "id" || name.ends_with("_id") || name.ends_with("Id")
-}
-
 fn is_redacted_placeholder(value: &str) -> bool {
     let Some((kind, counter)) = value.split_once("REDACTED_") else {
         return false;
@@ -2949,40 +2500,6 @@ fn is_redacted_placeholder(value: &str) -> bool {
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
         && counter.chars().all(|ch| ch.is_ascii_digit())
-}
-
-fn generated_tokens(policy: CassettePolicy, contents: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut index = 0;
-
-    while index < contents.len() {
-        if !contents.is_char_boundary(index) {
-            index += 1;
-            continue;
-        }
-
-        if let Some(prefix) = policy.matching_generated_prefix(contents, index) {
-            let end = token_end(contents, index);
-            let token = &contents[index..end];
-            if is_generated_token(token, prefix, in_id_field_position(contents, index))
-                && !token.contains("REDACTED_")
-            {
-                tokens.push(token.to_string());
-            }
-            index = end;
-            continue;
-        }
-
-        let ch = contents[index..]
-            .chars()
-            .next()
-            .expect("index should be on a char boundary");
-        index += ch.len_utf8();
-    }
-
-    tokens.sort();
-    tokens.dedup();
-    tokens
 }
 
 fn openai_api_key_tokens(contents: &str) -> Vec<String> {
@@ -3090,6 +2607,12 @@ fn aws_access_key_tokens(contents: &str) -> Vec<String> {
     for prefix in ["AKIA", "ASIA"] {
         let mut remaining = contents;
         while let Some(index) = remaining.find(prefix) {
+            // A key starts a token; the same letters inside a base64 blob
+            // (a signature, ciphertext, an image) are not a key.
+            if !starts_token(contents, remaining, index) {
+                remaining = &remaining[index + prefix.len()..];
+                continue;
+            }
             let after_prefix = &remaining[index + prefix.len()..];
             let suffix_len = after_prefix
                 .chars()
@@ -3118,6 +2641,10 @@ fn google_api_key_tokens(contents: &str) -> Vec<String> {
     const MIN_SUFFIX_LEN: usize = 20;
 
     while let Some(index) = remaining.find(PREFIX) {
+        if !starts_token(contents, remaining, index) {
+            remaining = &remaining[index + PREFIX.len()..];
+            continue;
+        }
         let after_prefix = &remaining[index + PREFIX.len()..];
         let suffix_len = after_prefix
             .chars()
@@ -3136,6 +2663,18 @@ fn google_api_key_tokens(contents: &str) -> Vec<String> {
     tokens.sort();
     tokens.dedup();
     tokens
+}
+
+/// Whether `remaining[index..]`, a suffix of `contents`, begins a token:
+/// the preceding character in `contents` is neither a token character nor
+/// one of the standard base64 alphabet's `+` and `/`, so the same letters
+/// inside a base64 blob are not read as the start of a key.
+fn starts_token(contents: &str, remaining: &str, index: usize) -> bool {
+    let absolute = contents.len() - remaining.len() + index;
+    contents[..absolute]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_token_char(ch) && !matches!(ch, '+' | '/'))
 }
 
 fn scrub_query_param(input: &str, key: &str, replacement: &str) -> String {
@@ -3309,15 +2848,6 @@ mod explicit_destination_tests;
 mod paths;
 #[cfg(test)]
 mod replay_session_tests;
-
-#[cfg(test)]
-mod cached_content_scrub_tests;
-
-#[cfg(test)]
-mod cached_content_scrub_edge_tests;
-
-#[cfg(test)]
-mod pagination_cursor_scrub_tests;
 
 #[cfg(test)]
 mod local_path_scrub_tests;

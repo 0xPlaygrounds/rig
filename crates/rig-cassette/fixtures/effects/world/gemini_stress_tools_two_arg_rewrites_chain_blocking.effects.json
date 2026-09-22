@@ -149,18 +149,18 @@
                   "y": 1
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "Cr4BAWkUfRPV5VKFw0KKrmny72dZz8ZgJES9TtxDa8AuVZG9ANPRjKDDMMKtErEZQ1Hrcppm8Ndf8VwrZM1sSKc0DIVAvGwHwcH5uBNgsYpNvTMSYDYRpkWkx2qchng76EptKAu019rusGtYQGR3XCjUH/JzJPcXHMi2oKr5oL0anrl2GAZEFbasPVWXxCa3a7welKxctCuz6N8kdUP6vtRuuOsy10XvwgwmUGMRcouI3TlDUFNZ+QFuKwG7R53dUQ==",
               "additional_params": null
             }
           ],
           "usage": {
             "input_tokens": 86,
             "output_tokens": 18,
-            "total_tokens": 152,
-            "reasoning_tokens": 48
+            "total_tokens": 153,
+            "reasoning_tokens": 49
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "nq6yau3ILNTkqtsPvMSqkAk",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -177,7 +177,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "Cr4BAWkUfRPV5VKFw0KKrmny72dZz8ZgJES9TtxDa8AuVZG9ANPRjKDDMMKtErEZQ1Hrcppm8Ndf8VwrZM1sSKc0DIVAvGwHwcH5uBNgsYpNvTMSYDYRpkWkx2qchng76EptKAu019rusGtYQGR3XCjUH/JzJPcXHMi2oKr5oL0anrl2GAZEFbasPVWXxCa3a7welKxctCuz6N8kdUP6vtRuuOsy10XvwgwmUGMRcouI3TlDUFNZ+QFuKwG7R53dUQ=="
                     }
                   ],
                   "role": "model"
@@ -188,7 +188,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "nq6yau3ILNTkqtsPvMSqkAk",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 86,
@@ -199,8 +199,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 48,
-              "totalTokenCount": 152
+              "thoughtsTokenCount": 49,
+              "totalTokenCount": 153
             }
           }
         }
@@ -271,7 +271,7 @@
                       "y": 1
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "Cr4BAWkUfRPV5VKFw0KKrmny72dZz8ZgJES9TtxDa8AuVZG9ANPRjKDDMMKtErEZQ1Hrcppm8Ndf8VwrZM1sSKc0DIVAvGwHwcH5uBNgsYpNvTMSYDYRpkWkx2qchng76EptKAu019rusGtYQGR3XCjUH/JzJPcXHMi2oKr5oL0anrl2GAZEFbasPVWXxCa3a7welKxctCuz6N8kdUP6vtRuuOsy10XvwgwmUGMRcouI3TlDUFNZ+QFuKwG7R53dUQ==",
                   "additional_params": null
                 }
               ]
@@ -334,16 +334,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of the add tool is 15."
+              "text": "The result of adding 1 and 1 is 15."
             }
           ],
           "usage": {
             "input_tokens": 118,
-            "output_tokens": 11,
-            "total_tokens": 129
+            "output_tokens": 14,
+            "total_tokens": 132
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "n66yaqLwJeKwqtsP6tTO-As",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -353,7 +353,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The result of the add tool is 15."
+                      "text": "The result of adding 1 and 1 is 15."
                     }
                   ],
                   "role": "model"
@@ -363,9 +363,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_2",
+            "responseId": "n66yaqLwJeKwqtsP6tTO-As",
             "usageMetadata": {
-              "candidatesTokenCount": 11,
+              "candidatesTokenCount": 14,
               "promptTokenCount": 118,
               "promptTokensDetails": [
                 {
@@ -374,7 +374,7 @@
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 129
+              "totalTokenCount": 132
             }
           }
         }

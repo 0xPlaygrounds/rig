@@ -32,9 +32,10 @@ async fn image_generation_smoke() {
                 .await
                 .expect("Venice image generation should succeed");
 
-            assert!(
-                !response.image.is_empty(),
-                "expected decoded image bytes from the base64 payload"
+            assert_eq!(
+                crate::support::assert_image_bytes(&response.image),
+                crate::support::ImageContainer::Webp,
+                "the requested webp format reaches the bytes"
             );
             assert_eq!(response.provider, "venice");
             let raw: rig::providers::venice::ImageGenerationResponse =

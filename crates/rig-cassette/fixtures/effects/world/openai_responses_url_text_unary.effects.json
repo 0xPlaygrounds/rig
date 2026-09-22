@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -83,11 +83,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_0f15957e856c0aca006ab2b46768b087d0b8c1e39f631bf084",
               "content": [
                 {
                   "type": "encrypted",
-                  "content": "encrypted_content_REDACTED_1"
+                  "content": "gAAAAABqsrRoOudB1vih1OrgCojiq96Llhkuq1ORT8-0JPOdiNiUR4giAqoyQzhCFEOoOaXmW-rw2CpK4VBWhsUDD2xU0dwCJ90JaKrwk2VPnC085sUtaeeDncng2BS0WAFHJZip1xrvcYC5nvbPw7We4cZSYKox5bY0AWjKTE_gZSCr_J5j7Rn2ec1CZri7UoPdSLWt0m6wnLFSKkkGzJ94f8N9-EsiBWU4XPWVVgrGhcmeibTwiD8OzT1zKCtTlKjoNZufgL1zsDZmmujbRJQpmBnfwWSZLq8pOfHypXwNrWI-vuqOWvdz6YzxabcsBP0tUQK-02GvrxKfLkFz4aQZNDrSs-nmFESbwWvEi1bXctvbe3ARl5j-zIKFe3Bc67-hyBvLGlC7QHTzS3TXJ_d6Bnuu-TG-Myqf8Rr7fRwHSIrL_Ye0a_rDHz_5oChsxULkO-Kad44P-wGNBj01iE5JCeUfHjGynKAb0bzNQKz9MR5Xa__AL9FwGmR834aV4ExhImd3H6X8eWeAneuZ8Qg-Rj7tn_2sJoCTYn4zCNritRn4UqGBQ7fC00lVY6umpKFMd3Mb6H_tmUBdnBF3jSTjvonWb5YR_FromBVFVT0rp1NlqB33FmjhffAlIaGt61rZFHzj-mnHYWIic4l8PIXpZiXQ9T0gDZMjkG0pmC7goUuzw8wLXgeg4zjbHmFq47vOYYqEK353KPGZ4YDFA8NX6TQuh8W0NGl68etht4c5SCHx4L5P8TLeq110jxaOIRKG02-5dfWnyiLI7VQDCNPaW9ql6oMR_6blcqIgHlTQqVikDhlxz0LLLQzVpRI8Oojhi4ktgNxYAkRpxwbXjaF-cnTBPFLQWlIpYSY1ij7GnBqz9w1LgxJ2fwHIEjJSO_KuvHXilyCKTulYh6vPUnRaAZcGrCHTycZZiVbe4xzTBBSeGhQwW_bVkJZKfpkRvvcF0MrwfHfDVt-f5UEWUOp7NNzBAPVWf_VMJy_z_gl415C_OkavQK09tgIMNu7XIWUzslJYqzSJ7_7MfyXffPcKWAedXr1oSIAhNwsz2uEe4U5274zDxiHQuRJ4NA6PLddGn8CwS9iortSEw4V1JjDWE9YNfSeY14ksaTzKvuM5N6vEEg7UOFKOMenp8e1A4vXSASF2MYQGTR6shOv9LDKa52wiFY17OQq4rObWGde2AW-CnvfpQf5VZjuQOr8kqz_ha4_1ttjvDLPAmbtmoK30w37-7bQG9GvYDyaXn5UpEF4MsEVCJ1ICGhQxUcTr10YOyxgaMZiULjJxZGH42MxYhSuVmoBkPRILj7XAyxqTtSI7JNgCklun4UhLVg8HKuWGBWk0aFIeVTmQVGqwuhkOEjEbc3nfdbx7iz4ugA8dj0pwWF5Sxw4YapnZ7Lr8rq4UcGl08qHQQ81T8s3ZrZuIuYfa1N3zFcjr4fayFDGZON_ctAKCPRKGWDEQSgXEMMF3x6Wsl07XJOenZF8OITzk9s9wfZblNjPXFvJbgPxTdWNKnmvXeHc7_sQN1dv7NZUeMrC1V0bB"
                 }
               ]
             },
@@ -98,14 +98,14 @@
           ],
           "usage": {
             "input_tokens": 43,
-            "output_tokens": 101,
-            "total_tokens": 144,
+            "output_tokens": 68,
+            "total_tokens": 111,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 64
+            "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_0f15957e856c0aca006ab2b46800ac87d0ac62ff492288986e",
+          "response_id": "resp_0f15957e856c0aca006ab2b466d88887d0acecd2e0c6a3e83d",
+          "provider_request_id": "req_ff45892a101d43d386ab0d176ccd4203",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -118,7 +118,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0f15957e856c0aca006ab2b466d88887d0acecd2e0c6a3e83d",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": 2048,
@@ -130,8 +130,8 @@
             "output": [
               {
                 "content": [],
-                "encrypted_content": "encrypted_content_REDACTED_1",
-                "id": "rs_REDACTED_1",
+                "encrypted_content": "gAAAAABqsrRoOudB1vih1OrgCojiq96Llhkuq1ORT8-0JPOdiNiUR4giAqoyQzhCFEOoOaXmW-rw2CpK4VBWhsUDD2xU0dwCJ90JaKrwk2VPnC085sUtaeeDncng2BS0WAFHJZip1xrvcYC5nvbPw7We4cZSYKox5bY0AWjKTE_gZSCr_J5j7Rn2ec1CZri7UoPdSLWt0m6wnLFSKkkGzJ94f8N9-EsiBWU4XPWVVgrGhcmeibTwiD8OzT1zKCtTlKjoNZufgL1zsDZmmujbRJQpmBnfwWSZLq8pOfHypXwNrWI-vuqOWvdz6YzxabcsBP0tUQK-02GvrxKfLkFz4aQZNDrSs-nmFESbwWvEi1bXctvbe3ARl5j-zIKFe3Bc67-hyBvLGlC7QHTzS3TXJ_d6Bnuu-TG-Myqf8Rr7fRwHSIrL_Ye0a_rDHz_5oChsxULkO-Kad44P-wGNBj01iE5JCeUfHjGynKAb0bzNQKz9MR5Xa__AL9FwGmR834aV4ExhImd3H6X8eWeAneuZ8Qg-Rj7tn_2sJoCTYn4zCNritRn4UqGBQ7fC00lVY6umpKFMd3Mb6H_tmUBdnBF3jSTjvonWb5YR_FromBVFVT0rp1NlqB33FmjhffAlIaGt61rZFHzj-mnHYWIic4l8PIXpZiXQ9T0gDZMjkG0pmC7goUuzw8wLXgeg4zjbHmFq47vOYYqEK353KPGZ4YDFA8NX6TQuh8W0NGl68etht4c5SCHx4L5P8TLeq110jxaOIRKG02-5dfWnyiLI7VQDCNPaW9ql6oMR_6blcqIgHlTQqVikDhlxz0LLLQzVpRI8Oojhi4ktgNxYAkRpxwbXjaF-cnTBPFLQWlIpYSY1ij7GnBqz9w1LgxJ2fwHIEjJSO_KuvHXilyCKTulYh6vPUnRaAZcGrCHTycZZiVbe4xzTBBSeGhQwW_bVkJZKfpkRvvcF0MrwfHfDVt-f5UEWUOp7NNzBAPVWf_VMJy_z_gl415C_OkavQK09tgIMNu7XIWUzslJYqzSJ7_7MfyXffPcKWAedXr1oSIAhNwsz2uEe4U5274zDxiHQuRJ4NA6PLddGn8CwS9iortSEw4V1JjDWE9YNfSeY14ksaTzKvuM5N6vEEg7UOFKOMenp8e1A4vXSASF2MYQGTR6shOv9LDKa52wiFY17OQq4rObWGde2AW-CnvfpQf5VZjuQOr8kqz_ha4_1ttjvDLPAmbtmoK30w37-7bQG9GvYDyaXn5UpEF4MsEVCJ1ICGhQxUcTr10YOyxgaMZiULjJxZGH42MxYhSuVmoBkPRILj7XAyxqTtSI7JNgCklun4UhLVg8HKuWGBWk0aFIeVTmQVGqwuhkOEjEbc3nfdbx7iz4ugA8dj0pwWF5Sxw4YapnZ7Lr8rq4UcGl08qHQQ81T8s3ZrZuIuYfa1N3zFcjr4fayFDGZON_ctAKCPRKGWDEQSgXEMMF3x6Wsl07XJOenZF8OITzk9s9wfZblNjPXFvJbgPxTdWNKnmvXeHc7_sQN1dv7NZUeMrC1V0bB",
+                "id": "rs_0f15957e856c0aca006ab2b46768b087d0b8c1e39f631bf084",
                 "summary": [],
                 "type": "reasoning"
               },
@@ -144,7 +144,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_0f15957e856c0aca006ab2b46800ac87d0ac62ff492288986e",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -201,11 +201,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 101,
+              "output_tokens": 68,
               "output_tokens_details": {
-                "reasoning_tokens": 64
+                "reasoning_tokens": 0
               },
-              "total_tokens": 144
+              "total_tokens": 111
             },
             "user": null
           }

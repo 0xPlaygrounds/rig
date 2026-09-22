@@ -218,7 +218,7 @@ async fn chat_raw_exposes_system_fingerprint() {
     let raw = &response.raw;
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_chat_body(&body, scenario);
-    // `fp_…` fingerprints are placeholdered on disk like generated ids.
+    // A live recording may see a different fingerprint than the fixture.
     assert_wire_value_matches(raw, &body, "system_fingerprint");
     assert_eq!(raw["model"], body["model"]);
     let typed = openai::CompletionResponse::deserialize(raw)

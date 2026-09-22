@@ -9,21 +9,21 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -172,10 +172,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_10274"
+                "id": "call_198208"
               },
               "provider": {
-                "call_id": "call_10274"
+                "call_id": "call_198208"
               },
               "function": {
                 "name": "add",
@@ -184,7 +184,7 @@
                   "y": 25
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "EqMCCqACAWkUfRNXl8SDrgPFW3vGJ1bGF0w37hWYfKYiH5w6v+nAtR2Svc1S7QlRJQRLz9bN2Q/rWPP0yb/HtoqbLAX96kR+tLQ+yQb9T9k0xaFqZA/hHc5U5UHAtmgZSbJMEe00womTErTxAK91itwwoIblLzJ3oHCo4YR7Xh16NuvJFcZJ63qc3S3v9lNqpCx+N56YwG/m8cyVq+mD5/OsH7oXe5qjz+IUGhWCIDo8hQU/mLQtIQhGGEO7mImr+zwzn30BGF6xR/vBmy46+Qen9IKaCXlDz3ekJ7WJeWpj8SeL2JPGsz69jdIe1iq4rn7kR/B1+l+UFk3NqZ6WDXuzbMuo3V0k1NyJxWdylhiRuheVgc7/2Nyp0WNYWKw/PIdEHNiM",
               "additional_params": null
             }
           ],
@@ -195,7 +195,7 @@
             "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "Yqyyap2DCq63qtsPlM6x6QE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -210,10 +210,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_10274",
+                        "id": "call_198208",
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EqMCCqACAWkUfRNXl8SDrgPFW3vGJ1bGF0w37hWYfKYiH5w6v+nAtR2Svc1S7QlRJQRLz9bN2Q/rWPP0yb/HtoqbLAX96kR+tLQ+yQb9T9k0xaFqZA/hHc5U5UHAtmgZSbJMEe00womTErTxAK91itwwoIblLzJ3oHCo4YR7Xh16NuvJFcZJ63qc3S3v9lNqpCx+N56YwG/m8cyVq+mD5/OsH7oXe5qjz+IUGhWCIDo8hQU/mLQtIQhGGEO7mImr+zwzn30BGF6xR/vBmy46+Qen9IKaCXlDz3ekJ7WJeWpj8SeL2JPGsz69jdIe1iq4rn7kR/B1+l+UFk3NqZ6WDXuzbMuo3V0k1NyJxWdylhiRuheVgc7/2Nyp0WNYWKw/PIdEHNiM"
                     }
                   ],
                   "role": "model"
@@ -224,7 +224,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "Yqyyap2DCq63qtsPlM6x6QE",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,
@@ -298,10 +298,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_10274"
+                    "id": "call_198208"
                   },
                   "provider": {
-                    "call_id": "call_10274"
+                    "call_id": "call_198208"
                   },
                   "function": {
                     "name": "add",
@@ -310,7 +310,7 @@
                       "y": 25
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "EqMCCqACAWkUfRNXl8SDrgPFW3vGJ1bGF0w37hWYfKYiH5w6v+nAtR2Svc1S7QlRJQRLz9bN2Q/rWPP0yb/HtoqbLAX96kR+tLQ+yQb9T9k0xaFqZA/hHc5U5UHAtmgZSbJMEe00womTErTxAK91itwwoIblLzJ3oHCo4YR7Xh16NuvJFcZJ63qc3S3v9lNqpCx+N56YwG/m8cyVq+mD5/OsH7oXe5qjz+IUGhWCIDo8hQU/mLQtIQhGGEO7mImr+zwzn30BGF6xR/vBmy46+Qen9IKaCXlDz3ekJ7WJeWpj8SeL2JPGsz69jdIe1iq4rn7kR/B1+l+UFk3NqZ6WDXuzbMuo3V0k1NyJxWdylhiRuheVgc7/2Nyp0WNYWKw/PIdEHNiM",
                   "additional_params": null
                 }
               ]
@@ -322,10 +322,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_10274"
+                    "id": "call_198208"
                   },
                   "provider": {
-                    "call_id": "call_10274"
+                    "call_id": "call_198208"
                   },
                   "name": "add",
                   "content": [
@@ -386,7 +386,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_2"
+                    "signature": "Eq0BCqoBAWkUfRN9PFQh3UWe/jDQjNkErwBM/QTqMKMIY2PyKEd/ynlL+S/ztKVIPGPoFHEDAdcj/fV0tF7I5jPThD1CU86GuefpPSIXDs1RLTvgpaht0cBAORWgAUaPkSBSoAJ6cnsTYVJbu8Mk4ryRYtSwQBPUcKCpVwhHzHug9soSx/CCFF36lUI1D3DsSsSekJme73Szj6Z6Ivr3dZPVzJ+p8vxEF4f4ZI2ws9I="
                   }
                 }
               ]
@@ -399,7 +399,7 @@
             "reasoning_tokens": 17
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "Y6yyapOnCZ-JqtsP3pTD0QE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -410,7 +410,7 @@
                   "parts": [
                     {
                       "text": "42",
-                      "thoughtSignature": "signature_REDACTED_2"
+                      "thoughtSignature": "Eq0BCqoBAWkUfRN9PFQh3UWe/jDQjNkErwBM/QTqMKMIY2PyKEd/ynlL+S/ztKVIPGPoFHEDAdcj/fV0tF7I5jPThD1CU86GuefpPSIXDs1RLTvgpaht0cBAORWgAUaPkSBSoAJ6cnsTYVJbu8Mk4ryRYtSwQBPUcKCpVwhHzHug9soSx/CCFF36lUI1D3DsSsSekJme73Szj6Z6Ivr3dZPVzJ+p8vxEF4f4ZI2ws9I="
                     }
                   ],
                   "role": "model"
@@ -420,7 +420,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_2",
+            "responseId": "Y6yyapOnCZ-JqtsP3pTD0QE",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 209,

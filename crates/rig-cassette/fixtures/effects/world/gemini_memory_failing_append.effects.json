@@ -127,7 +127,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_1"
+                    "signature": "ErECCq4CAWkUfRMIeKTN4xkSZ91/1rUwrn370gy+R4W/qfrPhVpjjYrMtYcOaTW2enOOpS2g9JO4AaDsjH4KISUZEhmfwKEMEDc+TUZ7jZnx+WSKxwiXeYSZZpimWzMD0ZjhQBfZeR1UXVJzvSSSA4mXzKcrHpcuY9QBgfbcGvDjB2VQsVp4btty7LxPAda/FTYJXv4BCp1cHF3oyOdJyGrproxYK3iwpFOI9SkjOW9yQV3DbxGXBdjyLiFqbRimrLB2l47bf5P1WF3bGcixKnUGBIitFfft7jCHzPsAwtR+xNEEOmu17NR7f8bAE4j0qjxpGIgYo1wH+aIKcJWt+wpZxHuk0vDZ3wSYhvsRd96atwb+cYdSBGDUzQHmCThpEZiMrIpWSukG73TVK+XZQXJZTCc="
                   }
                 }
               ]
@@ -136,11 +136,11 @@
           "usage": {
             "input_tokens": 19,
             "output_tokens": 2,
-            "total_tokens": 58,
-            "reasoning_tokens": 37
+            "total_tokens": 76,
+            "reasoning_tokens": 55
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "gK2yavSKIIz8qtsPlL2BKA",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -151,7 +151,7 @@
                   "parts": [
                     {
                       "text": "ready.",
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "ErECCq4CAWkUfRMIeKTN4xkSZ91/1rUwrn370gy+R4W/qfrPhVpjjYrMtYcOaTW2enOOpS2g9JO4AaDsjH4KISUZEhmfwKEMEDc+TUZ7jZnx+WSKxwiXeYSZZpimWzMD0ZjhQBfZeR1UXVJzvSSSA4mXzKcrHpcuY9QBgfbcGvDjB2VQsVp4btty7LxPAda/FTYJXv4BCp1cHF3oyOdJyGrproxYK3iwpFOI9SkjOW9yQV3DbxGXBdjyLiFqbRimrLB2l47bf5P1WF3bGcixKnUGBIitFfft7jCHzPsAwtR+xNEEOmu17NR7f8bAE4j0qjxpGIgYo1wH+aIKcJWt+wpZxHuk0vDZ3wSYhvsRd96atwb+cYdSBGDUzQHmCThpEZiMrIpWSukG73TVK+XZQXJZTCc="
                     }
                   ],
                   "role": "model"
@@ -161,7 +161,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "gK2yavSKIIz8qtsPlL2BKA",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 19,
@@ -172,8 +172,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 37,
-              "totalTokenCount": 58
+              "thoughtsTokenCount": 55,
+              "totalTokenCount": 76
             }
           }
         }
@@ -215,7 +215,7 @@
                       "type": "text",
                       "content": {
                         "text": "",
-                        "signature": "signature_REDACTED_1"
+                        "signature": "ErECCq4CAWkUfRMIeKTN4xkSZ91/1rUwrn370gy+R4W/qfrPhVpjjYrMtYcOaTW2enOOpS2g9JO4AaDsjH4KISUZEhmfwKEMEDc+TUZ7jZnx+WSKxwiXeYSZZpimWzMD0ZjhQBfZeR1UXVJzvSSSA4mXzKcrHpcuY9QBgfbcGvDjB2VQsVp4btty7LxPAda/FTYJXv4BCp1cHF3oyOdJyGrproxYK3iwpFOI9SkjOW9yQV3DbxGXBdjyLiFqbRimrLB2l47bf5P1WF3bGcixKnUGBIitFfft7jCHzPsAwtR+xNEEOmu17NR7f8bAE4j0qjxpGIgYo1wH+aIKcJWt+wpZxHuk0vDZ3wSYhvsRd96atwb+cYdSBGDUzQHmCThpEZiMrIpWSukG73TVK+XZQXJZTCc="
                       }
                     }
                   ]

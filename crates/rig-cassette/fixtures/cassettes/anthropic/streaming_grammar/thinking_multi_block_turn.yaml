@@ -15,9 +15,11 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfJrKVA48aKQQasZFAqYN
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":69,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfJrKVcqScCXugZvoDsJY","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":69,"output_tokens":7,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
@@ -26,28 +28,94 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":"I","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":"I need to find positive integers n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":" need to find positive integers n < 300 that are divisible by 8 but not by 12.\n\nDivisible by 8: multiples of 8 ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" < 300 that are divis","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":"less than 300.\nFloor(299/8) = 37, so there are 37 multiples of 8 less","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":"ible by 8 but not","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":" than 300.\n\nNow I need to subtract those divisible by both 8 and 12.\nLCM(8, 12) = 24.\n\nDivis","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" by 12.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":"ible by 24: floor(299/24) = 12, so there are 12 multiples of 24 less than 300.\n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":"\n\nDivisible by 8:","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":"So","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" mult","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":" the answer is 37 - 12 = 25.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":"iples of 8 less","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"signature":"signature_REDACTED_2","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" than 300.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\nFloor","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"(299","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"/8) = 37,","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" so there","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" are 37 multiples of","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 8 less than 300","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":".\n\nDivisible by both","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 8 and 12:","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" L","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"CM(8,","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"12) = 24.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\nMultiples of 24 ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"less than 300: Floor","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"(299/24) = ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"12,","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" so there are 12 mult","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"iples of 24 less than","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 300.\n\nDivisible","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" by 8 but not ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"12: 37 - ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"12 = 25.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"Eu4ECpIBCBIYAipA/4UUdvQvNvcbHw2Z1EFN4UpxCuVnhbnzvdpIWxRZmbeIbLJGLLZg+6a/ni5oL8kdFQb/2DJmSWo7yBVx7QlopzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB9e3K1QYSDFbXnvix9ZGugJo1hhoMKZZ+JVDUFxwwqHgzIjA/1nVy1CZC6djLlHLpiM1cKJN1pY/au9Vu7AzWzWbO4hLarBPsjSZsAvWNVGOs3/AqiAPbpycusDd9lpNU9OkUT0rlLyF3iVE5V+fzYqhBoyHhJ5taQxHFJevwaTsqmAniRZbqLpZuVnNIX397IllEv04Ediitfibb0iJusKH0dDQcUURmra1Z4+NUHkRvUy1atvjO6E2FLdGgz9NBCRk0+b2vLXIw5CVCaOKHgM7txfg6rv0WtbehVKb5xXtiY0f8R2JKlqyOP2WJCLIoqxCq7rGdzYJVWIu5Y8KKoBo87vCjkBWPPTM1UjFCCa4OeAVohNdPQAJdrKKKcHvE9yw6DJg/cmMIB/Sexbi+TCoieHGqgOBN00s9I9K7oGq+3ne0BtbgIVsasMnM42Spa05WPPgddOH3y/e4bWjR6x0jPtG7NdfNBK3teCyJEkQt8cdCNoU0RmWIbvk7i+F4DU0Mn31I9QjeQZv+qhxz6FMX3lU6JkjtvOIhx+R7BHw7IgvyY+xe2B6bvRzySpv1aCrbZFmJ7wirnZQfPRimGsFRAB9UZeJx1vqy76dG4Et80W+/1Ut+t0cLtjsu2RgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -59,19 +127,94 @@ then:
     data: {"delta":{"text":"##","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" Setting Up the Problem\n\n**Divisible by 8 but NOT by 12** means I need:\n(","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":" Setting","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"multiples of 8 less than 300) − (multiples of both 8 and 12 less than 300)\n\n## Step 1: Count Multiples","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":" Up the Problem\n\nI need to","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" of 8 (less than 300)\n\n⌊299/8⌋ = 37 multiples of 8\n\n## Step 2: Count Multiples of Both","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":" count","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" 8 and 12\n\nNumbers divisible by both 8 and 12 must be divisible by their LCM.\n\nLCM(8, 12) = **","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":" mult","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"24**\n\n⌊299/24⌋ = 12 multiples of 24\n\n## Step 3: Subtract\n\n37 −","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":"iples of 8 (","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"but not ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"12) that are less than ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"300.\n\n**Step","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 1: Count multiples of","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 8 less than 300","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n⌊299/8","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"⌋ = 37 mult","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"iples of 8\n\n**Step","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 2: Count multiples of","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" both","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 8 and 12 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"(","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"i.e., multiples of","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" L","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"CM(8,12)","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":")**\nL","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"CM(8,","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 12) = 24","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\n⌊299/24","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"⌋ = 12 mult","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"iples of 24\n\n**Step","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 3:","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Subtract**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n37 −","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
     data: {"delta":{"text":" 12 = **25**","type":"text_delta"},"index":1,"type":"content_block_delta"}
@@ -80,7 +223,7 @@ then:
     data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":69,"output_tokens":353,"output_tokens_details":{"thinking_tokens":158}}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":69,"output_tokens":327,"output_tokens_details":{"thinking_tokens":166}}}
 
     event: message_stop
     data: {"type":"message_stop"}

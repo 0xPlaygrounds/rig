@@ -118,7 +118,8 @@ pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(
 /// endpoint and records with `OPENROUTER_API_KEY`. Replay needs no key, like
 /// every other cassette.
 ///
-/// Cassettes recorded through here live under `crates/rig-cassette/fixtures/cassettes/anthropic/` with
+/// Cassettes recorded through here live under `crates/rig-cassette/fixtures/cassettes/anthropic/`
+/// with
 /// the rest of the provider's scenarios; the gateway is an implementation
 /// detail of how the fixture was obtained, not a separate provider suite.
 pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
@@ -257,7 +258,8 @@ pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
 /// Delegates to [`with_anthropic_cassette`] — the behavior is identical, and
 /// deliberately shared so the three cannot drift apart when the base wrapper
 /// gains policy. What the separate name buys is a per-bug entry in the
-/// cassette-safety registry, so `crates/rig-cassette/fixtures/cassettes/anthropic/stop_sequence_terminal_matrix/`
+/// cassette-safety registry, so `crates/rig-
+/// cassette/fixtures/cassettes/anthropic/stop_sequence_terminal_matrix/`
 /// is auditable as one bug's evidence. (The fixture *path* comes from the
 /// scenario string, not from the wrapper.)
 pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
@@ -531,12 +533,11 @@ pub(super) fn sse_json_frames(body: &str) -> Vec<serde_json::Value> {
 /// Assert that a sequence of ids the code under test observed is the sequence
 /// the fixture recorded — in both cassette modes.
 ///
-/// The harness scrubs generated ids (`msg_…`, `req_…`) to numbered
-/// placeholders on the way out, mapping equal originals to equal placeholders
-/// and distinct originals to distinct ones. On replay the observed values *are*
-/// the placeholders, so the two sequences must be identical. In record mode
-/// the observed values are the live ids, so only their equality structure is
-/// comparable: which positions repeat, and which are new. Checking that
+/// On replay the observed values are the recorded ids (or, in a fixture
+/// recorded before ids were kept verbatim, their numbered placeholders), so
+/// the two sequences must be identical. In record mode the observed values
+/// are fresh live ids, so only their equality structure is comparable: which positions repeat, and
+/// which are new. Checking that
 /// structure in both modes (and exact equality on replay) means the same cell
 /// proves "each attempt reports its own id, in recorded order" whether it is
 /// being recorded or replayed.

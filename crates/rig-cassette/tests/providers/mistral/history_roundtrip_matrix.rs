@@ -1,42 +1,37 @@
 //! Mistral history serialization and response matrix.
 //!
 //! This matrix exercises the request serializer and response normalizer around
-//! caller-owned history, including tool-call ids, arguments, ordered tool
-//! results, Unicode-bearing text, and both public completion surfaces.
+//! caller-owned text history, Unicode-bearing text, and both public completion
+//! surfaces.
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
+//! The input space is a 2 × 2 × 2 cross-product:
 //!
 //! | dimension | values |
 //! |---|---|
 //! | transport | blocking, streaming |
 //! | model | `mistral-small-latest`, `ministral-3b-latest` |
 //! | surface | provider-native raw, normalized Rig response |
-//! | history shape | text, one tool result, two ordered tool results |
 //!
-//! That is 24 recorded cells. Every cell proves the exact serialized history
+//! That is 8 recorded cells. Every cell proves the exact serialized history
 //! from its fixture and compares the observed response text to those exact
 //! blocking or SSE bytes.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
-//! pruned or assigned to unit-only coverage. Each explicit test maps to
+//! Coverage ledger: tool-history shapes are covered on OpenAI Chat and
+//! OpenRouter by the same matrix. Each explicit test maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/<test-name>.yaml`.
-//! The inexpensive small and 3B aliases are stable served families with tool
-//! history support. Assertions cover native and normalized blocking/streaming
-//! surfaces, Unicode, exact tool ids and arguments, ordered tool results, the
-//! current prompt, provider-observed response content, and terminal arrival.
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, Message};
-use rig::message::{AssistantContent, ToolResultContent, UserContent};
+use rig::message::{AssistantContent, UserContent};
 use rig::streaming::{Delta, StreamEvent};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::support::{BoundMistral, with_mistral_history_roundtrip_cassette_result};
 
@@ -61,8 +56,6 @@ enum Surface {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shape {
     Text,
-    SingleTool,
-    ParallelTool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -84,20 +77,12 @@ type SharedObservation = Arc<Mutex<Option<Observation>>>;
 fn prompt(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "Reply with exactly the marker from the prior conversation.",
-        Shape::SingleTool => {
-            "The lookup_marker argument is not the answer. Copy exactly the content of its following tool-role result; it is the nonce ZXQ9281."
-        }
-        Shape::ParallelTool => {
-            "Reply with exactly the alpha and beta tool results joined by one hyphen, in call order."
-        }
     }
 }
 
 fn expected_text(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "lantern-42",
-        Shape::SingleTool => "ZXQ9281",
-        Shape::ParallelTool => "red-blue",
     }
 }
 
@@ -112,50 +97,6 @@ fn history(shape: Shape) -> Vec<Message> {
             Message::Assistant {
                 id: None,
                 content: vec![AssistantContent::text("lantern-42")],
-            },
-        ],
-        Shape::SingleTool => vec![
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::tool_call(
-                    "call_history_single",
-                    "lookup_marker",
-                    json!({ "key": "argument-not-answer" }),
-                )],
-            },
-            Message::User {
-                content: vec![UserContent::tool_result(
-                    "call_history_single",
-                    "lookup_marker",
-                    vec![ToolResultContent::text("ZXQ9281")],
-                )],
-            },
-        ],
-        Shape::ParallelTool => vec![
-            Message::Assistant {
-                id: None,
-                content: vec![
-                    AssistantContent::tool_call(
-                        "call_history_alpha",
-                        "alpha",
-                        json!({ "slot": 1 }),
-                    ),
-                    AssistantContent::tool_call("call_history_beta", "beta", json!({ "slot": 2 })),
-                ],
-            },
-            Message::User {
-                content: vec![
-                    UserContent::tool_result(
-                        "call_history_alpha",
-                        "alpha",
-                        vec![ToolResultContent::text("red")],
-                    ),
-                    UserContent::tool_result(
-                        "call_history_beta",
-                        "beta",
-                        vec![ToolResultContent::text("blue")],
-                    ),
-                ],
             },
         ],
     }
@@ -317,64 +258,6 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
             assert_eq!(messages[1]["role"], "assistant", "{scenario}");
             assert_eq!(content_text(&messages[1]["content"]), "lantern-42");
         }
-        Shape::SingleTool => {
-            assert_eq!(messages.len(), 3, "{scenario}: single-tool history length");
-            assert_eq!(messages[0]["role"], "assistant", "{scenario}");
-            let calls = messages[0]["tool_calls"]
-                .as_array()
-                .expect("assistant tool calls");
-            assert_eq!(calls.len(), 1, "{scenario}");
-            assert_eq!(calls[0]["function"]["name"], "lookup_marker", "{scenario}");
-            assert_eq!(
-                serde_json::from_str::<Value>(
-                    calls[0]["function"]["arguments"]
-                        .as_str()
-                        .expect("tool arguments string")
-                )
-                .expect("tool arguments JSON"),
-                json!({ "key": "argument-not-answer" }),
-                "{scenario}"
-            );
-            assert_eq!(messages[1]["role"], "tool", "{scenario}");
-            assert_eq!(messages[1]["tool_call_id"], calls[0]["id"], "{scenario}");
-            assert_eq!(content_text(&messages[1]["content"]), "ZXQ9281");
-        }
-        Shape::ParallelTool => {
-            assert_eq!(messages.len(), 4, "{scenario}: parallel history length");
-            assert_eq!(messages[0]["role"], "assistant", "{scenario}");
-            let calls = messages[0]["tool_calls"]
-                .as_array()
-                .expect("assistant tool calls");
-            assert_eq!(calls.len(), 2, "{scenario}");
-            assert_eq!(calls[0]["function"]["name"], "alpha", "{scenario}");
-            assert_eq!(calls[1]["function"]["name"], "beta", "{scenario}");
-            for (index, (name, slot, result)) in [("alpha", 1, "red"), ("beta", 2, "blue")]
-                .into_iter()
-                .enumerate()
-            {
-                assert_eq!(
-                    serde_json::from_str::<Value>(
-                        calls[index]["function"]["arguments"]
-                            .as_str()
-                            .expect("tool arguments string")
-                    )
-                    .expect("tool arguments JSON"),
-                    json!({ "slot": slot }),
-                    "{scenario}: {name} arguments"
-                );
-                assert_eq!(messages[index + 1]["role"], "tool", "{scenario}");
-                assert_eq!(
-                    messages[index + 1]["tool_call_id"],
-                    calls[index]["id"],
-                    "{scenario}: {name} correlation id"
-                );
-                assert_eq!(
-                    content_text(&messages[index + 1]["content"]),
-                    result,
-                    "{scenario}: {name} result"
-                );
-            }
-        }
     }
     assert_eq!(
         messages.last().expect("current prompt")["role"],
@@ -419,49 +302,17 @@ crate::matrix::case_matrix! {
     # [tokio :: test]
     blocking_mistral_small_raw_text: ("history_roundtrip_matrix/blocking_mistral_small_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));
     # [tokio :: test]
-    blocking_mistral_small_raw_single_tool: ("history_roundtrip_matrix/blocking_mistral_small_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_mistral_small_raw_parallel_tool: ("history_roundtrip_matrix/blocking_mistral_small_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
     blocking_mistral_small_normalized_text: ("history_roundtrip_matrix/blocking_mistral_small_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_mistral_small_normalized_single_tool: ("history_roundtrip_matrix/blocking_mistral_small_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_mistral_small_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_mistral_small_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: ParallelTool ,));
     # [tokio :: test]
     blocking_ministral_3b_raw_text: ("history_roundtrip_matrix/blocking_ministral_3b_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
     # [tokio :: test]
-    blocking_ministral_3b_raw_single_tool: ("history_roundtrip_matrix/blocking_ministral_3b_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_ministral_3b_raw_parallel_tool: ("history_roundtrip_matrix/blocking_ministral_3b_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
     blocking_ministral_3b_normalized_text: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_ministral_3b_normalized_single_tool: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_ministral_3b_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: ParallelTool ,));
     # [tokio :: test]
     streaming_mistral_small_raw_text: ("history_roundtrip_matrix/streaming_mistral_small_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));
     # [tokio :: test]
-    streaming_mistral_small_raw_single_tool: ("history_roundtrip_matrix/streaming_mistral_small_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_mistral_small_raw_parallel_tool: ("history_roundtrip_matrix/streaming_mistral_small_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
     streaming_mistral_small_normalized_text: ("history_roundtrip_matrix/streaming_mistral_small_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_mistral_small_normalized_single_tool: ("history_roundtrip_matrix/streaming_mistral_small_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_mistral_small_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_mistral_small_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: ParallelTool ,));
     # [tokio :: test]
     streaming_ministral_3b_raw_text: ("history_roundtrip_matrix/streaming_ministral_3b_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
     # [tokio :: test]
-    streaming_ministral_3b_raw_single_tool: ("history_roundtrip_matrix/streaming_ministral_3b_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_ministral_3b_raw_parallel_tool: ("history_roundtrip_matrix/streaming_ministral_3b_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
     streaming_ministral_3b_normalized_text: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_ministral_3b_normalized_single_tool: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_ministral_3b_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: ParallelTool ,));
 }

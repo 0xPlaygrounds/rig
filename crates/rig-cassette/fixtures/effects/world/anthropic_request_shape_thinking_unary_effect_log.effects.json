@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -86,7 +86,7 @@
                   "type": "text",
                   "content": {
                     "text": "144",
-                    "signature": "signature_REDACTED_1"
+                    "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB2erK1QYSDOON8M7cL1JVJuairhoMihATg8gKm7Q7eS6FIjAEYMTOQM4O2IdmytsDdJXLMDDcVtbU1oGd8ioJS4nWxCuPM7RvGH51gRCjA5InrTEqE2yMuc9hzwRAS7tNQZVOxZ/jT14YAQ=="
                   }
                 }
               ]
@@ -104,16 +104,17 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 7
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfJqoSjNaQCMEtFJLCEJ6",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfJqoSFqjL11pvreYD66v",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "signature": "signature_REDACTED_1",
+                "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB2erK1QYSDOON8M7cL1JVJuairhoMihATg8gKm7Q7eS6FIjAEYMTOQM4O2IdmytsDdJXLMDDcVtbU1oGd8ioJS4nWxCuPM7RvGH51gRCjA5InrTEqE2yMuc9hzwRAS7tNQZVOxZ/jT14YAQ==",
                 "thinking": "144",
                 "type": "thinking"
               },
@@ -122,7 +123,7 @@
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfJqoSjNaQCMEtFJLCEJ6",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

@@ -149,7 +149,7 @@
                   "y": 30
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "CskBAWkUfRM3RLRAx58bI0k3HGMLpuEtKAe/VeZ6pMcTNoSFd+ukY/QOhsv2Pprby6nV2Iravt3GoUspInY+HhR072J2L91Jdu7freHLvoqWDX24S9jRVEYElc5f9L1HBLyJ9JZXd79LRShn1qZ9buCCeNbokcx5UWklpgmjXQbfORV8HKbNbQLkGULqI09/fRxQx2P6VB9KJ3mucliYJUQrby2z0hg1oqb0UpdHF5xmtrnWbNGjhuRKhd7yQ3Vdxv90JAdBqQWZ6SWY",
               "additional_params": null
             }
           ],
@@ -160,7 +160,7 @@
             "reasoning_tokens": 56
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "g66yau2SG5uhz7IPytCZEA",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -177,7 +177,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "CskBAWkUfRM3RLRAx58bI0k3HGMLpuEtKAe/VeZ6pMcTNoSFd+ukY/QOhsv2Pprby6nV2Iravt3GoUspInY+HhR072J2L91Jdu7freHLvoqWDX24S9jRVEYElc5f9L1HBLyJ9JZXd79LRShn1qZ9buCCeNbokcx5UWklpgmjXQbfORV8HKbNbQLkGULqI09/fRxQx2P6VB9KJ3mucliYJUQrby2z0hg1oqb0UpdHF5xmtrnWbNGjhuRKhd7yQ3Vdxv90JAdBqQWZ6SWY"
                     }
                   ],
                   "role": "model"
@@ -188,7 +188,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "g66yau2SG5uhz7IPytCZEA",
             "usageMetadata": {
               "candidatesTokenCount": 20,
               "promptTokenCount": 77,
@@ -271,7 +271,7 @@
                       "y": 30
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "CskBAWkUfRM3RLRAx58bI0k3HGMLpuEtKAe/VeZ6pMcTNoSFd+ukY/QOhsv2Pprby6nV2Iravt3GoUspInY+HhR072J2L91Jdu7freHLvoqWDX24S9jRVEYElc5f9L1HBLyJ9JZXd79LRShn1qZ9buCCeNbokcx5UWklpgmjXQbfORV8HKbNbQLkGULqI09/fRxQx2P6VB9KJ3mucliYJUQrby2z0hg1oqb0UpdHF5xmtrnWbNGjhuRKhd7yQ3Vdxv90JAdBqQWZ6SWY",
                   "additional_params": null
                 }
               ]
@@ -334,7 +334,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of 12 plus 30 is 42."
+              "text": "The sum of 12 and 30 is 42."
             }
           ],
           "usage": {
@@ -343,7 +343,7 @@
             "total_tokens": 126
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "hK6yatHQD8ifz7IP2cnoGQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -353,7 +353,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The result of 12 plus 30 is 42."
+                      "text": "The sum of 12 and 30 is 42."
                     }
                   ],
                   "role": "model"
@@ -363,7 +363,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_2",
+            "responseId": "hK6yatHQD8ifz7IP2cnoGQ",
             "usageMetadata": {
               "candidatesTokenCount": 15,
               "promptTokenCount": 111,

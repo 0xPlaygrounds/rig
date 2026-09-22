@@ -100,8 +100,8 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The user wants me to create a concise event object for a local Rust meetup in Seattle using the final_result tool.",
-                    "signature": "signature_REDACTED_1"
+                    "text": "The user wants me to return a concise event object for a local Rust meetup in Seattle using the final_result tool.",
+                    "signature": "EugCCpIBCBIYAipA8YgJgmmJr9gjdIHYNtOxUj/06I3P8CtpnVhEJ5rZqFj5Umc2jTmOw7yBNuYcugqqeSdzQa80401nPzSMtZu5wzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1OrK1QYSDDVcSy4geTU6hL7WIxoMfpKU5kxga64Q2G1IIjDVIEejHyGJjwISgSsswF8/ChyIoP9zRqVW9IGsoxS8ZAHtSq9veeQN26KaZUjUBfoqggFPoISRVS1ux6IfEiB91Tv+bXTwg9qdwXabCLaqMWXAYMrqY5TXrNoQx2w6htryEJwuWnoHZFeonxCTcMH7KTrblsd1FIfwpvUKg9RT56VxEJAdvdHN2QyqRJ6k9tzjrV1WFTFtbe0TW5/W5muB3Qbhd61xSZothhA3nVToqexutc7FGAE="
                   }
                 }
               ]
@@ -110,16 +110,16 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01WNzcuVAjcuUFpY9bP8EAJc"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01WNzcuVAjcuUFpY9bP8EAJc"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
-                  "category": "Tech / Programming",
-                  "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss new features, and network with fellow Rustaceans of all skill levels.",
+                  "category": "Technology / Programming",
+                  "summary": "A local monthly gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss language features, and network with fellow Rustaceans of all skill levels.",
                   "title": "Seattle Rust Meetup"
                 }
               },
@@ -129,40 +129,41 @@
           ],
           "usage": {
             "input_tokens": 708,
-            "output_tokens": 163,
-            "total_tokens": 871,
+            "output_tokens": 164,
+            "total_tokens": 872,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 32
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfJqo3MwQnB7SEuZcwdiw",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfJqo2RP5ig5hXqvfBkuB",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "signature": "signature_REDACTED_1",
-                "thinking": "The user wants me to create a concise event object for a local Rust meetup in Seattle using the final_result tool.",
+                "signature": "EugCCpIBCBIYAipA8YgJgmmJr9gjdIHYNtOxUj/06I3P8CtpnVhEJ5rZqFj5Umc2jTmOw7yBNuYcugqqeSdzQa80401nPzSMtZu5wzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1OrK1QYSDDVcSy4geTU6hL7WIxoMfpKU5kxga64Q2G1IIjDVIEejHyGJjwISgSsswF8/ChyIoP9zRqVW9IGsoxS8ZAHtSq9veeQN26KaZUjUBfoqggFPoISRVS1ux6IfEiB91Tv+bXTwg9qdwXabCLaqMWXAYMrqY5TXrNoQx2w6htryEJwuWnoHZFeonxCTcMH7KTrblsd1FIfwpvUKg9RT56VxEJAdvdHN2QyqRJ6k9tzjrV1WFTFtbe0TW5/W5muB3Qbhd61xSZothhA3nVToqexutc7FGAE=",
+                "thinking": "The user wants me to return a concise event object for a local Rust meetup in Seattle using the final_result tool.",
                 "type": "thinking"
               },
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01WNzcuVAjcuUFpY9bP8EAJc",
                 "input": {
-                  "category": "Tech / Programming",
-                  "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss new features, and network with fellow Rustaceans of all skill levels.",
+                  "category": "Technology / Programming",
+                  "summary": "A local monthly gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss language features, and network with fellow Rustaceans of all skill levels.",
                   "title": "Seattle Rust Meetup"
                 },
                 "name": "final_result",
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfJqo3MwQnB7SEuZcwdiw",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -178,7 +179,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 708,
-              "output_tokens": 163,
+              "output_tokens": 164,
               "output_tokens_details": {
                 "thinking_tokens": 32
               },

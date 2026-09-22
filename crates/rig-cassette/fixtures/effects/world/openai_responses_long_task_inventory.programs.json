@@ -249,7 +249,7 @@
         },
         {
           "rig_ecs::agent::Cursor": {
-            "turn": 11
+            "turn": 10
           },
           "rig_ecs::agent::InvalidRetries": 0,
           "rig_ecs::agent::MaxTurns": 30,
@@ -259,7 +259,7 @@
           "rig_ecs::agent::Ready": {},
           "rig_ecs::agent::Run": {},
           "rig_ecs::agent::RunOf": 2,
-          "rig_ecs::agent::RunResult": "Done. The six-depot inventory has been built and validated successfully.",
+          "rig_ecs::agent::RunResult": "Done",
           "rig_ecs::agent::RunSeq": 0,
           "rig_ecs::agent::Settled": {},
           "rig_ecs::agent::StreamRequested": false,
@@ -267,10 +267,10 @@
             "concurrency": 3
           },
           "rig_ecs::agent::Usage": {
-            "input_tokens": 8167,
-            "output_tokens": 552,
-            "total_tokens": 8719,
-            "cached_input_tokens": 1280,
+            "input_tokens": 6606,
+            "output_tokens": 372,
+            "total_tokens": 6978,
+            "cached_input_tokens": 1024,
             "reasoning_tokens": 0
           },
           "rig_ecs::agent::UsesModel": 0,
@@ -297,11 +297,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_1"
+                  "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_1",
-                  "item_id": "fc_REDACTED_1"
+                  "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
                 },
                 "function": {
                   "name": "task_operation",
@@ -351,11 +351,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
                   },
                   "function": {
                     "name": "task_operation",
@@ -377,8 +377,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_1",
-              "provider_request_id": "req_REDACTED_1",
+              "response_id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
+              "provider_request_id": "req_2b211a0eac914517a09315d196971d9d",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -391,7 +391,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_1",
+                "id": "resp_047afa2a97ee8a44006ab2b92d288887d09d84c7b3f5d92f2d",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -403,8 +403,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"index\",\"value\":null}",
-                    "call_id": "call_REDACTED_1",
-                    "id": "fc_REDACTED_1",
+                    "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                    "id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -413,7 +413,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -527,11 +527,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
             },
             "provider": {
-              "call_id": "call_REDACTED_1",
-              "item_id": "fc_REDACTED_1"
+              "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+              "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
             },
             "name": "task_operation"
           },
@@ -577,11 +577,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
               },
               "function": {
                 "name": "task_operation",
@@ -607,11 +607,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
               },
               "name": "task_operation"
             }
@@ -642,11 +642,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_2"
+                  "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_2",
-                  "item_id": "fc_REDACTED_2"
+                  "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
                 },
                 "function": {
                   "name": "task_operation",
@@ -696,11 +696,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
                   },
                   "function": {
                     "name": "task_operation",
@@ -722,8 +722,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_2",
-              "provider_request_id": "req_REDACTED_2",
+              "response_id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
+              "provider_request_id": "req_187b9762b882486288564dd9be91c2f2",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -736,7 +736,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_2",
+                "id": "resp_047afa2a97ee8a44006ab2b92e608c87d08bb88edf8c9f3899",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -748,8 +748,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"depot/1\",\"value\":null}",
-                    "call_id": "call_REDACTED_2",
-                    "id": "fc_REDACTED_2",
+                    "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                    "id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -758,7 +758,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -872,11 +872,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_2"
+              "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
             },
             "provider": {
-              "call_id": "call_REDACTED_2",
-              "item_id": "fc_REDACTED_2"
+              "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+              "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
             },
             "name": "task_operation"
           },
@@ -918,11 +918,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
               },
               "function": {
                 "name": "task_operation",
@@ -948,11 +948,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
               },
               "name": "task_operation"
             }
@@ -979,11 +979,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_3"
+                  "id": "call_Czka0KC1WU2838TxFShpLud4"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_3",
-                  "item_id": "fc_REDACTED_3"
+                  "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
                 },
                 "function": {
                   "name": "task_operation",
@@ -1033,11 +1033,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_Czka0KC1WU2838TxFShpLud4"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
                   },
                   "function": {
                     "name": "task_operation",
@@ -1059,8 +1059,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_3",
-              "provider_request_id": "req_REDACTED_3",
+              "response_id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
+              "provider_request_id": "req_b08f5718821b4e4db7a9c64a281a516e",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -1073,7 +1073,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_3",
+                "id": "resp_047afa2a97ee8a44006ab2b92f54f487d083d4bf50bc495fb8",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -1085,8 +1085,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"depot/2\",\"value\":null}",
-                    "call_id": "call_REDACTED_3",
-                    "id": "fc_REDACTED_3",
+                    "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                    "id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -1095,7 +1095,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -1209,11 +1209,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_3"
+              "id": "call_Czka0KC1WU2838TxFShpLud4"
             },
             "provider": {
-              "call_id": "call_REDACTED_3",
-              "item_id": "fc_REDACTED_3"
+              "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+              "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
             },
             "name": "task_operation"
           },
@@ -1255,11 +1255,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_Czka0KC1WU2838TxFShpLud4"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
               },
               "function": {
                 "name": "task_operation",
@@ -1285,11 +1285,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_Czka0KC1WU2838TxFShpLud4"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
               },
               "name": "task_operation"
             }
@@ -1316,11 +1316,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_4"
+                  "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_4",
-                  "item_id": "fc_REDACTED_4"
+                  "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
                 },
                 "function": {
                   "name": "task_operation",
@@ -1370,11 +1370,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4",
-                    "item_id": "fc_REDACTED_4"
+                    "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
                   },
                   "function": {
                     "name": "task_operation",
@@ -1396,8 +1396,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_4",
-              "provider_request_id": "req_REDACTED_4",
+              "response_id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
+              "provider_request_id": "req_17c2620ba27e4b4d8a9472de5fdf030e",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -1410,7 +1410,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_4",
+                "id": "resp_047afa2a97ee8a44006ab2b930512c87d0bcb96b889e9bcbdf",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -1422,8 +1422,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"depot/3\",\"value\":null}",
-                    "call_id": "call_REDACTED_4",
-                    "id": "fc_REDACTED_4",
+                    "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                    "id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -1432,7 +1432,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -1546,11 +1546,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_4"
+              "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
             },
             "provider": {
-              "call_id": "call_REDACTED_4",
-              "item_id": "fc_REDACTED_4"
+              "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+              "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
             },
             "name": "task_operation"
           },
@@ -1592,11 +1592,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
               },
               "provider": {
-                "call_id": "call_REDACTED_4",
-                "item_id": "fc_REDACTED_4"
+                "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
               },
               "function": {
                 "name": "task_operation",
@@ -1622,11 +1622,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
               },
               "provider": {
-                "call_id": "call_REDACTED_4",
-                "item_id": "fc_REDACTED_4"
+                "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
               },
               "name": "task_operation"
             }
@@ -1653,11 +1653,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_5"
+                  "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_5",
-                  "item_id": "fc_REDACTED_5"
+                  "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
                 },
                 "function": {
                   "name": "task_operation",
@@ -1707,11 +1707,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_5"
+                    "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_5",
-                    "item_id": "fc_REDACTED_5"
+                    "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
                   },
                   "function": {
                     "name": "task_operation",
@@ -1733,8 +1733,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_5",
-              "provider_request_id": "req_REDACTED_5",
+              "response_id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
+              "provider_request_id": "req_c4011d1538454892b99807d71fd3c77b",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -1747,7 +1747,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_5",
+                "id": "resp_047afa2a97ee8a44006ab2b9315f8887d0860dbd8d3ed969f4",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -1759,8 +1759,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"depot/4\",\"value\":null}",
-                    "call_id": "call_REDACTED_5",
-                    "id": "fc_REDACTED_5",
+                    "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                    "id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -1769,7 +1769,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -1883,11 +1883,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_5"
+              "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
             },
             "provider": {
-              "call_id": "call_REDACTED_5",
-              "item_id": "fc_REDACTED_5"
+              "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+              "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
             },
             "name": "task_operation"
           },
@@ -1929,11 +1929,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_5"
+                "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
               },
               "provider": {
-                "call_id": "call_REDACTED_5",
-                "item_id": "fc_REDACTED_5"
+                "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
               },
               "function": {
                 "name": "task_operation",
@@ -1959,11 +1959,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_5"
+                "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
               },
               "provider": {
-                "call_id": "call_REDACTED_5",
-                "item_id": "fc_REDACTED_5"
+                "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
               },
               "name": "task_operation"
             }
@@ -1990,11 +1990,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_6"
+                  "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_6",
-                  "item_id": "fc_REDACTED_6"
+                  "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2044,11 +2044,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_6"
+                    "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_6",
-                    "item_id": "fc_REDACTED_6"
+                    "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2070,8 +2070,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_6",
-              "provider_request_id": "req_REDACTED_6",
+              "response_id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
+              "provider_request_id": "req_82ea9bbde7ad47ec83ac8cf3e5a5695b",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -2084,7 +2084,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_6",
+                "id": "resp_047afa2a97ee8a44006ab2b9327e2487d0bfe13e35c4b0357b",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -2096,8 +2096,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"depot/5\",\"value\":null}",
-                    "call_id": "call_REDACTED_6",
-                    "id": "fc_REDACTED_6",
+                    "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                    "id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -2106,7 +2106,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -2220,11 +2220,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_6"
+              "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
             },
             "provider": {
-              "call_id": "call_REDACTED_6",
-              "item_id": "fc_REDACTED_6"
+              "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+              "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
             },
             "name": "task_operation"
           },
@@ -2266,11 +2266,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_6"
+                "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
               },
               "provider": {
-                "call_id": "call_REDACTED_6",
-                "item_id": "fc_REDACTED_6"
+                "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
               },
               "function": {
                 "name": "task_operation",
@@ -2296,11 +2296,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_6"
+                "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
               },
               "provider": {
-                "call_id": "call_REDACTED_6",
-                "item_id": "fc_REDACTED_6"
+                "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
               },
               "name": "task_operation"
             }
@@ -2327,11 +2327,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_7"
+                  "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_7",
-                  "item_id": "fc_REDACTED_7"
+                  "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2381,11 +2381,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_7"
+                    "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_7",
-                    "item_id": "fc_REDACTED_7"
+                    "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2407,8 +2407,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_7",
-              "provider_request_id": "req_REDACTED_7",
+              "response_id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
+              "provider_request_id": "req_8c7d29c2111d425293c0770e51c7ef91",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -2421,7 +2421,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_7",
+                "id": "resp_047afa2a97ee8a44006ab2b9338cf087d08c09dc72e5d9c49d",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -2433,8 +2433,8 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"read\",\"key\":\"depot/6\",\"value\":null}",
-                    "call_id": "call_REDACTED_7",
-                    "id": "fc_REDACTED_7",
+                    "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                    "id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -2443,7 +2443,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -2557,11 +2557,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_7"
+              "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
             },
             "provider": {
-              "call_id": "call_REDACTED_7",
-              "item_id": "fc_REDACTED_7"
+              "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+              "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
             },
             "name": "task_operation"
           },
@@ -2603,11 +2603,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_7"
+                "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
               },
               "provider": {
-                "call_id": "call_REDACTED_7",
-                "item_id": "fc_REDACTED_7"
+                "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
               },
               "function": {
                 "name": "task_operation",
@@ -2633,11 +2633,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_7"
+                "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
               },
               "provider": {
-                "call_id": "call_REDACTED_7",
-                "item_id": "fc_REDACTED_7"
+                "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
               },
               "name": "task_operation"
             }
@@ -2664,11 +2664,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_8"
+                  "id": "call_PMibbSB3BAyASapiDVYXRU39"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_8",
-                  "item_id": "fc_REDACTED_8"
+                  "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2685,11 +2685,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_9"
+                  "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_9",
-                  "item_id": "fc_REDACTED_9"
+                  "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2706,11 +2706,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_10"
+                  "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_10",
-                  "item_id": "fc_REDACTED_10"
+                  "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2727,11 +2727,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_11"
+                  "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_11",
-                  "item_id": "fc_REDACTED_11"
+                  "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2748,11 +2748,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_12"
+                  "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_12",
-                  "item_id": "fc_REDACTED_12"
+                  "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2769,11 +2769,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_13"
+                  "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_13",
-                  "item_id": "fc_REDACTED_13"
+                  "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
                 },
                 "function": {
                   "name": "task_operation",
@@ -2823,11 +2823,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_8"
+                    "id": "call_PMibbSB3BAyASapiDVYXRU39"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_8",
-                    "item_id": "fc_REDACTED_8"
+                    "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2844,11 +2844,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_9"
+                    "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_9",
-                    "item_id": "fc_REDACTED_9"
+                    "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2865,11 +2865,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_10"
+                    "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_10",
-                    "item_id": "fc_REDACTED_10"
+                    "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2886,11 +2886,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_11"
+                    "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_11",
-                    "item_id": "fc_REDACTED_11"
+                    "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2907,11 +2907,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_12"
+                    "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_12",
-                    "item_id": "fc_REDACTED_12"
+                    "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2928,11 +2928,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_13"
+                    "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_13",
-                    "item_id": "fc_REDACTED_13"
+                    "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
                   },
                   "function": {
                     "name": "task_operation",
@@ -2954,8 +2954,8 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_8",
-              "provider_request_id": "req_REDACTED_8",
+              "response_id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
+              "provider_request_id": "req_2026e418d9914af98ccd36497c7ebe29",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -2968,7 +2968,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_8",
+                "id": "resp_047afa2a97ee8a44006ab2b934a1d087d09998eb214584c490",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -2980,48 +2980,48 @@
                 "output": [
                   {
                     "arguments": "{\"action\":\"apply\",\"key\":\"depot/1\",\"value\":11}",
-                    "call_id": "call_REDACTED_8",
-                    "id": "fc_REDACTED_8",
+                    "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                    "id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
                   },
                   {
                     "arguments": "{\"action\":\"apply\",\"key\":\"depot/2\",\"value\":22}",
-                    "call_id": "call_REDACTED_9",
-                    "id": "fc_REDACTED_9",
+                    "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                    "id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
                   },
                   {
                     "arguments": "{\"action\":\"apply\",\"key\":\"depot/3\",\"value\":33}",
-                    "call_id": "call_REDACTED_10",
-                    "id": "fc_REDACTED_10",
+                    "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                    "id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
                   },
                   {
                     "arguments": "{\"action\":\"apply\",\"key\":\"depot/4\",\"value\":44}",
-                    "call_id": "call_REDACTED_11",
-                    "id": "fc_REDACTED_11",
+                    "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                    "id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
                   },
                   {
                     "arguments": "{\"action\":\"apply\",\"key\":\"depot/5\",\"value\":55}",
-                    "call_id": "call_REDACTED_12",
-                    "id": "fc_REDACTED_12",
+                    "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                    "id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
                   },
                   {
                     "arguments": "{\"action\":\"apply\",\"key\":\"depot/6\",\"value\":66}",
-                    "call_id": "call_REDACTED_13",
-                    "id": "fc_REDACTED_13",
+                    "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                    "id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -3030,7 +3030,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -3144,11 +3144,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_8"
+              "id": "call_PMibbSB3BAyASapiDVYXRU39"
             },
             "provider": {
-              "call_id": "call_REDACTED_8",
-              "item_id": "fc_REDACTED_8"
+              "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+              "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
             },
             "name": "task_operation"
           },
@@ -3181,11 +3181,11 @@
             "index": 1,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_9"
+              "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
             },
             "provider": {
-              "call_id": "call_REDACTED_9",
-              "item_id": "fc_REDACTED_9"
+              "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+              "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
             },
             "name": "task_operation"
           },
@@ -3218,11 +3218,11 @@
             "index": 2,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_10"
+              "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
             },
             "provider": {
-              "call_id": "call_REDACTED_10",
-              "item_id": "fc_REDACTED_10"
+              "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+              "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
             },
             "name": "task_operation"
           },
@@ -3255,11 +3255,11 @@
             "index": 3,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_11"
+              "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
             },
             "provider": {
-              "call_id": "call_REDACTED_11",
-              "item_id": "fc_REDACTED_11"
+              "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+              "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
             },
             "name": "task_operation"
           },
@@ -3292,11 +3292,11 @@
             "index": 4,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_12"
+              "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
             },
             "provider": {
-              "call_id": "call_REDACTED_12",
-              "item_id": "fc_REDACTED_12"
+              "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+              "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
             },
             "name": "task_operation"
           },
@@ -3329,11 +3329,11 @@
             "index": 5,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_13"
+              "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
             },
             "provider": {
-              "call_id": "call_REDACTED_13",
-              "item_id": "fc_REDACTED_13"
+              "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+              "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
             },
             "name": "task_operation"
           },
@@ -3372,11 +3372,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_8"
+                "id": "call_PMibbSB3BAyASapiDVYXRU39"
               },
               "provider": {
-                "call_id": "call_REDACTED_8",
-                "item_id": "fc_REDACTED_8"
+                "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
               },
               "function": {
                 "name": "task_operation",
@@ -3397,11 +3397,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_9"
+                "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
               },
               "provider": {
-                "call_id": "call_REDACTED_9",
-                "item_id": "fc_REDACTED_9"
+                "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
               },
               "function": {
                 "name": "task_operation",
@@ -3422,11 +3422,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_10"
+                "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
               },
               "provider": {
-                "call_id": "call_REDACTED_10",
-                "item_id": "fc_REDACTED_10"
+                "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
               },
               "function": {
                 "name": "task_operation",
@@ -3447,11 +3447,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_11"
+                "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
               },
               "provider": {
-                "call_id": "call_REDACTED_11",
-                "item_id": "fc_REDACTED_11"
+                "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
               },
               "function": {
                 "name": "task_operation",
@@ -3472,11 +3472,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_12"
+                "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
               },
               "provider": {
-                "call_id": "call_REDACTED_12",
-                "item_id": "fc_REDACTED_12"
+                "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
               },
               "function": {
                 "name": "task_operation",
@@ -3497,11 +3497,11 @@
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_13"
+                "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
               },
               "provider": {
-                "call_id": "call_REDACTED_13",
-                "item_id": "fc_REDACTED_13"
+                "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
               },
               "function": {
                 "name": "task_operation",
@@ -3527,11 +3527,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_8"
+                "id": "call_PMibbSB3BAyASapiDVYXRU39"
               },
               "provider": {
-                "call_id": "call_REDACTED_8",
-                "item_id": "fc_REDACTED_8"
+                "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
               },
               "name": "task_operation"
             }
@@ -3553,11 +3553,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_9"
+                "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
               },
               "provider": {
-                "call_id": "call_REDACTED_9",
-                "item_id": "fc_REDACTED_9"
+                "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
               },
               "name": "task_operation"
             }
@@ -3579,11 +3579,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_10"
+                "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
               },
               "provider": {
-                "call_id": "call_REDACTED_10",
-                "item_id": "fc_REDACTED_10"
+                "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
               },
               "name": "task_operation"
             }
@@ -3605,11 +3605,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_11"
+                "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
               },
               "provider": {
-                "call_id": "call_REDACTED_11",
-                "item_id": "fc_REDACTED_11"
+                "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
               },
               "name": "task_operation"
             }
@@ -3631,11 +3631,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_12"
+                "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
               },
               "provider": {
-                "call_id": "call_REDACTED_12",
-                "item_id": "fc_REDACTED_12"
+                "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
               },
               "name": "task_operation"
             }
@@ -3657,11 +3657,11 @@
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_13"
+                "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
               },
               "provider": {
-                "call_id": "call_REDACTED_13",
-                "item_id": "fc_REDACTED_13"
+                "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
               },
               "name": "task_operation"
             }
@@ -3685,123 +3685,18 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_14"
+                  "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_14",
-                  "item_id": "fc_REDACTED_14"
+                  "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                  "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
                 },
                 "function": {
                   "name": "task_operation",
                   "arguments": {
-                    "action": "apply",
-                    "key": "depot/1",
-                    "value": 11
-                  }
-                },
-                "signature": null,
-                "additional_params": null
-              },
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_15"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_15",
-                  "item_id": "fc_REDACTED_15"
-                },
-                "function": {
-                  "name": "task_operation",
-                  "arguments": {
-                    "action": "apply",
-                    "key": "depot/2",
-                    "value": 22
-                  }
-                },
-                "signature": null,
-                "additional_params": null
-              },
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_16"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_16",
-                  "item_id": "fc_REDACTED_16"
-                },
-                "function": {
-                  "name": "task_operation",
-                  "arguments": {
-                    "action": "apply",
-                    "key": "depot/3",
-                    "value": 33
-                  }
-                },
-                "signature": null,
-                "additional_params": null
-              },
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_17"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_17",
-                  "item_id": "fc_REDACTED_17"
-                },
-                "function": {
-                  "name": "task_operation",
-                  "arguments": {
-                    "action": "apply",
-                    "key": "depot/4",
-                    "value": 44
-                  }
-                },
-                "signature": null,
-                "additional_params": null
-              },
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_18"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_18",
-                  "item_id": "fc_REDACTED_18"
-                },
-                "function": {
-                  "name": "task_operation",
-                  "arguments": {
-                    "action": "apply",
-                    "key": "depot/5",
-                    "value": 55
-                  }
-                },
-                "signature": null,
-                "additional_params": null
-              },
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_19"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_19",
-                  "item_id": "fc_REDACTED_19"
-                },
-                "function": {
-                  "name": "task_operation",
-                  "arguments": {
-                    "action": "apply",
-                    "key": "depot/6",
-                    "value": 66
+                    "action": "check",
+                    "key": "all",
+                    "value": null
                   }
                 },
                 "signature": null,
@@ -3825,8 +3720,8 @@
           "rig_ecs::agent::checkpoint::ToolTurnCommit": {
             "turn": 9
           },
-          "rig_ecs::agent::checkpoint::TurnAssistant": 108,
-          "rig_ecs::agent::checkpoint::TurnResults": 115,
+          "rig_ecs::agent::checkpoint::TurnAssistant": 103,
+          "rig_ecs::agent::checkpoint::TurnResults": 105,
           "rig_ecs::systems::Folded": "Native",
           "rig_ecs::systems::Materialised": {}
         },
@@ -3844,123 +3739,18 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_14"
+                    "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_14",
-                    "item_id": "fc_REDACTED_14"
+                    "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                    "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
                   },
                   "function": {
                     "name": "task_operation",
                     "arguments": {
-                      "action": "apply",
-                      "key": "depot/1",
-                      "value": 11
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                },
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_15"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_15",
-                    "item_id": "fc_REDACTED_15"
-                  },
-                  "function": {
-                    "name": "task_operation",
-                    "arguments": {
-                      "action": "apply",
-                      "key": "depot/2",
-                      "value": 22
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                },
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_16"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_16",
-                    "item_id": "fc_REDACTED_16"
-                  },
-                  "function": {
-                    "name": "task_operation",
-                    "arguments": {
-                      "action": "apply",
-                      "key": "depot/3",
-                      "value": 33
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                },
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_17"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_17",
-                    "item_id": "fc_REDACTED_17"
-                  },
-                  "function": {
-                    "name": "task_operation",
-                    "arguments": {
-                      "action": "apply",
-                      "key": "depot/4",
-                      "value": 44
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                },
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_18"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_18",
-                    "item_id": "fc_REDACTED_18"
-                  },
-                  "function": {
-                    "name": "task_operation",
-                    "arguments": {
-                      "action": "apply",
-                      "key": "depot/5",
-                      "value": 55
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                },
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_19"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_19",
-                    "item_id": "fc_REDACTED_19"
-                  },
-                  "function": {
-                    "name": "task_operation",
-                    "arguments": {
-                      "action": "apply",
-                      "key": "depot/6",
-                      "value": 66
+                      "action": "check",
+                      "key": "all",
+                      "value": null
                     }
                   },
                   "signature": null,
@@ -3969,14 +3759,14 @@
               ],
               "usage": {
                 "input_tokens": 1045,
-                "output_tokens": 167,
-                "total_tokens": 1212,
+                "output_tokens": 23,
+                "total_tokens": 1068,
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "resp_REDACTED_9",
-              "provider_request_id": "req_REDACTED_9",
+              "response_id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
+              "provider_request_id": "req_b01fba4d27f9419dbe4866657bce1347",
               "finish_reason": "tool_calls",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -3989,7 +3779,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_9",
+                "id": "resp_047afa2a97ee8a44006ab2b936c0fc87d0b439836b6c76b115",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -4000,49 +3790,9 @@
                 "object": "response",
                 "output": [
                   {
-                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/1\",\"value\":11}",
-                    "call_id": "call_REDACTED_14",
-                    "id": "fc_REDACTED_14",
-                    "name": "task_operation",
-                    "status": "completed",
-                    "type": "function_call"
-                  },
-                  {
-                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/2\",\"value\":22}",
-                    "call_id": "call_REDACTED_15",
-                    "id": "fc_REDACTED_15",
-                    "name": "task_operation",
-                    "status": "completed",
-                    "type": "function_call"
-                  },
-                  {
-                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/3\",\"value\":33}",
-                    "call_id": "call_REDACTED_16",
-                    "id": "fc_REDACTED_16",
-                    "name": "task_operation",
-                    "status": "completed",
-                    "type": "function_call"
-                  },
-                  {
-                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/4\",\"value\":44}",
-                    "call_id": "call_REDACTED_17",
-                    "id": "fc_REDACTED_17",
-                    "name": "task_operation",
-                    "status": "completed",
-                    "type": "function_call"
-                  },
-                  {
-                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/5\",\"value\":55}",
-                    "call_id": "call_REDACTED_18",
-                    "id": "fc_REDACTED_18",
-                    "name": "task_operation",
-                    "status": "completed",
-                    "type": "function_call"
-                  },
-                  {
-                    "arguments": "{\"action\":\"apply\",\"key\":\"depot/6\",\"value\":66}",
-                    "call_id": "call_REDACTED_19",
-                    "id": "fc_REDACTED_19",
+                    "arguments": "{\"action\":\"check\",\"key\":\"all\",\"value\":null}",
+                    "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                    "id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec",
                     "name": "task_operation",
                     "status": "completed",
                     "type": "function_call"
@@ -4051,7 +3801,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -4145,11 +3895,11 @@
                     "cache_write_tokens": 0,
                     "cached_tokens": 0
                   },
-                  "output_tokens": 167,
+                  "output_tokens": 23,
                   "output_tokens_details": {
                     "reasoning_tokens": 0
                   },
-                  "total_tokens": 1212
+                  "total_tokens": 1068
                 },
                 "user": null
               }
@@ -4165,782 +3915,11 @@
             "index": 0,
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_14"
+              "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
             },
             "provider": {
-              "call_id": "call_REDACTED_14",
-              "item_id": "fc_REDACTED_14"
-            },
-            "name": "task_operation"
-          },
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "tool_result",
-              "result": {
-                "status": "success",
-                "value": [
-                  {
-                    "type": "json",
-                    "value": {
-                      "saved": "depot/1",
-                      "value": 11
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 22,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 22,
-          "rig_ecs::bus::effect::ToolInputs": {},
-          "rig_ecs::bus::effect::ToolOutputs": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 99,
-          "rig_ecs::agent::ToolCallSlot": {
-            "index": 1,
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_15"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_15",
-              "item_id": "fc_REDACTED_15"
-            },
-            "name": "task_operation"
-          },
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "tool_result",
-              "result": {
-                "status": "success",
-                "value": [
-                  {
-                    "type": "json",
-                    "value": {
-                      "saved": "depot/2",
-                      "value": 22
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 23,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 23,
-          "rig_ecs::bus::effect::ToolInputs": {},
-          "rig_ecs::bus::effect::ToolOutputs": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 99,
-          "rig_ecs::agent::ToolCallSlot": {
-            "index": 2,
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_16"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_16",
-              "item_id": "fc_REDACTED_16"
-            },
-            "name": "task_operation"
-          },
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "tool_result",
-              "result": {
-                "status": "success",
-                "value": [
-                  {
-                    "type": "json",
-                    "value": {
-                      "saved": "depot/3",
-                      "value": 33
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 24,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 24,
-          "rig_ecs::bus::effect::ToolInputs": {},
-          "rig_ecs::bus::effect::ToolOutputs": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 99,
-          "rig_ecs::agent::ToolCallSlot": {
-            "index": 3,
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_17"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_17",
-              "item_id": "fc_REDACTED_17"
-            },
-            "name": "task_operation"
-          },
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "tool_result",
-              "result": {
-                "status": "success",
-                "value": [
-                  {
-                    "type": "json",
-                    "value": {
-                      "saved": "depot/4",
-                      "value": 44
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 25,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 25,
-          "rig_ecs::bus::effect::ToolInputs": {},
-          "rig_ecs::bus::effect::ToolOutputs": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 99,
-          "rig_ecs::agent::ToolCallSlot": {
-            "index": 4,
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_18"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_18",
-              "item_id": "fc_REDACTED_18"
-            },
-            "name": "task_operation"
-          },
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "tool_result",
-              "result": {
-                "status": "success",
-                "value": [
-                  {
-                    "type": "json",
-                    "value": {
-                      "saved": "depot/5",
-                      "value": 55
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 26,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 26,
-          "rig_ecs::bus::effect::ToolInputs": {},
-          "rig_ecs::bus::effect::ToolOutputs": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 99,
-          "rig_ecs::agent::ToolCallSlot": {
-            "index": 5,
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_19"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_19",
-              "item_id": "fc_REDACTED_19"
-            },
-            "name": "task_operation"
-          },
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "tool_result",
-              "result": {
-                "status": "success",
-                "value": [
-                  {
-                    "type": "json",
-                    "value": {
-                      "saved": "depot/6",
-                      "value": 66
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 27,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 27,
-          "rig_ecs::bus::effect::ToolInputs": {},
-          "rig_ecs::bus::effect::ToolOutputs": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 4,
-          "rig_ecs::agent::Role": "Assistant",
-          "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 108,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_14"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_14",
-                "item_id": "fc_REDACTED_14"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/1",
-                  "value": 11
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 108,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_15"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_15",
-                "item_id": "fc_REDACTED_15"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/2",
-                  "value": 22
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 108,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_16"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_16",
-                "item_id": "fc_REDACTED_16"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/3",
-                  "value": 33
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 108,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_17"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_17",
-                "item_id": "fc_REDACTED_17"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/4",
-                  "value": 44
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 108,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_18"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_18",
-                "item_id": "fc_REDACTED_18"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/5",
-                  "value": 55
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 108,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_19"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_19",
-                "item_id": "fc_REDACTED_19"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/6",
-                  "value": 66
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 4,
-          "rig_ecs::agent::Role": "User",
-          "rig_ecs::agent::Utterance": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 115,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_14"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_14",
-                "item_id": "fc_REDACTED_14"
-              },
-              "name": "task_operation"
-            }
-          },
-          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 116,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/1",
-              "value": 11
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 115,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_15"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_15",
-                "item_id": "fc_REDACTED_15"
-              },
-              "name": "task_operation"
-            }
-          },
-          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 118,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/2",
-              "value": 22
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 115,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_16"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_16",
-                "item_id": "fc_REDACTED_16"
-              },
-              "name": "task_operation"
-            }
-          },
-          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 120,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/3",
-              "value": 33
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 115,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_17"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_17",
-                "item_id": "fc_REDACTED_17"
-              },
-              "name": "task_operation"
-            }
-          },
-          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 122,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/4",
-              "value": 44
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 115,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_18"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_18",
-                "item_id": "fc_REDACTED_18"
-              },
-              "name": "task_operation"
-            }
-          },
-          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 124,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/5",
-              "value": 55
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 115,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_19"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_19",
-                "item_id": "fc_REDACTED_19"
-              },
-              "name": "task_operation"
-            }
-          },
-          "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 126,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/6",
-              "value": 66
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 4,
-          "rig_ecs::agent::Outputs": {
-            "content": [
-              {
-                "type": "toolcall",
-                "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_20"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_20",
-                  "item_id": "fc_REDACTED_20"
-                },
-                "function": {
-                  "name": "task_operation",
-                  "arguments": {
-                    "action": "check",
-                    "key": "all",
-                    "value": null
-                  }
-                },
-                "signature": null,
-                "additional_params": null
-              }
-            ],
-            "message_id": null,
-            "done": true,
-            "usage_recorded": true,
-            "stream_validated": 0
-          },
-          "rig_ecs::agent::ToolAccess": {
-            "executable": {
-              "task_operation": "golden/tool:task_operation#0"
-            },
-            "allowed": [
-              "task_operation"
-            ]
-          },
-          "rig_ecs::agent::Turn": {},
-          "rig_ecs::agent::checkpoint::ToolTurnCommit": {
-            "turn": 10
-          },
-          "rig_ecs::agent::checkpoint::TurnAssistant": 132,
-          "rig_ecs::agent::checkpoint::TurnResults": 134,
-          "rig_ecs::systems::Folded": "Native",
-          "rig_ecs::systems::Materialised": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 128,
-          "rig_ecs::agent::Advert": 1
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 128,
-          "rig_ecs::bus::effect::EffectOutcome": {
-            "Ok": {
-              "outcome": "completion",
-              "choice": [
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_20"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_20",
-                    "item_id": "fc_REDACTED_20"
-                  },
-                  "function": {
-                    "name": "task_operation",
-                    "arguments": {
-                      "action": "check",
-                      "key": "all",
-                      "value": null
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                }
-              ],
-              "usage": {
-                "input_tokens": 1303,
-                "output_tokens": 23,
-                "total_tokens": 1326,
-                "cached_input_tokens": 0,
-                "reasoning_tokens": 0
-              },
-              "message_id": null,
-              "response_id": "resp_REDACTED_10",
-              "provider_request_id": "req_REDACTED_10",
-              "finish_reason": "tool_calls",
-              "provider": "openai",
-              "model": "gpt-4.1-mini-2025-04-14",
-              "raw": {
-                "background": false,
-                "billing": {
-                  "payer": "developer"
-                },
-                "completed_at": 0,
-                "created_at": 0,
-                "error": null,
-                "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_10",
-                "incomplete_details": null,
-                "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
-                "max_output_tokens": 2048,
-                "max_tool_calls": null,
-                "metadata": {},
-                "model": "gpt-4.1-mini-2025-04-14",
-                "moderation": null,
-                "object": "response",
-                "output": [
-                  {
-                    "arguments": "{\"action\":\"check\",\"key\":\"all\",\"value\":null}",
-                    "call_id": "call_REDACTED_20",
-                    "id": "fc_REDACTED_20",
-                    "name": "task_operation",
-                    "status": "completed",
-                    "type": "function_call"
-                  }
-                ],
-                "parallel_tool_calls": true,
-                "presence_penalty": 0.0,
-                "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
-                "prompt_cache_retention": "in_memory",
-                "reasoning": {
-                  "context": null,
-                  "effort": null,
-                  "summary": null
-                },
-                "safety_identifier": null,
-                "service_tier": "default",
-                "status": "completed",
-                "store": true,
-                "temperature": 0.0,
-                "text": {
-                  "format": {
-                    "type": "text"
-                  },
-                  "verbosity": "medium"
-                },
-                "tool_choice": "auto",
-                "tool_usage": {
-                  "image_gen": {
-                    "input_tokens": 0,
-                    "input_tokens_details": {
-                      "image_tokens": 0,
-                      "text_tokens": 0
-                    },
-                    "output_tokens": 0,
-                    "output_tokens_details": {
-                      "image_tokens": 0,
-                      "text_tokens": 0
-                    },
-                    "total_tokens": 0
-                  },
-                  "web_search": {
-                    "num_requests": 0
-                  }
-                },
-                "tools": [
-                  {
-                    "description": "Read task source data, apply a structured integer update, validate one key or all, or request the inventory follow-up. Read index first. Check results describe actual state. Apply never implies validation success.",
-                    "name": "task_operation",
-                    "output_schema": null,
-                    "parameters": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "action": {
-                          "enum": [
-                            "read",
-                            "apply",
-                            "check",
-                            "revise"
-                          ],
-                          "type": "string"
-                        },
-                        "key": {
-                          "enum": [
-                            "index",
-                            "all",
-                            "depot/1",
-                            "depot/2",
-                            "depot/3",
-                            "depot/4",
-                            "depot/5",
-                            "depot/6"
-                          ],
-                          "type": "string"
-                        },
-                        "value": {
-                          "type": [
-                            "integer",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "action",
-                        "key",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    "strict": false,
-                    "type": "function"
-                  }
-                ],
-                "top_logprobs": 0,
-                "top_p": 1.0,
-                "truncation": "disabled",
-                "usage": {
-                  "input_tokens": 1303,
-                  "input_tokens_details": {
-                    "cache_write_tokens": 0,
-                    "cached_tokens": 0
-                  },
-                  "output_tokens": 23,
-                  "output_tokens_details": {
-                    "reasoning_tokens": 0
-                  },
-                  "total_tokens": 1326
-                },
-                "user": null
-              }
-            }
-          },
-          "rig_ecs::bus::effect::Issued": 28,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 28
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 128,
-          "rig_ecs::agent::ToolCallSlot": {
-            "index": 0,
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_20"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_20",
-              "item_id": "fc_REDACTED_20"
+              "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+              "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
             },
             "name": "task_operation"
           },
@@ -4955,16 +3934,16 @@
                     "value": {
                       "passed": true,
                       "failures": [],
-                      "revision": 12
+                      "revision": 6
                     }
                   }
                 ]
               }
             }
           },
-          "rig_ecs::bus::effect::Issued": 29,
+          "rig_ecs::bus::effect::Issued": 22,
           "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 29,
+          "rig_ecs::bus::effect::Seq": 22,
           "rig_ecs::bus::effect::ToolInputs": {},
           "rig_ecs::bus::effect::ToolOutputs": {}
         },
@@ -4975,16 +3954,16 @@
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 132,
+          "bevy_ecs::hierarchy::ChildOf": 103,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_20"
+                "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
               },
               "provider": {
-                "call_id": "call_REDACTED_20",
-                "item_id": "fc_REDACTED_20"
+                "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
               },
               "function": {
                 "name": "task_operation",
@@ -5005,16 +3984,16 @@
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 134,
+          "bevy_ecs::hierarchy::ChildOf": 105,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_20"
+                "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
               },
               "provider": {
-                "call_id": "call_REDACTED_20",
-                "item_id": "fc_REDACTED_20"
+                "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
               },
               "name": "task_operation"
             }
@@ -5022,12 +4001,12 @@
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 135,
+          "bevy_ecs::hierarchy::ChildOf": 106,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "passed": true,
               "failures": [],
-              "revision": 12
+              "revision": 6
             }
           }
         },
@@ -5037,10 +4016,10 @@
             "content": [
               {
                 "type": "text",
-                "text": "Done. The six-depot inventory has been built and validated successfully."
+                "text": "Done"
               }
             ],
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -5058,30 +4037,30 @@
           "rig_ecs::systems::Materialised": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 137,
+          "bevy_ecs::hierarchy::ChildOf": 108,
           "rig_ecs::agent::Advert": 1
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 137,
+          "bevy_ecs::hierarchy::ChildOf": 108,
           "rig_ecs::bus::effect::EffectOutcome": {
             "Ok": {
               "outcome": "completion",
               "choice": [
                 {
                   "type": "text",
-                  "text": "Done. The six-depot inventory has been built and validated successfully."
+                  "text": "Done"
                 }
               ],
               "usage": {
-                "input_tokens": 1347,
-                "output_tokens": 16,
-                "total_tokens": 1363,
-                "cached_input_tokens": 1280,
+                "input_tokens": 1089,
+                "output_tokens": 3,
+                "total_tokens": 1092,
+                "cached_input_tokens": 1024,
                 "reasoning_tokens": 0
               },
-              "message_id": "msg_REDACTED_1",
-              "response_id": "resp_REDACTED_11",
-              "provider_request_id": "req_REDACTED_11",
+              "message_id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
+              "response_id": "resp_047afa2a97ee8a44006ab2b937cf1887d08f0ae93b72d0ed9b",
+              "provider_request_id": "req_5d243811d8564217843987bd18910fdf",
               "finish_reason": "stop",
               "provider": "openai",
               "model": "gpt-4.1-mini-2025-04-14",
@@ -5094,7 +4073,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_11",
+                "id": "resp_047afa2a97ee8a44006ab2b937cf1887d08f0ae93b72d0ed9b",
                 "incomplete_details": null,
                 "instructions": "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.",
                 "max_output_tokens": 2048,
@@ -5109,11 +4088,11 @@
                       {
                         "annotations": [],
                         "logprobs": [],
-                        "text": "Done. The six-depot inventory has been built and validated successfully.",
+                        "text": "Done",
                         "type": "output_text"
                       }
                     ],
-                    "id": "msg_REDACTED_1",
+                    "id": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7",
                     "role": "assistant",
                     "status": "completed",
                     "type": "message"
@@ -5122,7 +4101,7 @@
                 "parallel_tool_calls": true,
                 "presence_penalty": 0.0,
                 "previous_response_id": null,
-                "prompt_cache_key": "id_REDACTED_1",
+                "prompt_cache_key": "rig-native-long-tasks",
                 "prompt_cache_retention": "in_memory",
                 "reasoning": {
                   "context": null,
@@ -5211,36 +4190,36 @@
                 "top_p": 1.0,
                 "truncation": "disabled",
                 "usage": {
-                  "input_tokens": 1347,
+                  "input_tokens": 1089,
                   "input_tokens_details": {
                     "cache_write_tokens": 0,
-                    "cached_tokens": 1280
+                    "cached_tokens": 1024
                   },
-                  "output_tokens": 16,
+                  "output_tokens": 3,
                   "output_tokens_details": {
                     "reasoning_tokens": 0
                   },
-                  "total_tokens": 1363
+                  "total_tokens": 1092
                 },
                 "user": null
               }
             }
           },
-          "rig_ecs::bus::effect::Issued": 30,
+          "rig_ecs::bus::effect::Issued": 23,
           "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 30
+          "rig_ecs::bus::effect::Seq": 23
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 4,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_REDACTED_1"
+          "rig_ecs::agent::content::parts::MessageId": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 140,
+          "bevy_ecs::hierarchy::ChildOf": 111,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "Done. The six-depot inventory has been built and validated successfully."
+              "text": "Done"
             }
           }
         },
@@ -5249,7 +4228,7 @@
             "turn": 0
           },
           "rig_ecs::agent::InvalidRetries": 0,
-          "rig_ecs::agent::MaxTurns": 19,
+          "rig_ecs::agent::MaxTurns": 20,
           "rig_ecs::agent::OutputRetries": 0,
           "rig_ecs::agent::OutputToolName": null,
           "rig_ecs::agent::ProviderRetried": 0,
@@ -5266,12 +4245,12 @@
           "rig_ecs::bus::effect::Scope": "golden/run#1"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 143,
+          "bevy_ecs::hierarchy::ChildOf": 114,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "Build the six-depot inventory. Read index, then read each of depot/1 through depot/6 in six separate turns. Do not apply anything until all six reads are finished. Then submit ALL SIX apply calls together in ONE parallel batch, using the exact depot keys and value = stock + inbound - damaged. Do not append field names to keys. Check all, then answer done. Set value to null for reads/checks. Do not request a revision until the user asks."
@@ -5279,22 +4258,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 145,
+          "bevy_ecs::hierarchy::ChildOf": 116,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
               },
               "function": {
                 "name": "task_operation",
@@ -5310,28 +4289,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 147,
+          "bevy_ecs::hierarchy::ChildOf": 118,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3A5VnyZgU9nI0I0TRP7C5ocE"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3A5VnyZgU9nI0I0TRP7C5ocE",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92dcc5c87d09d450d24f39a6e28"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 148,
+          "bevy_ecs::hierarchy::ChildOf": 119,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "keys": [
@@ -5347,22 +4326,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 150,
+          "bevy_ecs::hierarchy::ChildOf": 121,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
               },
               "function": {
                 "name": "task_operation",
@@ -5378,28 +4357,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 152,
+          "bevy_ecs::hierarchy::ChildOf": 123,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_NToA1ZTbDs5a8MPRTiEtXKCt"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_NToA1ZTbDs5a8MPRTiEtXKCt",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92eed3087d0950971878bfb109f"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 153,
+          "bevy_ecs::hierarchy::ChildOf": 124,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "stock": 10,
@@ -5411,22 +4390,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 155,
+          "bevy_ecs::hierarchy::ChildOf": 126,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_Czka0KC1WU2838TxFShpLud4"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
               },
               "function": {
                 "name": "task_operation",
@@ -5442,28 +4421,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 157,
+          "bevy_ecs::hierarchy::ChildOf": 128,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_Czka0KC1WU2838TxFShpLud4"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call_Czka0KC1WU2838TxFShpLud4",
+                "item_id": "fc_047afa2a97ee8a44006ab2b92feeac87d0a5208445b8da138d"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 158,
+          "bevy_ecs::hierarchy::ChildOf": 129,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "stock": 20,
@@ -5475,22 +4454,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 160,
+          "bevy_ecs::hierarchy::ChildOf": 131,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
               },
               "provider": {
-                "call_id": "call_REDACTED_4",
-                "item_id": "fc_REDACTED_4"
+                "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
               },
               "function": {
                 "name": "task_operation",
@@ -5506,28 +4485,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 162,
+          "bevy_ecs::hierarchy::ChildOf": 133,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj"
               },
               "provider": {
-                "call_id": "call_REDACTED_4",
-                "item_id": "fc_REDACTED_4"
+                "call_id": "call_HcMoKd5r0nl1vhv7M4Ng81Vj",
+                "item_id": "fc_047afa2a97ee8a44006ab2b930d32887d0b6197f7382708fba"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 163,
+          "bevy_ecs::hierarchy::ChildOf": 134,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "stock": 30,
@@ -5539,22 +4518,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 165,
+          "bevy_ecs::hierarchy::ChildOf": 136,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_5"
+                "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
               },
               "provider": {
-                "call_id": "call_REDACTED_5",
-                "item_id": "fc_REDACTED_5"
+                "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
               },
               "function": {
                 "name": "task_operation",
@@ -5570,28 +4549,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 167,
+          "bevy_ecs::hierarchy::ChildOf": 138,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_5"
+                "id": "call_3uQB5XskT5bKywPTfM2kJXH3"
               },
               "provider": {
-                "call_id": "call_REDACTED_5",
-                "item_id": "fc_REDACTED_5"
+                "call_id": "call_3uQB5XskT5bKywPTfM2kJXH3",
+                "item_id": "fc_047afa2a97ee8a44006ab2b931f4e487d0a7c3bee989ef80cb"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 168,
+          "bevy_ecs::hierarchy::ChildOf": 139,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "stock": 40,
@@ -5603,22 +4582,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 170,
+          "bevy_ecs::hierarchy::ChildOf": 141,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_6"
+                "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
               },
               "provider": {
-                "call_id": "call_REDACTED_6",
-                "item_id": "fc_REDACTED_6"
+                "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
               },
               "function": {
                 "name": "task_operation",
@@ -5634,28 +4613,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 172,
+          "bevy_ecs::hierarchy::ChildOf": 143,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_6"
+                "id": "call_URCHb1VgXO3RDsmWrh8u1z6G"
               },
               "provider": {
-                "call_id": "call_REDACTED_6",
-                "item_id": "fc_REDACTED_6"
+                "call_id": "call_URCHb1VgXO3RDsmWrh8u1z6G",
+                "item_id": "fc_047afa2a97ee8a44006ab2b9330ae087d0a92496fe02a13745"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 173,
+          "bevy_ecs::hierarchy::ChildOf": 144,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "stock": 50,
@@ -5667,22 +4646,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 175,
+          "bevy_ecs::hierarchy::ChildOf": 146,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_7"
+                "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
               },
               "provider": {
-                "call_id": "call_REDACTED_7",
-                "item_id": "fc_REDACTED_7"
+                "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
               },
               "function": {
                 "name": "task_operation",
@@ -5698,28 +4677,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 177,
+          "bevy_ecs::hierarchy::ChildOf": 148,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_7"
+                "id": "call_6GzlBm1cDmNxqU65jNrmNkil"
               },
               "provider": {
-                "call_id": "call_REDACTED_7",
-                "item_id": "fc_REDACTED_7"
+                "call_id": "call_6GzlBm1cDmNxqU65jNrmNkil",
+                "item_id": "fc_047afa2a97ee8a44006ab2b934148887d0a3a178233a235915"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 178,
+          "bevy_ecs::hierarchy::ChildOf": 149,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "stock": 60,
@@ -5731,22 +4710,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 180,
+          "bevy_ecs::hierarchy::ChildOf": 151,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_8"
+                "id": "call_PMibbSB3BAyASapiDVYXRU39"
               },
               "provider": {
-                "call_id": "call_REDACTED_8",
-                "item_id": "fc_REDACTED_8"
+                "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
               },
               "function": {
                 "name": "task_operation",
@@ -5762,16 +4741,16 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 180,
+          "bevy_ecs::hierarchy::ChildOf": 151,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_9"
+                "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
               },
               "provider": {
-                "call_id": "call_REDACTED_9",
-                "item_id": "fc_REDACTED_9"
+                "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
               },
               "function": {
                 "name": "task_operation",
@@ -5787,16 +4766,16 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 180,
+          "bevy_ecs::hierarchy::ChildOf": 151,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_10"
+                "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
               },
               "provider": {
-                "call_id": "call_REDACTED_10",
-                "item_id": "fc_REDACTED_10"
+                "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
               },
               "function": {
                 "name": "task_operation",
@@ -5812,16 +4791,16 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 180,
+          "bevy_ecs::hierarchy::ChildOf": 151,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_11"
+                "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
               },
               "provider": {
-                "call_id": "call_REDACTED_11",
-                "item_id": "fc_REDACTED_11"
+                "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
               },
               "function": {
                 "name": "task_operation",
@@ -5837,16 +4816,16 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 180,
+          "bevy_ecs::hierarchy::ChildOf": 151,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_12"
+                "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
               },
               "provider": {
-                "call_id": "call_REDACTED_12",
-                "item_id": "fc_REDACTED_12"
+                "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
               },
               "function": {
                 "name": "task_operation",
@@ -5862,16 +4841,16 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 180,
+          "bevy_ecs::hierarchy::ChildOf": 151,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_13"
+                "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
               },
               "provider": {
-                "call_id": "call_REDACTED_13",
-                "item_id": "fc_REDACTED_13"
+                "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
               },
               "function": {
                 "name": "task_operation",
@@ -5887,28 +4866,28 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 187,
+          "bevy_ecs::hierarchy::ChildOf": 158,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_8"
+                "id": "call_PMibbSB3BAyASapiDVYXRU39"
               },
               "provider": {
-                "call_id": "call_REDACTED_8",
-                "item_id": "fc_REDACTED_8"
+                "call_id": "call_PMibbSB3BAyASapiDVYXRU39",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936570487d0b538f97af91e5d8c"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 188,
+          "bevy_ecs::hierarchy::ChildOf": 159,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "saved": "depot/1",
@@ -5917,23 +4896,23 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 187,
+          "bevy_ecs::hierarchy::ChildOf": 158,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_9"
+                "id": "call_j17sFydeJ0nI4ISZwWakBOzZ"
               },
               "provider": {
-                "call_id": "call_REDACTED_9",
-                "item_id": "fc_REDACTED_9"
+                "call_id": "call_j17sFydeJ0nI4ISZwWakBOzZ",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571487d09fad0585b0d5970b"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 190,
+          "bevy_ecs::hierarchy::ChildOf": 161,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "saved": "depot/2",
@@ -5942,23 +4921,23 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 187,
+          "bevy_ecs::hierarchy::ChildOf": 158,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_10"
+                "id": "call_k1cdr6i70ZvePDyygvPFvw9p"
               },
               "provider": {
-                "call_id": "call_REDACTED_10",
-                "item_id": "fc_REDACTED_10"
+                "call_id": "call_k1cdr6i70ZvePDyygvPFvw9p",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936571887d09829283939eb9df7"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 192,
+          "bevy_ecs::hierarchy::ChildOf": 163,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "saved": "depot/3",
@@ -5967,23 +4946,23 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 187,
+          "bevy_ecs::hierarchy::ChildOf": 158,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_11"
+                "id": "call_P5cvXGzP9AjE9SySaln2mrEa"
               },
               "provider": {
-                "call_id": "call_REDACTED_11",
-                "item_id": "fc_REDACTED_11"
+                "call_id": "call_P5cvXGzP9AjE9SySaln2mrEa",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572087d0a93e60d1b16432f5"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 194,
+          "bevy_ecs::hierarchy::ChildOf": 165,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "saved": "depot/4",
@@ -5992,23 +4971,23 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 187,
+          "bevy_ecs::hierarchy::ChildOf": 158,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_12"
+                "id": "call_gY8JRuVSRnDquDWJmDwGOszU"
               },
               "provider": {
-                "call_id": "call_REDACTED_12",
-                "item_id": "fc_REDACTED_12"
+                "call_id": "call_gY8JRuVSRnDquDWJmDwGOszU",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936572c87d0a5d7382b37a9efa8"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 196,
+          "bevy_ecs::hierarchy::ChildOf": 167,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "saved": "depot/5",
@@ -6017,23 +4996,23 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 187,
+          "bevy_ecs::hierarchy::ChildOf": 158,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_13"
+                "id": "call_SXju5IV0XiQDMjBjI0w5u0CP"
               },
               "provider": {
-                "call_id": "call_REDACTED_13",
-                "item_id": "fc_REDACTED_13"
+                "call_id": "call_SXju5IV0XiQDMjBjI0w5u0CP",
+                "item_id": "fc_047afa2a97ee8a44006ab2b936573487d08515d5f5cd780522"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 198,
+          "bevy_ecs::hierarchy::ChildOf": 169,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "saved": "depot/6",
@@ -6042,333 +5021,22 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 200,
+          "bevy_ecs::hierarchy::ChildOf": 171,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_14"
+                "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
               },
               "provider": {
-                "call_id": "call_REDACTED_14",
-                "item_id": "fc_REDACTED_14"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/1",
-                  "value": 11
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 200,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_15"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_15",
-                "item_id": "fc_REDACTED_15"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/2",
-                  "value": 22
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 200,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_16"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_16",
-                "item_id": "fc_REDACTED_16"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/3",
-                  "value": 33
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 200,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_17"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_17",
-                "item_id": "fc_REDACTED_17"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/4",
-                  "value": 44
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 200,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_18"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_18",
-                "item_id": "fc_REDACTED_18"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/5",
-                  "value": 55
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 200,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_19"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_19",
-                "item_id": "fc_REDACTED_19"
-              },
-              "function": {
-                "name": "task_operation",
-                "arguments": {
-                  "action": "apply",
-                  "key": "depot/6",
-                  "value": 66
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 142,
-          "rig_ecs::agent::Role": "User",
-          "rig_ecs::agent::Utterance": {}
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 207,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_14"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_14",
-                "item_id": "fc_REDACTED_14"
-              },
-              "name": "task_operation"
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 208,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/1",
-              "value": 11
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 207,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_15"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_15",
-                "item_id": "fc_REDACTED_15"
-              },
-              "name": "task_operation"
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 210,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/2",
-              "value": 22
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 207,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_16"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_16",
-                "item_id": "fc_REDACTED_16"
-              },
-              "name": "task_operation"
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 212,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/3",
-              "value": 33
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 207,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_17"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_17",
-                "item_id": "fc_REDACTED_17"
-              },
-              "name": "task_operation"
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 214,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/4",
-              "value": 44
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 207,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_18"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_18",
-                "item_id": "fc_REDACTED_18"
-              },
-              "name": "task_operation"
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 216,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/5",
-              "value": 55
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 207,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolResult": {
-              "call": {
-                "origin": "explicit",
-                "id": "call_REDACTED_19"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_19",
-                "item_id": "fc_REDACTED_19"
-              },
-              "name": "task_operation"
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 218,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Json": {
-              "saved": "depot/6",
-              "value": 66
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 142,
-          "rig_ecs::agent::Role": "Assistant",
-          "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 220,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "ToolCall": {
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_20"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_20",
-                "item_id": "fc_REDACTED_20"
+                "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
               },
               "function": {
                 "name": "task_operation",
@@ -6384,57 +5052,57 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 222,
+          "bevy_ecs::hierarchy::ChildOf": 173,
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
                 "origin": "explicit",
-                "id": "call_REDACTED_20"
+                "id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm"
               },
               "provider": {
-                "call_id": "call_REDACTED_20",
-                "item_id": "fc_REDACTED_20"
+                "call_id": "call_8Ll6XDFOIRLpFvBdqhHRJ0Xm",
+                "item_id": "fc_047afa2a97ee8a44006ab2b937530087d0afc29f5553ba53ec"
               },
               "name": "task_operation"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 223,
+          "bevy_ecs::hierarchy::ChildOf": 174,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Json": {
               "passed": true,
               "failures": [],
-              "revision": 12
+              "revision": 6
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_REDACTED_1"
+          "rig_ecs::agent::content::parts::MessageId": "msg_047afa2a97ee8a44006ab2b9386eb887d09f50bd588ca241b7"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 225,
+          "bevy_ecs::hierarchy::ChildOf": 176,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "Done. The six-depot inventory has been built and validated successfully."
+              "text": "Done"
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 142,
+          "bevy_ecs::hierarchy::ChildOf": 113,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 227,
+          "bevy_ecs::hierarchy::ChildOf": 178,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "Reserve five units at each depot. Call revise(all), then read each of depot/1 through depot/6 in six separate turns before applying anything. Submit ALL SIX corrected available quantities together in ONE parallel batch under the exact depot keys. Each new value = stock + inbound - damaged - reserved. Check all, then answer done."
@@ -6444,7 +5112,7 @@
       ],
       "counters": {
         "next_run": 2,
-        "next_id": 31
+        "next_id": 24
       },
       "binaries": []
     }

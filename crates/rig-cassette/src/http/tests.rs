@@ -128,23 +128,6 @@ fn bodyless_cassette_request_only_matches_empty_actual_body() {
 }
 
 #[test]
-fn body_matching_scrubs_generated_document_names() {
-    let policy = CassettePolicy::default();
-    let headers = axum::http::HeaderMap::new();
-    let expected = r#"{"document":{"name":"document-REDACTED_1"}}"#;
-    let actual = br#"{"document":{"name":"document-d472a47d2451423eac893453a8c2fed9"}}"#;
-
-    assert!(body_matches(
-        policy,
-        &headers,
-        &[],
-        actual,
-        Some(expected),
-        BodyEncoding::Utf8
-    ));
-}
-
-#[test]
 fn replay_matching_is_ordered_by_default() {
     let policy = CassettePolicy::default();
     let request = incoming_request("/v1/second", Bytes::new());
@@ -292,9 +275,9 @@ async fn direct_recorder_omits_sigv4_headers() {
     assert_eq!(interaction.when.header.len(), 1);
     assert_eq!(interaction.when.header[0].name, "content-type");
 
-    // The response keeps `x-amzn-requestid` — the SDK reads the AWS
-    // request id off that header and nowhere else — with its value
-    // placeholdered, and still drops everything outside the allowlist.
+    // The response keeps `x-amzn-requestid` verbatim (the SDK reads the AWS
+    // request id off that header and nowhere else) and still drops
+    // everything outside the allowlist.
     let response_headers = interaction
         .then
         .header
@@ -305,7 +288,7 @@ async fn direct_recorder_omits_sigv4_headers() {
         response_headers,
         vec![
             ("content-type", "application/json"),
-            ("x-amzn-requestid", "req_REDACTED_1"),
+            ("x-amzn-requestid", "request-id"),
         ]
     );
 }
@@ -329,9 +312,9 @@ fn replay_miss_diagnostics_scrub_actual_request_details() {
     assert!(!message.contains("raw-api-key"));
     assert!(!message.contains("body-secret"));
     assert!(!message.contains("body-token"));
-    assert!(!message.contains("resp_12345678"));
     assert!(message.contains(REDACTED));
-    assert!(message.contains("resp_REDACTED_1"));
+    // A response id is not a secret; the diagnostic names it as sent.
+    assert!(message.contains("resp_12345678"));
 }
 
 #[test]
@@ -539,7 +522,6 @@ fn scrubber_reframes_binary_event_stream_payloads() {
     );
 
     let scrubbed = scrub_cassette_contents(&cassette);
-    assert!(!scrubbed.contains(generated_id));
     assert!(
         cassette_safety_failures(Path::new("fixture.yaml"), &scrubbed).is_empty(),
         "scrubbed event stream should pass cassette safety"
@@ -557,7 +539,10 @@ fn scrubber_reframes_binary_event_stream_payloads() {
     );
     let message = read_message_from(&mut reframed).expect("event stream should remain valid");
     let payload = std::str::from_utf8(message.payload()).expect("JSON payload should be UTF-8");
-    assert!(payload.contains("tooluse_REDACTED_1"));
+    assert!(
+        payload.contains(generated_id),
+        "the id is recorded verbatim"
+    );
 }
 
 #[test]
@@ -692,8 +677,11 @@ then:
     assert!(cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty());
 }
 
+/// Provider ids are recorded verbatim: a file id, a message id and the
+/// repeated file id in a later path and query all survive, and scrubbing
+/// the result again changes nothing.
 #[test]
-fn scrubber_preserves_repeated_ids_across_json_bodies() {
+fn scrubber_records_provider_ids_verbatim() {
     let cassette = r#"when:
   path: /v1/files
   method: POST
@@ -722,15 +710,15 @@ then:
 
     let scrubbed = scrub_cassette_contents(cassette);
 
-    assert!(!scrubbed.contains("file_011Cb1W1wnAxQP1a6AuVcPx5"));
-    assert_eq!(scrubbed.matches("file_REDACTED_1").count(), 5);
-    assert!(scrubbed.contains("msg_REDACTED_1"));
+    assert_eq!(scrubbed.matches("file_011Cb1W1wnAxQP1a6AuVcPx5").count(), 5);
+    assert!(scrubbed.contains("msg_01D9wgWnWe16jLatSL7ce5Gm"));
+    assert!(!scrubbed.contains("REDACTED_"));
     assert!(scrubbed.contains("rig-file-id-page-two-verifier-8c27"));
     assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
 }
 
 #[test]
-fn scrubber_preserves_repeated_bedrock_tool_use_ids_across_json_bodies() {
+fn scrubber_records_bedrock_tool_use_ids_verbatim() {
     let cassette = r#"when:
   path: /model/amazon.nova-lite-v1%3A0/converse
   method: POST
@@ -749,13 +737,18 @@ then:
 
     let scrubbed = scrub_cassette_contents(cassette);
 
-    assert!(!scrubbed.contains("tooluse_A3wBRw65LYralyPMOxFhuj"));
-    assert_eq!(scrubbed.matches("tooluse_REDACTED_1").count(), 2);
+    assert_eq!(
+        scrubbed.matches("tooluse_A3wBRw65LYralyPMOxFhuj").count(),
+        2
+    );
+    assert!(!scrubbed.contains("REDACTED_"));
     assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
 }
 
+/// An SSE recording keeps its ids and fingerprint; only the volatile date
+/// header goes.
 #[test]
-fn scrubber_scrubs_sse_json_payloads() {
+fn scrubber_keeps_sse_json_payloads_and_drops_volatile_headers() {
     let cassette = r#"when:
   path: /v1/chat/completions
   method: POST
@@ -771,12 +764,10 @@ then:
 
     let scrubbed = scrub_cassette_contents(cassette);
 
-    assert!(!scrubbed.contains("chatcmpl-DfEFWCScgKdeItzBxcAl2DTWsWPwj"));
-    assert!(!scrubbed.contains("call_vJUubymOrhXJwTYjJvSnqzAe"));
-    assert!(!scrubbed.contains("fp_c27f75025a"));
+    assert!(scrubbed.contains("chatcmpl-DfEFWCScgKdeItzBxcAl2DTWsWPwj"));
+    assert!(scrubbed.contains("call_vJUubymOrhXJwTYjJvSnqzAe"));
+    assert!(scrubbed.contains("fp_c27f75025a"));
     assert!(!scrubbed.contains("date"));
-    assert!(scrubbed.contains("chatcmpl-REDACTED_1"));
-    assert!(scrubbed.contains("call_REDACTED_1"));
     assert!(scrubbed.contains("data: [DONE]"));
     assert!(scrubbed.contains("content-type"));
 }
@@ -798,25 +789,138 @@ then:
     assert!(!scrubbed.contains("id_REDACTED"));
 }
 
-/// The digit-less `call_` rule (Ollama's minted `call_kqpofucm` ids)
-/// keys off field identity, not value shape: a legitimate tool *named*
-/// `call_forwarding` survives recording untouched, while the same
-/// spelling in an id field is redacted.
+/// Opaque replay fields are recorded verbatim, so a fixture can seed a live
+/// call with the provider's own signature or ciphertext.
 #[test]
-fn scrubber_redacts_digitless_call_tokens_only_in_id_fields() {
+fn scrubber_records_opaque_replay_fields_verbatim() {
     let cassette = r#"when:
-  path: /api/chat
+  path: /v1/messages
   method: POST
-  body: '{"tool_calls":[{"id":"call_kqpofucm","function":{"name":"call_forwarding"}}]}'
+  body: '{"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t","signature":"ErUBCkYIBRgCIkA7/sig+bytes=="},{"type":"redacted_thinking","data":"EqQBCgY/redacted+bytes=="}]}]}'
 then:
   status: 200
-  body: '{"message":"use call_forwarding for this"}'
+  body: '{"output":[{"type":"reasoning","id":"rs_0123456789abcdef","encrypted_content":"gAAAAAB/encrypted+bytes==","summary":[]}],"candidates":[{"content":{"parts":[{"text":"x","thoughtSignature":"CqMBCgY/thought+bytes=="}]}}],"data":[{"b64_json":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="}],"images":["iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="],"id":"gen_1","obfuscation":"aB3d","safety_identifier":"u_9f8e7d","prompt_cache_key":"rig-key","system_fingerprint":"fp_c27f75025a","url":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbCdEf","name":"cachedContents/n3v1qk0nqz9k","nextPageToken":"cjwKDoIBCwifnJDUBhDo0c8VCipCKHZi"}'
 "#;
 
     let scrubbed = scrub_cassette_contents(cassette);
 
-    assert!(!scrubbed.contains("call_kqpofucm"));
-    assert_eq!(scrubbed.matches("call_forwarding").count(), 2);
+    for verbatim in [
+        "ErUBCkYIBRgCIkA7/sig+bytes==",
+        "EqQBCgY/redacted+bytes==",
+        "rs_0123456789abcdef",
+        "gAAAAAB/encrypted+bytes==",
+        "CqMBCgY/thought+bytes==",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+        "aB3d",
+        "u_9f8e7d",
+        "rig-key",
+        "fp_c27f75025a",
+        "grounding-api-redirect/AbCdEf",
+        "cachedContents/n3v1qk0nqz9k",
+        "cjwKDoIBCwifnJDUBhDo0c8VCipCKHZi",
+    ] {
+        assert!(
+            scrubbed.contains(verbatim),
+            "{verbatim} was scrubbed: {scrubbed}"
+        );
+    }
+    assert!(!scrubbed.contains("REDACTED_"), "{scrubbed}");
+    assert!(
+        cassette_safety_failures(Path::new("fixture.yaml"), &scrubbed).is_empty(),
+        "verbatim opaque fields pass the safety scan"
+    );
+}
+
+/// A fixture recorded under the old policy is already in recorded form:
+/// scrubbing leaves every placeholder in place, so the committed corpus
+/// passes the safety scan unchanged.
+#[test]
+fn scrubbing_is_the_identity_on_a_legacy_placeholder_fixture() {
+    let legacy = r#"when:
+  path: /v1/responses
+  method: POST
+  body: '{"input":[{"type":"reasoning","id":"rs_REDACTED_1","encrypted_content":"encrypted_content_REDACTED_2"},{"type":"function_call","call_id":"call_REDACTED_1","id":"fc_REDACTED_1"}],"prompt_cache_key":"id_REDACTED_1"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"id":"resp_REDACTED_1","output":[{"type":"reasoning","id":"rs_REDACTED_2","encrypted_content":"encrypted_content_REDACTED_3","summary":[]}],"safety_identifier":"id_REDACTED_2","system_fingerprint":"fp_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","name":"cachedContents/cached-REDACTED_1","data":[{"b64_json":"aGVsbG8="}]}'
+"#;
+
+    fn placeholders(text: &str) -> Vec<&str> {
+        let mut found: Vec<&str> = text
+            .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')))
+            .filter(|token| token.contains("REDACTED_"))
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
+    let scrubbed = scrub_cassette_contents(legacy);
+    assert_eq!(placeholders(&scrubbed), placeholders(legacy));
+    assert!(scrubbed.contains("aGVsbG8="));
+    assert!(scrubbed.contains("cachedContents/cached-REDACTED_1"));
+    assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+    assert!(cassette_safety_failures(Path::new("fixture.yaml"), &scrubbed).is_empty());
+}
+
+/// A standard-base64 blob puts `+` or `/` before a key-shaped run as often
+/// as any letter; neither starts a key.
+#[test]
+fn safety_scans_ignore_key_prefixes_after_base64_punctuation() {
+    let cassette = scrub_cassette_contents(
+        r#"when:
+  path: /v1/messages
+  method: POST
+then:
+  status: 200
+  body: '{"signature":"Eq/AIzaSyExampleSecretToken1234567890ABCDE+AKIA0123456789ABCDEF=="}'
+"#,
+    );
+    assert!(
+        cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty(),
+        "{cassette}"
+    );
+}
+
+/// Long base64 runs, which verbatim signatures, ciphertext and images now
+/// are, contain every four-letter prefix eventually; a key detector must
+/// require the prefix to start a token.
+#[test]
+fn safety_scans_ignore_key_prefixes_inside_base64_blobs() {
+    let cassette = scrub_cassette_contents(
+        r#"when:
+  path: /v1/messages
+  method: POST
+then:
+  status: 200
+  body: '{"signature":"ErUBCkYIBRgCIkAIzaSyExampleSecretToken1234567890ABCDEAKIA0123456789ABCDEFGHASIA0123456789ABCDEFsk-proj-notakeyhereatall0123456789abcdef","x":1}'
+"#,
+    );
+
+    assert!(
+        cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty(),
+        "{cassette}"
+    );
+    // The same prefixes starting a token are still keys.
+    let leaked = scrub_cassette_contents(
+        r#"when:
+  path: /v1/messages
+  method: POST
+then:
+  status: 200
+  body: '{"leaked":"AIzaSyExampleSecretToken1234567890ABCDE","aws":"AKIA0123456789ABCDEF"}'
+"#,
+    );
+    let failures = cassette_safety_failures(Path::new("fixture.yaml"), &leaked);
+    assert!(
+        failures.iter().any(|f| f.contains("Google API key")),
+        "{failures:?}"
+    );
+    assert!(failures.iter().any(|f| f.contains("AWS")), "{failures:?}");
 }
 
 #[test]
@@ -849,12 +953,10 @@ then:
 
     assert!(scrubbed.contains("value: '[REDACTED]'"));
     assert!(!scrubbed.contains("AIzaSySecret"));
-    // `x-request-id` is allowlisted since rig#2265 (provider transport
-    // request ids are feature data), but its value is a generated id and
-    // must record scrubbed.
+    // `x-request-id` is allowlisted (provider transport request ids are
+    // feature data) and its value is recorded as sent.
     assert!(scrubbed.contains("x-request-id"));
-    assert!(!scrubbed.contains("req_abc123456789"));
-    assert!(scrubbed.contains("req_REDACTED"));
+    assert!(scrubbed.contains("req_abc123456789"));
     assert!(scrubbed.contains("name: retry-after\n    value: '2'"));
     assert!(scrubbed.contains("Sun, 06 Nov 1994 08:49:37 GMT"));
     assert!(!scrubbed.contains("opaque-private-credential"));
@@ -883,9 +985,9 @@ then:
     assert_eq!(scrubbed.matches(REDACTED).count(), 4);
 }
 
-/// OAuth tokens in a recorded body are placeholdered at record time, the
-/// way generated ids are: a token exchange or a refresh reply can never
-/// reach a committed cassette with its material.
+/// OAuth tokens in a recorded body are placeholdered at record time: a token
+/// exchange or a refresh reply can never reach a committed cassette with its
+/// material.
 #[test]
 fn oauth_token_fields_are_placeholdered_at_record_time() {
     let cassette = scrub_cassette_contents(
