@@ -25,8 +25,9 @@ from a golden by id and check the bus reproduces the trace it was given.
 
 ## Execution and comparison boundaries
 
-Native cases use the actual ECS schedule and provider/tool adapters, with the
-same HTTP recordings as their agent counterparts. Shared neutral tools,
+Native cases use the actual ECS schedule and provider/tool adapters. Cases with
+agent counterparts share their HTTP recordings; native-only long tasks record
+through the native producer. Shared neutral tools,
 configuration and assertion helpers are allowed; invoking the other interpreter
 or replaying its expected effect answers does not establish independent native
 execution. Preserve strict request matching, interaction consumption, propagated
@@ -63,7 +64,9 @@ The helpers in [shared test drivers](../../test-support/rig-test-support/src) de
   configuration scenes. Native producers capture each scope before dispatch.
   `world_replay_world` restores those configurations, checks each scope with
   `check_replayable`, then replays every recorded exchange by id in a separate
-  bus-only world. Configuration evidence does not serialize application systems.
+  bus-only world. Configuration evidence does not serialize application systems
+  or SDK clients. Model options absent from `ProviderConfig` require the host to
+  rebind the intact configured adapter, not reconstruct it from a lossy recipe.
 - Per-run settings remain separate from agent defaults, including undeclared
   default budgets. Host bus policy can be undeclared in a comparison header
   without changing actual serving policy. Declared policy names do not hash
@@ -88,6 +91,7 @@ and fixtures remain authoritative for case-specific values and configuration.
 | Gemini tools | Preserve real counters, exactly correlated calls/results, integer/JSON/string result semantics and protocol hygiene. Generated call IDs need not be globally unique; correlate within their actual turn. |
 | Gemini streamed access and diagnostics | Observe and resolve native invalid calls; repair continues the same stream, skip preserves abandoned history/usage, and failures retain actual diagnostics. Drain issued completions where the original requires it. Synthetic gated tests, not cassette timing, establish intervention before EOF and persistence of repairs. |
 | Turn termination, Anthropic reasoning/stop matrices | Reconcile provider finish reasons with actual tool content. Preserve tiny/roomy cap transitions, rejected-attempt observation before retry, recorded stop-sequence/empty-output checks and provider-specific usage arithmetic. Blocking and streaming assertions may differ. |
+| Native long tasks | Assert edited state, reconciled pages and revised inventory independently of model prose. Enforce whole-task completion and pre-dispatch tool limits. Continuation carries committed history; restore reinstalls host-owned tools and bindings. Check each raw/normalized usage row, missing-aware totals, serialized cache configuration and history prefixes. Positive cache observations are record-time facts, not replay-time guarantees. Ignored unrecorded rows establish no execution evidence. |
 | Cache growth | Inspect successful actual completion usage in turn order through the shared validator, retaining prefix and provider breakpoint assertions. Recorded cache ratios do not establish live TTL, economics or broader caching guarantees. |
 | Hooks, layers | Gate patches/denials affect actual dispatch; Judge replacements affect consumption while the recorder retains the inner answer. Await startup effects before model advancement. Preserve middleware order, observed memory load and original versus replaced values. |
 | Endings, outcomes | Distinguish run cancellation, issued-effect despawn and provider failure. Preserve actual settled/failure observations, partial stream prefixes and error item positions. Exact cancellation prefixes rely on test-owned backpressure; they do not establish unrestricted transport timing equivalence. |

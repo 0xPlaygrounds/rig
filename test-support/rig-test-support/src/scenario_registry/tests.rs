@@ -63,6 +63,21 @@ fn qualified_matrix_invocations_in_modules_claim_only_recorded_rows() {
 }
 
 #[test]
+fn post_cassette_assertions_preserve_literal_scenario_registration() {
+    let source = r#"
+        crate::matrix::resume_matrix! {
+            wrapper: with_cassette, wire: wire, run: run, after: checks::requests;
+            #[tokio::test] task: ("long_task_matrix/inventory", CELL, None, "task");
+            #[tokio::test] #[ignore = "unrecorded"] absent: ("long_task_matrix/absent", CELL, None, "absent");
+        }
+    "#;
+    assert_eq!(
+        cassette_scenarios(source, WRAPPERS).expect("post-cassette rows"),
+        ["long_task_matrix/inventory"]
+    );
+}
+
+#[test]
 fn comments_strings_and_macro_definitions_are_not_invocations() {
     let source = r#"
         // with_cassette("comment", callback);

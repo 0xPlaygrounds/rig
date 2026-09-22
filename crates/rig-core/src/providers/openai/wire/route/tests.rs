@@ -57,12 +57,20 @@ fn request() -> CompletionRequest {
 /// What `provider`'s route sends after `option` went through
 /// [`Bound::map_wire`].
 fn body(provider: OpenAI, option: impl FnOnce(OpenAiWire) -> OpenAiWire) -> serde_json::Value {
+    body_with_request(provider, option, request())
+}
+
+fn body_with_request(
+    provider: OpenAI,
+    option: impl FnOnce(OpenAiWire) -> OpenAiWire,
+    request: CompletionRequest,
+) -> serde_json::Value {
     let bound = Bound::new(provider, ())
         .completion("gpt-5.2")
         .map_wire(option);
     let encoded = bound
         .wire
-        .encode(request(), Mode::Unary)
+        .encode(request, Mode::Unary)
         .expect("the request encodes");
     let [request] = encoded.requests.as_slice() else {
         panic!("a completion route sends one request");
@@ -143,6 +151,50 @@ fn map_wire_reaches_prompt_caching_on_the_chat_route_only() {
         OpenAI::with_key(&OPENROUTER, "sk-test").with_route(Route::Responses),
         OpenAiWire::with_prompt_caching,
     );
+}
+
+#[test]
+fn changed_system_prefix_changes_both_encoded_openai_routes() {
+    for provider in [chat(), responses()] {
+        let original = request();
+        let mut changed = original.clone();
+        *changed.chat_history.first_mut().expect("system message") =
+            Message::system("different task rules");
+        assert_ne!(
+            body_with_request(provider.clone(), untouched, original),
+            body_with_request(provider, untouched, changed)
+        );
+    }
+}
+
+#[test]
+fn encoded_cache_affinity_and_retention_preserve_configured_values() {
+    for provider in [chat(), responses()] {
+        for key in ["first-task-key", "changed-task-key"] {
+            let mut request = request();
+            request.additional_params =
+                Some(serde_json::json!({"prompt_cache_key": key, "prompt_cache_retention": "24h"}));
+            let encoded = body_with_request(provider.clone(), untouched, request);
+            assert_eq!(
+                encoded.get("prompt_cache_key"),
+                Some(&serde_json::json!(key))
+            );
+            assert_eq!(
+                encoded.get("prompt_cache_retention"),
+                Some(&serde_json::json!("24h"))
+            );
+        }
+    }
+}
+
+#[test]
+fn openrouter_cache_controls_do_not_change_openai_requests() {
+    for provider in [chat(), responses()] {
+        assert_eq!(
+            body(provider.clone(), OpenAiWire::with_prompt_caching),
+            body(provider, untouched),
+        );
+    }
 }
 
 #[test]

@@ -188,6 +188,14 @@ make a check pass. `.gitattributes` exempts the cassettes from the
 blank-at-eof whitespace check because SSE bodies legitimately end in a blank
 line.
 
+The native long-task matrix covers investigation/repair, reconciliation and
+continued inventory work. Its shared assertions check final state, delivered
+history, cache request configuration and missing-aware usage totals. HTTP
+cassette replay executes local tools; world effect replay replaces their
+handlers with recorded outcomes. New long-task logs also check a live-tool
+tripwire. Unrecorded
+cells remain explicitly ignored and provide no cache-hit evidence.
+
 No corpus is embedded with `include_*!`; the binaries read them at runtime
 from `CARGO_MANIFEST_DIR`, which is why `exclude` can keep them out of the
 published tarball (the crates.io 10 MiB upload limit is enforced server-side
@@ -198,7 +206,8 @@ and never surfaces in `cargo publish --dry-run`).
 Background, not an instruction to record: recording contacts a real provider
 and is a deliberate, separately authorized act.
 
-Produce the two golden corpora from the same recorded HTTP:
+For cells with both runtime columns, produce the two golden corpora from the
+same recorded HTTP. Native-only long-task cells use only the native producer:
 
 1. **Record the HTTP.** The producer test runs against the real provider under
    `RIG_PROVIDER_TEST_MODE=record`, on its own exact test filter, and writes a

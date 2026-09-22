@@ -95,13 +95,17 @@ pub fn recorded_sse_json_frames(provider: &str, scenario: &str) -> Vec<serde_jso
     rig_cassette::http::recorded_sse_json_frames(&cassette_root(), provider, scenario)
 }
 
-/// Save completed checkpoint-matrix exchanges before a failing body unwinds.
+/// Save completed matrix exchanges before a failing body unwinds.
 /// This is attempt evidence, never a replacement for cassette finalization.
 pub async fn checkpoint_attempt(cassette: &ProviderCassette, provider: &str, scenario: &str) {
-    if !scenario.starts_with("checkpoint_matrix") && !scenario.starts_with("long_loop_matrix") {
+    if !scenario.starts_with("checkpoint_matrix")
+        && !scenario.starts_with("long_loop_matrix")
+        && !scenario.starts_with("long_task_matrix")
+    {
         return;
     }
-    let Some(directory) = std::env::var_os("RIG_CHECKPOINT_ATTEMPT_DIR")
+    let Some(directory) = std::env::var_os("RIG_LONG_TASK_ATTEMPT_DIR")
+        .or_else(|| std::env::var_os("RIG_CHECKPOINT_ATTEMPT_DIR"))
         .or_else(|| std::env::var_os("RIG_LONG_LOOP_ATTEMPT_DIR"))
     else {
         return;

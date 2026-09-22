@@ -7,6 +7,10 @@ mod fixtures;
 
 use std::{
     collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -22,13 +26,29 @@ use rig_core::{
 use rig_ecs::{
     RigPlugin,
     agent::RunOf,
-    bus::{BusPlugin, EffectOutcome, Scope},
+    bus::{BusPlugin, EffectOutcome, Handlers, Scope},
     checkpoint::{Checkpoint, RestoreMode, load_world},
 };
 
-const EXPECTED_GOLDENS: usize = 1197;
+const EXPECTED_GOLDENS: usize = 1217;
 const GUARD: Duration = Duration::from_secs(30);
 type Programs = BTreeMap<String, (ServingPolicy, Checkpoint)>;
+
+struct ToolTripwire {
+    descriptor: HandlerDescriptor,
+    calls: Arc<AtomicUsize>,
+}
+
+impl Serve for ToolTripwire {
+    type Family = rig_core::effect::family::Dynamic;
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.descriptor.clone()
+    }
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        panic!("effect replay invoked a live task tool")
+    }
+}
 
 struct ConfigurationHandler {
     descriptor: HandlerDescriptor,
@@ -108,7 +128,7 @@ fn check_programs(name: &str, log: &EffectLog, programs: &Programs) -> ServingPo
     policy
 }
 
-fn replay(name: &str, log: &EffectLog, policy: ServingPolicy) {
+fn replay(name: &str, log: &EffectLog, policy: ServingPolicy, inject_live_tool: bool) {
     let mut app = App::new();
     app.add_plugins(BusPlugin::with_policy(ServingPolicy {
         command_capacity: 10_000,
@@ -117,9 +137,49 @@ fn replay(name: &str, log: &EffectLog, policy: ServingPolicy) {
     app.add_plugins(ReplayPlugin);
     app.finish();
     app.cleanup();
+    let tool_calls = Arc::new(AtomicUsize::new(0));
+    if name.contains("long_task") {
+        Handlers::with(app.world_mut(), |handlers| {
+            for descriptor in &log.header.handlers {
+                if descriptor.family.family() == rig_core::effect::EffectFamily::Tool {
+                    handlers
+                        .register_erased(
+                            descriptor.key.clone(),
+                            ErasedHandler::new(ToolTripwire {
+                                descriptor: descriptor.clone(),
+                                calls: tool_calls.clone(),
+                            }),
+                        )
+                        .expect("live tripwire registration");
+                }
+            }
+        })
+        .expect("bus handlers");
+    }
     Replay::default()
         .register(app.world_mut(), log)
         .unwrap_or_else(|error| panic!("{name}: register replay: {error}"));
+    if inject_live_tool {
+        let descriptor = log
+            .header
+            .handlers
+            .iter()
+            .find(|descriptor| descriptor.family.family() == rig_core::effect::EffectFamily::Tool)
+            .expect("task tool descriptor")
+            .clone();
+        Handlers::with(app.world_mut(), |handlers| {
+            handlers
+                .register_erased(
+                    descriptor.key.clone(),
+                    ErasedHandler::new(ToolTripwire {
+                        descriptor,
+                        calls: tool_calls.clone(),
+                    }),
+                )
+                .expect("inject live task tool");
+        })
+        .expect("bus handlers");
+    }
     let recorder = if log.records.iter().any(|record| record.events.is_some()) {
         EffectLogRecorder::keeping_stream_events()
     } else {
@@ -135,6 +195,11 @@ fn replay(name: &str, log: &EffectLog, policy: ServingPolicy) {
     let started = Instant::now();
     loop {
         app.update();
+        assert_eq!(
+            tool_calls.load(Ordering::SeqCst),
+            0,
+            "effect replay must never execute a live task tool"
+        );
         assert!(
             app.world()
                 .get_resource::<rig_cassette::ecs::ReplayFailure>()
@@ -165,6 +230,20 @@ fn replay(name: &str, log: &EffectLog, policy: ServingPolicy) {
 }
 
 #[test]
+#[should_panic(expected = "live task tool")]
+fn a_live_tool_replacing_the_recorded_handler_is_detected() {
+    let name = "openai_chat_long_task_inventory_restore";
+    let text = std::fs::read_to_string(
+        fixtures::effects_dir()
+            .join("world")
+            .join(format!("{name}.effects.json")),
+    )
+    .expect("task golden");
+    let log: EffectLog = serde_json::from_str(&text).expect("task log");
+    replay(name, &log, ServingPolicy::default(), true);
+}
+
+#[test]
 fn every_world_golden_checks_its_programs_and_replays_by_id() {
     let directory = fixtures::effects_dir().join("world");
     let mut names: Vec<_> = std::fs::read_dir(&directory)
@@ -192,7 +271,7 @@ fn every_world_golden_checks_its_programs_and_replays_by_id() {
             .expect("world program scenes");
         let programs: Programs = serde_json::from_str(&text).expect("world program scenes decode");
         let policy = check_programs(name, &log, &programs);
-        replay(name, &log, policy);
+        replay(name, &log, policy, false);
     }
     eprintln!("{} world goldens checked and replayed by id", names.len());
 }

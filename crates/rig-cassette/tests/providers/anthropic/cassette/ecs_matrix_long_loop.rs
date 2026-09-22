@@ -26,6 +26,77 @@ fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'stati
     }
 }
 
+fn task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: THINKING,
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .map_wire(|wire| wire.with_prompt_caching()),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+fn automatic_task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: THINKING,
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .map_wire(|wire| wire.with_automatic_caching_1h()),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+fn mixed_task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: THINKING,
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .map_wire(|wire| {
+                wire.with_automatic_caching().with_static_prefix_cache_ttl(
+                    rig::providers::anthropic::completion::CacheTtl::OneHour,
+                )
+            }),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+fn assert_task_requests(scenario: &str) {
+    crate::ecs_matrix::long_tasks::assert_requests("anthropic", scenario);
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_anthropic_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
+    #[tokio::test]
+    #[ignore = "Anthropic workspace API quota exhausted; native recording returned HTTP 400, reset 2026-10-01; unrecorded"]
+    task_repair: ("long_task_matrix/repair", crate::ecs_matrix::long_tasks::REPAIR, None, "anthropic_long_task_repair");
+    #[tokio::test]
+    #[ignore = "Anthropic workspace API quota exhausted; unrecorded"]
+    task_reconcile: ("long_task_matrix/reconcile", crate::ecs_matrix::long_tasks::RECONCILE, None, "anthropic_long_task_reconcile");
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_anthropic_cassette, wire: automatic_task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
+    #[tokio::test]
+    #[ignore = "Anthropic workspace API quota exhausted; unrecorded"]
+    task_repair_streamed: ("long_task_matrix/repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "anthropic_long_task_repair_streamed");
+}
+
+crate::matrix::resume_matrix! {
+    wrapper: with_anthropic_cassette, wire: mixed_task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
+    #[tokio::test]
+    #[ignore = "Anthropic workspace API quota exhausted; unrecorded"]
+    task_inventory: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, None, "anthropic_long_task_inventory");
+    #[tokio::test]
+    #[ignore = "Anthropic workspace API quota exhausted; baseline unrecorded"]
+    task_inventory_restore: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, Some(5), "anthropic_long_task_inventory_restore");
+}
+
 /// A key the scripted cells send: it must never reach a recording or a
 /// trace.
 const SCRIPTED_KEY: &str = "sk-ant-scripted-fault-key-7f3a9c";
