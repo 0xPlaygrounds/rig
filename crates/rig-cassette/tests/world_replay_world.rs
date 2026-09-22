@@ -95,12 +95,13 @@ fn check_programs(name: &str, log: &EffectLog, programs: &Programs) -> ServingPo
             })
             .collect();
         assert_eq!(runs.len(), 1, "{name}/{scope}: exactly one configured run");
-        check_replayable(app.world_mut(), runs[0], log)
+        let run = *runs.first().expect("one configured run");
+        check_replayable(app.world_mut(), run, log)
             .unwrap_or_else(|error| panic!("{name}/{scope}: compatibility: {error}"));
         let mut stale = log.clone();
         stale.header.programs.get_mut(scope).expect("scope").policy ^= 1;
         assert!(
-            check_replayable(app.world_mut(), runs[0], &stale).is_err(),
+            check_replayable(app.world_mut(), run, &stale).is_err(),
             "{name}/{scope}: stale policy must refuse"
         );
     }
