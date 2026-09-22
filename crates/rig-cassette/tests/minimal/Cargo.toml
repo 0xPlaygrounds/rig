@@ -34,5 +34,9 @@ name = "world_replay"
 path = "../world_replay.rs"
 
 [[test]]
+name = "world_replay_world"
+path = "../world_replay_world.rs"
+
+[[test]]
 name = "effect_log"
 path = "effect_log.rs"
