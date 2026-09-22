@@ -25,6 +25,8 @@ use crate::wire::{Fold, Operation, Reply};
 use futures::StreamExt;
 use serde_json::{self, json};
 
+mod annotations;
+
 #[test]
 fn classify_known_event_decodes() {
     let frame = json!({
@@ -2144,6 +2146,121 @@ fn choice_text_parts(response: &crate::completion::CompletionResponse) -> Vec<St
             _ => None,
         })
         .collect()
+}
+
+/// Synthetic frames isolate each fallback and repeated snapshot. The existing
+/// OpenAI/xAI cassettes contain no URL citations; no live recording was made.
+#[test]
+fn streaming_annotations_survive_events_and_snapshots_without_duplicates() {
+    let citations = json!([
+        {"type":"url_citation", "url":"https://example.com/a", "title":"A", "start_index":0, "end_index":2},
+        {"type":"url_citation", "url":"https://example.com/b", "title":"B", "start_index":3, "end_index":5}
+    ]);
+    let provider = "openai";
+    for source in [
+        "incremental",
+        "item_done",
+        "terminal",
+        "all",
+        "partial",
+        "body_only",
+    ] {
+        let mut raw_response = sample_response(ResponseStatus::Completed);
+        let message = json!({"type":"message", "id":"msg_citations", "role":"assistant",
+                "status":"completed", "content":[{"type":"output_text", "text":"hello", "annotations":citations}]});
+        let mut frames = Vec::new();
+        if source != "body_only" {
+            frames.push(
+                json!({"type":"response.output_text.delta", "item_id":"msg_citations",
+                    "output_index":0, "content_index":0, "sequence_number":1, "delta":"hello"}),
+            );
+        }
+        if source == "incremental" || source == "all" || source == "partial" {
+            let count = if source == "partial" { 1 } else { 2 };
+            for index in 0..count {
+                frames.push(json!({"type":"response.output_text.annotation.added", "item_id":"msg_citations",
+                        "output_index":0, "content_index":0, "annotation_index":index,
+                        "sequence_number":index + 2, "annotation":citations[index]}));
+            }
+        }
+        if source == "item_done" || source == "all" {
+            frames.push(json!({"type":"response.output_item.done", "output_index":0,
+                    "sequence_number":4, "item":message}));
+        }
+        if source == "terminal" || source == "all" || source == "partial" || source == "body_only" {
+            raw_response.output = vec![serde_json::from_value(message).expect("valid message")];
+        }
+        frames.push(
+            json!({"type":"response.completed", "sequence_number":5, "response":raw_response}),
+        );
+        let body = frames
+            .iter()
+            .map(|frame| format!("data: {frame}\n"))
+            .collect::<String>();
+        let events = stream_events_from_sse_body(provider, &body, None).expect("valid stream");
+        assert!(events.iter().any(|event| matches!(
+            event,
+            StreamEvent::BlockDelta {
+                delta: Delta::TextMeta { .. },
+                ..
+            }
+        )));
+        let response = folded_stream_events(provider, events, &raw_response).expect("valid fold");
+        assert_eq!(
+            choice_text_parts(&response),
+            ["hello"],
+            "{provider}/{source}"
+        );
+        let Some(AssistantContent::Text(text)) = response.choice.first() else {
+            panic!("expected text");
+        };
+        let extras = text
+            .additional_params
+            .as_ref()
+            .expect("annotations retained")
+            .get("openai_responses")
+            .expect("wire extras");
+        assert_eq!(extras["annotations"], citations, "{provider}/{source}");
+    }
+}
+
+/// Synthetic interleaving checks assembly identity, independent of provider
+/// traffic; the existing cassettes do not contain annotated message pairs.
+#[test]
+fn streaming_annotations_attach_to_their_message_after_other_text() {
+    let mut raw_response = sample_response(ResponseStatus::Completed);
+    raw_response.output.clear();
+    let mut body = String::new();
+    for index in 0..2 {
+        let delta = json!({"type":"response.output_text.delta", "item_id":format!("msg_{index}"),
+            "output_index":index, "content_index":0, "sequence_number":index, "delta":format!("text {index}")});
+        body.push_str(&format!("data: {delta}\n"));
+        // Gateways may restate a different id; output_index still correlates.
+        raw_response.output.push(serde_json::from_value(json!({
+            "type":"message", "id":format!("done_{index}"), "role":"assistant", "status":"completed",
+            "content":[{"type":"output_text", "text":format!("text {index}"),
+                "annotations":[{"type":"url_citation", "url":format!("https://example.com/{index}")}]}]
+        })).expect("valid message"));
+    }
+    let terminal =
+        json!({"type":"response.completed", "sequence_number":3, "response":raw_response});
+    body.push_str(&format!("data: {terminal}\n"));
+    let events = stream_events_from_sse_body("openai", &body, None).expect("valid stream");
+    let response = folded_stream_events("openai", events, &raw_response).expect("valid fold");
+    assert_eq!(choice_text_parts(&response), ["text 0", "text 1"]);
+    for (index, content) in response.choice.iter().enumerate() {
+        let AssistantContent::Text(text) = content else {
+            panic!("expected text")
+        };
+        let params = text
+            .additional_params
+            .as_ref()
+            .expect("annotations retained");
+        assert_eq!(
+            params.get("openai_responses").expect("wire extras")["annotations"][0]["url"],
+            format!("https://example.com/{index}")
+        );
+    }
 }
 
 /// The terminal restates the whole turn, and its message text IS the turn's

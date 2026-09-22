@@ -673,34 +673,57 @@ fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<O
 }
 
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct ResponsesToolDefinition {
     /// The type of tool.
     #[serde(rename = "type")]
     pub kind: String,
     /// Tool name
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub name: String,
     /// Parameters - this should be a JSON schema. Strict function tools must use OpenAI's supported strict schema subset.
-    #[serde(default, skip_serializing_if = "is_json_null")]
+    #[serde(default)]
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
     /// or [`wire::Responses::with_strict_tools`].
     ///
-    /// Always serialized: the Responses API treats an omitted `strict` as "attempt strict
-    /// mode", so `false` must reach the wire for non-strict tools to actually be non-strict.
+    /// Always serialized for function tools: the Responses API treats an omitted
+    /// `strict` as "attempt strict mode". Omitted for hosted tools, which reject it.
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub strict: bool,
     /// Tool description.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub description: String,
     /// Additional provider-specific configuration for hosted tools.
-    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+    #[serde(flatten, default)]
     pub config: Map<String, Value>,
 }
 
-fn is_json_null(value: &Value) -> bool {
-    value.is_null()
+impl Serialize for ResponsesToolDefinition {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("type", &self.kind)?;
+        if !self.name.is_empty() {
+            map.serialize_entry("name", &self.name)?;
+        }
+        if !self.parameters.is_null() {
+            map.serialize_entry("parameters", &self.parameters)?;
+        }
+        // False must remain explicit for function tools, but even false is an
+        // unknown parameter on hosted tools such as web_search.
+        if self.kind == "function" {
+            map.serialize_entry("strict", &self.strict)?;
+        }
+        if !self.description.is_empty() {
+            map.serialize_entry("description", &self.description)?;
+        }
+        for (key, value) in &self.config {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
 }
 
 impl ResponsesToolDefinition {
@@ -2347,10 +2370,9 @@ fn assistant_text_replay_message(
 /// Key under which an `output_text` block's wire extras (`annotations`,
 /// `logprobs`, future keys) ride on the generic
 /// [`Text::additional_params`](crate::message::Text) — captured on the
-/// **blocking** response path, replayed only by this wire's serializer. The
-/// streaming adapter does not yet route annotation events into params, so a
-/// streamed turn's history carries no extras under this key (follow-up
-/// work, not a silent drop at replay: nothing was captured).
+/// blocking response path, replayed only by this wire's serializer.
+/// Streaming emits incremental annotations and reconciles completed content-part
+/// extras, including message phase, without appending repeated snapshot arrays.
 pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 /// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
