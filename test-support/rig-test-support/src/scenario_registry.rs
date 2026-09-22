@@ -91,8 +91,8 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
                             matrix
                                 .rows
                                 .into_iter()
-                                .filter(|(_, ignored)| !ignored)
-                                .map(|(scenario, _)| scenario.value()),
+                                .filter(|row| !row.ignored)
+                                .map(|row| row.scenario.value()),
                         );
                     }
                 }
@@ -119,8 +119,8 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
                             matrix
                                 .rows
                                 .into_iter()
-                                .filter(|(_, ignored)| !ignored)
-                                .map(|(scenario, _)| scenario.value()),
+                                .filter(|row| !row.ignored)
+                                .map(|row| row.scenario.value()),
                         );
                     }
                 }

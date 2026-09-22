@@ -1,0 +1,515 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 8,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 14,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "stress-agent/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 11271680532687778483
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 5 and 5, then report the exact tool result."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 5,
+                  "y": 5
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 91,
+            "output_tokens": 18,
+            "total_tokens": 158,
+            "reasoning_tokens": 49
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 91,
+              "candidatesTokenCount": 18,
+              "totalTokenCount": 158,
+              "thoughtsTokenCount": 49,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 91
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "add",
+            "arguments": {
+              "x": 5,
+              "y": 5
+            },
+            "signature": "signature_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
+            "function": {
+              "name": "add",
+              "arguments": {
+                "x": 5,
+                "y": 5
+              }
+            },
+            "signature": "signature_REDACTED_1",
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 91,
+            "output_tokens": 18,
+            "total_tokens": 158,
+            "reasoning_tokens": 49
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 91,
+              "candidatesTokenCount": 18,
+              "totalTokenCount": 158,
+              "thoughtsTokenCount": 49,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 91
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ],
+      "scope": "stress-agent/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":5,\"y\":5}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 10
+              }
+            ]
+          }
+        }
+      },
+      "scope": "stress-agent/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. Use the add tool, then report the exact tool result text verbatim."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 5 and 5, then report the exact tool result."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 5,
+                      "y": 5
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "STREAM-REDACTED-Q3"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The exact tool result is: {\"add_response\": {\"result\": \"STREAM-REDACTED-Q3\"}}"
+            }
+          ],
+          "usage": {
+            "input_tokens": 178,
+            "output_tokens": 24,
+            "total_tokens": 202
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 178,
+              "candidatesTokenCount": 24,
+              "totalTokenCount": 202,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 178
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_2"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "The exact"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " tool result is: {\"add_response\": {\"result\": \"STREAM-RE"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "DACTED-Q3\"}}"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 178,
+            "output_tokens": 24,
+            "total_tokens": 202
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 178,
+              "candidatesTokenCount": 24,
+              "totalTokenCount": 202,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 178
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_2"
+          }
+        }
+      ],
+      "scope": "stress-agent/run#0"
+    }
+  ]
+}

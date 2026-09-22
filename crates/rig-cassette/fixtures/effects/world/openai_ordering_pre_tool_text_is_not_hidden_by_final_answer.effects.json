@@ -1,0 +1,436 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 1,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 3,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 4,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 4,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "lookup_harbor_label",
+          "description": "Return the alpha signal marker.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 1144909108645319439
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup_harbor_label",
+              "description": "Return the alpha signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "premature text"
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call"
+              },
+              "provider": {
+                "call_id": "call"
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {},
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {},
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "premature text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:call",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call",
+            "name": "lookup_harbor_label",
+            "arguments": {},
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call"
+            },
+            "provider": {
+              "call_id": "call"
+            },
+            "function": {
+              "name": "lookup_harbor_label",
+              "arguments": {}
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {},
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {},
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "lookup_harbor_label",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "crimson-harbor"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "premature text"
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call"
+                  },
+                  "provider": {
+                    "call_id": "call"
+                  },
+                  "function": {
+                    "name": "lookup_harbor_label",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call"
+                  },
+                  "provider": {
+                    "call_id": "call"
+                  },
+                  "name": "lookup_harbor_label",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "crimson-harbor"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup_harbor_label",
+              "description": "Return the alpha signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "crimson-harbor"
+            }
+          ],
+          "usage": {},
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {},
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "crimson-harbor"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {},
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {},
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null,
+            "raw": {
+              "provider": "mock"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

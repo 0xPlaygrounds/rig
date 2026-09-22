@@ -16,6 +16,8 @@ use rig::providers::anthropic;
 
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {
+    rig_test_support::goldens::world_golden_test(async {
+
     with_anthropic_cassette(
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
         |client| async move {
@@ -66,4 +68,6 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
         &["lookup_harbor_label", "lookup_orchard_label"],
     );
+
+}, |log| rig_test_support::goldens::world_golden_effects("anthropic_ordering_streaming_tools_batches_multiple_tool_results_in_one_followup_message", log)).await
 }

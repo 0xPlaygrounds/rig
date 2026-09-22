@@ -6,50 +6,72 @@ use rig::providers::perplexity;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
-    with_perplexity_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion(perplexity::SONAR), BASIC_PREAMBLE, 1);
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(DefaultMaxTurns(None));
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(rig_ecs::agent::Temperature(Some(0.2)));
-        let response = ecs.prompt(BASIC_PROMPT, false).await;
-        assert_nonempty_response(&response);
-    })
-    .await;
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_perplexity_cassette("agent/completion_smoke", |client| async move {
+                let mut ecs =
+                    EcsAgent::new(client.completion(perplexity::SONAR), BASIC_PREAMBLE, 1);
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(DefaultMaxTurns(None));
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(rig_ecs::agent::Temperature(Some(0.2)));
+                let response = ecs.prompt(BASIC_PROMPT, false).await;
+                assert_nonempty_response(&response);
+            })
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "perplexity_completion_completion_smoke",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn completion_with_perplexity_options() {
-    with_perplexity_cassette(
-        "agent/completion_with_perplexity_options",
-        |client| async move {
-            let mut ecs = EcsAgent::new(
-                client.completion(perplexity::SONAR),
-                "Answer briefly and include the date or time context if relevant.",
-                1,
-            );
-            ecs.app
-                .world_mut()
-                .entity_mut(ecs.agent)
-                .insert(DefaultMaxTurns(None));
-            ecs.app
-                .world_mut()
-                .entity_mut(ecs.agent)
-                .insert(rig_ecs::agent::AdditionalParams(Some(serde_json::json!(
-                    { "return_related_questions" : true, "search_context_size" :
-                    "low" }
-                ))));
-            let response = ecs
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_perplexity_cassette(
+                "agent/completion_with_perplexity_options",
+                |client| async move {
+                    let mut ecs = EcsAgent::new(
+                        client.completion(perplexity::SONAR),
+                        "Answer briefly and include the date or time context if relevant.",
+                        1,
+                    );
+                    ecs.app
+                        .world_mut()
+                        .entity_mut(ecs.agent)
+                        .insert(DefaultMaxTurns(None));
+                    ecs.app.world_mut().entity_mut(ecs.agent).insert(
+                        rig_ecs::agent::AdditionalParams(Some(serde_json::json!(
+                            { "return_related_questions" : true, "search_context_size" :
+                            "low" }
+                        ))),
+                    );
+                    let response = ecs
                 .prompt(
                     "Name one notable recent development in Rust programming language tooling.",
                     false,
                 )
                 .await;
-            assert_nonempty_response(&response);
+                    assert_nonempty_response(&response);
+                },
+            )
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "perplexity_completion_completion_with_perplexity_options",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }

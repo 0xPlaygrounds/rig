@@ -11,8 +11,8 @@ fn metadata() -> Value {
     // are targets of `rig-cassette`.
     serde_json::json!({"packages":[
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
-        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
-        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
+        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]}]},
+        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
         {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
         {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
@@ -198,6 +198,7 @@ fn shared_replay_sources_keep_the_minimal_execution() {
     for path in [
         "crates/rig-cassette/tests/corpus_hooks.rs",
         "crates/rig-cassette/tests/world_replay.rs",
+        "crates/rig-cassette/tests/world_replay_world.rs",
         "crates/rig-cassette/src/effect_log/tests.rs",
         "crates/rig-cassette/src/agent/replay/tests.rs",
     ] {
@@ -825,6 +826,22 @@ fn a_golden_change_selects_the_parity_lane() {
     );
     for check in ["bus-verification", "default-tests", "ecs-parity"] {
         assert!(p.contains(check), "{p:?}");
+    }
+}
+
+#[test]
+fn world_goldens_select_the_same_lanes_as_agent_goldens() {
+    let agent = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
+    );
+    let world = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/effects/world/x.effects.json"],
+    );
+    assert_eq!(world, agent);
+    for check in ["bus-verification", "default-tests", "ecs-parity"] {
+        assert!(world.contains(check), "{world:?}");
     }
 }
 

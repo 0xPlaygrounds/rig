@@ -1,0 +1,5191 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 34,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 36,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 13
+        }
+      },
+      {
+        "batch": 52,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 53,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 54,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 55,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 56,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 57,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 58,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 59,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 60,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 61,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 62,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 63,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 71,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 74,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 75,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 76,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 77,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 80,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 82,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 83,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 84,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 85,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 86,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 87,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 88,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 89,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 90,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 91,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 92,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 94,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 95,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 96,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 98,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 99,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 101,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 103,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 104,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 105,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 107,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 109,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 112,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 113,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 114,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 115,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 116,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 117,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 118,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 119,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 120,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 121,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 122,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 123,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 124,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 125,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 126,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 128,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 129,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 130,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 131,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 132,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 133,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 134,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 135,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 136,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 138,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 139,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 140,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 141,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 142,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 143,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 144,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 145,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 146,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 147,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 148,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 149,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 150,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 151,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 152,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 153,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 154,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 155,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 156,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 157,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 158,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 159,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 160,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 161,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 162,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 163,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 164,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 165,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 166,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 167,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 168,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 170,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 171,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 173,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 174,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 175,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 176,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 177,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 178,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 179,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 180,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 181,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 182,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 183,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 184,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 185,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 186,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 187,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 188,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 189,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 190,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 191,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 192,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 193,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 194,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 195,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 196,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 197,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 198,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 199,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 200,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 201,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 202,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 203,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 204,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 205,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 206,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 207,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 208,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 209,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 210,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 211,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 212,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 213,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 214,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 215,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 216,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 217,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 218,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 219,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 220,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 221,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 223,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 224,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 225,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 226,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 227,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 228,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 229,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 230,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 231,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 232,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 233,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 234,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 235,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 236,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 237,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 238,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 239,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 240,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 241,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 242,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 243,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 244,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 245,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 246,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 247,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 248,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 249,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 250,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 251,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 252,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 253,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 254,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 255,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 256,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 257,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 258,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 259,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 260,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 261,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 262,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 263,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 264,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 265,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 266,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 267,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 268,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 269,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 270,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 271,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 272,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 273,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 274,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 275,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 276,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 277,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 278,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 279,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 280,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 281,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 282,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 283,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 284,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 285,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 308,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 320,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 320,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 2425505682123042356
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Write four paragraphs about the history of the Rust programming language."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language that was first conceived by Graydon Hoare in 2006 as a personal project. The language was designed to address common issues in system-level programming, such as memory safety and concurrency, without sacrificing performance. Mozilla became interested in the project and began sponsoring its development in 2009, recognizing its potential to improve the performance and safety of their own software, particularly the Firefox browser.\n\nThe language gained significant traction with the release of its first stable version, Rust 1.0, in May 2015. This release marked a major milestone, providing developers with a reliable foundation for building applications. Rust's unique approach to memory management, which eliminates the need for a garbage collector, set it apart from other languages. Its ownership model ensures memory safety by enforcing strict rules at compile time, preventing common bugs such as null pointer dereferencing and buffer overflows.\n\nRust's popularity continued to grow as developers appreciated its ability to produce safe and efficient code. The language's community played a crucial role in its development, contributing to its ecosystem of libraries and tools. Rust's package manager, Cargo, became a central part of its ecosystem, simplifying the process of managing dependencies and building projects. The language's focus on safety, concurrency, and performance made it particularly appealing for developing web servers, operating systems, and other performance-critical applications.\n\nIn recent years, Rust has been adopted by major tech companies, including Microsoft, Amazon, and Google, for various projects. Its reputation for reliability and efficiency has led to its use in critical systems and infrastructure. The language has consistently been ranked as one of the most loved programming languages in developer surveys, reflecting its strong community support and the satisfaction of its users. Rust's ongoing development continues to focus on improving its usability and expanding its capabilities, ensuring its relevance in the ever-evolving landscape of programming languages."
+            }
+          ],
+          "usage": {
+            "input_tokens": 32,
+            "output_tokens": 373,
+            "total_tokens": 405,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "input_tokens": 32,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 373,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 405
+            },
+            "reasoning_metadata": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-4o-2024-08-06"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " was"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " first"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " conceived"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Gray"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "don"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Ho"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "are"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "200"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "6"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " personal"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " project"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " was"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " designed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " address"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " issues"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-level"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " such"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " concurrency"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " sacrificing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Mozilla"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " became"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " interested"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " project"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " began"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " sponsoring"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " development"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "200"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "9"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " recognizing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " potential"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " improve"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " their"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " own"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " software"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " particularly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Firefox"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " browser"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ".\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " gained"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " significant"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " traction"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " release"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " first"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " stable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " version"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "0"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " May"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "201"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "5"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " This"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " release"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " marked"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " major"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " milestone"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " providing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " developers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " reliable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " foundation"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " building"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " applications"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " unique"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " approach"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " management"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " which"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " eliminates"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " need"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " collector"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " set"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " apart"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " from"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " other"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " languages"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ownership"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " model"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ensures"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " enforcing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " strict"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " rules"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " compile"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " time"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " preventing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " such"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " null"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " pointer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " dere"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "ferencing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ".\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " popularity"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " continued"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " grow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " developers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " appreciated"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " produce"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safe"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " efficient"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " code"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " community"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " played"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " crucial"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " role"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " development"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " contributing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ecosystem"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " libraries"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " tools"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " package"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " manager"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Cargo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " became"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " central"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " part"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ecosystem"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " simplifying"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " process"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " managing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " dependencies"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " building"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " projects"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " focus"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " concurrency"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " made"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " particularly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " appealing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " developing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " web"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " servers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " operating"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " other"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " applications"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ".\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "In"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " recent"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " years"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " has"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " been"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " adopted"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " major"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " tech"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " companies"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " including"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Microsoft"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Amazon"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Google"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " various"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " projects"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " reputation"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " reliability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " efficiency"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " has"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " led"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " infrastructure"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " has"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " consistently"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " been"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ranked"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " most"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " loved"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " languages"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " developer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " surveys"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " reflecting"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " strong"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " community"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " support"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " satisfaction"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " users"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ongoing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " development"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " continues"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " focus"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " improving"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " usability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " expanding"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " capabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ensuring"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " relevance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ever"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "-e"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "volving"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " landscape"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " languages"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "message"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 32,
+            "output_tokens": 373,
+            "total_tokens": 405,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "input_tokens": 32,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 373,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 405
+            },
+            "reasoning_metadata": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-4o-2024-08-06"
+          }
+        }
+      ],
+      "scope": "golden/run#0"
+    }
+  ]
+}

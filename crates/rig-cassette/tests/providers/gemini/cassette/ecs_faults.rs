@@ -131,125 +131,167 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
 crate::matrix::native_matrix! {
     wrapper: with_gemini_cassette, wire: missing, run: run_world;
     #[tokio::test]
-    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY);
+    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY, "gemini_setup_unary");
     #[tokio::test]
-    setup_streamed: ("error_envelope/nonexistent_model_streaming_error_preserves_status_and_body", SETUP_STREAMED);
+    setup_streamed: ("error_envelope/nonexistent_model_streaming_error_preserves_status_and_body", SETUP_STREAMED, "gemini_setup_streamed");
 }
 
 crate::matrix::native_matrix! {
     wrapper: with_gemini_cassette, wire: wire, run: run_world;
     #[tokio::test]
-    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR);
+    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR, "gemini_tool_error");
     #[tokio::test]
-    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED);
+    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED, "gemini_tool_error_streamed");
     #[tokio::test]
-    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS);
+    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS, "gemini_batch_second_fails");
     #[tokio::test]
-    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT);
+    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "gemini_batch_second_fails_concurrent");
 }
 
 /// Row 9 over `endings_tool_outcome_cancelled`'s recording.
 #[tokio::test]
 async fn stop_while_tool_runs() {
-    with_gemini_cassette(
-        "corpus_matrix/endings_tool_outcome_cancelled",
-        |client| async move {
-            run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS).await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_gemini_cassette(
+            "corpus_matrix/endings_tool_outcome_cancelled",
+            |client| async move {
+                run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS, |log| {
+                    crate::goldens::world_golden_effects("gemini_faults_stop_while_tool_runs", log)
+                })
+                .await;
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// Row 13 over `resume_tool_turn`'s recording.
 #[tokio::test]
 async fn scene_tool_in_flight() {
-    with_gemini_cassette("corpus_matrix/resume_tool_turn", |client| async move {
-        run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT).await;
+    crate::goldens::capture_world_programs(async {
+        with_gemini_cassette("corpus_matrix/resume_tool_turn", |client| async move {
+            run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT, |log| {
+                crate::goldens::world_golden_effects("gemini_faults_scene_tool_in_flight", log)
+            })
+            .await;
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn status_429() {
-    let cell = Cell {
-        fault: Some(Fault::Status {
-            status: 429,
-            code: Some("NOT_FOUND"),
-            retry_after: true,
-        }),
-        ..faults::STATUS_429
-    };
-    run_scripted(&cell, || scripted_unary(vec![reply(429, true)])).await;
+    crate::goldens::capture_world_programs(async {
+        let cell = Cell {
+            fault: Some(Fault::Status {
+                status: 429,
+                code: Some("NOT_FOUND"),
+                retry_after: true,
+            }),
+            ..faults::STATUS_429
+        };
+        run_scripted(
+            &cell,
+            || scripted_unary(vec![reply(429, true)]),
+            |log| crate::goldens::world_golden_effects("gemini_faults_status_429", log),
+        )
+        .await;
+    })
+    .await
 }
 
 #[tokio::test]
 async fn status_503() {
-    let cell = Cell {
-        fault: Some(Fault::Status {
-            status: 503,
-            code: Some("NOT_FOUND"),
-            retry_after: false,
-        }),
-        ..faults::STATUS_503
-    };
-    run_scripted(&cell, || scripted_unary(vec![reply(503, false)])).await;
+    crate::goldens::capture_world_programs(async {
+        let cell = Cell {
+            fault: Some(Fault::Status {
+                status: 503,
+                code: Some("NOT_FOUND"),
+                retry_after: false,
+            }),
+            ..faults::STATUS_503
+        };
+        run_scripted(
+            &cell,
+            || scripted_unary(vec![reply(503, false)]),
+            |log| crate::goldens::world_golden_effects("gemini_faults_status_503", log),
+        )
+        .await;
+    })
+    .await
 }
 
 /// World-only: the default budget re-issues the completion three times.
 #[tokio::test]
 async fn status_503_retried() {
-    let cell = Cell {
-        fault: Some(Fault::Status {
-            status: 503,
-            code: Some("NOT_FOUND"),
-            retry_after: false,
-        }),
-        ..faults::STATUS_503_RETRIED
-    };
-    let replies = || (0..4).map(|_| reply(503, false)).collect();
-    run_world(&scripted_unary(replies()), &cell).await;
+    crate::goldens::capture_world_programs(async {
+        let cell = Cell {
+            fault: Some(Fault::Status {
+                status: 503,
+                code: Some("NOT_FOUND"),
+                retry_after: false,
+            }),
+            ..faults::STATUS_503_RETRIED
+        };
+        let replies = || (0..4).map(|_| reply(503, false)).collect();
+        run_world(&scripted_unary(replies()), &cell, |log| {
+            crate::goldens::world_golden_effects("gemini_faults_status_503_retried", log)
+        })
+        .await;
+    })
+    .await
 }
 
 crate::matrix::case_matrix! {
     family: wire_matrix_case;
     #[tokio::test]
-    truncated_after_text: truncated_after_text_0;
+    truncated_after_text: truncated_after_text_0 => "gemini_faults_truncated_after_text";
     #[tokio::test]
-    truncated_after_tool_call: truncated_after_tool_call_1;
+    truncated_after_tool_call: truncated_after_tool_call_1 => "gemini_faults_truncated_after_tool_call";
     /// The in-band error frame's facts, as the funnel reports them on this
     /// shape (`SseShape::error_{code,message,status}`).
     #[tokio::test]
-    error_after_text: error_after_text_2;
+    error_after_text: error_after_text_2 => "gemini_faults_error_after_text";
     #[tokio::test]
-    filtered_with_text: filtered_with_text_3;
+    filtered_with_text: filtered_with_text_3 => "gemini_faults_filtered_with_text";
     #[tokio::test]
-    filtered_empty: filtered_empty_4;
+    filtered_empty: filtered_empty_4 => "gemini_faults_filtered_empty";
     /// Row 10: no request reaches the wire; the transport answers nothing.
     #[tokio::test]
-    failing_load: failing_load_5;
+    failing_load: failing_load_5 => "gemini_faults_failing_load";
     #[tokio::test]
-    failing_load_streamed: failing_load_streamed_6;
+    failing_load_streamed: failing_load_streamed_6 => "gemini_faults_failing_load_streamed";
     /// Row 11: a bare `Cancelled` at the first tool-call delta; the stream is
     /// left to its handler, the tool never dispatched. The recorded tool turn
     /// is served whole by the sequenced transport: a cancelled run makes one
     /// request, and the recording holds two.
     #[tokio::test]
-    cancel_at_first_tool_call_delta: cancel_at_first_tool_call_delta_7;
+    cancel_at_first_tool_call_delta: cancel_at_first_tool_call_delta_7 => "gemini_faults_cancel_at_first_tool_call_delta";
 }
 
 /// Gemini refuses the prompt outright (`promptFeedback.blockReason`, no
 /// candidates): a non-retryable provider failure naming the block.
 #[tokio::test]
 async fn refusal() {
-    let cell = Cell {
-        program: Program {
-            ending: Ending::Failed(ErrorKind::ProviderResponse),
-            ..faults::REFUSAL.program
-        },
-        ..faults::REFUSAL
-    };
-    let frames = SHAPE.refusal(&[]);
-    run_scripted(&cell, || scripted_stream(&frames)).await;
+    crate::goldens::capture_world_programs(async {
+        let cell = Cell {
+            program: Program {
+                ending: Ending::Failed(ErrorKind::ProviderResponse),
+                ..faults::REFUSAL.program
+            },
+            ..faults::REFUSAL
+        };
+        let frames = SHAPE.refusal(&[]);
+        run_scripted(
+            &cell,
+            || scripted_stream(&frames),
+            |log| crate::goldens::world_golden_effects("gemini_faults_refusal", log),
+        )
+        .await;
+    })
+    .await
 }
 
 crate::matrix::case_matrix! {
@@ -257,5 +299,5 @@ crate::matrix::case_matrix! {
     /// Row 11: a bare `Cancelled` once the terminal record has landed and
     /// before `Fold`: a whole completion, the run cancelled, despawned at once.
     #[tokio::test]
-    cancel_after_terminal: ("corpus_breadth/text_delta_stop", cancel_after_terminal_8);
+    cancel_after_terminal: ("corpus_breadth/text_delta_stop", cancel_after_terminal_8, "gemini_faults_cancel_after_terminal");
 }

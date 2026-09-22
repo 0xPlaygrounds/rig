@@ -1,0 +1,122 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 4727343276591671112
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language focused on safety, performance, and concurrency. Memory safety in Rust is crucial to prevent common errors like null pointer dereferencing, buffer overflows, and data races, ensuring robust and secure software."
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 48,
+            "total_tokens": 75,
+            "cached_input_tokens": 27,
+            "cache_creation_input_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": "stop",
+          "provider": "aws_bedrock",
+          "model": null,
+          "raw": {
+            "output": {
+              "Message": {
+                "role": "Assistant",
+                "content": [
+                  {
+                    "Text": "Rust is a systems programming language focused on safety, performance, and concurrency. Memory safety in Rust is crucial to prevent common errors like null pointer dereferencing, buffer overflows, and data races, ensuring robust and secure software."
+                  }
+                ]
+              }
+            },
+            "stop_reason": "EndTurn",
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 48,
+              "total_tokens": 75,
+              "cache_read_input_tokens": 27,
+              "cache_write_input_tokens": 0
+            },
+            "metrics": {
+              "latency_ms": 642
+            },
+            "additional_model_response_fields": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

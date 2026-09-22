@@ -1,0 +1,198 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 10712996928019101889
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello, my name is Ada Lovelace and I work as a mathematician."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "submit",
+              "description": "Submit the structured data you extracted from the provided text.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "first_name": {
+                    "type": "string"
+                  },
+                  "last_name": {
+                    "type": "string"
+                  },
+                  "job": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "first_name",
+                  "last_name",
+                  "job"
+                ],
+                "title": "SmokePerson",
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "first_name": "Ada",
+                  "last_name": "Lovelace",
+                  "job": "mathematician"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 298,
+            "output_tokens": 344,
+            "total_tokens": 642,
+            "cached_input_tokens": 297
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "llamacpp",
+          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                  "content": "",
+                  "reasoning_content": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+            "object": "chat.completion",
+            "system_fingerprint": "b10499-6d05498",
+            "timings": {
+              "cache_n": 297,
+              "predicted_ms": 2891.096,
+              "predicted_n": 344,
+              "predicted_per_second": 118.64012817284518,
+              "predicted_per_token_ms": 8.428851311953352,
+              "prompt_ms": 6.634,
+              "prompt_n": 1,
+              "prompt_per_second": 150.7386192342478,
+              "prompt_per_token_ms": 6.634
+            },
+            "usage": {
+              "completion_tokens": 344,
+              "prompt_tokens": 298,
+              "prompt_tokens_details": {
+                "cached_tokens": 297
+              },
+              "total_tokens": 642
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

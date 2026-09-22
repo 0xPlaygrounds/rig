@@ -1,0 +1,145 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 16828383870205528679
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language focused on speed, safety, and concurrency, designed to prevent common bugs associated with memory management. Memory safety is crucial because it helps eliminate vulnerabilities like buffer overflows and null pointer dereferences, leading to more secure and reliable software."
+            }
+          ],
+          "usage": {
+            "input_tokens": 38,
+            "output_tokens": 53,
+            "total_tokens": 91,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o-mini",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "Rust is a systems programming language focused on speed, safety, and concurrency, designed to prevent common bugs associated with memory management. Memory safety is crucial because it helps eliminate vulnerabilities like buffer overflows and null pointer dereferences, leading to more secure and reliable software.",
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "native_finish_reason": "stop"
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "openai/gpt-4o-mini",
+            "object": "chat.completion",
+            "provider": "Azure",
+            "service_tier": null,
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 53,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "cost": 0.0000375,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.0000318,
+                "upstream_inference_cost": 0.0000375,
+                "upstream_inference_prompt_cost": 5.7e-6
+              },
+              "is_byok": false,
+              "prompt_tokens": 38,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 91
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

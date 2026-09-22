@@ -1,0 +1,178 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 6332695389491196526
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "none"
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [],
+          "usage": {
+            "input_tokens": 75,
+            "output_tokens": 18,
+            "total_tokens": 93,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "content_filter",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 75,
+              "completion_tokens": 18,
+              "total_tokens": 93,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
+            },
+            "finish_reason": "content_filter",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 75,
+            "output_tokens": 18,
+            "total_tokens": 93,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "content_filter",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 75,
+              "completion_tokens": 18,
+              "total_tokens": 93,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
+            },
+            "finish_reason": "content_filter",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk"
+            }
+          }
+        }
+      ],
+      "scope": "golden/run#0"
+    }
+  ]
+}

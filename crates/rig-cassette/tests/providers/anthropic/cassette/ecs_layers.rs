@@ -150,109 +150,151 @@ fn memory_agent(client: Bound<Anthropic>) -> EcsAgent {
 
 #[tokio::test]
 async fn deny_tool_effect_log() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
-        let log = own_bus(client, |adder| adder.layered(DenyAddLayer), |_| {}).await;
-        assert_eq!(
-            families(&log),
-            [EffectFamily::Completion, EffectFamily::Completion]
-        );
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
+            let log = own_bus(client, |adder| adder.layered(DenyAddLayer), |_| {}).await;
+            crate::goldens::world_golden_effects("anthropic_layers_deny_tool_effect_log", &log);
+            assert_eq!(
+                families(&log),
+                [EffectFamily::Completion, EffectFamily::Completion]
+            );
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn patch_tool_args_effect_log() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
-        let log = own_bus(client, |adder| adder.layered(PatchAddArgsLayer), |_| {}).await;
-        assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
+            let log = own_bus(client, |adder| adder.layered(PatchAddArgsLayer), |_| {}).await;
+            crate::goldens::world_golden_effects(
+                "anthropic_layers_patch_tool_args_effect_log",
+                &log,
+            );
+            assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn replace_tool_result_effect_log() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
-        let log = own_bus(client, |adder| adder.layered(ReplaceAddResultLayer), |_| {}).await;
-        assert_eq!(
-            tool_record_outputs(&log),
-            ["42"],
-            "the record holds the tool's answer"
-        );
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_hooks_cassette(
+            "corpus_hooks/replace_tool_result",
+            |client| async move {
+                let log =
+                    own_bus(client, |adder| adder.layered(ReplaceAddResultLayer), |_| {}).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_layers_replace_tool_result_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    tool_record_outputs(&log),
+                    ["42"],
+                    "the record holds the tool's answer"
+                );
+            },
+        )
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn two_layers_effect_log() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
-        // Outermost first in the header: the patch sees the dispatch
-        // first, the replacement sees the answer first.
-        let log = own_bus(
-            client,
-            |adder| {
-                adder
-                    .layered(ReplaceAddResultLayer)
-                    .layered(PatchAddArgsLayer)
-            },
-            |_| {},
-        )
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
+            // Outermost first in the header: the patch sees the dispatch
+            // first, the replacement sees the answer first.
+            let log = own_bus(
+                client,
+                |adder| {
+                    adder
+                        .layered(ReplaceAddResultLayer)
+                        .layered(PatchAddArgsLayer)
+                },
+                |_| {},
+            )
+            .await;
+            crate::goldens::world_golden_effects("anthropic_layers_two_layers_effect_log", &log);
+            assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
+            assert_eq!(tool_record_outputs(&log), ["42"]);
+        })
         .await;
-        assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
-        assert_eq!(tool_record_outputs(&log), ["42"]);
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn host_deny_over_host_bus_effect_log() {
-    // The host's own policy on the agent's tool key, over the host's bus.
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
-        let mut ecs = layered_agent(client, |adder| adder.layered(DenyAddLayer));
-        let log = run_tool(&mut ecs).await;
-        assert!(
-            ecs.app
-                .world_mut()
-                .query::<(&PendingEffect, Option<&EffectOutcome>)>()
-                .iter(ecs.app.world())
-                .all(|(_, outcome)| outcome.is_some()),
-            "host effects completed before app teardown"
-        );
-        drop(ecs);
-        assert_eq!(
-            families(&log),
-            [EffectFamily::Completion, EffectFamily::Completion]
-        );
-        let _ = DENY_REASON;
+    crate::goldens::capture_world_programs(async {
+        // The host's own policy on the agent's tool key, over the host's bus.
+        with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
+            let mut ecs = layered_agent(client, |adder| adder.layered(DenyAddLayer));
+            let log = run_tool(&mut ecs).await;
+            crate::goldens::world_golden_effects(
+                "anthropic_layers_host_deny_over_host_bus_effect_log",
+                &log,
+            );
+            assert!(
+                ecs.app
+                    .world_mut()
+                    .query::<(&PendingEffect, Option<&EffectOutcome>)>()
+                    .iter(ecs.app.world())
+                    .all(|(_, outcome)| outcome.is_some()),
+                "host effects completed before app teardown"
+            );
+            drop(ecs);
+            assert_eq!(
+                families(&log),
+                [EffectFamily::Completion, EffectFamily::Completion]
+            );
+            let _ = DENY_REASON;
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn patch_beneath_hook_patch_effect_log() {
-    // The agent's hook patches first (40 + 2); the host's layer beneath it
-    // patches again (30 + 12): the record holds what was served.
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
-        let log = own_bus(
-            client,
-            |adder| adder.layered(PatchAgainLayer),
-            |ecs| {
-                ecs.app
-                    .add_systems(RigSchedule, patch_args.in_set(BusSet::Gate));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(PolicyVersion("ecs-layers/v1:patch_args".into()));
-            },
-        )
+    crate::goldens::capture_world_programs(async {
+        // The agent's hook patches first (40 + 2); the host's layer beneath it
+        // patches again (30 + 12): the record holds what was served.
+        with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
+            let log = own_bus(
+                client,
+                |adder| adder.layered(PatchAgainLayer),
+                |ecs| {
+                    ecs.app
+                        .add_systems(RigSchedule, patch_args.in_set(BusSet::Gate));
+                    ecs.app
+                        .world_mut()
+                        .entity_mut(ecs.agent)
+                        .insert(PolicyVersion("ecs-layers/v1:patch_args".into()));
+                },
+            )
+            .await;
+            crate::goldens::world_golden_effects(
+                "anthropic_layers_patch_beneath_hook_patch_effect_log",
+                &log,
+            );
+            assert_eq!(tool_record_args(&log), [PATCHED_AGAIN_ARGS]);
+            assert_eq!(tool_record_outputs(&log), ["42"]);
+        })
         .await;
-        assert_eq!(tool_record_args(&log), [PATCHED_AGAIN_ARGS]);
-        assert_eq!(tool_record_outputs(&log), ["42"]);
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn memory_load_replaced_effect_log() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_corpus_layers_cassette(
         "corpus_layers/memory_load_replaced",
         |client| async move {
@@ -261,6 +303,7 @@ async fn memory_load_replaced_effect_log() {
             assert!(response.contains("Ada"), "{response}");
             assert_eq!(ecs.app.world().resource::<HistoryChecks>().0, 1, "run-start history assertion executed");
             let log = ecs.effect_log();
+crate::goldens::world_golden_effects("anthropic_layers_memory_load_replaced_effect_log", &log);
             assert_eq!(
                 families(&log),
                 [
@@ -282,4 +325,6 @@ async fn memory_load_replaced_effect_log() {
         },
     )
     .await;
+
+}).await
 }

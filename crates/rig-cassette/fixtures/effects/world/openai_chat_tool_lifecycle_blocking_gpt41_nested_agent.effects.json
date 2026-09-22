@@ -1,0 +1,277 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "record_payload",
+          "description": "Matrix tool record_payload",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "meta": {
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "active"
+                ]
+              }
+            },
+            "required": [
+              "label",
+              "values",
+              "meta"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 10899585643306563384
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the user's tool-call instruction exactly. Do not answer in prose."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call record_payload exactly once with label café 東京, values [3, 5, 8], and meta.active true."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "record_payload",
+              "description": "Matrix tool record_payload",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "meta": {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "active"
+                    ]
+                  }
+                },
+                "required": [
+                  "label",
+                  "values",
+                  "meta"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 128,
+          "tool_choice": null,
+          "additional_params": {
+            "tool_choice": "required",
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "record_payload",
+                "arguments": {
+                  "label": "café 東京",
+                  "values": [
+                    3,
+                    5,
+                    8
+                  ],
+                  "meta": {
+                    "active": true
+                  }
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 93,
+            "output_tokens": 30,
+            "total_tokens": 123,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
+                        "name": "record_payload"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 30,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 93,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 123
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "record_payload",
+        "args": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "record_payload"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

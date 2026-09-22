@@ -92,56 +92,80 @@ async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effec
 
 #[tokio::test]
 async fn completion_serial_effect_log() {
-    with_anthropic_corpus_causal_cassette("corpus_causal/completion_serial", |client| async move {
-        over_host(
-            client,
-            Host {
-                serial: true,
-                streamed: false,
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_causal_cassette(
+            "corpus_causal/completion_serial",
+            |client| async move {
+                let log = over_host(
+                    client,
+                    Host {
+                        serial: true,
+                        streamed: false,
+                    },
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_causal_completion_serial_effect_log",
+                    &log,
+                );
             },
         )
         .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn completion_concurrent_effect_log() {
-    with_anthropic_corpus_causal_cassette(
-        "corpus_causal/completion_concurrent",
-        |client| async move {
-            over_host(
-                client,
-                Host {
-                    serial: false,
-                    streamed: false,
-                },
-            )
-            .await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_causal_cassette(
+            "corpus_causal/completion_concurrent",
+            |client| async move {
+                let log = over_host(
+                    client,
+                    Host {
+                        serial: false,
+                        streamed: false,
+                    },
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_causal_completion_concurrent_effect_log",
+                    &log,
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 #[tokio::test]
 async fn completion_streamed_effect_log() {
-    with_anthropic_corpus_causal_cassette(
-        "corpus_causal/completion_streamed",
-        |client| async move {
-            let log = over_host(
-                client,
-                Host {
-                    serial: false,
-                    streamed: true,
-                },
-            )
-            .await;
-            // The run's completions are streamed with their events; the
-            // tool's nested completion is unary.
-            assert!(log.records[0].events.is_some());
-            assert!(log.records[2].events.is_none());
-            assert!(log.records[3].events.is_some());
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_causal_cassette(
+            "corpus_causal/completion_streamed",
+            |client| async move {
+                let log = over_host(
+                    client,
+                    Host {
+                        serial: false,
+                        streamed: true,
+                    },
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_causal_completion_streamed_effect_log",
+                    &log,
+                );
+                // The run's completions are streamed with their events; the
+                // tool's nested completion is unary.
+                assert!(log.records[0].events.is_some());
+                assert!(log.records[2].events.is_none());
+                assert!(log.records[3].events.is_some());
+            },
+        )
+        .await;
+    })
+    .await
 }

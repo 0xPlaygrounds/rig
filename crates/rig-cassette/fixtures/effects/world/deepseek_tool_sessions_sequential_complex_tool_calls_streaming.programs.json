@@ -1,0 +1,231 @@
+{
+  "parity/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": {
+            "thinking": {
+              "type": "disabled"
+            },
+            "parallel_tool_calls": false
+          },
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 1,
+          "rig_ecs::agent::Grant": 6
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 1,
+          "rig_ecs::agent::Grant": 7
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 1,
+          "rig_ecs::agent::Grant": 8
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 1,
+          "rig_ecs::agent::Grant": 9
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/tool#0",
+            "descriptor": {
+              "key": "parity/tool#0",
+              "family": {
+                "family": "tool",
+                "name": "ping_empty",
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {},
+                  "required": []
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/tool#1",
+            "descriptor": {
+              "key": "parity/tool#1",
+              "family": {
+                "family": "tool",
+                "name": "inspect_manifest",
+                "description": "Validate a nested deployment manifest.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "project": {
+                      "type": "string"
+                    },
+                    "flags": {
+                      "type": "object",
+                      "properties": {
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "retries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "critical",
+                        "retries"
+                      ]
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "weight"
+                        ]
+                      }
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "flags",
+                    "steps",
+                    "note"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/tool#2",
+            "descriptor": {
+              "key": "parity/tool#2",
+              "family": {
+                "family": "tool",
+                "name": "join_labels",
+                "description": "Join label strings with the requested separator.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "separator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "labels",
+                    "separator"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/tool#3",
+            "descriptor": {
+              "key": "parity/tool#3",
+              "family": {
+                "family": "tool",
+                "name": "escape_echo",
+                "description": "Echo a string containing escaping-sensitive characters.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 10,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": true,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 10,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 11,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ]
+}

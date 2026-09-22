@@ -1,0 +1,113 @@
+{
+  "golden/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/memory",
+            "descriptor": {
+              "key": "golden/memory",
+              "family": {
+                "family": "memory"
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are a concise assistant. Answer directly.",
+          "rig_ecs::agent::Remembers": 0,
+          "rig_ecs::agent::Temperature": 0.0,
+          "rig_ecs::agent::UsesModel": 1
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "My name is Ada."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 6,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Hello, Ada."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 8,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "What is my name? Reply with just the name."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ]
+}

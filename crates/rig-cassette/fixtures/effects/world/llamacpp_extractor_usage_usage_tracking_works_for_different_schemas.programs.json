@@ -1,0 +1,446 @@
+{
+  "parity/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": {
+            "temperature": 0.0
+          },
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Ignore"
+          },
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "age": {
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "profession": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "age",
+                "profession"
+              ],
+              "title": "Person",
+              "$schema": "https://json-schema.org/draft/2020-12/schema"
+            }
+          },
+          "rig_ecs::agent::OutputToolConfig": {
+            "name": "submit",
+            "description": "Submit the structured data you extracted from the provided text.",
+            "augment_preamble": false
+          },
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract every field explicitly stated in the input text.\nDo not omit keys when the value is present in the text.\nReturn the exact stated values through the submit tool.",
+          "rig_ecs::agent::ToolChoiceSpec": "required",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Alice is a 25 year old developer."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ],
+  "parity/run#1": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": {
+            "temperature": 0.0
+          },
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Ignore"
+          },
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "street": {
+                  "type": "string"
+                },
+                "city": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "zip_code": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "street",
+                "city",
+                "state",
+                "zip_code"
+              ],
+              "title": "Address",
+              "$schema": "https://json-schema.org/draft/2020-12/schema"
+            }
+          },
+          "rig_ecs::agent::OutputToolConfig": {
+            "name": "submit",
+            "description": "Submit the structured data you extracted from the provided text.",
+            "augment_preamble": false
+          },
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract every field explicitly stated in the input text.\nDo not omit keys when the value is present in the text.\nReturn the exact stated values through the submit tool.",
+          "rig_ecs::agent::ToolChoiceSpec": "required",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 1
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": "submit",
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunResult": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::Settled": {},
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {
+            "input_tokens": 347,
+            "output_tokens": 221,
+            "total_tokens": 568,
+            "cached_input_tokens": 332
+          },
+          "rig_ecs::agent::UsesModel": 0,
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Alice is a 25 year old developer."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "reasoning",
+                "id": null,
+                "content": [
+                  {
+                    "type": "text",
+                    "content": {
+                      "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_1"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_1"
+                },
+                "function": {
+                  "name": "submit",
+                  "arguments": {
+                    "name": "Alice",
+                    "age": 25,
+                    "profession": "developer"
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {},
+            "allowed": []
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::systems::Folded": "Tool",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 5,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "submit",
+                    "arguments": {
+                      "name": "Alice",
+                      "age": 25,
+                      "profession": "developer"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 347,
+                "output_tokens": 221,
+                "total_tokens": 568,
+                "cached_input_tokens": 332
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_1",
+              "finish_reason": "tool_calls",
+              "provider": "llamacpp",
+              "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                      "content": "",
+                      "reasoning_content": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n",
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                            "name": "submit"
+                          },
+                          "id": "call_REDACTED_1",
+                          "type": "function"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_1",
+                "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+                "object": "chat.completion",
+                "system_fingerprint": "b10499-6d05498",
+                "timings": {
+                  "cache_n": 332,
+                  "predicted_ms": 1916.999,
+                  "predicted_n": 221,
+                  "predicted_per_second": 114.76270983970258,
+                  "predicted_per_token_ms": 8.713631818181819,
+                  "prompt_ms": 33.73,
+                  "prompt_n": 15,
+                  "prompt_per_second": 444.70797509635344,
+                  "prompt_per_token_ms": 2.2486666666666664
+                },
+                "usage": {
+                  "completion_tokens": 221,
+                  "prompt_tokens": 347,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 332
+                  },
+                  "total_tokens": 568
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Reasoning": {
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}"
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 1,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 10,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 11,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "456 Oak Avenue, Cambridge, MA 02139"
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 2,
+        "next_id": 1
+      },
+      "binaries": []
+    }
+  ]
+}

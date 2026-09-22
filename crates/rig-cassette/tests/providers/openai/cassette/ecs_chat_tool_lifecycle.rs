@@ -167,253 +167,385 @@ async fn run_cell(
 
 #[tokio::test]
 async fn blocking_gpt4o_zero_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent";
-    let c = cell(
-        Transport::Blocking,
-        Model::Gpt4oMini,
-        Shape::Zero,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent";
+            let c = cell(
+                Transport::Blocking,
+                Model::Gpt4oMini,
+                Shape::Zero,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_blocking_gpt4o_zero_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn blocking_gpt4o_nested_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent";
-    let c = cell(
-        Transport::Blocking,
-        Model::Gpt4oMini,
-        Shape::Nested,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent";
+            let c = cell(
+                Transport::Blocking,
+                Model::Gpt4oMini,
+                Shape::Nested,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_blocking_gpt4o_nested_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn blocking_gpt4o_parallel_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent";
-    let c = cell(
-        Transport::Blocking,
-        Model::Gpt4oMini,
-        Shape::Parallel,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent";
+            let c = cell(
+                Transport::Blocking,
+                Model::Gpt4oMini,
+                Shape::Parallel,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_blocking_gpt4o_parallel_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn blocking_gpt41_zero_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent";
-    let c = cell(
-        Transport::Blocking,
-        Model::Gpt41Mini,
-        Shape::Zero,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent";
+            let c = cell(
+                Transport::Blocking,
+                Model::Gpt41Mini,
+                Shape::Zero,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_blocking_gpt41_zero_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn blocking_gpt41_nested_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent";
-    let c = cell(
-        Transport::Blocking,
-        Model::Gpt41Mini,
-        Shape::Nested,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent";
+            let c = cell(
+                Transport::Blocking,
+                Model::Gpt41Mini,
+                Shape::Nested,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_blocking_gpt41_nested_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn blocking_gpt41_parallel_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent";
-    let c = cell(
-        Transport::Blocking,
-        Model::Gpt41Mini,
-        Shape::Parallel,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent";
+            let c = cell(
+                Transport::Blocking,
+                Model::Gpt41Mini,
+                Shape::Parallel,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_blocking_gpt41_parallel_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn streaming_gpt4o_zero_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent";
-    let c = cell(
-        Transport::Streaming,
-        Model::Gpt4oMini,
-        Shape::Zero,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent";
+            let c = cell(
+                Transport::Streaming,
+                Model::Gpt4oMini,
+                Shape::Zero,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_streaming_gpt4o_zero_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn streaming_gpt4o_nested_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent";
-    let c = cell(
-        Transport::Streaming,
-        Model::Gpt4oMini,
-        Shape::Nested,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent";
+            let c = cell(
+                Transport::Streaming,
+                Model::Gpt4oMini,
+                Shape::Nested,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_streaming_gpt4o_nested_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn streaming_gpt4o_parallel_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent";
-    let c = cell(
-        Transport::Streaming,
-        Model::Gpt4oMini,
-        Shape::Parallel,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent";
+            let c = cell(
+                Transport::Streaming,
+                Model::Gpt4oMini,
+                Shape::Parallel,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_streaming_gpt4o_parallel_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn streaming_gpt41_zero_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent";
-    let c = cell(
-        Transport::Streaming,
-        Model::Gpt41Mini,
-        Shape::Zero,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent";
+            let c = cell(
+                Transport::Streaming,
+                Model::Gpt41Mini,
+                Shape::Zero,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_streaming_gpt41_zero_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn streaming_gpt41_nested_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent";
-    let c = cell(
-        Transport::Streaming,
-        Model::Gpt41Mini,
-        Shape::Nested,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent";
+            let c = cell(
+                Transport::Streaming,
+                Model::Gpt41Mini,
+                Shape::Nested,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_streaming_gpt41_nested_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }
 #[tokio::test]
 async fn streaming_gpt41_parallel_agent() -> Result<()> {
-    const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent";
-    let c = cell(
-        Transport::Streaming,
-        Model::Gpt41Mini,
-        Shape::Parallel,
-        Surface::Agent,
-    );
-    let o = SharedObservation::default();
-    with_openai_tool_lifecycle_cassette_result(
-        "chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x.openai, c, o)
+    rig_test_support::goldens::world_golden_test(
+        async {
+            const S: &str = "chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent";
+            let c = cell(
+                Transport::Streaming,
+                Model::Gpt41Mini,
+                Shape::Parallel,
+                Surface::Agent,
+            );
+            let o = SharedObservation::default();
+            with_openai_tool_lifecycle_cassette_result(
+                "chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent",
+                {
+                    let o = Arc::clone(&o);
+                    move |x| run_cell(x.openai, c, o)
+                },
+            )
+            .await?;
+            execute(S, c, o).await;
+            Ok(())
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openai_chat_tool_lifecycle_streaming_gpt41_parallel_agent",
+                log,
+            )
         },
     )
-    .await?;
-    execute(S, c, o).await;
-    Ok(())
+    .await
 }

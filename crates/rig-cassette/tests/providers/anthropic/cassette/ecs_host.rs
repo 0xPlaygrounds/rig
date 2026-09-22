@@ -191,163 +191,57 @@ async fn over_host(
 
 #[tokio::test]
 async fn custom_at_start_effect_log() {
-    with_anthropic_corpus_host_cassette("corpus_host/custom_at_start", |client| async move {
-        let log = over_host(client, PLAIN, Hooks::AtStart).await;
-        assert_eq!(
-            families(&log),
-            [EffectFamily::Custom, EffectFamily::Completion]
-        );
-        assert_eq!(note_ats(&log), ["start"]);
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette("corpus_host/custom_at_start", |client| async move {
+            let log = over_host(client, PLAIN, Hooks::AtStart).await;
+            crate::goldens::world_golden_effects("anthropic_host_custom_at_start_effect_log", &log);
+            assert_eq!(
+                families(&log),
+                [EffectFamily::Custom, EffectFamily::Completion]
+            );
+            assert_eq!(note_ats(&log), ["start"]);
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn custom_at_completion_call_effect_log() {
-    with_anthropic_corpus_host_cassette(
-        "corpus_host/custom_at_completion_call",
-        |client| async move {
-            let log = over_host(client, PLAIN, Hooks::AtCompletionCall).await;
-            assert_eq!(
-                families(&log),
-                [EffectFamily::Custom, EffectFamily::Completion]
-            );
-            assert_eq!(note_ats(&log), ["completion_call"]);
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette(
+            "corpus_host/custom_at_completion_call",
+            |client| async move {
+                let log = over_host(client, PLAIN, Hooks::AtCompletionCall).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_host_custom_at_completion_call_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [EffectFamily::Custom, EffectFamily::Completion]
+                );
+                assert_eq!(note_ats(&log), ["completion_call"]);
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 #[tokio::test]
 async fn custom_at_outcome_effect_log() {
-    with_anthropic_corpus_host_cassette("corpus_host/custom_at_outcome", |client| async move {
-        let host = Host {
-            with_tool: true,
-            ..PLAIN
-        };
-        let log = over_host(client, host, Hooks::AtOutcome).await;
-        assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Completion,
-                EffectFamily::Tool,
-                EffectFamily::Custom,
-                EffectFamily::Completion
-            ]
-        );
-        assert_eq!(note_ats(&log), ["outcome"]);
-    })
-    .await;
-}
-
-/// A dispatch from `on_run_settled`, after the answer: the recorder is
-/// still tapping the host's bus, so the record follows the completion
-/// that answered the run.
-#[tokio::test]
-async fn custom_at_settled_effect_log() {
-    with_anthropic_corpus_host_cassette("corpus_host/custom_at_settled", |client| async move {
-        let log = over_host(client, PLAIN, Hooks::AtSettled).await;
-        assert_eq!(
-            families(&log),
-            [EffectFamily::Completion, EffectFamily::Custom]
-        );
-        assert_eq!(note_ats(&log), ["settled"]);
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn custom_start_and_settled_effect_log() {
-    with_anthropic_corpus_host_cassette(
-        "corpus_host/custom_start_and_settled",
-        |client| async move {
-            let log = over_host(client, PLAIN, Hooks::StartAndSettled).await;
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Custom,
-                    EffectFamily::Completion,
-                    EffectFamily::Custom
-                ]
-            );
-            assert_eq!(note_ats(&log), ["start", "settled"]);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn custom_twice_serial_effect_log() {
-    with_anthropic_corpus_host_cassette("corpus_host/custom_twice_serial", |client| async move {
-        let host = Host {
-            serial: true,
-            ..PLAIN
-        };
-        let log = over_host(client, host, Hooks::Twice).await;
-        assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Custom,
-                EffectFamily::Custom,
-                EffectFamily::Completion
-            ]
-        );
-        assert_eq!(note_ats(&log), ["first", "second"]);
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn custom_twice_concurrent_effect_log() {
-    with_anthropic_corpus_host_cassette(
-        "corpus_host/custom_twice_concurrent",
-        |client| async move {
-            let log = over_host(client, PLAIN, Hooks::Twice).await;
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Custom,
-                    EffectFamily::Custom,
-                    EffectFamily::Completion
-                ]
-            );
-            assert_eq!(note_ats(&log), ["first", "second"]);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn custom_at_start_streamed_effect_log() {
-    with_anthropic_corpus_host_cassette(
-        "corpus_host/custom_at_start_streamed",
-        |client| async move {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette("corpus_host/custom_at_outcome", |client| async move {
             let host = Host {
-                streamed: true,
-                ..PLAIN
-            };
-            let log = over_host(client, host, Hooks::AtStart).await;
-            assert_eq!(
-                families(&log),
-                [EffectFamily::Custom, EffectFamily::Completion]
-            );
-            assert!(log.records[1].events.is_some(), "events are kept");
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn custom_at_outcome_streamed_effect_log() {
-    with_anthropic_corpus_host_cassette(
-        "corpus_host/custom_at_outcome_streamed",
-        |client| async move {
-            let host = Host {
-                streamed: true,
                 with_tool: true,
                 ..PLAIN
             };
             let log = over_host(client, host, Hooks::AtOutcome).await;
+            crate::goldens::world_golden_effects(
+                "anthropic_host_custom_at_outcome_effect_log",
+                &log,
+            );
             assert_eq!(
                 families(&log),
                 [
@@ -358,24 +252,197 @@ async fn custom_at_outcome_streamed_effect_log() {
                 ]
             );
             assert_eq!(note_ats(&log), ["outcome"]);
-        },
-    )
-    .await;
+        })
+        .await;
+    })
+    .await
+}
+
+/// A dispatch from `on_run_settled`, after the answer: the recorder is
+/// still tapping the host's bus, so the record follows the completion
+/// that answered the run.
+#[tokio::test]
+async fn custom_at_settled_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette("corpus_host/custom_at_settled", |client| async move {
+            let log = over_host(client, PLAIN, Hooks::AtSettled).await;
+            crate::goldens::world_golden_effects(
+                "anthropic_host_custom_at_settled_effect_log",
+                &log,
+            );
+            assert_eq!(
+                families(&log),
+                [EffectFamily::Completion, EffectFamily::Custom]
+            );
+            assert_eq!(note_ats(&log), ["settled"]);
+        })
+        .await;
+    })
+    .await
+}
+
+#[tokio::test]
+async fn custom_start_and_settled_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette(
+            "corpus_host/custom_start_and_settled",
+            |client| async move {
+                let log = over_host(client, PLAIN, Hooks::StartAndSettled).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_host_custom_start_and_settled_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [
+                        EffectFamily::Custom,
+                        EffectFamily::Completion,
+                        EffectFamily::Custom
+                    ]
+                );
+                assert_eq!(note_ats(&log), ["start", "settled"]);
+            },
+        )
+        .await;
+    })
+    .await
+}
+
+#[tokio::test]
+async fn custom_twice_serial_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette(
+            "corpus_host/custom_twice_serial",
+            |client| async move {
+                let host = Host {
+                    serial: true,
+                    ..PLAIN
+                };
+                let log = over_host(client, host, Hooks::Twice).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_host_custom_twice_serial_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [
+                        EffectFamily::Custom,
+                        EffectFamily::Custom,
+                        EffectFamily::Completion
+                    ]
+                );
+                assert_eq!(note_ats(&log), ["first", "second"]);
+            },
+        )
+        .await;
+    })
+    .await
+}
+
+#[tokio::test]
+async fn custom_twice_concurrent_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette(
+            "corpus_host/custom_twice_concurrent",
+            |client| async move {
+                let log = over_host(client, PLAIN, Hooks::Twice).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_host_custom_twice_concurrent_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [
+                        EffectFamily::Custom,
+                        EffectFamily::Custom,
+                        EffectFamily::Completion
+                    ]
+                );
+                assert_eq!(note_ats(&log), ["first", "second"]);
+            },
+        )
+        .await;
+    })
+    .await
+}
+
+#[tokio::test]
+async fn custom_at_start_streamed_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette(
+            "corpus_host/custom_at_start_streamed",
+            |client| async move {
+                let host = Host {
+                    streamed: true,
+                    ..PLAIN
+                };
+                let log = over_host(client, host, Hooks::AtStart).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_host_custom_at_start_streamed_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [EffectFamily::Custom, EffectFamily::Completion]
+                );
+                assert!(log.records[1].events.is_some(), "events are kept");
+            },
+        )
+        .await;
+    })
+    .await
+}
+
+#[tokio::test]
+async fn custom_at_outcome_streamed_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette(
+            "corpus_host/custom_at_outcome_streamed",
+            |client| async move {
+                let host = Host {
+                    streamed: true,
+                    with_tool: true,
+                    ..PLAIN
+                };
+                let log = over_host(client, host, Hooks::AtOutcome).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_host_custom_at_outcome_streamed_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [
+                        EffectFamily::Completion,
+                        EffectFamily::Tool,
+                        EffectFamily::Custom,
+                        EffectFamily::Completion
+                    ]
+                );
+                assert_eq!(note_ats(&log), ["outcome"]);
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// The host registered no note taker: the hook's bind is refused, the
 /// run goes on, and nothing of the hook reaches the log but its name.
 #[tokio::test]
 async fn custom_unserved_effect_log() {
-    with_anthropic_corpus_host_cassette("corpus_host/custom_unserved", |client| async move {
-        let host = Host {
-            notes: false,
-            ..PLAIN
-        };
-        let log = over_host(client, host, Hooks::Unserved).await;
-        assert_eq!(families(&log), [EffectFamily::Completion]);
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_host_cassette("corpus_host/custom_unserved", |client| async move {
+            let host = Host {
+                notes: false,
+                ..PLAIN
+            };
+            let log = over_host(client, host, Hooks::Unserved).await;
+            crate::goldens::world_golden_effects("anthropic_host_custom_unserved_effect_log", &log);
+            assert_eq!(families(&log), [EffectFamily::Completion]);
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[path = "ecs_host/tests.rs"]

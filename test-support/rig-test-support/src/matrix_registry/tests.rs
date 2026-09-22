@@ -66,52 +66,83 @@ fn resume_rows_preserve_scenarios_and_validate_registration() {
     let header = "wrapper: super::with_cassette, wire: wire, run: world::run;";
     let matrix: ResumeMatrix = syn::parse_str(&format!(
         r#"{header}
-        #[tokio::test] cut: ("recording", cells::CELL, Some(1));
-        #[tokio::test] #[ignore = "unrecorded"] end: ("absent", cells::CELL, Some(usize::MAX));
+        #[tokio::test] cut: ("recording", cells::CELL, Some(1), "cut");
+        #[tokio::test] #[ignore = "unrecorded"] end: ("absent", cells::CELL, Some(usize::MAX), "end");
     "#
     ))
     .expect("resume matrix");
+    assert_eq!(matrix.rows[0].golden.value(), "cut");
     assert_eq!(
         matrix.wrapper.segments.last().expect("wrapper").ident,
         "with_cassette"
     );
-    assert_eq!(matrix.rows[0].0.value(), "recording");
-    assert!(!matrix.rows[0].1);
-    assert!(matrix.rows[1].1);
+    assert_eq!(matrix.rows[0].scenario.value(), "recording");
+    assert!(!matrix.rows[0].ignored);
+    assert!(matrix.rows[1].ignored);
     for row in [
         "",
         "cut: (\"recording\", CELL, None);",
         "#[tokio::test] cut: (scenario(), CELL, None);",
         "#[tokio::test] cut: (\"recording\", CELL, None, golden);",
+        "#[tokio::test] cut: (\"recording\", CELL, None);",
+        "#[tokio::test] cut: (\"recording\", CELL, None, \"golden\", extra);",
     ] {
         assert!(syn::parse_str::<ResumeMatrix>(&format!("{header}{row}")).is_err());
     }
 }
 
 #[test]
-fn native_rows_preserve_scenarios_and_take_no_golden() {
+fn native_rows_preserve_scenarios_and_world_goldens() {
     let header = "wrapper: super::with_cassette, wire: wire, run: world::run_world;";
     let matrix: NativeMatrix = syn::parse_str(&format!(
         r#"{header}
-        #[tokio::test] plain: ("recording", cells::CELL);
-        #[tokio::test] #[ignore = "unrecorded"] absent: ("absent", cells::CELL);
+        #[tokio::test] plain: ("recording", cells::CELL, "plain");
+        #[tokio::test] #[ignore = "unrecorded"] absent: ("absent", cells::CELL, "absent");
     "#
     ))
     .expect("native matrix");
+    assert_eq!(matrix.rows[0].golden.value(), "plain");
     assert_eq!(
         matrix.wrapper.segments.last().expect("wrapper").ident,
         "with_cassette"
     );
-    assert_eq!(matrix.rows[0].0.value(), "recording");
-    assert!(!matrix.rows[0].1);
-    assert!(matrix.rows[1].1);
+    assert_eq!(matrix.rows[0].scenario.value(), "recording");
+    assert!(!matrix.rows[0].ignored);
+    assert!(matrix.rows[1].ignored);
     for row in [
         "",
         "plain: (\"recording\", CELL);",
         "#[tokio::test] plain: (scenario(), CELL);",
-        "#[tokio::test] plain: (\"recording\", CELL, \"golden\");",
+        "#[tokio::test] plain: (\"recording\", CELL);",
+        "#[tokio::test] plain: (\"recording\", CELL, golden);",
+        "#[tokio::test] plain: (\"recording\", CELL, \"golden\", extra);",
     ] {
         assert!(syn::parse_str::<NativeMatrix>(&format!("{header}{row}")).is_err());
+    }
+}
+
+#[test]
+fn scripted_world_rows_keep_literal_goldens_and_ignores() {
+    let header = "family: wire_matrix_case;";
+    let matrix: CaseMatrix = syn::parse_str(&format!(
+        r#"{header}
+        #[tokio::test] text: truncated_after_text_0 => "text";
+        #[tokio::test] #[ignore = "unrecorded"] absent: filtered_empty_4 => "absent";
+    "#
+    ))
+    .expect("scripted world rows");
+    assert_eq!(matrix.registrations, 2);
+    assert_eq!(matrix.family, "wire_matrix_case");
+    assert!(matrix.rows.is_empty());
+    assert_eq!(matrix.world_goldens[0].0.value(), "text");
+    assert!(!matrix.world_goldens[0].1);
+    assert!(matrix.world_goldens[1].1);
+    for row in [
+        "#[tokio::test] text: truncated_after_text_0 => dynamic();",
+        "#[tokio::test] text: truncated_after_text_0 =>;",
+        "#[tokio::test] text: truncated_after_text_0 => \"text\", extra;",
+    ] {
+        assert!(syn::parse_str::<CaseMatrix>(&format!("{header}{row}")).is_err());
     }
 }
 

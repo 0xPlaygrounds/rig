@@ -1,0 +1,2839 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 6,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 10,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 12,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 16,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 18,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 22,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 23,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 27,
+        "id": 8,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "ping_empty",
+          "description": "Return EMPTY-OK. This tool takes no arguments.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "inspect_manifest",
+          "description": "Validate a nested deployment manifest.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "flags": {
+                "type": "object",
+                "properties": {
+                  "critical": {
+                    "type": "boolean"
+                  },
+                  "retries": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "critical",
+                  "retries"
+                ]
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "weight": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "weight"
+                  ]
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "project",
+              "flags",
+              "steps",
+              "note"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#2",
+        "family": {
+          "family": "tool",
+          "name": "join_labels",
+          "description": "Join label strings with the requested separator.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "separator": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "labels",
+              "separator"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#3",
+        "family": {
+          "family": "tool",
+          "name": "escape_echo",
+          "description": "Echo a string containing escaping-sensitive characters.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool",
+      "parity/tool#2": "tool",
+      "parity/tool#3": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool",
+          "parity/tool#2": "tool",
+          "parity/tool#3": "tool"
+        },
+        "policy": 7421491000933176884
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1",
+                "item_id": "fc_REDACTED_1"
+              },
+              "function": {
+                "name": "ping_empty",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 745,
+            "output_tokens": 301,
+            "total_tokens": 1046,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 296
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "background": false,
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "req_REDACTED_1",
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_REDACTED_1"
+            },
+            "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_REDACTED_1",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{}",
+                "call_id": "call_REDACTED_1",
+                "id": "fc_REDACTED_1",
+                "name": "ping_empty",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": "low",
+              "summary": "detailed"
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.7,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
+                "name": "ping_empty",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Validate a nested deployment manifest.",
+                "name": "inspect_manifest",
+                "parameters": {
+                  "properties": {
+                    "flags": {
+                      "properties": {
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "retries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "critical",
+                        "retries"
+                      ],
+                      "type": "object"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "project": {
+                      "type": "string"
+                    },
+                    "steps": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "weight"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "flags",
+                    "steps",
+                    "note"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Join label strings with the requested separator.",
+                "name": "join_labels",
+                "parameters": {
+                  "properties": {
+                    "labels": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "separator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "labels",
+                    "separator"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Echo a string containing escaping-sensitive characters.",
+                "name": "escape_echo",
+                "parameters": {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 0.95,
+            "truncation": "disabled",
+            "usage": {
+              "context_details": {
+                "input_tokens": 745,
+                "output_tokens": 301
+              },
+              "cost_in_usd_ticks": 9445500,
+              "input_tokens": 745,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 301,
+              "output_tokens_details": {
+                "reasoning_tokens": 296
+              },
+              "total_tokens": 1046
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "ping_empty",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "EMPTY-OK"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_2",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2",
+                "item_id": "fc_REDACTED_2"
+              },
+              "function": {
+                "name": "inspect_manifest",
+                "arguments": {
+                  "project": "rig-xai",
+                  "flags": {
+                    "critical": true,
+                    "retries": 2
+                  },
+                  "steps": [
+                    {
+                      "name": "plan",
+                      "weight": 1
+                    },
+                    {
+                      "name": "verify",
+                      "weight": 2
+                    }
+                  ],
+                  "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 759,
+            "output_tokens": 377,
+            "total_tokens": 1136,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 299
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "background": false,
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "req_REDACTED_2",
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_REDACTED_1"
+            },
+            "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_REDACTED_2",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti...",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
+                "call_id": "call_REDACTED_2",
+                "id": "fc_REDACTED_2",
+                "name": "inspect_manifest",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": "low",
+              "summary": "detailed"
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.7,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
+                "name": "ping_empty",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Validate a nested deployment manifest.",
+                "name": "inspect_manifest",
+                "parameters": {
+                  "properties": {
+                    "flags": {
+                      "properties": {
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "retries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "critical",
+                        "retries"
+                      ],
+                      "type": "object"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "project": {
+                      "type": "string"
+                    },
+                    "steps": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "weight"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "flags",
+                    "steps",
+                    "note"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Join label strings with the requested separator.",
+                "name": "join_labels",
+                "parameters": {
+                  "properties": {
+                    "labels": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "separator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "labels",
+                    "separator"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Echo a string containing escaping-sensitive characters.",
+                "name": "escape_echo",
+                "parameters": {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 0.95,
+            "truncation": "disabled",
+            "usage": {
+              "context_details": {
+                "input_tokens": 759,
+                "output_tokens": 377
+              },
+              "cost_in_usd_ticks": 11520500,
+              "input_tokens": 759,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 377,
+              "output_tokens_details": {
+                "reasoning_tokens": 299
+              },
+              "total_tokens": 1136
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 3,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "inspect_manifest",
+        "args": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-xai",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_3",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3",
+                "item_id": "fc_REDACTED_3"
+              },
+              "function": {
+                "name": "join_labels",
+                "arguments": {
+                  "labels": [
+                    "north",
+                    "beta gamma",
+                    "quote:\"delta\"",
+                    "slash\\path"
+                  ],
+                  "separator": "|"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 843,
+            "output_tokens": 84,
+            "total_tokens": 927,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 54
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_3",
+          "provider_request_id": "req_REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "background": false,
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "req_REDACTED_3",
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_REDACTED_1"
+            },
+            "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_REDACTED_3",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                "call_id": "call_REDACTED_3",
+                "id": "fc_REDACTED_3",
+                "name": "join_labels",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": "low",
+              "summary": "detailed"
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.7,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
+                "name": "ping_empty",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Validate a nested deployment manifest.",
+                "name": "inspect_manifest",
+                "parameters": {
+                  "properties": {
+                    "flags": {
+                      "properties": {
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "retries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "critical",
+                        "retries"
+                      ],
+                      "type": "object"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "project": {
+                      "type": "string"
+                    },
+                    "steps": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "weight"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "flags",
+                    "steps",
+                    "note"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Join label strings with the requested separator.",
+                "name": "join_labels",
+                "parameters": {
+                  "properties": {
+                    "labels": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "separator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "labels",
+                    "separator"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Echo a string containing escaping-sensitive characters.",
+                "name": "escape_echo",
+                "parameters": {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 0.95,
+            "truncation": "disabled",
+            "usage": {
+              "context_details": {
+                "input_tokens": 843,
+                "output_tokens": 84
+              },
+              "cost_in_usd_ticks": 3901500,
+              "input_tokens": 843,
+              "input_tokens_details": {
+                "cached_tokens": 832
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 84,
+              "output_tokens_details": {
+                "reasoning_tokens": 54
+              },
+              "total_tokens": 927
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 5,
+      "key": "parity/tool#2",
+      "kind": {
+        "effect": "tool_call",
+        "name": "join_labels",
+        "args": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-xai",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_3",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_4",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4",
+                "item_id": "fc_REDACTED_4"
+              },
+              "function": {
+                "name": "escape_echo",
+                "arguments": {
+                  "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 892,
+            "output_tokens": 82,
+            "total_tokens": 974,
+            "cached_input_tokens": 832,
+            "reasoning_tokens": 54
+          },
+          "message_id": null,
+          "response_id": "req_REDACTED_4",
+          "provider_request_id": "req_REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "background": false,
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "req_REDACTED_4",
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_REDACTED_1"
+            },
+            "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_REDACTED_4",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
+                "call_id": "call_REDACTED_4",
+                "id": "fc_REDACTED_4",
+                "name": "escape_echo",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": "low",
+              "summary": "detailed"
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.7,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
+                "name": "ping_empty",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Validate a nested deployment manifest.",
+                "name": "inspect_manifest",
+                "parameters": {
+                  "properties": {
+                    "flags": {
+                      "properties": {
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "retries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "critical",
+                        "retries"
+                      ],
+                      "type": "object"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "project": {
+                      "type": "string"
+                    },
+                    "steps": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "weight"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "flags",
+                    "steps",
+                    "note"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Join label strings with the requested separator.",
+                "name": "join_labels",
+                "parameters": {
+                  "properties": {
+                    "labels": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "separator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "labels",
+                    "separator"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Echo a string containing escaping-sensitive characters.",
+                "name": "escape_echo",
+                "parameters": {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 0.95,
+            "truncation": "disabled",
+            "usage": {
+              "context_details": {
+                "input_tokens": 892,
+                "output_tokens": 82
+              },
+              "cost_in_usd_ticks": 4464000,
+              "input_tokens": 892,
+              "input_tokens_details": {
+                "cached_tokens": 832
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 82,
+              "output_tokens_details": {
+                "reasoning_tokens": 54
+              },
+              "total_tokens": 974
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 7,
+      "key": "parity/tool#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "escape_echo",
+        "args": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 8,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-xai",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-xai steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_3",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_4",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4",
+                    "item_id": "fc_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "escape_echo",
+                    "arguments": {
+                      "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4",
+                    "item_id": "fc_REDACTED_4"
+                  },
+                  "name": "escape_echo",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_5",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The tools have all been called in the exact order specified, and each returned the expected OK messages.\n"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Production scenario complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
+            }
+          ],
+          "usage": {
+            "input_tokens": 946,
+            "output_tokens": 69,
+            "total_tokens": 1015,
+            "cached_input_tokens": 896,
+            "reasoning_tokens": 49
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "req_REDACTED_5",
+          "provider_request_id": "req_REDACTED_5",
+          "finish_reason": "stop",
+          "provider": "xai",
+          "model": "grok-4.3",
+          "raw": {
+            "background": false,
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "req_REDACTED_5",
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_REDACTED_1"
+            },
+            "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_REDACTED_5",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "The tools have all been called in the exact order specified, and each returned the expected OK messages.\n",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "Production scenario complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": "low",
+              "summary": "detailed"
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.7,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
+                "name": "ping_empty",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Validate a nested deployment manifest.",
+                "name": "inspect_manifest",
+                "parameters": {
+                  "properties": {
+                    "flags": {
+                      "properties": {
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "retries": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "critical",
+                        "retries"
+                      ],
+                      "type": "object"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "project": {
+                      "type": "string"
+                    },
+                    "steps": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "weight"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "project",
+                    "flags",
+                    "steps",
+                    "note"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Join label strings with the requested separator.",
+                "name": "join_labels",
+                "parameters": {
+                  "properties": {
+                    "labels": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "separator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "labels",
+                    "separator"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Echo a string containing escaping-sensitive characters.",
+                "name": "escape_echo",
+                "parameters": {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 0.95,
+            "truncation": "disabled",
+            "usage": {
+              "context_details": {
+                "input_tokens": 946,
+                "output_tokens": 69
+              },
+              "cost_in_usd_ticks": 4142000,
+              "input_tokens": 946,
+              "input_tokens_details": {
+                "cached_tokens": 896
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 69,
+              "output_tokens_details": {
+                "reasoning_tokens": 49
+              },
+              "total_tokens": 1015
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

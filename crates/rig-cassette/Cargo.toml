@@ -134,6 +134,10 @@ name = "world_replay"
 required-features = ["agent", "ecs"]
 
 [[test]]
+name = "world_replay_world"
+required-features = ["ecs"]
+
+[[test]]
 name = "anthropic"
 required-features = ["http", "agent", "ecs"]
 

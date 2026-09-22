@@ -1,0 +1,173 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "file_report",
+          "description": "File an incident report.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string",
+                "description": "A long verbatim summary of the incident."
+              }
+            },
+            "required": [
+              "summary"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 13832723982706416525
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user's entire request, word for word, at least 120 words long."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "file_report",
+              "description": "File an incident report.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "summary": {
+                    "type": "string",
+                    "description": "A long verbatim summary of the incident."
+                  }
+                },
+                "required": [
+                  "summary"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [],
+          "usage": {
+            "input_tokens": 372,
+            "output_tokens": 32,
+            "total_tokens": 404,
+            "cached_input_tokens": 256
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "length",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"summary\": \"Log this incident: the",
+                        "name": "file_report"
+                      },
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-v4-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "a26a7955944dc5c60445bff77fac9c8e",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 116,
+              "prompt_tokens": 372,
+              "prompt_tokens_details": {
+                "cached_tokens": 256
+              },
+              "total_tokens": 404
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

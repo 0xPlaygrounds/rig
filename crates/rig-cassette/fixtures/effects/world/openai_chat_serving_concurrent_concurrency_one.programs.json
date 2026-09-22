@@ -1,0 +1,132 @@
+{
+  "golden/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/tool:lookup_harbor_label#0",
+            "descriptor": {
+              "key": "golden/tool:lookup_harbor_label#0",
+              "family": {
+                "family": "tool",
+                "name": "lookup_harbor_label",
+                "description": "Return the alpha signal marker.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {},
+                  "required": []
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/tool:lookup_orchard_label#1",
+            "descriptor": {
+              "key": "golden/tool:lookup_orchard_label#1",
+              "family": {
+                "family": "tool",
+                "name": "lookup_orchard_label",
+                "description": "Return the beta signal marker.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {},
+                  "required": []
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": null,
+          "rig_ecs::agent::MaxTurns": 8,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.",
+          "rig_ecs::agent::Temperature": null,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Grant": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Grant": 2
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 8,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 3,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": true,
+          "rig_ecs::agent::ToolPolicy": {
+            "concurrency": 1
+          },
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 6,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ]
+}

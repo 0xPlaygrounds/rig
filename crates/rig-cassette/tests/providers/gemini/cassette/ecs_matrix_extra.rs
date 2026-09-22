@@ -46,87 +46,114 @@ crate::matrix::case_matrix! {
     /// A batch-held call approved by removing `Held` dispatches, lands in call
     /// order, and the scene saved afterwards loads.
     #[tokio::test]
-    batch_held_call_approved_by_removing_held: ("corpus_matrix/serving_concurrent_concurrency_one", batch_held_call_approved_by_removing_held_15);
+    batch_held_call_approved_by_removing_held: ("corpus_matrix/serving_concurrent_concurrency_one", batch_held_call_approved_by_removing_held_15, "gemini_matrix_extra_batch_held_call_approved_by_removing_held");
     /// The same, approved by `release_hold("rig-ecs/batch")`.
     #[tokio::test]
-    batch_held_call_approved_by_releasing_the_batch_owner: ("corpus_matrix/serving_concurrent_concurrency_one", batch_held_call_approved_by_releasing_the_batch_owner_16);
+    batch_held_call_approved_by_releasing_the_batch_owner: ("corpus_matrix/serving_concurrent_concurrency_one", batch_held_call_approved_by_releasing_the_batch_owner_16, "gemini_matrix_extra_batch_held_call_approved_by_releasing_the_batch_owner");
     /// A run cancelled while its completion still streams refuses
     /// `despawn_run` until the stream drains.
     #[tokio::test]
-    despawn_run_waits_for_an_in_flight_stream: ("corpus_breadth/text_delta_stop", despawn_run_waits_for_an_in_flight_stream_17);
+    despawn_run_waits_for_an_in_flight_stream: ("corpus_breadth/text_delta_stop", despawn_run_waits_for_an_in_flight_stream_17, "gemini_matrix_extra_despawn_run_waits_for_an_in_flight_stream");
 }
 
 /// The recorded 4xx, unary: the run fails as the provider's response and
 /// the record and the witness carry the same facts.
 #[tokio::test]
 async fn error_facts_unary() {
-    with_gemini_cassette(
-        "error_envelope/nonexistent_model_error_preserves_status_and_body",
-        |client| async move {
-            error_facts(
-                client.completion("gemini-nonexistent-rig-test"),
-                ErrorProbe {
-                    prompt: "Say hi.",
-                    max_tokens: Some(16),
-                    additional_params: None,
-                    streamed: false,
-                    status: 404,
-                    code: Some("NOT_FOUND"),
-                },
-            )
-            .await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_gemini_cassette(
+            "error_envelope/nonexistent_model_error_preserves_status_and_body",
+            |client| async move {
+                error_facts(
+                    client.completion("gemini-nonexistent-rig-test"),
+                    ErrorProbe {
+                        prompt: "Say hi.",
+                        max_tokens: Some(16),
+                        additional_params: None,
+                        streamed: false,
+                        status: 404,
+                        code: Some("NOT_FOUND"),
+                    },
+                    |log| {
+                        crate::goldens::world_golden_effects(
+                            "gemini_matrix_extra_error_facts_unary",
+                            log,
+                        )
+                    },
+                )
+                .await;
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// The recorded 4xx on the streaming surface.
 #[tokio::test]
 async fn error_facts_streamed() {
-    with_gemini_cassette(
-        "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
-        |client| async move {
-            error_facts(
-                client.completion("gemini-nonexistent-rig-test"),
-                ErrorProbe {
-                    prompt: "Say hi.",
-                    max_tokens: Some(16),
-                    additional_params: None,
-                    streamed: true,
-                    status: 404,
-                    code: Some("NOT_FOUND"),
-                },
-            )
-            .await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_gemini_cassette(
+            "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
+            |client| async move {
+                error_facts(
+                    client.completion("gemini-nonexistent-rig-test"),
+                    ErrorProbe {
+                        prompt: "Say hi.",
+                        max_tokens: Some(16),
+                        additional_params: None,
+                        streamed: true,
+                        status: 404,
+                        code: Some("NOT_FOUND"),
+                    },
+                    |log| {
+                        crate::goldens::world_golden_effects(
+                            "gemini_matrix_extra_error_facts_streamed",
+                            log,
+                        )
+                    },
+                )
+                .await;
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// The id-less wire's two calls in one turn carry distinct minted ids,
 /// both answered in the adjacent utterance, and a re-run mints the same.
 #[tokio::test]
 async fn id_less_calls_get_distinct_stable_minted_ids() {
-    let first = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let again = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let sink = first.clone();
-    with_gemini_cassette(
-        "corpus_matrix/serving_concurrent_concurrency_two",
-        |client| async move {
-            *sink.lock().expect("ids") = minted_ids(&wire(&client)).await;
-        },
-    )
+    crate::goldens::capture_world_programs(async {
+        let golden = |log: &rig_cassette::effect_log::EffectLog| {
+            crate::goldens::world_golden_effects(
+                "gemini_matrix_extra_id_less_calls_get_distinct_stable_minted_ids",
+                log,
+            )
+        };
+        let first = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let again = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = first.clone();
+        with_gemini_cassette(
+            "corpus_matrix/serving_concurrent_concurrency_two",
+            |client| async move {
+                *sink.lock().expect("ids") = minted_ids(&wire(&client), golden).await;
+            },
+        )
+        .await;
+        let sink = again.clone();
+        with_gemini_cassette(
+            "corpus_matrix/serving_concurrent_concurrency_two",
+            |client| async move {
+                *sink.lock().expect("ids") = minted_ids(&wire(&client), golden).await;
+            },
+        )
+        .await;
+        let first = first.lock().expect("ids").clone();
+        let again = again.lock().expect("ids").clone();
+        assert_eq!(first.len(), 2);
+        assert_eq!(first, again, "a re-run mints the same ids");
+    })
     .await;
-    let sink = again.clone();
-    with_gemini_cassette(
-        "corpus_matrix/serving_concurrent_concurrency_two",
-        |client| async move {
-            *sink.lock().expect("ids") = minted_ids(&wire(&client)).await;
-        },
-    )
-    .await;
-    let first = first.lock().expect("ids").clone();
-    let again = again.lock().expect("ids").clone();
-    assert_eq!(first.len(), 2);
-    assert_eq!(first, again, "a re-run mints the same ids");
 }

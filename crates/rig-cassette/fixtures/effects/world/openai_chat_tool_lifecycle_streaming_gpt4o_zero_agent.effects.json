@@ -1,0 +1,308 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 13,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "ping",
+          "description": "Matrix tool ping",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 12120097811593672816
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the user's tool-call instruction exactly. Do not answer in prose."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call ping exactly once with no arguments."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping",
+              "description": "Matrix tool ping",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 128,
+          "tool_choice": null,
+          "additional_params": {
+            "tool_choice": "required",
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "ping",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 56,
+            "output_tokens": 10,
+            "total_tokens": 66,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4o-mini-2024-07-18",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 10,
+              "total_tokens": 66,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4o-mini-2024-07-18",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_4",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "ping"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_1"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_1"
+            },
+            "function": {
+              "name": "ping",
+              "arguments": {}
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 56,
+            "output_tokens": 10,
+            "total_tokens": 66,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-4o-mini-2024-07-18",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 10,
+              "total_tokens": 66,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4o-mini-2024-07-18",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_4",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "ping",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "ping"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

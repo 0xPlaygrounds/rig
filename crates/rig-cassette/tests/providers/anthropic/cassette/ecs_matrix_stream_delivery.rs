@@ -18,18 +18,35 @@ fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'stati
 
 #[tokio::test]
 async fn text() {
-    with_anthropic_cassette(
-        "corpus_shaping/extra_context_streamed",
-        |client| async move {
-            run_world(&wire(&client), &cells::SHAPING_EXTRA_CONTEXT_STREAMED).await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_cassette(
+            "corpus_shaping/extra_context_streamed",
+            |client| async move {
+                run_world(
+                    &wire(&client),
+                    &cells::SHAPING_EXTRA_CONTEXT_STREAMED,
+                    |log| {
+                        crate::goldens::world_golden_effects(
+                            "anthropic_matrix_stream_delivery_text",
+                            log,
+                        )
+                    },
+                )
+                .await;
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 #[tokio::test]
 async fn parallel() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_cassette("streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order", |client| async move {
-        run_world(&wire(&client), &cells::SERVING_CONCURRENT_CONCURRENCY_TWO_EVENTS).await;
+        run_world(&wire(&client), &cells::SERVING_CONCURRENT_CONCURRENCY_TWO_EVENTS, |log| crate::goldens::world_golden_effects("anthropic_matrix_stream_delivery_parallel", log)).await;
     }).await;
+
+}).await
 }

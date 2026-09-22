@@ -1,0 +1,381 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 8,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 5271267084729131089
+      },
+      "parity/run#1": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 3665719559150741900
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alice is a 25 year old developer."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "submit",
+              "description": "Submit the structured data you extracted from the provided text.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "age": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "profession": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "title": "Person",
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this."
+                  }
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "name": "Alice",
+                  "age": 25,
+                  "profession": "developer"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 431,
+            "output_tokens": 110,
+            "total_tokens": 541,
+            "cached_input_tokens": 384,
+            "reasoning_tokens": 34
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "reasoning_content": "Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-v4-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 110,
+              "completion_tokens_details": {
+                "reasoning_tokens": 34
+              },
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 47,
+              "prompt_tokens": 431,
+              "prompt_tokens_details": {
+                "cached_tokens": 384
+              },
+              "total_tokens": 541
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "456 Oak Avenue, Cambridge, MA 02139"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "submit",
+              "description": "Submit the structured data you extracted from the provided text.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "street": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "city": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "zip_code": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "title": "Address",
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Let me extract the structured data from this address:\n\n- Street: 456 Oak Avenue\n- City: Cambridge\n- State: MA\n- Zip code: 02139"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "street": "456 Oak Avenue",
+                  "city": "Cambridge",
+                  "state": "MA",
+                  "zip_code": "02139"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 427,
+            "output_tokens": 130,
+            "total_tokens": 557,
+            "cached_input_tokens": 384,
+            "reasoning_tokens": 35
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "reasoning_content": "Let me extract the structured data from this address:\n\n- Street: 456 Oak Avenue\n- City: Cambridge\n- State: MA\n- Zip code: 02139",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"street\": \"456 Oak Avenue\", \"city\": \"Cambridge\", \"state\": \"MA\", \"zip_code\": \"02139\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_2",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_2",
+            "model": "deepseek-v4-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 130,
+              "completion_tokens_details": {
+                "reasoning_tokens": 35
+              },
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 43,
+              "prompt_tokens": 427,
+              "prompt_tokens_details": {
+                "cached_tokens": 384
+              },
+              "total_tokens": 557
+            }
+          }
+        }
+      },
+      "scope": "parity/run#1"
+    }
+  ]
+}

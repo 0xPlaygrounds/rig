@@ -26,7 +26,8 @@ use rig_core::streaming::Delta;
 
 use rig_core::streaming::StreamEvent;
 
-use rig_cassette::effect_log::RequestCheck;
+use rig_cassette::ecs::identity::stamp_run;
+use rig_cassette::effect_log::{EffectLog, RequestCheck};
 use rig_ecs::{
     agent::{
         AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Preamble, Settled,
@@ -45,6 +46,10 @@ use crate::goldens::families;
 use crate::stream_faults::{adapter_events, endings, witnessed};
 
 const GUARD: std::time::Duration = std::time::Duration::from_secs(300);
+
+#[cfg(test)]
+#[path = "extra/tests.rs"]
+mod tests;
 
 /// A 4xx the wire records, as the request the recording holds.
 pub(crate) struct ErrorProbe {
@@ -66,7 +71,11 @@ pub(crate) struct ErrorProbe {
 /// fails as the provider's response, the record's report carries the
 /// status table's verdict and the body's code, and the witness's ending
 /// names the same.
-pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: ErrorProbe) {
+pub(crate) async fn error_facts<M: CompletionModel + 'static>(
+    model: M,
+    probe: ErrorProbe,
+    golden: impl FnOnce(&EffectLog),
+) {
     let mut ecs = EcsAgent::new(model, "", 2);
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         Preamble(None),
@@ -107,6 +116,7 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
     assert!(!response.body.is_empty(), "the body is kept");
     // The record holds the same report.
     let log = ecs.effect_log();
+    golden(&log);
     assert_eq!(families(&log), [rig_core::effect::EffectFamily::Completion]);
     let recorded = log.records[0]
         .outcome
@@ -162,6 +172,7 @@ pub(crate) enum Approval {
 pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     approval: Approval,
+    golden: impl FnOnce(&EffectLog),
 ) {
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_ONE;
     let mut program = wire.program(cell);
@@ -177,6 +188,8 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
     app.world_mut()
         .entity_mut(run)
         .insert(ToolPolicy { concurrency: 1 });
+    stamp_run(app.world_mut(), run, &recorder).expect("stamp batch run");
+    crate::goldens::capture_world_program(app.world_mut(), run, &recorder.log());
     // One schedule pass at a time: an `update` runs to quiescence and
     // would land the batch before the hold is observable.
     let start = Instant::now();
@@ -236,6 +249,7 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
         app.world().get::<Failed>(run)
     );
     let log = recorder.log();
+    golden(&log);
     assert_eq!(families(&log), cell.families, "{approval:?}");
     assert_eq!(
         tool_outputs(&log),
@@ -262,6 +276,7 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
 #[allow(dead_code)]
 pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
+    golden: impl FnOnce(&EffectLog),
 ) -> Vec<String> {
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_TWO;
     let program = wire.program(cell);
@@ -276,8 +291,11 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     app.world_mut()
         .entity_mut(run)
         .insert(ToolPolicy { concurrency: 2 });
+    stamp_run(app.world_mut(), run, &recorder).expect("stamp minted-id run");
+    crate::goldens::capture_world_program(app.world_mut(), run, &recorder.log());
     settle(&mut app, run).await;
     let log = recorder.log();
+    golden(&log);
     assert_eq!(families(&log), cell.families);
     let world = app.world_mut();
     let turns: Vec<Entity> = world
@@ -384,7 +402,7 @@ struct CancelAt {
 /// `Cancelled` at the cut, and nothing else: the stream is left to its
 /// handler (CONTRACT §9.1).
 fn cancel_at_cut(
-    streams: Query<(&ChildOf, &Streamed)>,
+    streams: Query<(&ChildOf, &Streamed, Option<&EffectOutcome>)>,
     turns: Query<&ChildOf, With<Turn>>,
     mut at: ResMut<CancelAt>,
     mut commands: Commands,
@@ -392,7 +410,7 @@ fn cancel_at_cut(
     if at.done {
         return;
     }
-    for (parent, stream) in &streams {
+    for (parent, stream, outcome) in &streams {
         let reached = match at.cut {
             Cut::FirstTextDelta => stream.events.iter().any(|event| {
                 matches!(
@@ -407,7 +425,9 @@ fn cancel_at_cut(
                 .events
                 .iter()
                 .any(super::world::is_tool_call_progress),
-            Cut::AfterTerminal => stream.outcome.is_some(),
+            // A folded terminal can precede EOF. This cut promises no live
+            // stream, so wait for the collector's completed effect outcome.
+            Cut::AfterTerminal => outcome.is_some(),
         };
         if reached {
             let run = turns
@@ -428,8 +448,9 @@ fn cancel_at_cut(
 pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
+    golden: impl FnOnce(&EffectLog),
 ) {
-    cancel_at(wire, cell, Cut::FirstTextDelta).await;
+    cancel_at(wire, cell, Cut::FirstTextDelta, golden).await;
 }
 
 /// Row 11 of the failure rows: a bare `Cancelled` at `cut` of a streaming
@@ -442,6 +463,7 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
     cut: Cut,
+    golden: impl FnOnce(&EffectLog),
 ) {
     // The delta hook's cell without the hook: no delta gate on the model,
     // no despawn of the stream — a bare `Cancelled`.
@@ -461,6 +483,8 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
     let run = app
         .world_mut()
         .spawn_run(agent, &[], program.prompt, true, program.max_turns);
+    stamp_run(app.world_mut(), run, &recorder).expect("stamp cancellation run");
+    crate::goldens::capture_world_program(app.world_mut(), run, &recorder.log());
     let start = Instant::now();
     loop {
         app.update();
@@ -520,6 +544,7 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
     // The record is the handler's: the one completion, whole where the
     // handler finished it; no tool was dispatched, nothing committed.
     let log = recorder.log();
+    golden(&log);
     assert_eq!(
         families(&log),
         [rig_core::effect::EffectFamily::Completion],

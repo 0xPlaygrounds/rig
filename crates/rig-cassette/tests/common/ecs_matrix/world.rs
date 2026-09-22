@@ -131,10 +131,10 @@ pub(crate) struct Gates {
 /// can publish more of the stream (the anthropic `FirstDelta` gate,
 /// for both delta hooks); a driver that saves a scene mid-stream releases
 /// the gate afterwards.
-struct FirstDelta<M> {
-    inner: M,
-    tool: bool,
-    release: Arc<Semaphore>,
+pub(crate) struct FirstDelta<M> {
+    pub(crate) inner: M,
+    pub(crate) tool: bool,
+    pub(crate) release: Arc<Semaphore>,
 }
 
 impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
@@ -836,11 +836,9 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             world.spawn((Route(route), ChildOf(agent)));
         }
         let hooks = corpus::program_hooks(program, OWNER);
-        if !hooks.is_empty() {
-            world
-                .entity_mut(agent)
-                .insert(PolicyVersion(format!("ecs-matrix/v1:{}", hooks.join("+"))));
-        }
+        world
+            .entity_mut(agent)
+            .insert(PolicyVersion(format!("ecs-matrix/v1:{}", hooks.join("+"))));
 
         agent
     };
@@ -1740,6 +1738,7 @@ fn assert_mid_stream_scene_refused(app: &mut App, cell: &Cell, program: &Program
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
+    golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let program = wire.program(cell);
     let (mut app, mut agent, mut recorder, mut gates) = open(wire, cell, &program);
@@ -1789,6 +1788,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             world.entity_mut(run).insert(ToolPolicy { concurrency });
         }
         stamp_run(world, run, &recorder).expect("the run stamps its program identity");
+        crate::goldens::capture_world_program(world, run, &recorder.log());
         if std::env::var("RIG_SPEC_DUMP").is_ok() {
             eprintln!(
                 "SPECDUMP {}",
@@ -1950,15 +1950,8 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     if cell.name == "checkpoint_parallel_batch" && saved_head.is_none() {
         super::checkpoint_world::assert_parallel_complete(app.world());
     }
-    if let Some(mut head) = saved_head {
-        // The head's signature froze at the cut; the tail's recorder saw
-        // the handlers the head never reached. Join both, as one recorder
-        // over the whole run would have.
-        for (key, family) in log.header.signature.iter() {
-            head.header.signature.insert_if_absent(key.clone(), *family);
-        }
-        head.records.extend(log.records);
-        log = head;
+    if let Some(head) = saved_head {
+        log = join_logs(head, log);
     }
     if !cell.families.is_empty() {
         assert_eq!(
@@ -1977,7 +1970,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     if super::stream_delivery::applicable(cell) {
         super::stream_delivery::assert_complete(app.world(), cell, &log, delivery_head);
     }
-    // The graph, and the fault's facts.
+    golden(&log);
     assert_ending(app.world(), &program, run, &log);
     assert_graph(&mut app, &runs, &program, &log);
     if cell.reasoning.is_some() {
@@ -2040,15 +2033,68 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     log
 }
 
-/// A scripted cell: the rig-agent runner over one scripted transport and
-/// the world over another built the same way, each asserted against the
-/// cell. No golden: the frames are the cell's, not a recording's.
+fn join_logs(mut head: EffectLog, tail: EffectLog) -> EffectLog {
+    for (key, family) in tail.header.signature.iter() {
+        head.header.signature.insert_if_absent(key.clone(), *family);
+    }
+    for handler in tail.header.handlers {
+        if let Some(previous) = head
+            .header
+            .handlers
+            .iter()
+            .find(|previous| previous.key == handler.key)
+        {
+            assert_eq!(
+                previous, &handler,
+                "a restored handler retains its descriptor"
+            );
+        } else {
+            head.header.handlers.push(handler);
+        }
+    }
+    for (scope, identity) in tail.header.programs {
+        if let Some(previous) = head.header.programs.get(&scope) {
+            assert_eq!(previous, &identity, "a restored scope retains its identity");
+        } else {
+            head.header.programs.insert(scope, identity);
+        }
+    }
+    head.header.stream_errors.extend(tail.header.stream_errors);
+    for limitation in tail.header.delivery_limitations {
+        if !head.header.delivery_limitations.contains(&limitation) {
+            head.header.delivery_limitations.push(limitation);
+        }
+    }
+    if let Some(tail_deliveries) = tail.header.deliveries {
+        let deliveries = head.header.deliveries.get_or_insert_with(Vec::new);
+        let offset = deliveries
+            .iter()
+            .map(|delivery| delivery.batch)
+            .max()
+            .unwrap_or(0);
+        // A restored world's passes begin again at one. Its first observed
+        // pass follows the final head pass; it cannot share that boundary.
+        deliveries.extend(tail_deliveries.into_iter().map(|mut delivery| {
+            delivery.batch += offset;
+            delivery
+        }));
+    }
+    head.records.extend(tail.records);
+    head
+}
+
+#[cfg(test)]
+#[path = "world/tests.rs"]
+mod tests;
+
+/// Run each runtime over its own scripted transport and pin the world's log.
 pub(crate) async fn run_scripted<M: CompletionModel + Clone + 'static>(
     cell: &Cell,
     wire: impl Fn() -> Wire<M>,
+    golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     super::agent::run_agent(&wire(), cell, |_| {}).await;
-    run_world(&wire(), cell).await
+    run_world(&wire(), cell, golden).await
 }
 
 /// The tail: a fresh world over replayers of the log from the cut, the

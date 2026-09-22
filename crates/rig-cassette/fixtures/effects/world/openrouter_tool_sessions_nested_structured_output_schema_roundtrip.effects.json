@@ -1,0 +1,204 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 14149281898250433825
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Return only data that satisfies the requested schema. Use lane canary, risk low, and checks compile=true and replay=true."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Create the OpenRouter cassette release validation plan."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "provider": {
+              "require_parameters": true,
+              "order": [
+                "Google AI Studio",
+                "Google Vertex"
+              ]
+            }
+          },
+          "output_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "NestedPlan",
+            "type": "object",
+            "properties": {
+              "release": {
+                "$ref": "#/$defs/ReleaseInfo"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/PlanCheck"
+                }
+              }
+            },
+            "required": [
+              "release",
+              "checks"
+            ],
+            "$defs": {
+              "ReleaseInfo": {
+                "type": "object",
+                "properties": {
+                  "lane": {
+                    "type": "string"
+                  },
+                  "risk": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "lane",
+                  "risk"
+                ]
+              },
+              "PlanCheck": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "required"
+                ]
+              }
+            }
+          }
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "{\n \"release\": {\n  \"lane\": \"canary\",\n  \"risk\": \"low\"\n },\n \"checks\": [\n  {\n   \"name\": \"compile\",\n   \"required\": true\n  },\n  {\n   \"name\": \"replay\",\n   \"required\": true\n  }\n ]\n}"
+            }
+          ],
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 74,
+            "total_tokens": 111,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openrouter",
+          "model": "google/gemini-2.5-flash",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "{\n \"release\": {\n  \"lane\": \"canary\",\n  \"risk\": \"low\"\n },\n \"checks\": [\n  {\n   \"name\": \"compile\",\n   \"required\": true\n  },\n  {\n   \"name\": \"replay\",\n   \"required\": true\n  }\n ]\n}",
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "native_finish_reason": "STOP"
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "google/gemini-2.5-flash",
+            "object": "chat.completion",
+            "provider": "Google AI Studio",
+            "service_tier": "default",
+            "system_fingerprint": null,
+            "usage": {
+              "completion_tokens": 74,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "cost": 0.0001961,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.000185,
+                "upstream_inference_cost": 0.0001961,
+                "upstream_inference_prompt_cost": 0.0000111
+              },
+              "is_byok": false,
+              "prompt_tokens": 37,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 111
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

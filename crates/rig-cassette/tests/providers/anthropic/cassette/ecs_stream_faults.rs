@@ -24,6 +24,7 @@ use crate::{
 /// witness sees the request, the status, the envelope and the ending.
 #[tokio::test]
 async fn setup_failure_fails_the_run_with_the_recorded_status() {
+    crate::goldens::capture_world_programs(async {
     let configure = |ecs: &mut EcsAgent| {
         ecs.app
             .world_mut()
@@ -59,6 +60,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         .await;
     }
     let (observed, plain) = (&runs[0], &runs[1]);
+crate::goldens::world_golden_effects("anthropic_stream_faults_setup_failure_fails_the_run_with_the_recorded_status", &observed.log);
     assert_eq!(
         comparable_failure(observed.failure()),
         comparable_failure(plain.failure())
@@ -102,4 +104,6 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         !rendered.contains(BASIC_PROMPT) && !rendered.contains("sk-invalid"),
         "neither the request nor the credential reaches the trace"
     );
+
+}).await;
 }

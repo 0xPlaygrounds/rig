@@ -24,71 +24,85 @@ use crate::{
 
 #[tokio::test]
 async fn completion_smoke_effect_log() {
-    with_anthropic_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs =
-            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
-        assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
-        let log = ecs.effect_log();
-        assert_eq!(
-            log.records
-                .iter()
-                .map(|record| record.kind.family())
-                .collect::<Vec<_>>(),
-            [EffectFamily::Completion],
-            "one completion"
-        );
-        assert_reported_usage(&log);
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_cassette("agent/completion_smoke", |client| async move {
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
+            assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
+            let log = ecs.effect_log();
+            crate::goldens::world_golden_effects(
+                "anthropic_agent_smoke_completion_smoke_effect_log",
+                &log,
+            );
+            assert_eq!(
+                log.records
+                    .iter()
+                    .map(|record| record.kind.family())
+                    .collect::<Vec<_>>(),
+                [EffectFamily::Completion],
+                "one completion"
+            );
+            assert_reported_usage(&log);
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn memory_conversation_effect_log() {
-    with_anthropic_cassette("agent/completion_smoke", |client| async move {
-        let mut memory = None;
-        let mut ecs = EcsAgent::for_golden_with_setup(
-            client.completion(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-            |world| {
-                memory = Some(
-                    Handlers::with(world, |handlers| {
-                        handlers.register(
-                            "golden/memory",
-                            RuntimeHandler {
-                                inner: Arc::new(MemoryAdapter::new(
-                                    InMemoryConversationMemory::new(),
-                                )),
-                                runtime: io_runtime(),
-                            },
-                        )
-                    })
-                    .expect("bus installed")
-                    .expect("fresh memory key"),
-                );
-            },
-        );
-        ecs.app.world_mut().entity_mut(ecs.agent).insert((
-            Remembers(memory.expect("setup registered memory")),
-            Conversation("golden-conversation".into()),
-        ));
-        assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
-        let log = ecs.effect_log();
-        assert_eq!(
-            log.records
-                .iter()
-                .map(|record| record.kind.family())
-                .collect::<Vec<_>>(),
-            [
-                EffectFamily::Memory,
-                EffectFamily::Completion,
-                EffectFamily::Memory
-            ],
-            "load, completion, append"
-        );
-        assert_reported_usage(&log);
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_cassette("agent/completion_smoke", |client| async move {
+            let mut memory = None;
+            let mut ecs = EcsAgent::for_golden_with_setup(
+                client.completion(CLAUDE_SONNET_4_6),
+                BASIC_PREAMBLE,
+                false,
+                |world| {
+                    memory = Some(
+                        Handlers::with(world, |handlers| {
+                            handlers.register(
+                                "golden/memory",
+                                RuntimeHandler {
+                                    inner: Arc::new(MemoryAdapter::new(
+                                        InMemoryConversationMemory::new(),
+                                    )),
+                                    runtime: io_runtime(),
+                                },
+                            )
+                        })
+                        .expect("bus installed")
+                        .expect("fresh memory key"),
+                    );
+                },
+            );
+            ecs.app.world_mut().entity_mut(ecs.agent).insert((
+                Remembers(memory.expect("setup registered memory")),
+                Conversation("golden-conversation".into()),
+            ));
+            assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
+            let log = ecs.effect_log();
+            crate::goldens::world_golden_effects(
+                "anthropic_agent_smoke_memory_conversation_effect_log",
+                &log,
+            );
+            assert_eq!(
+                log.records
+                    .iter()
+                    .map(|record| record.kind.family())
+                    .collect::<Vec<_>>(),
+                [
+                    EffectFamily::Memory,
+                    EffectFamily::Completion,
+                    EffectFamily::Memory
+                ],
+                "load, completion, append"
+            );
+            assert_reported_usage(&log);
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 /// Every completion record's response carries the usage the wire reported.

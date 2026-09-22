@@ -349,9 +349,8 @@ pub(super) fn plan(
             )?;
             continue;
         }
-        // Both corpora live under `crates/rig-cassette/fixtures/`; the effect
-        // goldens are classified before the provider cassettes beside them,
-        // and both before the owning package's generic asset rule.
+        // Agent and world goldens share this prefix. Classify both before
+        // provider cassettes and the owning package's generic asset rule.
         if path.starts_with("crates/rig-cassette/fixtures/effects/") {
             add(&mut out, all, "bus-verification", "consumed golden changed")?;
             add(
@@ -370,7 +369,9 @@ pub(super) fn plan(
         }
         if let Some(name) = provider(path) {
             if let Some(owner) = provider_owner(packages, name) {
-                if owner == "rig-cassette" && matches!(name, "verify" | "world_replay") {
+                if owner == "rig-cassette"
+                    && matches!(name, "verify" | "world_replay" | "world_replay_world")
+                {
                     affected.insert("rig-cassette-minimal".to_owned());
                 }
                 let id = format!("provider-{name}");

@@ -1,0 +1,299 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 17593810594430059455
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one short paragraph, explain what a solar eclipse is."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "generationConfig": {
+              "thinkingConfig": {
+                "thinkingLevel": "medium",
+                "includeThoughts": true
+              }
+            }
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "**Defining Solar Eclipse Basics**\n\nI'm now zeroing in on the core of a solar eclipse. The essential event is the Moon getting between the Earth and the Sun. Currently, I'm focusing on the effect: the Moon blocks... what exactly? I'm honing in on the most direct and accurate way to describe the blockage. The goal is a truly concise and clear statement.\n\n\n",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking all or part of the Sun’s light from reaching Earth. During this alignment, the Moon casts a shadow on the Earth's surface, causing the sky to darken. Depending on the viewer's location and the Moon's distance, the eclipse can appear as a partial, annular, or total obscuration of the solar disk."
+            }
+          ],
+          "usage": {
+            "input_tokens": 26,
+            "output_tokens": 86,
+            "total_tokens": 404,
+            "reasoning_tokens": 292
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 26,
+              "candidatesTokenCount": 86,
+              "totalTokenCount": 404,
+              "thoughtsTokenCount": 292,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 26
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:reasoning:0",
+          "kind": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "**Defining Solar Eclipse Basics**\n\nI'm now zeroing in on the core of a solar eclipse. The essential event is the Moon getting between the Earth and the Sun. Currently, I'm focusing on the effect: the Moon blocks... what exactly? I'm honing in on the most direct and accurate way to describe the blockage. The goal is a truly concise and clear statement.\n\n\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "wire_sent": false
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "A solar eclipse occurs when the Moon passes directly between the Earth"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and the Sun, temporarily blocking all or part of the Sun’s light from reaching Earth. During this alignment, the Moon casts a shadow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " on the Earth's surface, causing the sky to darken. Depending on the viewer's location and the Moon's distance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ", the eclipse can appear as a partial, annular, or total obscuration of the solar disk."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "signature_REDACTED_1",
+            "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "**Defining Solar Eclipse Basics**\n\nI'm now zeroing in on the core of a solar eclipse. The essential event is the Moon getting between the Earth and the Sun. Currently, I'm focusing on the effect: the Moon blocks... what exactly? I'm honing in on the most direct and accurate way to describe the blockage. The goal is a truly concise and clear statement.\n\n\n",
+                  "signature": "signature_REDACTED_1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 26,
+            "output_tokens": 86,
+            "total_tokens": 404,
+            "reasoning_tokens": 292
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 26,
+              "candidatesTokenCount": 86,
+              "totalTokenCount": 404,
+              "thoughtsTokenCount": 292,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 26
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

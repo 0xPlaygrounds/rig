@@ -1,0 +1,87 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 4070450693748244315
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say hi."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": false,
+          "message": "ProviderResponseError: status 400 Bad Request: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model 'gpt-4o-mini-nonexistent-rig-test' does not exist.\",\"param\":\"model\",\"type\":\"invalid_request_error\"}}",
+          "code": "model_not_found",
+          "http_status": 400,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 400,
+            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model 'gpt-4o-mini-nonexistent-rig-test' does not exist.\",\"param\":\"model\",\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

@@ -56,10 +56,6 @@ impl<T: JsonSchema + DeserializeOwned> EcsExtractor<T> {
             DefaultMaxTurns(None),
             AdditionalParams(params),
             rig_ecs::agent::ToolChoiceSpec(Some(ToolChoice::Required)),
-            Output {
-                mode: OutputKind::Tool,
-                schema: Some(schemars::schema_for!(T).into()),
-            },
             OutputToolConfig {
                 name: Some("submit".into()),
                 description: Some(
@@ -74,6 +70,23 @@ impl<T: JsonSchema + DeserializeOwned> EcsExtractor<T> {
         ));
         Self {
             ecs,
+            output: PhantomData,
+        }
+        .with_schema::<T>()
+    }
+
+    /// Select a new output schema for subsequent independent runs in this world.
+    pub fn with_schema<U: JsonSchema + DeserializeOwned>(mut self) -> EcsExtractor<U> {
+        self.ecs
+            .app
+            .world_mut()
+            .entity_mut(self.ecs.agent)
+            .insert(Output {
+                mode: OutputKind::Tool,
+                schema: Some(schemars::schema_for!(U).into()),
+            });
+        EcsExtractor {
+            ecs: self.ecs,
             output: PhantomData,
         }
     }

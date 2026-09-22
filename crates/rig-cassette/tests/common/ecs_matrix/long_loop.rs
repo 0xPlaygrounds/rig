@@ -1952,11 +1952,12 @@ pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone 
 pub(crate) async fn run_scripted<M: rig_agent::completion::CompletionModel + Clone + 'static>(
     cell: &Cell,
     wire: impl Fn() -> super::Wire<M>,
+    golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let lease = lease(cell).await;
     super::agent::run_agent(&wire(), cell, |_| {}).await;
     drop(lease);
-    super::long_loop_world::run_world(&wire(), cell).await
+    super::long_loop_world::run_world(&wire(), cell, golden).await
 }
 
 // -- the scripted rows: the row-1 recording on the sequenced transport --------

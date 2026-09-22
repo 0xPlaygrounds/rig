@@ -1,0 +1,108 @@
+{
+  "golden/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": null,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "category",
+                "summary"
+              ]
+            }
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a concise assistant. Answer directly.",
+          "rig_ecs::agent::Temperature": 0.0,
+          "rig_ecs::agent::ToolChoiceSpec": {
+            "specific": {
+              "function_names": [
+                "final_result"
+              ]
+            }
+          },
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Return a concise event object for a local Rust meetup in Seattle."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ]
+}

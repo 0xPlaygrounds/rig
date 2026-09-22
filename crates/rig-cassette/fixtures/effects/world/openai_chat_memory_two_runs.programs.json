@@ -1,0 +1,374 @@
+{
+  "golden/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/memory",
+            "descriptor": {
+              "key": "golden/memory",
+              "family": {
+                "family": "memory"
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": null,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a concise assistant. Answer directly.",
+          "rig_ecs::agent::Remembers": 0,
+          "rig_ecs::agent::Temperature": null,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 1
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Remembering": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "LoadingMemory",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Reply with the single word: ready."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::bus::effect::Seq": 0
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ],
+  "golden/run#1": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/memory",
+            "descriptor": {
+              "key": "golden/memory",
+              "family": {
+                "family": "memory"
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "golden/model:default",
+            "descriptor": {
+              "key": "golden/model:default",
+              "family": {
+                "family": "completion",
+                "model": "default",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Fail"
+          },
+          "rig_ecs::agent::MaxTokens": null,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::Output": {
+            "mode": "Auto",
+            "schema": null
+          },
+          "rig_ecs::agent::Owner": "golden",
+          "rig_ecs::agent::PolicyVersion": "ecs-matrix/v1:",
+          "rig_ecs::agent::Preamble": "You are a concise assistant. Answer directly.",
+          "rig_ecs::agent::Remembers": 0,
+          "rig_ecs::agent::Temperature": null,
+          "rig_ecs::agent::ToolChoiceSpec": null,
+          "rig_ecs::agent::UsesModel": 1
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::Cursor": {
+            "turn": 1
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::MemoryAppendScheduled": {},
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Remembering": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunResult": "ready",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::Settled": {},
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {
+            "input_tokens": 27,
+            "output_tokens": 10,
+            "total_tokens": 37,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "rig_ecs::agent::UsesModel": 1,
+          "rig_ecs::bus::effect::Scope": "golden/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Reply with the single word: ready."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "memory",
+              "memory": "loaded",
+              "messages": []
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "text",
+                "text": "ready"
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {},
+            "allowed": []
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "text",
+                  "text": "ready"
+                }
+              ],
+              "usage": {
+                "input_tokens": 27,
+                "output_tokens": 10,
+                "total_tokens": 37,
+                "cached_input_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "message_id": null,
+              "response_id": "chatcmpl-REDACTED_1",
+              "provider_request_id": "req_REDACTED_1",
+              "finish_reason": "stop",
+              "provider": "openai",
+              "model": "gpt-5-mini-2025-08-07",
+              "raw": {
+                "choices": [
+                  {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                      "annotations": [],
+                      "content": "ready",
+                      "refusal": null,
+                      "role": "assistant"
+                    }
+                  }
+                ],
+                "created": 0,
+                "id": "chatcmpl-REDACTED_1",
+                "model": "gpt-5-mini-2025-08-07",
+                "object": "chat.completion",
+                "service_tier": "default",
+                "system_fingerprint": null,
+                "usage": {
+                  "completion_tokens": 10,
+                  "completion_tokens_details": {
+                    "accepted_prediction_tokens": 0,
+                    "audio_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                  },
+                  "prompt_tokens": 27,
+                  "prompt_tokens_details": {
+                    "audio_tokens": 0,
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 37
+                }
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1,
+          "rig_ecs::bus::effect::Seq": 1
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 9,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "ready"
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "memory",
+              "memory": "appended"
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 2
+        },
+        {
+          "rig_ecs::agent::Conversation": "golden-conversation",
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Remembering": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 2,
+          "rig_ecs::agent::RunPhase": "LoadingMemory",
+          "rig_ecs::agent::RunSeq": 1,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "golden/run#1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 12,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 13,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Now reply with the single word: again."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 12,
+          "rig_ecs::bus::effect::Seq": 3
+        }
+      ],
+      "counters": {
+        "next_run": 2,
+        "next_id": 3
+      },
+      "binaries": []
+    }
+  ]
+}

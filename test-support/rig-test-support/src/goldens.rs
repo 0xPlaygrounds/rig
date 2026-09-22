@@ -14,6 +14,11 @@ use rig_core::message::Message;
 
 use rig_cassette::effect_log::EffectLog;
 
+#[path = "goldens/world.rs"]
+mod world;
+pub(crate) use world::attach_world_recorder;
+pub use world::{capture_world_program, capture_world_programs, world_golden_test};
+
 /// The families of a log's records, in order: the shape a producer asserts.
 #[allow(dead_code)] // not every target records
 pub fn families(log: &EffectLog) -> Vec<EffectFamily> {
@@ -90,6 +95,64 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
         committed.trim_end(),
         rendered,
         "the agent's effects diverged from golden `{name}`; if the change is deliberate, regenerate it"
+    );
+}
+
+/// Compare a native log with its world fixture as JSON data.
+/// Observed delivery boundaries are excluded because HTTP scheduling varies.
+/// Requires [`capture_world_programs`] and pre-dispatch program captures.
+/// In replay mode, `RIG_REGENERATE_GOLDEN` writes the fixture instead.
+/// Record mode does nothing and rejects simultaneous regeneration.
+/// Names must be a single file stem, not a path.
+pub fn world_golden_effects(name: &str, log: &EffectLog) {
+    assert!(
+        !name.is_empty()
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'),
+        "world golden names must contain only letters, digits, and underscores"
+    );
+    if std::env::var("RIG_PROVIDER_TEST_MODE").is_ok_and(|mode| mode.eq_ignore_ascii_case("record"))
+    {
+        assert!(
+            std::env::var_os("RIG_REGENERATE_GOLDEN").is_none(),
+            "world golden `{name}`: regenerate only in replay mode"
+        );
+        return;
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/rig-cassette/fixtures/effects/world")
+        .join(format!("{name}.effects.json"));
+    if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(path.parent().expect("world corpus directory"))
+            .expect("create world corpus directory");
+        let rendered = serde_json::to_string_pretty(log).expect("the world log serializes");
+        std::fs::write(&path, format!("{rendered}\n")).expect("write world golden");
+        world::programs(
+            &path.with_file_name(format!("{name}.programs.json")),
+            log,
+            true,
+        );
+        return;
+    }
+    let committed = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "world golden {}: {error}; regenerate in replay mode",
+            path.display()
+        )
+    });
+    world::programs(
+        &path.with_file_name(format!("{name}.programs.json")),
+        log,
+        false,
+    );
+    let expected: serde_json::Value = serde_json::from_str(&committed).expect("world golden JSON");
+    assert_eq!(
+        world::without_delivery_boundaries(expected),
+        world::without_delivery_boundaries(
+            serde_json::to_value(log).expect("the world log serializes")
+        ),
+        "the world's effects diverged from world golden `{name}`"
     );
 }
 

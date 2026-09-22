@@ -125,76 +125,91 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
 crate::matrix::native_matrix! {
     wrapper: with_doubleword_cassette, wire: missing, run: run_world;
     #[tokio::test]
-    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY);
+    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY, "doubleword_setup_unary");
     #[tokio::test]
-    setup_streamed: ("error_matrix/unknown_model_streaming", SETUP_STREAMED);
+    setup_streamed: ("error_matrix/unknown_model_streaming", SETUP_STREAMED, "doubleword_setup_streamed");
 }
 
 crate::matrix::native_matrix! {
     wrapper: with_doubleword_cassette, wire: wire, run: run_world;
     #[tokio::test]
-    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR);
+    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR, "doubleword_tool_error");
     #[tokio::test]
-    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED);
+    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED, "doubleword_tool_error_streamed");
     #[tokio::test]
-    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS);
+    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS, "doubleword_batch_second_fails");
     #[tokio::test]
-    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT);
+    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "doubleword_batch_second_fails_concurrent");
 }
 
 /// Row 9 over `endings_tool_outcome_cancelled`'s recording.
 #[tokio::test]
 async fn stop_while_tool_runs() {
-    with_doubleword_cassette(
-        "corpus_matrix/endings_tool_outcome_cancelled",
-        |client| async move {
-            run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS).await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_doubleword_cassette(
+            "corpus_matrix/endings_tool_outcome_cancelled",
+            |client| async move {
+                run_world(&wire(&client), &faults::STOP_WHILE_TOOL_RUNS, |log| {
+                    crate::goldens::world_golden_effects(
+                        "doubleword_faults_stop_while_tool_runs",
+                        log,
+                    )
+                })
+                .await;
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// Row 13 over `resume_tool_turn`'s recording.
 #[tokio::test]
 async fn scene_tool_in_flight() {
-    with_doubleword_cassette("corpus_matrix/resume_tool_turn", |client| async move {
-        run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT).await;
+    crate::goldens::capture_world_programs(async {
+        with_doubleword_cassette("corpus_matrix/resume_tool_turn", |client| async move {
+            run_world(&wire(&client), &faults::SCENE_TOOL_IN_FLIGHT, |log| {
+                crate::goldens::world_golden_effects("doubleword_faults_scene_tool_in_flight", log)
+            })
+            .await;
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 crate::matrix::case_matrix! {
     family: wire_matrix_case;
     #[tokio::test]
-    truncated_after_text: truncated_after_text_0;
+    truncated_after_text: truncated_after_text_0 => "doubleword_faults_truncated_after_text";
     #[tokio::test]
-    truncated_after_tool_call: truncated_after_tool_call_1;
+    truncated_after_tool_call: truncated_after_tool_call_1 => "doubleword_faults_truncated_after_tool_call";
     /// The in-band error frame's facts, as the funnel reports them on this
     /// shape (`SseShape::error_{code,message,status}`).
     #[tokio::test]
-    error_after_text: error_after_text_2;
+    error_after_text: error_after_text_2 => "doubleword_faults_error_after_text";
     #[tokio::test]
-    filtered_with_text: filtered_with_text_3;
+    filtered_with_text: filtered_with_text_3 => "doubleword_faults_filtered_with_text";
     #[tokio::test]
-    filtered_empty: filtered_empty_4;
+    filtered_empty: filtered_empty_4 => "doubleword_faults_filtered_empty";
     /// Row 10: no request reaches the wire; the transport answers nothing.
     #[tokio::test]
-    failing_load: failing_load_5;
+    failing_load: failing_load_5 => "doubleword_faults_failing_load";
     #[tokio::test]
-    failing_load_streamed: failing_load_streamed_6;
+    failing_load_streamed: failing_load_streamed_6 => "doubleword_faults_failing_load_streamed";
     /// Row 11: a bare `Cancelled` at the first tool-call delta; the stream is
     /// left to its handler, the tool never dispatched. The recorded tool turn
     /// is served whole by the sequenced transport: a cancelled run makes one
     /// request, and the recording holds two.
     #[tokio::test]
-    cancel_at_first_tool_call_delta: cancel_at_first_tool_call_delta_7;
+    cancel_at_first_tool_call_delta: cancel_at_first_tool_call_delta_7 => "doubleword_faults_cancel_at_first_tool_call_delta";
     #[tokio::test]
-    status_429: status_429_23;
+    status_429: status_429_23 => "doubleword_faults_status_429";
     #[tokio::test]
-    status_503: status_503_24;
+    status_503: status_503_24 => "doubleword_faults_status_503";
     /// World-only: the default budget re-issues the completion three times.
     #[tokio::test]
-    status_503_retried: status_503_retried_25;
+    status_503_retried: status_503_retried_25 => "doubleword_faults_status_503_retried";
 }
 
 crate::matrix::case_matrix! {
@@ -202,5 +217,5 @@ crate::matrix::case_matrix! {
     # [doc = " Row 11: a bare `Cancelled` once the terminal record has landed and"]
     # [doc = " before `Fold`: a whole completion, the run cancelled, despawned at once."]
     #[tokio::test]
-    cancel_after_terminal: ("corpus_matrix/endings_text_delta_stop", cancel_after_terminal_6);
+    cancel_after_terminal: ("corpus_matrix/endings_text_delta_stop", cancel_after_terminal_6, "doubleword_faults_cancel_after_terminal");
 }

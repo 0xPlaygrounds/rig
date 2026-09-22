@@ -154,6 +154,7 @@ impl EcsAgent {
             EffectLogRecorder::new()
         };
         Recording::install(app.world_mut(), recorder.clone());
+        crate::goldens::attach_world_recorder(&recorder);
         setup(app.world_mut());
         let model = Handlers::with(app.world_mut(), |handlers| {
             handlers.register(
@@ -177,6 +178,7 @@ impl EcsAgent {
             .world_mut()
             .spawn((
                 Owner(if golden_identity { "golden" } else { "parity" }.into()),
+                rig_ecs::agent::PolicyVersion("ecs-native/v1".into()),
                 Preamble(Some(preamble.into())),
                 DefaultMaxTurns(if golden_identity { None } else { Some(turns) }),
                 MaxTurns(turns),
@@ -292,10 +294,9 @@ impl EcsAgent {
 
     /// Drive a run until settlement or failure, panicking after the 30-second deadline.
     pub async fn wait_for_outcome(&mut self, run: Entity) -> Result<String, Failure> {
-        if self.golden_identity {
-            rig_cassette::ecs::identity::stamp_run(self.app.world_mut(), run, &self.recorder)
-                .expect("the run stamps its program identity");
-        }
+        rig_cassette::ecs::identity::stamp_run(self.app.world_mut(), run, &self.recorder)
+            .expect("the run stamps its program identity");
+        crate::goldens::capture_world_program(self.app.world_mut(), run, &self.recorder.log());
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 self.app.update();

@@ -62,6 +62,7 @@ fn boundary(run: &NativeRun) -> Vec<AdapterEvent> {
 /// witness sees the request, the status, the envelope and the ending.
 #[tokio::test]
 async fn setup_failure_fails_the_run_with_the_recorded_status() {
+    crate::goldens::capture_world_programs(async {
     // The recording's request carries no system instruction at all, which
     // strict matching distinguishes from an empty one: `Preamble(None)`,
     // not the helper's `Some("")`.
@@ -106,6 +107,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         .await;
     }
     let (observed, plain) = (&runs[0], &runs[1]);
+crate::goldens::world_golden_effects("gemini_stream_faults_setup_failure_fails_the_run_with_the_recorded_status", &observed.log);
     assert_eq!(
         comparable_failure(observed.failure()),
         comparable_failure(plain.failure())
@@ -147,6 +149,8 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         !rendered.contains(SETUP_PROMPT),
         "the request body never reaches the trace"
     );
+
+}).await;
 }
 
 /// The refusal through the native runtime: a non-retryable provider
@@ -154,58 +158,65 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 /// the verdict and the usage the provider billed for the refused prompt.
 #[tokio::test]
 async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let run = native_run(
-            scripted_model(vec![gemini_sse(&[BLOCKED_FRAME])]),
-            "",
-            "pong?",
-            witness,
-            |_| {},
-        )
-        .await;
-        let report = run.provider_report();
-        assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
-        assert!(
-            report.refusal,
-            "the block is a refusal on the report: {report:?}"
+    crate::goldens::capture_world_programs(async {
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let run = native_run(
+                scripted_model(vec![gemini_sse(&[BLOCKED_FRAME])]),
+                "",
+                "pong?",
+                witness,
+                |_| {},
+            )
+            .await;
+            let report = run.provider_report();
+            assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
+            assert!(
+                report.refusal,
+                "the block is a refusal on the report: {report:?}"
+            );
+            assert_eq!(report.code.as_deref(), Some("SAFETY"), "{report:?}");
+            assert!(!report.is_retryable(), "{report:?}");
+            assert!(report.message.contains("block_reason=SAFETY"), "{report:?}");
+            let recorded = sole_failed_completion(&run.log);
+            assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
+            assert!(recorded.refusal, "{recorded:?}");
+            assert!(
+                recorded.message.contains("block_reason=SAFETY"),
+                "the record holds the refusal: {recorded:?}"
+            );
+            assert_eq!(run.roles, [Role::User]);
+            assert!(run.stream().text.is_empty());
+            runs.push(run);
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "gemini_stream_faults_blocked_prompt_is_a_provider_refusal_not_a_truncation",
+            &observed.log,
         );
-        assert_eq!(report.code.as_deref(), Some("SAFETY"), "{report:?}");
-        assert!(!report.is_retryable(), "{report:?}");
-        assert!(report.message.contains("block_reason=SAFETY"), "{report:?}");
-        let recorded = sole_failed_completion(&run.log);
-        assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
-        assert!(recorded.refusal, "{recorded:?}");
+        assert_witness_is_a_side_channel(observed, plain);
+        assert_eq!(endings(observed.trace()), ["provider"]);
+        assert!(truncations(observed.trace()).is_empty(), "not a truncation");
+        let events = boundary(observed);
         assert!(
-            recorded.message.contains("block_reason=SAFETY"),
-            "the record holds the refusal: {recorded:?}"
-        );
-        assert_eq!(run.roles, [Role::User]);
-        assert!(run.stream().text.is_empty());
-        runs.push(run);
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_witness_is_a_side_channel(observed, plain);
-    assert_eq!(endings(observed.trace()), ["provider"]);
-    assert!(truncations(observed.trace()).is_empty(), "not a truncation");
-    let events = boundary(observed);
-    assert!(
         events.iter().any(|event| matches!(
             event,
             AdapterEvent::Provider { verdict } if verdict.block_reason.as_deref() == Some("SAFETY")
         )),
         "the verdict names the block: {events:?}"
     );
-    assert!(
-        events.contains(&AdapterEvent::Usage {
-            usage: AdapterUsage {
-                input_tokens: Some(795),
-                total_tokens: Some(795),
-                ..AdapterUsage::default()
-            }
-        }),
-        "the refused prompt's billed usage is observed: {events:?}"
-    );
+        assert!(
+            events.contains(&AdapterEvent::Usage {
+                usage: AdapterUsage {
+                    input_tokens: Some(795),
+                    total_tokens: Some(795),
+                    ..AdapterUsage::default()
+                }
+            }),
+            "the refused prompt's billed usage is observed: {events:?}"
+        );
+    })
+    .await;
 }
 
 /// EOF after content through the native runtime: the run fails as a
@@ -216,51 +227,58 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
 /// failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let run = native_run(
-            scripted_model(vec![gemini_sse(&[CONTENT_FRAME])]),
-            "",
-            "pong?",
-            witness,
-            |ecs| {
-                let agent = ecs.agent;
-                ecs.app
-                    .world_mut()
-                    .entity_mut(agent)
-                    .insert(rig_ecs::agent::ProviderRetries(0));
-            },
-        )
-        .await;
-        let report = run.provider_report();
-        assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-        assert_eq!(report.message, rig::serve::stream_truncated().message);
-        let recorded = sole_failed_completion(&run.log);
-        assert_eq!(recorded.message, rig::serve::stream_truncated().message);
-        assert_eq!(run.stream().text, CONTENT_TEXT);
-        assert!(run.stream().errors.is_empty(), "EOF is not an item");
-        // No terminal record and no error item: the fold never closed, so
-        // the truncation is the effect's outcome (asserted through the
-        // record above), not a folded stream outcome.
-        assert!(run.stream().outcome.is_none(), "{:?}", run.stream().outcome);
-        assert_eq!(run.roles, [Role::User], "the cut turn is not history");
-        runs.push(run);
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_witness_is_a_side_channel(observed, plain);
-    assert_eq!(endings(observed.trace()), ["provider"]);
-    let delivered = observed.stream().events.len();
-    assert_eq!(truncations(observed.trace()), [(delivered, 0)]);
-    let events = boundary(observed);
-    assert!(
-        events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::Finished {
-                ending: AdapterEnding::Eof { after: 1 }
-            }
-        )),
-        "the attempt closes at EOF after one frame: {events:?}"
-    );
+    crate::goldens::capture_world_programs(async {
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let run = native_run(
+                scripted_model(vec![gemini_sse(&[CONTENT_FRAME])]),
+                "",
+                "pong?",
+                witness,
+                |ecs| {
+                    let agent = ecs.agent;
+                    ecs.app
+                        .world_mut()
+                        .entity_mut(agent)
+                        .insert(rig_ecs::agent::ProviderRetries(0));
+                },
+            )
+            .await;
+            let report = run.provider_report();
+            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+            assert_eq!(report.message, rig::serve::stream_truncated().message);
+            let recorded = sole_failed_completion(&run.log);
+            assert_eq!(recorded.message, rig::serve::stream_truncated().message);
+            assert_eq!(run.stream().text, CONTENT_TEXT);
+            assert!(run.stream().errors.is_empty(), "EOF is not an item");
+            // No terminal record and no error item: the fold never closed, so
+            // the truncation is the effect's outcome (asserted through the
+            // record above), not a folded stream outcome.
+            assert!(run.stream().outcome.is_none(), "{:?}", run.stream().outcome);
+            assert_eq!(run.roles, [Role::User], "the cut turn is not history");
+            runs.push(run);
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "gemini_stream_faults_truncation_after_content_fails_the_run_and_keeps_the_prefix",
+            &observed.log,
+        );
+        assert_witness_is_a_side_channel(observed, plain);
+        assert_eq!(endings(observed.trace()), ["provider"]);
+        let delivered = observed.stream().events.len();
+        assert_eq!(truncations(observed.trace()), [(delivered, 0)]);
+        let events = boundary(observed);
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::Finished {
+                    ending: AdapterEnding::Eof { after: 1 }
+                }
+            )),
+            "the attempt closes at EOF after one frame: {events:?}"
+        );
+    })
+    .await;
 }
 
 /// An error envelope after content through the native runtime: the run
@@ -270,6 +288,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 /// budget (CONTRACT §5): this pins the failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn in_band_error_after_content_fails_with_the_envelope() {
+    crate::goldens::capture_world_programs(async {
     let mut runs = Vec::new();
     for witness in [true, false] {
         let run = native_run(
@@ -310,6 +329,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
         runs.push(run);
     }
     let (observed, plain) = (&runs[0], &runs[1]);
+crate::goldens::world_golden_effects("gemini_stream_faults_in_band_error_after_content_fails_with_the_envelope", &observed.log);
     assert_witness_is_a_side_channel(observed, plain);
     assert_eq!(endings(observed.trace()), ["provider"]);
     let events = boundary(observed);
@@ -335,6 +355,8 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
         )),
         "{events:?}"
     );
+
+}).await;
 }
 
 /// The recorded successful stream through the native runtime with a
@@ -342,92 +364,99 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
 /// trace carries the dispatch, the verdict, the usage and the settlement.
 #[tokio::test]
 async fn witnessed_success_matches_the_unwitnessed_run() {
-    let configure = |ecs: &mut EcsAgent| {
-        let config = GenerationConfig {
-            thinking_config: Some(ThinkingConfig {
-                thinking_budget: None,
-                thinking_level: Some(ThinkingLevel::Medium),
-                include_thoughts: Some(true),
-            }),
-            ..Default::default()
+    crate::goldens::capture_world_programs(async {
+        let configure = |ecs: &mut EcsAgent| {
+            let config = GenerationConfig {
+                thinking_config: Some(ThinkingConfig {
+                    thinking_budget: None,
+                    thinking_level: Some(ThinkingLevel::Medium),
+                    include_thoughts: Some(true),
+                }),
+                ..Default::default()
+            };
+            ecs.app
+                .world_mut()
+                .entity_mut(ecs.agent)
+                .insert(AdditionalParams(Some(
+                    serde_json::to_value(AdditionalParameters::default().with_config(config))
+                        .expect("thinking configuration"),
+                )));
         };
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(AdditionalParams(Some(
-                serde_json::to_value(AdditionalParameters::default().with_config(config))
-                    .expect("thinking configuration"),
-            )));
-    };
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let runs = &mut runs;
-        with_gemini_cassette("streaming/streaming_smoke", |client| async move {
-            let run = native_run(
-                client.completion(GEMINI_3_FLASH_PREVIEW),
-                STREAMING_PREAMBLE,
-                STREAMING_PROMPT,
-                witness,
-                configure,
-            )
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let runs = &mut runs;
+            with_gemini_cassette("streaming/streaming_smoke", |client| async move {
+                let run = native_run(
+                    client.completion(GEMINI_3_FLASH_PREVIEW),
+                    STREAMING_PREAMBLE,
+                    STREAMING_PROMPT,
+                    witness,
+                    configure,
+                )
+                .await;
+                let answer = run.outcome.as_ref().expect("the recorded answer");
+                assert!(!answer.trim().is_empty());
+                assert_eq!(run.roles, [Role::User, Role::Assistant]);
+                runs.push(run);
+            })
             .await;
-            let answer = run.outcome.as_ref().expect("the recorded answer");
-            assert!(!answer.trim().is_empty());
-            assert_eq!(run.roles, [Role::User, Role::Assistant]);
-            runs.push(run);
-        })
-        .await;
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_eq!(observed.outcome, plain.outcome);
-    assert_eq!(observed.log_json(), plain.log_json());
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "gemini_stream_faults_witnessed_success_matches_the_unwitnessed_run",
+            &observed.log,
+        );
+        assert_eq!(observed.outcome, plain.outcome);
+        assert_eq!(observed.log_json(), plain.log_json());
 
-    let trace = observed.trace();
-    assert_eq!(bus_actions(trace), ["issued", "landed_ok"]);
-    assert_eq!(endings(trace), ["settled"]);
-    assert!(truncations(trace).is_empty());
-    let events = boundary(observed);
-    assert!(
-        events.contains(&AdapterEvent::Response { status: 200 }),
-        "{events:?}"
-    );
-    assert!(
+        let trace = observed.trace();
+        assert_eq!(bus_actions(trace), ["issued", "landed_ok"]);
+        assert_eq!(endings(trace), ["settled"]);
+        assert!(truncations(trace).is_empty());
+        let events = boundary(observed);
+        assert!(
+            events.contains(&AdapterEvent::Response { status: 200 }),
+            "{events:?}"
+        );
+        assert!(
         events.iter().any(|event| matches!(
             event,
             AdapterEvent::Provider { verdict } if verdict.finish_reason.as_deref() == Some("STOP")
         )),
         "{events:?}"
     );
-    let usage = observed
-        .stream()
-        .events
-        .iter()
-        .rev()
-        .find_map(|event| match event {
-            rig::streaming::StreamEvent::Final(final_event) => Some(final_event.usage),
-            _ => None,
-        })
-        .expect("the terminal record's usage");
-    assert!(
-        events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::Usage { usage: observed }
-                if observed.total_tokens == usage.total_tokens
-        )),
-        "the observed usage is the terminal record's: {events:?}"
-    );
-    assert!(
-        events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::Finished {
-                ending: AdapterEnding::Terminal
-            }
-        )),
-        "{events:?}"
-    );
-    let rendered = trace_json(trace);
-    assert!(
-        !rendered.contains(STREAMING_PROMPT) && !rendered.contains(STREAMING_PREAMBLE),
-        "the request never reaches the trace"
-    );
+        let usage = observed
+            .stream()
+            .events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                rig::streaming::StreamEvent::Final(final_event) => Some(final_event.usage),
+                _ => None,
+            })
+            .expect("the terminal record's usage");
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::Usage { usage: observed }
+                    if observed.total_tokens == usage.total_tokens
+            )),
+            "the observed usage is the terminal record's: {events:?}"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::Finished {
+                    ending: AdapterEnding::Terminal
+                }
+            )),
+            "{events:?}"
+        );
+        let rendered = trace_json(trace);
+        assert!(
+            !rendered.contains(STREAMING_PROMPT) && !rendered.contains(STREAMING_PREAMBLE),
+            "the request never reaches the trace"
+        );
+    })
+    .await;
 }
