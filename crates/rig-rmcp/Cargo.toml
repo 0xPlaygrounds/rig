@@ -16,10 +16,14 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
-# MCP is native-only: rmcp's `ClientHandler` requires `Send + Sync`
-# unconditionally, which rig's wasm tool registry cannot satisfy. The crate
-# root raises a targeted `compile_error!` on wasm; scoping the SDK out of the
-# wasm graph keeps that the only error.
+# MCP is native-only because rmcp ships no wasm-capable client transport: its
+# streamable-HTTP client calls reqwest APIs absent on wasm (`redirect`,
+# `pool_max_idle_per_host`), and every other transport is native by
+# construction or blocked by rmcp's unconditional `Send` transport bounds.
+# rmcp core itself is fine on wasm since 3.0 gated the `ClientHandler` bound
+# behind `local`. The crate root raises a targeted `compile_error!` on wasm and
+# carries the full rationale; scoping the SDK out of the wasm graph keeps that
+# the only error.
 futures = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
