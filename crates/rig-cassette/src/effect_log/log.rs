@@ -270,6 +270,17 @@ pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
     Ok(hash)
 }
 
+/// A tool call's JSON arguments with object keys sorted, or the text as is
+/// when it is not JSON. Two argument strings that differ only in key order
+/// describe the same call; which order a build emits depends on whether
+/// `serde_json`'s `preserve_order` feature is unified into it.
+pub(crate) fn canonical_tool_args(args: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(args)
+        .ok()
+        .and_then(|value| serde_json::to_string(&Canonical::from(value)).ok())
+        .unwrap_or_else(|| args.to_owned())
+}
+
 /// A JSON value whose objects serialize with sorted keys whatever
 /// `serde_json`'s map type is.
 #[derive(Serialize)]
@@ -312,3 +323,6 @@ const _: fn() = || {
 
 #[cfg(test)]
 mod stable_hash_tests;
+
+#[cfg(test)]
+mod canonical_args_tests;
