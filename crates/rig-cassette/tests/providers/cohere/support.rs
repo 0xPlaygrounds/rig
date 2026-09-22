@@ -38,8 +38,10 @@ where
     F: FnOnce(BoundCohere) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, client) = cohere_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "cohere", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
 

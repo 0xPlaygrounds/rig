@@ -536,9 +536,11 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
-    /// Optional daemon-issued call ID. Read but never serialized because request
-    /// tool messages correlate by `tool_name`.
-    #[serde(default, skip_serializing)]
+    /// Optional call ID. Replayed exactly when a provider issued one (the
+    /// daemon's own, or another wire's when a history is ported); a locally
+    /// minted handle never travels upstream because the slot is optional and
+    /// results still correlate by `tool_name`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, rename = "type")]
     pub r#type: ToolType,
@@ -590,6 +592,14 @@ pub enum Message {
         #[serde(rename = "tool_name")]
         name: String,
         content: String,
+        /// The provider-issued id of the call this result answers, when one
+        /// was issued.
+        #[serde(
+            rename = "tool_call_id",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        call_id: Option<String>,
     },
 }
 
@@ -670,6 +680,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         crate::message::UserContent::ToolResult(crate::message::ToolResult {
                             name,
                             content,
+                            provider,
                             ..
                         }) => {
                             let function_name = name;
@@ -697,6 +708,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             messages.push(Message::ToolResult {
                                 name: function_name,
                                 content,
+                                call_id: provider.map(|provider| provider.call_id),
                             });
                         }
                         content => pending_user_content.push(content),
@@ -765,9 +777,7 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
-            // Never serialized (replay correlates by `tool_name`); the
-            // request shape is id-less regardless of what history holds.
-            id: None,
+            id: tool_call.provider.map(|provider| provider.call_id),
             r#type: ToolType::Function,
             function: Function {
                 name: tool_call.function.name,

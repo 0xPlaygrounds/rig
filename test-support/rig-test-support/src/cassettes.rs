@@ -101,6 +101,8 @@ pub async fn checkpoint_attempt(cassette: &ProviderCassette, provider: &str, sce
     if !scenario.starts_with("checkpoint_matrix")
         && !scenario.starts_with("long_loop_matrix")
         && !scenario.starts_with("long_task_matrix")
+        && !scenario.starts_with("history_survival_matrix")
+        && !scenario.starts_with("portability_matrix")
     {
         return;
     }

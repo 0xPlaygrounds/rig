@@ -37,7 +37,9 @@ where
     F: FnOnce(BoundOllama) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, client) = ollama_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "ollama", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }

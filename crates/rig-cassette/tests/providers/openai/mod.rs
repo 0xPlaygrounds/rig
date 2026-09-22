@@ -59,6 +59,8 @@ mod cassette {
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
+    mod history_survival_matrix_chat;
+    mod history_survival_matrix_responses;
     mod image_params_matrix;
     mod lifecycle_matrix;
     mod max_completion_tokens_matrix;
@@ -66,6 +68,8 @@ mod cassette {
     mod multi_extract;
     mod openai_compatible_reasoning_content;
     mod permission_control;
+    mod portability_matrix_chat;
+    mod portability_matrix_responses;
     mod prompt_caching;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;

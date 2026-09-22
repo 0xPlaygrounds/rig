@@ -170,7 +170,10 @@ impl Chat {
     /// Apply typed dialect rewrites, rejecting unsupported tool choices or parameters.
     fn prepare(&self, request: &mut unary::CompletionRequest) -> Result<(), CompletionError> {
         match self.provider.dialect.quirks.rewrite {
-            BodyRewrite::GroqCompoundTools => fold_groq_native_tools(request)?,
+            BodyRewrite::GroqCompoundTools => {
+                fold_groq_native_tools(request)?;
+                strip_assistant_reasoning(request);
+            }
             BodyRewrite::LlamaCpp => {
                 if let Some(ToolChoice::Function { name }) = &request.tool_choice {
                     return Err(CompletionError::ProviderError(format!(
@@ -249,6 +252,18 @@ impl Chat {
 
 fn as_array_mut(value: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
     value.as_array_mut()
+}
+
+/// Groq delivers hidden reasoning under `reasoning` and rejects an assistant
+/// message that carries `reasoning_content` with a 400, so a reasoning turn
+/// replays without it. The reasoning is dropped from the replay rather than
+/// respelled: whether Groq accepts it back under `reasoning` is unverified.
+fn strip_assistant_reasoning(request: &mut unary::CompletionRequest) {
+    for message in &mut request.messages {
+        if let Message::Assistant { reasoning, .. } = message {
+            *reasoning = None;
+        }
+    }
 }
 
 /// Groq's compound-system native tools (`browser_search`, `code_interpreter`,

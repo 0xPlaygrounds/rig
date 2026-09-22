@@ -136,6 +136,14 @@ pub use streaming_logprobs_matrix::streaming_logprobs_matrix_case;
 mod history_roundtrip_matrix;
 pub use history_roundtrip_matrix::history_roundtrip_matrix_case;
 
+#[path = "matrix/history_survival_matrix.rs"]
+mod history_survival_matrix;
+pub use history_survival_matrix::history_survival_case;
+
+#[path = "matrix/portability_matrix.rs"]
+mod portability_matrix;
+pub use portability_matrix::portability_case;
+
 #[path = "matrix/terminal_metadata_matrix.rs"]
 mod terminal_metadata_matrix;
 pub use terminal_metadata_matrix::terminal_metadata_matrix_case;

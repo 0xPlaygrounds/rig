@@ -13,6 +13,7 @@ pub mod cache_prefix;
 pub mod cassettes;
 pub mod ecs_agent;
 pub mod goldens;
+pub mod history_survival;
 pub mod matrix;
 pub mod matrix_registry;
 pub mod raw_capture;

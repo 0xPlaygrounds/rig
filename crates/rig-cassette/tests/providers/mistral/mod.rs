@@ -6,6 +6,7 @@ mod embeddings;
 mod extractor;
 mod extractor_usage;
 mod history_roundtrip_matrix;
+mod history_survival_matrix;
 mod logprobs_rejection_matrix;
 mod models;
 mod multi_extract;

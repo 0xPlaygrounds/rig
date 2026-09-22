@@ -28,6 +28,7 @@ mod cassette {
     mod embeddings;
     mod error_envelope;
     mod extractor;
+    mod history_survival_matrix;
     mod image_generation;
     mod model_listing;
     mod prompt_caching;

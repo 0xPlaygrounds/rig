@@ -15,7 +15,7 @@ use super::*;
 use crate::completion::{CompletionModel as _, FinishReason};
 use crate::driver::Bound;
 use crate::message::AssistantContent;
-use crate::providers::openai::wire::{GROQ, OPENAI, OpenAI};
+use crate::providers::openai::wire::{Dialect, GROQ, OPENAI, OpenAI};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 
 use super::super::tests::{recorded, recorded_json};
@@ -962,4 +962,53 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
         body["messages"][0]["content"][0]["image_url"]["url"].is_string(),
         "OpenAI keeps its own nesting: {body}"
     );
+}
+
+/// Groq answers with `reasoning` and rejects `reasoning_content` on an
+/// assistant message (HTTP 400, "property 'reasoning_content' is
+/// unsupported"), so a reasoning turn replays without it. DeepSeek keeps
+/// echoing it: its thinking tool loops require the field.
+#[test]
+fn groq_replays_reasoning_turns_without_reasoning_content() {
+    use crate::message::{Message, Reasoning};
+    use crate::providers::openai::wire::DEEPSEEK;
+
+    let history = || {
+        let mut request = prompt("and then?");
+        request.chat_history = vec![
+            Message::user("think first"),
+            Message::Assistant {
+                id: None,
+                content: vec![
+                    AssistantContent::Reasoning(Reasoning::new("private chain")),
+                    AssistantContent::text("visible answer"),
+                ],
+            },
+            Message::user("and then?"),
+        ];
+        request
+    };
+    let assistant = |dialect: &Dialect| {
+        let encoded = OpenAI::new("k")
+            .with_dialect(dialect)
+            .chat("m")
+            .encode(history(), Mode::Unary)
+            .expect("encodes");
+        let [request] = encoded.requests.as_slice() else {
+            panic!("a chat turn is one request");
+        };
+        let Body::Bytes(bytes) = request.body() else {
+            panic!("a chat request body is bytes");
+        };
+        let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+        body["messages"][1].clone()
+    };
+
+    let groq = assistant(&GROQ);
+    assert_eq!(groq["role"], "assistant");
+    assert_eq!(groq["content"][0]["text"], "visible answer");
+    assert!(groq.get("reasoning_content").is_none(), "{groq}");
+
+    let deepseek = assistant(&DEEPSEEK);
+    assert_eq!(deepseek["reasoning_content"], "private chain");
 }

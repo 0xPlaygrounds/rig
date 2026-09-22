@@ -63,8 +63,10 @@ where
     F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, bound) = openrouter_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "openrouter", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
 

@@ -13,6 +13,7 @@ mod cassette {
     mod embedding_matrix;
     mod embeddings;
     mod errors;
+    mod history_survival_matrix;
     mod prompt_caching;
     mod raw_capture_matrix;
     mod raw_completion_parity_matrix;
