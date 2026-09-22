@@ -18,7 +18,10 @@ fn only_delivery_boundaries_are_excluded() {
     });
     let mut differently_scheduled = log.clone();
     differently_scheduled["header"]["deliveries"] = json!([]);
-    assert_eq!(comparison(log.clone()), comparison(differently_scheduled));
+    assert_eq!(
+        without_delivery_boundaries(log.clone()),
+        without_delivery_boundaries(differently_scheduled)
+    );
     for pointer in [
         "/header/programs/run~10/policy",
         "/header/stream_errors",
@@ -35,7 +38,11 @@ fn only_delivery_boundaries_are_excluded() {
     ] {
         let mut changed = log.clone();
         *changed.pointer_mut(pointer).expect("test field") = json!("changed");
-        assert_ne!(comparison(log.clone()), comparison(changed), "{pointer}");
+        assert_ne!(
+            without_delivery_boundaries(log.clone()),
+            without_delivery_boundaries(changed),
+            "{pointer}"
+        );
     }
 }
 

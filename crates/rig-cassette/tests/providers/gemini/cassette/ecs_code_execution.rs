@@ -19,6 +19,8 @@ fn agent(model: impl CompletionModel + 'static, params: serde_json::Value) -> Ec
 
 #[tokio::test]
 async fn blocking_agent_prompt_answers_after_code_execution() {
+    rig_test_support::goldens::world_golden_test(async {
+
     super::super::support::with_gemini_code_execution_cassette("code_execution_matrix/blocking_agent_prompt_answers_after_code_execution", |client| async move {
         let mut ecs = agent(client.completion(gemini::completion::GEMINI_2_5_FLASH), code::code_execution_params());
         let answer = ecs.prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.", false).await;
@@ -28,10 +30,14 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
         "code_execution_matrix/blocking_agent_prompt_answers_after_code_execution",
         code::CODE_PART_MARKERS,
     );
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_code_execution_blocking_agent_prompt_answers_after_code_execution", log)).await
 }
 
 #[tokio::test]
 async fn streaming_agent_prompt_answers_after_code_execution() {
+    rig_test_support::goldens::world_golden_test(async {
+
     super::super::support::with_gemini_code_execution_cassette("code_execution_matrix/streaming_agent_prompt_answers_after_code_execution", |client| async move {
         let mut ecs = agent(client.completion(gemini::completion::GEMINI_2_5_FLASH), code::code_execution_params());
         ecs_observation::install_observers(&mut ecs);
@@ -43,49 +49,67 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
         "code_execution_matrix/streaming_agent_prompt_answers_after_code_execution",
         code::CODE_PART_MARKERS,
     );
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_code_execution_streaming_agent_prompt_answers_after_code_execution", log)).await
 }
 
 #[tokio::test]
 async fn blocking_code_execution_replayed_in_chat_history() {
-    super::super::support::with_gemini_code_execution_cassette(
-        "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
-        |client| async move {
-            let mut ecs = agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                code::code_execution_params(),
-            );
-            let prompt = "Use the code execution tool to compute 13 times 13. State the number.";
-            let first = ecs.prompt(prompt, false).await;
-            assert!(
-                code::states(&first, "169"),
-                "first answer should carry 169, got {first:?}"
-            );
-            let history = [Message::user(prompt), Message::assistant(first)].map(|message| {
-                rig_ecs::agent::MessageParts::from_message(&message).expect("conversation message")
-            });
-            let run = ecs.app.world_mut().spawn_run(
-                ecs.agent,
-                &history,
-                "Now double that number and state the result.",
-                false,
-                None,
-            );
-            let second = ecs.wait_for_success(run).await;
-            assert!(
-                code::states(&second, "338"),
-                "second answer should carry the doubled value, got {second:?}"
+    rig_test_support::goldens::world_golden_test(
+        async {
+            super::super::support::with_gemini_code_execution_cassette(
+                "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
+                |client| async move {
+                    let mut ecs = agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        code::code_execution_params(),
+                    );
+                    let prompt =
+                        "Use the code execution tool to compute 13 times 13. State the number.";
+                    let first = ecs.prompt(prompt, false).await;
+                    assert!(
+                        code::states(&first, "169"),
+                        "first answer should carry 169, got {first:?}"
+                    );
+                    let history =
+                        [Message::user(prompt), Message::assistant(first)].map(|message| {
+                            rig_ecs::agent::MessageParts::from_message(&message)
+                                .expect("conversation message")
+                        });
+                    let run = ecs.app.world_mut().spawn_run(
+                        ecs.agent,
+                        &history,
+                        "Now double that number and state the result.",
+                        false,
+                        None,
+                    );
+                    let second = ecs.wait_for_success(run).await;
+                    assert!(
+                        code::states(&second, "338"),
+                        "second answer should carry the doubled value, got {second:?}"
+                    );
+                },
+            )
+            .await;
+            super::super::support::assert_recorded_response_contains(
+                "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
+                code::CODE_PART_MARKERS,
             );
         },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_code_execution_blocking_code_execution_replayed_in_chat_history",
+                log,
+            )
+        },
     )
-    .await;
-    super::super::support::assert_recorded_response_contains(
-        "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
-        code::CODE_PART_MARKERS,
-    );
+    .await
 }
 
 #[tokio::test]
 async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
+    rig_test_support::goldens::world_golden_test(async {
+
     super::super::support::with_gemini_stream_terminal_cassette("stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer", |client| async move {
         let mut ecs = agent(client.completion(gemini::completion::GEMINI_2_5_FLASH), terminal::code_execution_params());
         ecs_observation::install_observers(&mut ecs);
@@ -97,4 +121,6 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
         "stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer",
         true,
     );
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_code_execution_two_terminal_stream_agent_prompt_keeps_the_answer", log)).await
 }

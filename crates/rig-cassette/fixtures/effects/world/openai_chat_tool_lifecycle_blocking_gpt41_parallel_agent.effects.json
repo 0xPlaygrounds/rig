@@ -1,0 +1,325 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 6,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "alpha",
+          "description": "Matrix tool alpha",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "beta",
+          "description": "Matrix tool beta",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool"
+        },
+        "policy": 9653204964493200548
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the user's tool-call instruction exactly. Do not answer in prose."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call alpha with value red and beta with value blue in the same turn, in that order."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "alpha",
+              "description": "Matrix tool alpha",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            },
+            {
+              "name": "beta",
+              "description": "Matrix tool beta",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 128,
+          "tool_choice": null,
+          "additional_params": {
+            "tool_choice": "required",
+            "parallel_tool_calls": true
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "alpha",
+                "arguments": {
+                  "value": "red"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "beta",
+                "arguments": {
+                  "value": "blue"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 90,
+            "output_tokens": 42,
+            "total_tokens": 132,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"value\": \"red\"}",
+                        "name": "alpha"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"value\": \"blue\"}",
+                        "name": "beta"
+                      },
+                      "id": "call_REDACTED_2",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 42,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 90,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 132
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "alpha",
+        "args": "{\"value\":\"red\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "alpha"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "beta",
+        "args": "{\"value\":\"blue\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "beta"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

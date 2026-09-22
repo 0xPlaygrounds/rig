@@ -3,9 +3,10 @@
 /// Emit registered test rows with the shared execution body.
 #[macro_export]
 macro_rules! ecs_termination_case {
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_truncated_turn_reports_length_and_cap_7) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_truncated_turn_reports_length_and_cap_7, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -40,11 +41,13 @@ macro_rules! ecs_termination_case {
                 assert_recorded_wire_reason(SCENARIO, "length");
                 assert_recorded_request_cap(SCENARIO, TINY_CAP);
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_truncated_turn_reports_length_and_cap_8) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_truncated_turn_reports_length_and_cap_8, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -69,11 +72,13 @@ macro_rules! ecs_termination_case {
                 assert_recorded_wire_reason(SCENARIO, "length");
                 assert_recorded_request_cap(SCENARIO, TINY_CAP);
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_completed_turn_reports_stop_and_cap_9) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_completed_turn_reports_stop_and_cap_9, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -98,11 +103,13 @@ macro_rules! ecs_termination_case {
                 );
                 assert_recorded_wire_reason(SCENARIO, "stop");
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_completed_turn_reports_stop_and_cap_10) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_completed_turn_reports_stop_and_cap_10, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -121,11 +128,13 @@ macro_rules! ecs_termination_case {
                 assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
                 assert_recorded_wire_reason(SCENARIO, "stop");
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_tool_turn_reports_tool_calls_11) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_tool_turn_reports_tool_calls_11, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -155,11 +164,13 @@ macro_rules! ecs_termination_case {
                 );
                 assert_recorded_wire_reason(SCENARIO, "tool_calls");
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_tool_turn_reports_tool_calls_12) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_tool_turn_reports_tool_calls_12, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -183,11 +194,13 @@ macro_rules! ecs_termination_case {
                 assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
                 assert_recorded_wire_reason(SCENARIO, "tool_calls");
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_escalating_retry_reports_each_attempts_own_cap_13) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, blocking_escalating_retry_reports_each_attempts_own_cap_13, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -221,11 +234,13 @@ macro_rules! ecs_termination_case {
                     vec!["length".to_owned(), "stop".to_owned()]
                 );
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
-    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_escalating_retry_reports_each_attempts_own_cap_14) => {
+    ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, streaming_escalating_retry_reports_each_attempts_own_cap_14, $golden:expr) => {
         $(#[$attribute])*
         async fn $name() {
+$crate::goldens::world_golden_test(async {
             {
                 const SCENARIO: &str = $scenario;
                 let probe = TurnTerminationProbe::default();
@@ -253,6 +268,7 @@ macro_rules! ecs_termination_case {
                 assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
                 assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
             }
+}, |log| $crate::goldens::world_golden_effects($golden, log)).await;
         }
     };
 }

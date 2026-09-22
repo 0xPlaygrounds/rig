@@ -1,0 +1,473 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 6,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 9,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "fetch_motto",
+          "description": "Fetch the two-line workshop motto.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "fetch_config",
+          "description": "Fetch the service configuration object.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool"
+        },
+        "policy": 6668813384194927783
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You must use the provided tools before answering."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call fetch_motto and fetch_config, then summarize both outputs in one sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "fetch_motto",
+              "description": "Fetch the two-line workshop motto.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "fetch_config",
+              "description": "Fetch the service configuration object.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
+              "function": {
+                "name": "fetch_motto",
+                "arguments": {}
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:1"
+              },
+              "function": {
+                "name": "fetch_config",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 86,
+            "output_tokens": 21,
+            "total_tokens": 166,
+            "reasoning_tokens": 59
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "args": {},
+                        "name": "fetch_motto"
+                      },
+                      "thoughtSignature": "signature_REDACTED_1"
+                    },
+                    {
+                      "functionCall": {
+                        "args": {},
+                        "name": "fetch_config"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishMessage": "Model generated function call(s).",
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
+            "usageMetadata": {
+              "candidatesTokenCount": 21,
+              "promptTokenCount": 86,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 86
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 59,
+              "totalTokenCount": 166
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "fetch_motto",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "steady hands\ncalm waters"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "fetch_config",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "service": "cassette-lab",
+                  "max_retries": 3
+                }
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You must use the provided tools before answering."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call fetch_motto and fetch_config, then summarize both outputs in one sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "function": {
+                    "name": "fetch_motto",
+                    "arguments": {}
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
+                  "function": {
+                    "name": "fetch_config",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "name": "fetch_motto",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "steady hands\ncalm waters"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
+                  "name": "fetch_config",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "service": "cassette-lab",
+                        "max_retries": 3
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "fetch_motto",
+              "description": "Fetch the two-line workshop motto.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "fetch_config",
+              "description": "Fetch the service configuration object.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The workshop motto is \"steady hands, calm waters\" and the service configuration for the \"cassette-lab\" includes a maximum of 3 retries."
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_2"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 158,
+            "output_tokens": 32,
+            "total_tokens": 321,
+            "reasoning_tokens": 131
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "The workshop motto is \"steady hands, calm waters\" and the service configuration for the \"cassette-lab\" includes a maximum of 3 retries.",
+                      "thoughtSignature": "signature_REDACTED_2"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_2",
+            "usageMetadata": {
+              "candidatesTokenCount": 32,
+              "promptTokenCount": 158,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 158
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 131,
+              "totalTokenCount": 321
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

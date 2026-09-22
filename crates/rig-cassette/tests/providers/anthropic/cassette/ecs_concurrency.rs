@@ -157,6 +157,8 @@ fn history(ecs: &mut EcsAgent) -> Vec<Vec<String>> {
 
 #[tokio::test]
 async fn serial_serving_reproduces_the_recorded_request_order() {
+    rig_test_support::goldens::world_golden_test(async {
+
     with_anthropic_cassette("streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order", |client| async move {
         let mut ecs = run(client, true).await;
         assert!(observation(&ecs).errors.is_empty());
@@ -167,10 +169,14 @@ async fn serial_serving_reproduces_the_recorded_request_order() {
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         &["lookup_harbor_label", "lookup_orchard_label"],
     );
+
+}, |log| rig_test_support::goldens::world_golden_effects("anthropic_concurrency_serial_serving_reproduces_the_recorded_request_order", log)).await
 }
 
 #[tokio::test]
 async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles() {
+    rig_test_support::goldens::world_golden_test(async {
+
     with_anthropic_cassette("streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order", |client| async move {
         let mut ecs = run(client, false).await;
         let expected = ["lookup_harbor_label", "lookup_orchard_label"];
@@ -189,4 +195,6 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         &["lookup_harbor_label", "lookup_orchard_label"],
     );
+
+}, |log| rig_test_support::goldens::world_golden_effects("anthropic_concurrency_streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles", log)).await
 }

@@ -1,0 +1,136 @@
+{
+  "parity/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": {
+            "provider": {
+              "require_parameters": true,
+              "order": [
+                "Google AI Studio",
+                "Google Vertex"
+              ]
+            }
+          },
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "Return only data that satisfies the requested schema. Use lane canary, risk low, and checks compile=true and replay=true.",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::Output": {
+            "mode": "Native",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "release": {
+                  "$ref": "#/$defs/ReleaseInfo"
+                },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/PlanCheck"
+                  }
+                }
+              },
+              "required": [
+                "release",
+                "checks"
+              ],
+              "title": "NestedPlan",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$defs": {
+                "ReleaseInfo": {
+                  "type": "object",
+                  "properties": {
+                    "lane": {
+                      "type": "string"
+                    },
+                    "risk": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lane",
+                    "risk"
+                  ]
+                },
+                "PlanCheck": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "required"
+                  ]
+                }
+              }
+            }
+          },
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Create the OpenRouter cassette release validation plan."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ]
+}

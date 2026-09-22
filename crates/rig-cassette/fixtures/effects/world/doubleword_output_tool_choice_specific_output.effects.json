@@ -1,0 +1,196 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 476061826211049251
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "final_result",
+              "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "category",
+                  "summary"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": {
+            "specific": {
+              "function_names": [
+                "final_result"
+              ]
+            }
+          },
+          "additional_params": {
+            "reasoning_effort": "none"
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "final_result",
+                "arguments": {
+                  "title": "Seattle Rust Meetup",
+                  "category": "Technology",
+                  "summary": "A monthly gathering for Rust developers in Seattle to discuss projects, share knowledge, and network."
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 394,
+            "output_tokens": 70,
+            "total_tokens": 464,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A monthly gathering for Rust developers in Seattle to discuss projects, share knowledge, and network.\"}",
+                        "name": "final_result"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "resp_REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "object": "chat.completion",
+            "usage": {
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 70,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 394,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 464
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

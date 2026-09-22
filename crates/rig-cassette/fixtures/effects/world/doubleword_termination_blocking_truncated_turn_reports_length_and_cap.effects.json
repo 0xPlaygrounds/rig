@@ -1,0 +1,135 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 14724976006959309694
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Write two sentences about maple trees."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "none"
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
+            }
+          ],
+          "usage": {
+            "input_tokens": 36,
+            "output_tokens": 16,
+            "total_tokens": 52,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "finish_reason": "length",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-9B",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+                  "refusal": null,
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
+            "id": "resp_REDACTED_1",
+            "model": "Qwen/Qwen3.5-9B",
+            "object": "chat.completion",
+            "usage": {
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 16,
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 36,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "total_tokens": 52
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

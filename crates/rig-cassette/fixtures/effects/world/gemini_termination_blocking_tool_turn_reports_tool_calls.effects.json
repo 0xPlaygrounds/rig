@@ -1,0 +1,394 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 8,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 14188838558427766831
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Use the provided tool to answer arithmetic questions."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Calculate 2 + 3."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": {
+            "generationConfig": {
+              "thinkingConfig": {
+                "thinkingBudget": 0
+              }
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 72,
+            "output_tokens": 18,
+            "total_tokens": 90
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "args": {
+                          "x": 2,
+                          "y": 3
+                        },
+                        "name": "add"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishMessage": "Model generated function call(s).",
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
+            "usageMetadata": {
+              "candidatesTokenCount": 18,
+              "promptTokenCount": 72,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 72
+                }
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 90
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":2,\"y\":3}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 5
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Use the provided tool to answer arithmetic questions."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Calculate 2 + 3."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 2,
+                      "y": 3
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 5
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": {
+            "generationConfig": {
+              "thinkingConfig": {
+                "thinkingBudget": 0
+              }
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The sum of 2 and 3 is 5."
+            }
+          ],
+          "usage": {
+            "input_tokens": 103,
+            "output_tokens": 12,
+            "total_tokens": 115
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "The sum of 2 and 3 is 5."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_2",
+            "usageMetadata": {
+              "candidatesTokenCount": 12,
+              "promptTokenCount": 103,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 103
+                }
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 115
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

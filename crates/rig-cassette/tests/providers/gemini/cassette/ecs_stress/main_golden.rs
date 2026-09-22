@@ -64,6 +64,7 @@ pub(super) async fn run(
         .world_mut()
         .spawn((
             Owner("stress-agent".into()),
+            rig_ecs::agent::PolicyVersion("ecs-stress/v1".into()),
             Preamble(Some(preamble.into())),
             DefaultMaxTurns(None),
             MaxTurns(1),
@@ -76,6 +77,7 @@ pub(super) async fn run(
     let run = app.world_mut().spawn_run(agent, &[], prompt, true, Some(6));
     rig_cassette::ecs::identity::stamp_run(app.world_mut(), run, &recorder)
         .expect("the run stamps its program identity");
+    crate::goldens::capture_world_program(app.world_mut(), run, &recorder.log());
     let saw_final = tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             app.update();

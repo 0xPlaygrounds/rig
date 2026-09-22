@@ -78,72 +78,79 @@ fn assert_failure_facts(
 /// provider's response, streams nothing, commits only the prompt.
 #[tokio::test]
 async fn setup_failure_fails_the_run_with_the_recorded_status() {
-    // The recording's request carries no system instruction at all, which
-    // strict matching distinguishes from an empty one: `Preamble(None)`,
-    // not the helper's `Some("")`.
-    let configure = |ecs: &mut EcsAgent| {
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert((Preamble(None), MaxTokens(Some(SETUP_MAX_TOKENS))));
-    };
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let runs = &mut runs;
-        with_openai_cassette(
-            "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
-            |client| async move {
-                let run = native_run(
-                    client.openai.completion(MISSING_MODEL),
-                    "",
-                    SETUP_PROMPT,
-                    witness,
-                    configure,
-                )
-                .await;
-                assert_setup_failure(run.provider_report(), SETUP_KIND, 400);
-                assert_setup_failure(sole_failed_completion(&run.log), SETUP_KIND, 400);
-                assert_eq!(run.roles, [Role::User], "only the prompt is history");
-                assert!(run.stream().text.is_empty(), "{:?}", run.stream);
-                assert_eq!(run.stream().errors.len(), 1, "{:?}", run.stream().errors);
-                assert_eq!(run.stream().errors[0].0, 0, "the error is the first item");
-                runs.push(run);
+    crate::goldens::capture_world_programs(async {
+        // The recording's request carries no system instruction at all, which
+        // strict matching distinguishes from an empty one: `Preamble(None)`,
+        // not the helper's `Some("")`.
+        let configure = |ecs: &mut EcsAgent| {
+            ecs.app
+                .world_mut()
+                .entity_mut(ecs.agent)
+                .insert((Preamble(None), MaxTokens(Some(SETUP_MAX_TOKENS))));
+        };
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let runs = &mut runs;
+            with_openai_cassette(
+                "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
+                |client| async move {
+                    let run = native_run(
+                        client.openai.completion(MISSING_MODEL),
+                        "",
+                        SETUP_PROMPT,
+                        witness,
+                        configure,
+                    )
+                    .await;
+                    assert_setup_failure(run.provider_report(), SETUP_KIND, 400);
+                    assert_setup_failure(sole_failed_completion(&run.log), SETUP_KIND, 400);
+                    assert_eq!(run.roles, [Role::User], "only the prompt is history");
+                    assert!(run.stream().text.is_empty(), "{:?}", run.stream);
+                    assert_eq!(run.stream().errors.len(), 1, "{:?}", run.stream().errors);
+                    assert_eq!(run.stream().errors[0].0, 0, "the error is the first item");
+                    runs.push(run);
+                },
+            )
+            .await;
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "openai_stream_faults_setup_failure_fails_the_run_with_the_recorded_status",
+            &observed.log,
+        );
+        assert_eq!(
+            comparable_failure(observed.failure()),
+            comparable_failure(plain.failure())
+        );
+        assert_eq!(observed.log_json(), plain.log_json());
+        let events = assert_failure_facts(
+            observed,
+            &["issued", "landed_err"],
+            AdapterEnding::Error {
+                boundary: AdapterErrorBoundary::ProviderResponse,
+                kind: "provider_response".into(),
+                status: Some(400),
+                retryable: false,
             },
-        )
-        .await;
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_eq!(
-        comparable_failure(observed.failure()),
-        comparable_failure(plain.failure())
-    );
-    assert_eq!(observed.log_json(), plain.log_json());
-    let events = assert_failure_facts(
-        observed,
-        &["issued", "landed_err"],
-        AdapterEnding::Error {
-            boundary: AdapterErrorBoundary::ProviderResponse,
-            kind: "provider_response".into(),
-            status: Some(400),
-            retryable: false,
-        },
-    );
-    assert!(
-        events.contains(&AdapterEvent::Response { status: 400 }),
-        "{events:?}"
-    );
-    assert!(
-        events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::ErrorEnvelope { error }
-                if error.status.as_deref() == Some("invalid_request_error")
-        )),
-        "the envelope's own fields are projected: {events:?}"
-    );
-    assert!(
-        !trace_json(observed.trace()).contains(SETUP_PROMPT),
-        "the request body never reaches the trace"
-    );
+        );
+        assert!(
+            events.contains(&AdapterEvent::Response { status: 400 }),
+            "{events:?}"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::ErrorEnvelope { error }
+                    if error.status.as_deref() == Some("invalid_request_error")
+            )),
+            "the envelope's own fields are projected: {events:?}"
+        );
+        assert!(
+            !trace_json(observed.trace()).contains(SETUP_PROMPT),
+            "the request body never reaches the trace"
+        );
+    })
+    .await;
 }
 
 /// EOF after content through the native runtime: the run fails as a
@@ -153,52 +160,59 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 /// (CONTRACT §5): this pins the failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
-    let frames = text_prefix_frames();
-    let prefix = delta_text(&frames);
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let run = native_run(
-            scripted_model(vec![sse_bytes(&frames)]),
-            STREAMING_PREAMBLE,
-            STREAMING_PROMPT,
-            witness,
-            |ecs| {
-                let agent = ecs.agent;
-                ecs.app
-                    .world_mut()
-                    .entity_mut(agent)
-                    .insert(rig_ecs::agent::ProviderRetries(0));
-            },
-        )
-        .await;
-        let report = run.provider_report();
-        assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-        assert_eq!(report.message, rig::serve::stream_truncated().message);
-        assert_eq!(
-            sole_failed_completion(&run.log).message,
-            rig::serve::stream_truncated().message
+    crate::goldens::capture_world_programs(async {
+        let frames = text_prefix_frames();
+        let prefix = delta_text(&frames);
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let run = native_run(
+                scripted_model(vec![sse_bytes(&frames)]),
+                STREAMING_PREAMBLE,
+                STREAMING_PROMPT,
+                witness,
+                |ecs| {
+                    let agent = ecs.agent;
+                    ecs.app
+                        .world_mut()
+                        .entity_mut(agent)
+                        .insert(rig_ecs::agent::ProviderRetries(0));
+                },
+            )
+            .await;
+            let report = run.provider_report();
+            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+            assert_eq!(report.message, rig::serve::stream_truncated().message);
+            assert_eq!(
+                sole_failed_completion(&run.log).message,
+                rig::serve::stream_truncated().message
+            );
+            assert_eq!(run.stream().text, prefix);
+            assert!(run.stream().errors.is_empty(), "EOF is not an item");
+            assert!(run.stream().outcome.is_none(), "{:?}", run.stream().outcome);
+            assert_eq!(run.roles, [Role::User], "the cut turn is not history");
+            runs.push(run);
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "openai_stream_faults_truncation_after_content_fails_the_run_and_keeps_the_prefix",
+            &observed.log,
         );
-        assert_eq!(run.stream().text, prefix);
-        assert!(run.stream().errors.is_empty(), "EOF is not an item");
-        assert!(run.stream().outcome.is_none(), "{:?}", run.stream().outcome);
-        assert_eq!(run.roles, [Role::User], "the cut turn is not history");
-        runs.push(run);
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_witness_is_a_side_channel(observed, plain);
-    let events = assert_failure_facts(
-        observed,
-        &["issued", "truncated", "landed_err"],
-        AdapterEnding::Eof {
-            after: frames.len(),
-        },
-    );
-    assert!(
-        events.contains(&AdapterEvent::Response { status: 200 }),
-        "{events:?}"
-    );
-    let delivered = observed.stream().events.len();
-    assert_eq!(truncations(observed.trace()), [(delivered, 0)]);
+        assert_witness_is_a_side_channel(observed, plain);
+        let events = assert_failure_facts(
+            observed,
+            &["issued", "truncated", "landed_err"],
+            AdapterEnding::Eof {
+                after: frames.len(),
+            },
+        );
+        assert!(
+            events.contains(&AdapterEvent::Response { status: 200 }),
+            "{events:?}"
+        );
+        let delivered = observed.stream().events.len();
+        assert_eq!(truncations(observed.trace()), [(delivered, 0)]);
+    })
+    .await;
 }
 
 /// EOF after a complete tool call through the native runtime: the call is
@@ -207,56 +221,63 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 /// budget (CONTRACT §5) so the failure, not the retry, is what is pinned.
 #[tokio::test]
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
-    let frames = tool_call_prefix_frames();
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let invocations = Invocations::default();
-        let counted = invocations.clone();
-        let run = native_run(
-            scripted_model(vec![sse_bytes(&frames)]),
-            STREAMING_TOOLS_PREAMBLE,
-            STREAMING_TOOLS_PROMPT,
-            witness,
-            move |ecs| {
-                ecs.tool(Adder);
-                ecs.tool(CountedSubtract(counted));
-                let agent = ecs.agent;
-                ecs.app
-                    .world_mut()
-                    .entity_mut(agent)
-                    .insert(rig_ecs::agent::ProviderRetries(0));
+    crate::goldens::capture_world_programs(async {
+        let frames = tool_call_prefix_frames();
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let invocations = Invocations::default();
+            let counted = invocations.clone();
+            let run = native_run(
+                scripted_model(vec![sse_bytes(&frames)]),
+                STREAMING_TOOLS_PREAMBLE,
+                STREAMING_TOOLS_PROMPT,
+                witness,
+                move |ecs| {
+                    ecs.tool(Adder);
+                    ecs.tool(CountedSubtract(counted));
+                    let agent = ecs.agent;
+                    ecs.app
+                        .world_mut()
+                        .entity_mut(agent)
+                        .insert(rig_ecs::agent::ProviderRetries(0));
+                },
+            )
+            .await;
+            let report = run.provider_report();
+            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+            assert_eq!(
+                sole_failed_completion(&run.log).message,
+                rig::serve::stream_truncated().message,
+                "one completion and no tool effect"
+            );
+            assert_eq!(invocations.count(), 0, "the tool never ran");
+            assert_eq!(run.roles, [Role::User], "the call is not history");
+            assert!(
+                run.stream()
+                    .events
+                    .iter()
+                    .any(|event| matches!(event, StreamEvent::BlockEnd { .. })),
+                "the call streamed to its end before the cut: {:?}",
+                run.stream().events
+            );
+            runs.push(run);
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "openai_stream_faults_truncation_after_a_complete_tool_call_never_runs_the_tool",
+            &observed.log,
+        );
+        assert_witness_is_a_side_channel(observed, plain);
+        assert_failure_facts(
+            observed,
+            &["issued", "truncated", "landed_err"],
+            AdapterEnding::Eof {
+                after: frames.len(),
             },
-        )
-        .await;
-        let report = run.provider_report();
-        assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-        assert_eq!(
-            sole_failed_completion(&run.log).message,
-            rig::serve::stream_truncated().message,
-            "one completion and no tool effect"
         );
-        assert_eq!(invocations.count(), 0, "the tool never ran");
-        assert_eq!(run.roles, [Role::User], "the call is not history");
-        assert!(
-            run.stream()
-                .events
-                .iter()
-                .any(|event| matches!(event, StreamEvent::BlockEnd { .. })),
-            "the call streamed to its end before the cut: {:?}",
-            run.stream().events
-        );
-        runs.push(run);
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_witness_is_a_side_channel(observed, plain);
-    assert_failure_facts(
-        observed,
-        &["issued", "truncated", "landed_err"],
-        AdapterEnding::Eof {
-            after: frames.len(),
-        },
-    );
-    assert_eq!(truncations(observed.trace()).len(), 1);
+        assert_eq!(truncations(observed.trace()).len(), 1);
+    })
+    .await;
 }
 
 /// An error event after content through the native runtime: the run fails
@@ -264,67 +285,74 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
 /// item at its position, and history keeps only the prompt.
 #[tokio::test]
 async fn error_event_after_content_fails_with_the_provider_error() {
-    let mut frames = text_prefix_frames();
-    let prefix = delta_text(&frames);
-    frames.push(ERROR_EVENT.to_owned());
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let run = native_run(
-            scripted_model(vec![sse_bytes(&frames)]),
-            STREAMING_PREAMBLE,
-            STREAMING_PROMPT,
-            witness,
-            |_| {},
-        )
-        .await;
-        let report = run.provider_report();
-        assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
+    crate::goldens::capture_world_programs(async {
+        let mut frames = text_prefix_frames();
+        let prefix = delta_text(&frames);
+        frames.push(ERROR_EVENT.to_owned());
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let run = native_run(
+                scripted_model(vec![sse_bytes(&frames)]),
+                STREAMING_PREAMBLE,
+                STREAMING_PROMPT,
+                witness,
+                |_| {},
+            )
+            .await;
+            let report = run.provider_report();
+            assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
+            assert!(
+                report
+                    .provider_response_body()
+                    .is_some_and(|body| body.contains("boom")),
+                "{report:?}"
+            );
+            assert_eq!(
+                sole_failed_completion(&run.log).kind,
+                ErrorKind::ProviderResponse
+            );
+            assert_eq!(run.stream().text, prefix);
+            assert_eq!(run.stream().errors.len(), 1, "{:?}", run.stream().errors);
+            assert_eq!(
+                run.stream().errors[0].0,
+                run.stream().events.len(),
+                "the error item follows the delivered content"
+            );
+            assert_eq!(run.roles, [Role::User]);
+            runs.push(run);
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "openai_stream_faults_error_event_after_content_fails_with_the_provider_error",
+            &observed.log,
+        );
+        assert_witness_is_a_side_channel(observed, plain);
+        let events = assert_failure_facts(
+            observed,
+            &["issued", "landed_err"],
+            AdapterEnding::Error {
+                boundary: AdapterErrorBoundary::ProviderResponse,
+                kind: "provider_response".into(),
+                status: None,
+                retryable: false,
+            },
+        );
         assert!(
-            report
-                .provider_response_body()
-                .is_some_and(|body| body.contains("boom")),
-            "{report:?}"
+            events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::ErrorEnvelope { error }
+                    if error.code.as_deref() == Some("server_error")
+                        && error.status.as_deref() == Some("server_error")
+                        && error.message.as_deref() == Some("boom")
+            )),
+            "the event's envelope is projected: {events:?}"
         );
-        assert_eq!(
-            sole_failed_completion(&run.log).kind,
-            ErrorKind::ProviderResponse
+        assert!(
+            truncations(observed.trace()).is_empty(),
+            "an error, not EOF"
         );
-        assert_eq!(run.stream().text, prefix);
-        assert_eq!(run.stream().errors.len(), 1, "{:?}", run.stream().errors);
-        assert_eq!(
-            run.stream().errors[0].0,
-            run.stream().events.len(),
-            "the error item follows the delivered content"
-        );
-        assert_eq!(run.roles, [Role::User]);
-        runs.push(run);
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_witness_is_a_side_channel(observed, plain);
-    let events = assert_failure_facts(
-        observed,
-        &["issued", "landed_err"],
-        AdapterEnding::Error {
-            boundary: AdapterErrorBoundary::ProviderResponse,
-            kind: "provider_response".into(),
-            status: None,
-            retryable: false,
-        },
-    );
-    assert!(
-        events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::ErrorEnvelope { error }
-                if error.code.as_deref() == Some("server_error")
-                    && error.status.as_deref() == Some("server_error")
-                    && error.message.as_deref() == Some("boom")
-        )),
-        "the event's envelope is projected: {events:?}"
-    );
-    assert!(
-        truncations(observed.trace()).is_empty(),
-        "an error, not EOF"
-    );
+    })
+    .await;
 }
 
 /// Despawn the issued completion once its stream has delivered text: the
@@ -349,54 +377,61 @@ fn despawn_at_first_text(
 /// despawn lands on the response body, which the replay does not track.
 #[tokio::test]
 async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
-    let mut runs = Vec::new();
-    for witness in [true, false] {
-        let runs = &mut runs;
-        with_openai_cassette("streaming/streaming_smoke", |client| async move {
-            let run = native_run(
-                client.openai.completion(GPT_4O),
-                STREAMING_PREAMBLE,
-                STREAMING_PROMPT,
-                witness,
-                |ecs| {
-                    ecs.app.add_systems(
-                        RigSchedule,
-                        despawn_at_first_text
-                            .after(BusSet::Collect)
-                            .before(RigSet::Fold),
-                    );
-                },
-            )
+    crate::goldens::capture_world_programs(async {
+        let mut runs = Vec::new();
+        for witness in [true, false] {
+            let runs = &mut runs;
+            with_openai_cassette("streaming/streaming_smoke", |client| async move {
+                let run = native_run(
+                    client.openai.completion(GPT_4O),
+                    STREAMING_PREAMBLE,
+                    STREAMING_PROMPT,
+                    witness,
+                    |ecs| {
+                        ecs.app.add_systems(
+                            RigSchedule,
+                            despawn_at_first_text
+                                .after(BusSet::Collect)
+                                .before(RigSet::Fold),
+                        );
+                    },
+                )
+                .await;
+                assert!(
+                    matches!(run.failure(), Failure::Cancelled(_)),
+                    "a cancelled run, not {:?}",
+                    run.failure()
+                );
+                let recorded = sole_failed_completion(&run.log);
+                assert_eq!(recorded.kind, ErrorKind::Cancelled, "{recorded:?}");
+                assert!(run.stream.is_none(), "the despawned effect took its stream");
+                assert_eq!(run.roles, [Role::User], "no answer is committed");
+                runs.push(run);
+            })
             .await;
-            assert!(
-                matches!(run.failure(), Failure::Cancelled(_)),
-                "a cancelled run, not {:?}",
-                run.failure()
-            );
-            let recorded = sole_failed_completion(&run.log);
-            assert_eq!(recorded.kind, ErrorKind::Cancelled, "{recorded:?}");
-            assert!(run.stream.is_none(), "the despawned effect took its stream");
-            assert_eq!(run.roles, [Role::User], "no answer is committed");
-            runs.push(run);
-        })
-        .await;
-    }
-    let (observed, plain) = (&runs[0], &runs[1]);
-    assert_eq!(
-        comparable_failure(observed.failure()),
-        comparable_failure(plain.failure())
-    );
-    // The despawn lands on the tick that collected the first text delta,
-    // and how many deltas that tick collected is scheduling: the witness's
-    // extra work, a loaded CI runner. The two logs agree up to the first
-    // text delta; what a cancelled record kept after it is not a parity fact.
-    assert_eq!(
-        log_json_through_the_first_text_delta(&observed.log),
-        log_json_through_the_first_text_delta(&plain.log)
-    );
-    let trace = observed.trace();
-    assert_eq!(endings(trace), ["cancelled"]);
-    assert_eq!(bus_actions(trace), ["issued", "cancelled"]);
+        }
+        let (observed, plain) = (&runs[0], &runs[1]);
+        crate::goldens::world_golden_effects(
+            "openai_stream_faults_despawning_the_stream_at_the_first_delta_records_a_cancel",
+            &observed.log,
+        );
+        assert_eq!(
+            comparable_failure(observed.failure()),
+            comparable_failure(plain.failure())
+        );
+        // The despawn lands on the tick that collected the first text delta,
+        // and how many deltas that tick collected is scheduling: the witness's
+        // extra work, a loaded CI runner. The two logs agree up to the first
+        // text delta; what a cancelled record kept after it is not a parity fact.
+        assert_eq!(
+            log_json_through_the_first_text_delta(&observed.log),
+            log_json_through_the_first_text_delta(&plain.log)
+        );
+        let trace = observed.trace();
+        assert_eq!(endings(trace), ["cancelled"]);
+        assert_eq!(bus_actions(trace), ["issued", "cancelled"]);
+    })
+    .await;
 }
 
 /// The log with its one record's kept events cut after the first text

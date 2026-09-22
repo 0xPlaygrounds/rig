@@ -110,79 +110,101 @@ fn setup(client: &Bound<Anthropic>) -> EcsAgent {
 
 #[tokio::test]
 async fn hooks_observe_raw_blocking() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/hooks_observe_raw_blocking",
-        move |client| async move {
-            let mut ecs = setup(&client);
-            ecs.prompt("Reply with exactly: agent raw probe", false)
-                .await;
-            *output = Some(ecs.app.world().resource::<Seen>().clone());
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/hooks_observe_raw_blocking",
+                move |client| async move {
+                    let mut ecs = setup(&client);
+                    ecs.prompt("Reply with exactly: agent raw probe", false)
+                        .await;
+                    *output = Some(ecs.app.world().resource::<Seen>().clone());
+                },
+            )
+            .await;
+            let seen = observed.expect("execution completed");
+            assert_eq!(seen.responses.len(), 1, "one response publication");
+            assert_eq!(seen.streamed, [false]);
+            assert_eq!(seen.turns.len(), 1, "one completed-turn observation");
+            let raw = &seen.responses[0];
+            assert!(!raw.is_null());
+            assert_eq!(&seen.turns[0], raw);
+            let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking";
+            let recorded = recorded_message_ids(scenario, false);
+            assert_eq!(recorded.len(), 1);
+            assert_ids_match_recording(&ids_of(&seen.responses, "id"), &recorded, scenario);
+            let body = recorded_response_body(scenario);
+            assert_eq!(raw["stop_reason"], body["stop_reason"]);
+            assert_eq!(raw["model"], body["model"]);
+            assert_eq!(
+                raw["usage"]["output_tokens"],
+                body["usage"]["output_tokens"]
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_hooks_observe_raw_blocking",
+                log,
+            )
         },
     )
-    .await;
-    let seen = observed.expect("execution completed");
-    assert_eq!(seen.responses.len(), 1, "one response publication");
-    assert_eq!(seen.streamed, [false]);
-    assert_eq!(seen.turns.len(), 1, "one completed-turn observation");
-    let raw = &seen.responses[0];
-    assert!(!raw.is_null());
-    assert_eq!(&seen.turns[0], raw);
-    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking";
-    let recorded = recorded_message_ids(scenario, false);
-    assert_eq!(recorded.len(), 1);
-    assert_ids_match_recording(&ids_of(&seen.responses, "id"), &recorded, scenario);
-    let body = recorded_response_body(scenario);
-    assert_eq!(raw["stop_reason"], body["stop_reason"]);
-    assert_eq!(raw["model"], body["model"]);
-    assert_eq!(
-        raw["usage"]["output_tokens"],
-        body["usage"]["output_tokens"]
-    );
+    .await
 }
 
 #[tokio::test]
 async fn hooks_observe_raw_streamed() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/hooks_observe_raw_streamed",
-        move |client| async move {
-            let mut ecs = setup(&client);
-            ecs.prompt("Reply with exactly: agent raw probe", true)
-                .await;
-            let mut query = ecs.app.world_mut().query::<&Streamed>();
-            let finals: Vec<_> = query
-                .iter(ecs.app.world())
-                .flat_map(|s| s.events.iter())
-                .filter_map(|e| match e {
-                    StreamEvent::Final(final_) => Some(final_),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(finals.len(), 1);
-            assert!(!finals[0].raw.is_null());
-            *output = Some(ecs.app.world().resource::<Seen>().clone());
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/hooks_observe_raw_streamed",
+                move |client| async move {
+                    let mut ecs = setup(&client);
+                    ecs.prompt("Reply with exactly: agent raw probe", true)
+                        .await;
+                    let mut query = ecs.app.world_mut().query::<&Streamed>();
+                    let finals: Vec<_> = query
+                        .iter(ecs.app.world())
+                        .flat_map(|s| s.events.iter())
+                        .filter_map(|e| match e {
+                            StreamEvent::Final(final_) => Some(final_),
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(finals.len(), 1);
+                    assert!(!finals[0].raw.is_null());
+                    *output = Some(ecs.app.world().resource::<Seen>().clone());
+                },
+            )
+            .await;
+            let seen = observed.expect("execution completed");
+            assert_eq!(seen.responses.len(), 1);
+            assert_eq!(seen.streamed, [true]);
+            assert_eq!(seen.turns.len(), 1);
+            let raw = &seen.responses[0];
+            assert!(!raw.is_null());
+            assert_eq!(&seen.turns[0], raw);
+            assert!(raw.get("message_id").is_some() && raw.get("usage").is_some());
+            let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed";
+            let recorded = recorded_message_ids(scenario, true);
+            assert_eq!(recorded.len(), 1);
+            assert_ids_match_recording(&ids_of(&seen.responses, "message_id"), &recorded, scenario);
+            assert_eq!(
+                ids_of(&seen.responses, "stop_reason"),
+                recorded_stop_reasons(scenario, true)
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_hooks_observe_raw_streamed",
+                log,
+            )
         },
     )
-    .await;
-    let seen = observed.expect("execution completed");
-    assert_eq!(seen.responses.len(), 1);
-    assert_eq!(seen.streamed, [true]);
-    assert_eq!(seen.turns.len(), 1);
-    let raw = &seen.responses[0];
-    assert!(!raw.is_null());
-    assert_eq!(&seen.turns[0], raw);
-    assert!(raw.get("message_id").is_some() && raw.get("usage").is_some());
-    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed";
-    let recorded = recorded_message_ids(scenario, true);
-    assert_eq!(recorded.len(), 1);
-    assert_ids_match_recording(&ids_of(&seen.responses, "message_id"), &recorded, scenario);
-    assert_eq!(
-        ids_of(&seen.responses, "stop_reason"),
-        recorded_stop_reasons(scenario, true)
-    );
+    .await
 }
 
 // Collect attempt records independently of the two lifecycle observers.
@@ -289,100 +311,155 @@ fn assert_two_attempts(
 
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_blocking() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
-        move |client| async move {
-            *output = Some(run_two_attempts(client, false, false).await);
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
+                move |client| async move {
+                    *output = Some(run_two_attempts(client, false, false).await);
+                },
+            )
+            .await;
+            assert_two_attempts(
+                "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
+                false,
+                false,
+                false,
+                observed.expect("execution completed"),
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_multi_turn_tool_run_records_distinct_raw_blocking",
+                log,
+            )
         },
     )
-    .await;
-    assert_two_attempts(
-        "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
-        false,
-        false,
-        false,
-        observed.expect("execution completed"),
-    );
+    .await
 }
 
 #[tokio::test]
 async fn multi_turn_tool_run_records_distinct_raw_streamed() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
-        move |client| async move {
-            *output = Some(run_two_attempts(client, true, false).await);
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
+                move |client| async move {
+                    *output = Some(run_two_attempts(client, true, false).await);
+                },
+            )
+            .await;
+            assert_two_attempts(
+                "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
+                true,
+                false,
+                false,
+                observed.expect("execution completed"),
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_multi_turn_tool_run_records_distinct_raw_streamed",
+                log,
+            )
         },
     )
-    .await;
-    assert_two_attempts(
-        "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
-        true,
-        false,
-        false,
-        observed.expect("execution completed"),
-    );
+    .await
 }
 
 #[tokio::test]
 async fn streamed_final_carries_final_turn_raw() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
-        move |client| async move {
-            *output = Some(run_two_attempts(client, true, false).await);
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
+                move |client| async move {
+                    *output = Some(run_two_attempts(client, true, false).await);
+                },
+            )
+            .await;
+            assert_two_attempts(
+                "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
+                true,
+                false,
+                true,
+                observed.expect("execution completed"),
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_streamed_final_carries_final_turn_raw",
+                log,
+            )
         },
     )
-    .await;
-    assert_two_attempts(
-        "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
-        true,
-        false,
-        true,
-        observed.expect("execution completed"),
-    );
+    .await
 }
 
 #[tokio::test]
 async fn retried_turn_records_retried_attempt_raw_blocking() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
-        move |client| async move {
-            *output = Some(run_two_attempts(client, false, true).await);
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
+                move |client| async move {
+                    *output = Some(run_two_attempts(client, false, true).await);
+                },
+            )
+            .await;
+            assert_two_attempts(
+                "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
+                false,
+                true,
+                false,
+                observed.expect("execution completed"),
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_retried_turn_records_retried_attempt_raw_blocking",
+                log,
+            )
         },
     )
-    .await;
-    assert_two_attempts(
-        "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
-        false,
-        true,
-        false,
-        observed.expect("execution completed"),
-    );
+    .await
 }
 
 #[tokio::test]
 async fn retried_turn_records_retried_attempt_raw_streamed() {
-    let mut observed = None;
-    let output = &mut observed;
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
-        move |client| async move {
-            *output = Some(run_two_attempts(client, true, true).await);
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let mut observed = None;
+            let output = &mut observed;
+            with_anthropic_cassette(
+                "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
+                move |client| async move {
+                    *output = Some(run_two_attempts(client, true, true).await);
+                },
+            )
+            .await;
+            assert_two_attempts(
+                "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
+                true,
+                true,
+                false,
+                observed.expect("execution completed"),
+            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "anthropic_raw_retried_turn_records_retried_attempt_raw_streamed",
+                log,
+            )
         },
     )
-    .await;
-    assert_two_attempts(
-        "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
-        true,
-        true,
-        false,
-        observed.expect("execution completed"),
-    );
+    .await
 }

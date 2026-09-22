@@ -23,7 +23,7 @@ pub struct GoldenMatrix {
 pub struct Row {
     /// Cassette path relative to the provider directory.
     pub scenario: LitStr,
-    /// Original golden name without a file extension.
+    /// Golden name within the matrix's runtime corpus, without an extension.
     pub golden: LitStr,
     /// Whether this row requires no recording because it is ignored.
     pub ignored: bool,
@@ -114,12 +114,12 @@ impl Parse for GoldenMatrix {
     }
 }
 
-/// Native rows: a world cell asserted against its program, no golden.
+/// Native cells and their world golden names.
 pub struct NativeMatrix {
     /// The wire-specific cassette wrapper called by each generated test.
     pub wrapper: Path,
-    /// Scenario literals and whether each row is ignored.
-    pub rows: Vec<(LitStr, bool)>,
+    /// Native fixture references and ignore status.
+    pub rows: Vec<Row>,
 }
 
 impl Parse for NativeMatrix {
@@ -140,11 +140,17 @@ impl Parse for NativeMatrix {
             let scenario: LitStr = args.parse()?;
             args.parse::<Token![,]>()?;
             args.parse::<Path>()?;
+            args.parse::<Token![,]>()?;
+            let golden: LitStr = args.parse()?;
             if !args.is_empty() {
-                return Err(args.error("expected scenario and cell path"));
+                return Err(args.error("expected scenario, cell path, and world golden literal"));
             }
             input.parse::<Token![;]>()?;
-            rows.push((scenario, ignored));
+            rows.push(Row {
+                scenario,
+                golden,
+                ignored,
+            });
         }
         if rows.is_empty() {
             return Err(input.error("matrix must register at least one test"));
@@ -157,8 +163,8 @@ impl Parse for NativeMatrix {
 pub struct ResumeMatrix {
     /// The wire-specific cassette wrapper called by each generated test.
     pub wrapper: Path,
-    /// Scenario literals and whether each row is ignored.
-    pub rows: Vec<(LitStr, bool)>,
+    /// Native fixture references and ignore status.
+    pub rows: Vec<Row>,
 }
 
 impl Parse for ResumeMatrix {
@@ -181,11 +187,19 @@ impl Parse for ResumeMatrix {
             args.parse::<Path>()?;
             args.parse::<Token![,]>()?;
             args.parse::<syn::Expr>()?;
+            args.parse::<Token![,]>()?;
+            let golden: LitStr = args.parse()?;
             if !args.is_empty() {
-                return Err(args.error("expected scenario, cell and resume point"));
+                return Err(
+                    args.error("expected scenario, cell, resume point, and world golden literal")
+                );
             }
             input.parse::<Token![;]>()?;
-            rows.push((scenario, ignored));
+            rows.push(Row {
+                scenario,
+                golden,
+                ignored,
+            });
         }
         if rows.is_empty() {
             return Err(input.error("matrix must register at least one test"));
@@ -197,10 +211,16 @@ impl Parse for ResumeMatrix {
 /// A family-specific body receives the scenario from the same registered row
 /// that supplies its generated function name and attributes.
 pub struct CaseMatrix {
+    /// Macro family that executes the registered rows.
+    pub family: Ident,
+    /// Number of test registrations, including ignored rows.
+    pub registrations: usize,
     /// The cassette wrapper, or none for rows using only local scripted transports.
     pub wrapper: Option<Path>,
     /// Scenario literals and whether each row is ignored.
     pub rows: Vec<(LitStr, bool)>,
+    /// Explicit world golden names and ignore status.
+    pub world_goldens: Vec<(LitStr, bool)>,
 }
 
 impl Parse for CaseMatrix {
@@ -218,15 +238,20 @@ impl Parse for CaseMatrix {
             return Err(syn::Error::new(key.span(), "expected family"));
         }
         input.parse::<Token![:]>()?;
-        input.parse::<Ident>()?;
+        let family = input.parse::<Ident>()?;
         input.parse::<Token![;]>()?;
         let mut rows = Vec::new();
+        let mut world_goldens = Vec::new();
         let mut names = BTreeSet::new();
         while !input.is_empty() {
             let ignored = registration(input, &mut names)?;
             input.parse::<Token![:]>()?;
             if wrapper.is_none() {
                 input.parse::<Ident>()?;
+                if input.peek(Token![=>]) {
+                    input.parse::<Token![=>]>()?;
+                    world_goldens.push((input.parse::<LitStr>()?, ignored));
+                }
                 input.parse::<Token![;]>()?;
                 continue;
             }
@@ -237,7 +262,14 @@ impl Parse for CaseMatrix {
             args.parse::<Ident>()?;
             if args.peek(Token![,]) {
                 args.parse::<Token![,]>()?;
-                args.parse::<syn::Expr>()?;
+                let argument = args.parse::<syn::Expr>()?;
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(name),
+                    ..
+                }) = argument
+                {
+                    world_goldens.push((name, ignored));
+                }
             }
             if !args.is_empty() {
                 return Err(args.error("expected scenario and case selector"));
@@ -248,6 +280,12 @@ impl Parse for CaseMatrix {
         if names.is_empty() {
             return Err(input.error("matrix must register at least one test"));
         }
-        Ok(Self { wrapper, rows })
+        Ok(Self {
+            family,
+            registrations: names.len(),
+            wrapper,
+            rows,
+            world_goldens,
+        })
     }
 }

@@ -1,0 +1,95 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 7347664936715843677
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say hi."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": false,
+          "message": "ProviderResponseError: status 404 Not Found: {\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}",
+          "code": "NOT_FOUND",
+          "http_status": 404,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 404,
+            "body": "{\"error\":{\"code\":404,\"message\":\"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.\",\"status\":\"NOT_FOUND\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

@@ -19,264 +19,334 @@ use rig_ecs::agent::{AdditionalParams, MaxTokens, Temperature};
 
 #[tokio::test]
 async fn blocking_truncated_turn_reports_length_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
+    rig_test_support::goldens::world_golden_test(
+        async {
+            {
+                const SCENARIO: &str =
+                    "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap";
+                let probe = TurnTerminationProbe::default();
+                let observed = probe.clone();
 
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
-            |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    CONCISE_PREAMBLE,
-                    1,
+                with_gemini_turn_metadata_cassette(
+                    "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
+                    |client| async move {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert((Temperature(Some(0.0)), MaxTokens(Some(TINY_CAP))));
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert(AdditionalParams(Some(no_thinking())));
+                        ecs_termination::install(&mut ecs, probe, None);
+                        ecs.prompt_with_max_turns(TRUNCATING_PROMPT, false, None)
+                            .await;
+                    },
+                )
+                .await;
+
+                assert_eq!(
+                    observed.first_reason(),
+                    Some(FinishReason::Length),
+                    "the wire `MAX_TOKENS` must reach the hook as FinishReason::Length"
                 );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert((Temperature(Some(0.0)), MaxTokens(Some(TINY_CAP))));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(no_thinking())));
-                ecs_termination::install(&mut ecs, probe, None);
-                ecs.prompt_with_max_turns(TRUNCATING_PROMPT, false, None)
-                    .await;
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::Length),
-            "the wire `MAX_TOKENS` must reach the hook as FinishReason::Length"
-        );
-        assert_eq!(
-            observed.first_max_tokens(),
-            Some(TINY_CAP),
-            "the hook must report the cap this attempt actually ran under"
-        );
-        assert!(
-            observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a truncated turn must satisfy the portable retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "MAX_TOKENS");
-        assert_recorded_request_cap(SCENARIO, TINY_CAP);
-    }
+                assert_eq!(
+                    observed.first_max_tokens(),
+                    Some(TINY_CAP),
+                    "the hook must report the cap this attempt actually ran under"
+                );
+                assert!(
+                    observed
+                        .first_reason()
+                        .is_some_and(|reason| reason.truncated_output()),
+                    "a truncated turn must satisfy the portable retry predicate"
+                );
+                assert_recorded_wire_reason(SCENARIO, "MAX_TOKENS");
+                assert_recorded_request_cap(SCENARIO, TINY_CAP);
+            }
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_termination_blocking_truncated_turn_reports_length_and_cap",
+                log,
+            )
+        },
+    )
+    .await
 }
 
 #[tokio::test]
 async fn streaming_truncated_turn_reports_length_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
+    rig_test_support::goldens::world_golden_test(
+        async {
+            {
+                const SCENARIO: &str =
+                    "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap";
+                let probe = TurnTerminationProbe::default();
+                let observed = probe.clone();
 
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
-            |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    CONCISE_PREAMBLE,
-                    1,
+                with_gemini_turn_metadata_cassette(
+                    "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
+                    |client| async move {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert((Temperature(Some(0.0)), MaxTokens(Some(TINY_CAP))));
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert(AdditionalParams(Some(no_thinking())));
+                        ecs_termination::install(&mut ecs, probe, None);
+                        ecs.prompt_with_max_turns(TRUNCATING_PROMPT, true, None)
+                            .await;
+                    },
+                )
+                .await;
+
+                assert_eq!(
+                    observed.first_reason(),
+                    Some(FinishReason::Length),
+                    "the streaming surface must report the same reason as the blocking one"
                 );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert((Temperature(Some(0.0)), MaxTokens(Some(TINY_CAP))));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(no_thinking())));
-                ecs_termination::install(&mut ecs, probe, None);
-                ecs.prompt_with_max_turns(TRUNCATING_PROMPT, true, None)
-                    .await;
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::Length),
-            "the streaming surface must report the same reason as the blocking one"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(TINY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "MAX_TOKENS");
-        assert_recorded_request_cap(SCENARIO, TINY_CAP);
-    }
+                assert_eq!(observed.first_max_tokens(), Some(TINY_CAP));
+                assert_recorded_wire_reason(SCENARIO, "MAX_TOKENS");
+                assert_recorded_request_cap(SCENARIO, TINY_CAP);
+            }
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_termination_streaming_truncated_turn_reports_length_and_cap",
+                log,
+            )
+        },
+    )
+    .await
 }
 
 #[tokio::test]
 async fn blocking_completed_turn_reports_stop_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
+    rig_test_support::goldens::world_golden_test(
+        async {
+            {
+                const SCENARIO: &str =
+                    "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap";
+                let probe = TurnTerminationProbe::default();
+                let observed = probe.clone();
 
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
-            |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    CONCISE_PREAMBLE,
-                    1,
+                with_gemini_turn_metadata_cassette(
+                    "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
+                    |client| async move {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert(AdditionalParams(Some(no_thinking())));
+                        ecs_termination::install(&mut ecs, probe, None);
+                        ecs.prompt_with_max_turns(SHORT_PROMPT, false, None).await;
+                    },
+                )
+                .await;
+
+                assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
+                assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
+                assert!(
+                    !observed
+                        .first_reason()
+                        .is_some_and(|reason| reason.truncated_output()),
+                    "a completed turn must not satisfy the retry predicate"
                 );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(no_thinking())));
-                ecs_termination::install(&mut ecs, probe, None);
-                ecs.prompt_with_max_turns(SHORT_PROMPT, false, None).await;
-            },
-        )
-        .await;
-
-        assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert!(
-            !observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a completed turn must not satisfy the retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
+                assert_recorded_wire_reason(SCENARIO, "STOP");
+            }
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_termination_blocking_completed_turn_reports_stop_and_cap",
+                log,
+            )
+        },
+    )
+    .await
 }
 
 #[tokio::test]
 async fn streaming_completed_turn_reports_stop_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
+    rig_test_support::goldens::world_golden_test(
+        async {
+            {
+                const SCENARIO: &str =
+                    "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap";
+                let probe = TurnTerminationProbe::default();
+                let observed = probe.clone();
 
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
-            |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(no_thinking())));
-                ecs_termination::install(&mut ecs, probe, None);
-                ecs.prompt_with_max_turns(SHORT_PROMPT, true, None).await;
-            },
-        )
-        .await;
+                with_gemini_turn_metadata_cassette(
+                    "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
+                    |client| async move {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert(AdditionalParams(Some(no_thinking())));
+                        ecs_termination::install(&mut ecs, probe, None);
+                        ecs.prompt_with_max_turns(SHORT_PROMPT, true, None).await;
+                    },
+                )
+                .await;
 
-        assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
+                assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
+                assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
+                assert_recorded_wire_reason(SCENARIO, "STOP");
+            }
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_termination_streaming_completed_turn_reports_stop_and_cap",
+                log,
+            )
+        },
+    )
+    .await
 }
 
 #[tokio::test]
 async fn blocking_tool_turn_reports_tool_calls() {
-    {
-        const SCENARIO: &str = "turn_termination_matrix/blocking_tool_turn_reports_tool_calls";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
+    rig_test_support::goldens::world_golden_test(
+        async {
+            {
+                const SCENARIO: &str =
+                    "turn_termination_matrix/blocking_tool_turn_reports_tool_calls";
+                let probe = TurnTerminationProbe::default();
+                let observed = probe.clone();
 
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
-            |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    TOOL_PREAMBLE,
-                    1,
+                with_gemini_turn_metadata_cassette(
+                    "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
+                    |client| async move {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                            TOOL_PREAMBLE,
+                            1,
+                        );
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert(AdditionalParams(Some(no_thinking())));
+                        ecs.tool(Adder);
+                        ecs_termination::install(&mut ecs, probe, None);
+                        ecs.prompt_with_max_turns(TOOL_PROMPT, false, Some(3)).await;
+                    },
+                )
+                .await;
+
+                assert_eq!(
+                    observed.first_reason(),
+                    Some(FinishReason::ToolCalls),
+                    "the turn that issued the tool call must read as ToolCalls"
                 );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(no_thinking())));
-                ecs.tool(Adder);
-                ecs_termination::install(&mut ecs, probe, None);
-                ecs.prompt_with_max_turns(TOOL_PROMPT, false, Some(3)).await;
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::ToolCalls),
-            "the turn that issued the tool call must read as ToolCalls"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert!(
-            !observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a tool turn must not satisfy the retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
+                assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
+                assert!(
+                    !observed
+                        .first_reason()
+                        .is_some_and(|reason| reason.truncated_output()),
+                    "a tool turn must not satisfy the retry predicate"
+                );
+                assert_recorded_wire_reason(SCENARIO, "STOP");
+            }
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_termination_blocking_tool_turn_reports_tool_calls",
+                log,
+            )
+        },
+    )
+    .await
 }
 
 #[tokio::test]
 async fn streaming_tool_turn_reports_tool_calls() {
-    {
-        const SCENARIO: &str = "turn_termination_matrix/streaming_tool_turn_reports_tool_calls";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
+    rig_test_support::goldens::world_golden_test(
+        async {
+            {
+                const SCENARIO: &str =
+                    "turn_termination_matrix/streaming_tool_turn_reports_tool_calls";
+                let probe = TurnTerminationProbe::default();
+                let observed = probe.clone();
 
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
-            |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    TOOL_PREAMBLE,
-                    1,
+                with_gemini_turn_metadata_cassette(
+                    "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
+                    |client| async move {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                            TOOL_PREAMBLE,
+                            1,
+                        );
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
+                        ecs.app
+                            .world_mut()
+                            .entity_mut(ecs.agent)
+                            .insert(AdditionalParams(Some(no_thinking())));
+                        ecs.tool(Adder);
+                        ecs_termination::install(&mut ecs, probe, None);
+                        ecs.prompt_with_max_turns(TOOL_PROMPT, true, Some(3)).await;
+                    },
+                )
+                .await;
+
+                assert_eq!(
+                    observed.first_reason(),
+                    Some(FinishReason::ToolCalls),
+                    "streaming must resolve the tool turn exactly as blocking does"
                 );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert((Temperature(Some(0.0)), MaxTokens(Some(ROOMY_CAP))));
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(no_thinking())));
-                ecs.tool(Adder);
-                ecs_termination::install(&mut ecs, probe, None);
-                ecs.prompt_with_max_turns(TOOL_PROMPT, true, Some(3)).await;
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::ToolCalls),
-            "streaming must resolve the tool turn exactly as blocking does"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
+                assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
+                assert_recorded_wire_reason(SCENARIO, "STOP");
+            }
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_termination_streaming_tool_turn_reports_tool_calls",
+                log,
+            )
+        },
+    )
+    .await
 }
 
 #[tokio::test]
 async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
+    rig_test_support::goldens::world_golden_test(async {
+
     {
         const SCENARIO: &str =
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap";
@@ -327,10 +397,14 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
             vec!["MAX_TOKENS".to_owned(), "STOP".to_owned()]
         );
     }
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_termination_blocking_escalating_retry_reports_each_attempts_own_cap", log)).await
 }
 
 #[tokio::test]
 async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
+    rig_test_support::goldens::world_golden_test(async {
+
     {
         const SCENARIO: &str =
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap";
@@ -372,4 +446,6 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
         assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
         assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
     }
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_termination_streaming_escalating_retry_reports_each_attempts_own_cap", log)).await
 }

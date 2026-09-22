@@ -1,0 +1,139 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 12422156487785290073
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior."
+            }
+          ],
+          "usage": {
+            "input_tokens": 985,
+            "output_tokens": 53,
+            "total_tokens": 1038
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "Rust is a systems programming language focused on performance, reliability, and memory safety. Memory safety matters because it prevents common bugs like null pointer dereferences, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, or undefined behavior.",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": []
+                }
+              }
+            ],
+            "cost": {
+              "diem": 0,
+              "usd": 0.00010559375
+            },
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "mistral-small-3-2-24b-instruct",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "usage": {
+              "completion_tokens": 53,
+              "prompt_tokens": 985,
+              "total_tokens": 1038
+            },
+            "venice_parameters": {
+              "disable_thinking": false,
+              "enable_e2ee": true,
+              "enable_web_citations": false,
+              "enable_web_scraping": false,
+              "enable_web_search": "off",
+              "enable_x_search": false,
+              "include_search_results_in_stream": false,
+              "include_venice_system_prompt": true,
+              "return_search_results_as_documents": false,
+              "strip_thinking_response": false,
+              "web_search_citations": []
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

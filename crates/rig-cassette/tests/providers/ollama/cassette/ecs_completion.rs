@@ -6,22 +6,33 @@ use rig_ecs::agent::DefaultMaxTurns;
 const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn completion_smoke() {
-    with_ollama_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(DefaultMaxTurns(None));
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(rig_ecs::agent::AdditionalParams(Some(
-                serde_json::json!({ "think" : false }),
-            )));
-        let response = ecs.prompt(BASIC_PROMPT, false).await;
-        assert_nonempty_response(&response);
-    })
-    .await;
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_ollama_cassette("agent/completion_smoke", |client| async move {
+                let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(DefaultMaxTurns(None));
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(rig_ecs::agent::AdditionalParams(Some(
+                        serde_json::json!({ "think" : false }),
+                    )));
+                let response = ecs.prompt(BASIC_PROMPT, false).await;
+                assert_nonempty_response(&response);
+            })
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "ollama_completion_completion_smoke",
+                log,
+            )
+        },
+    )
+    .await
 }
 /// Guards the native token-limit mapping on the wire.
 ///
@@ -37,24 +48,35 @@ async fn completion_smoke() {
 /// which is the server confirming it honored the budget.
 #[tokio::test]
 async fn completion_respects_max_tokens() {
-    with_ollama_cassette("agent/max_tokens", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(DefaultMaxTurns(None));
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(rig_ecs::agent::MaxTokens(Some(24)));
-        ecs.app
-            .world_mut()
-            .entity_mut(ecs.agent)
-            .insert(rig_ecs::agent::AdditionalParams(Some(
-                serde_json::json!({ "think" : false }),
-            )));
-        let response = ecs.prompt(BASIC_PROMPT, false).await;
-        assert_nonempty_response(&response);
-    })
-    .await;
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_ollama_cassette("agent/max_tokens", |client| async move {
+                let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(DefaultMaxTurns(None));
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(rig_ecs::agent::MaxTokens(Some(24)));
+                ecs.app
+                    .world_mut()
+                    .entity_mut(ecs.agent)
+                    .insert(rig_ecs::agent::AdditionalParams(Some(
+                        serde_json::json!({ "think" : false }),
+                    )));
+                let response = ecs.prompt(BASIC_PROMPT, false).await;
+                assert_nonempty_response(&response);
+            })
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "ollama_completion_completion_respects_max_tokens",
+                log,
+            )
+        },
+    )
+    .await
 }

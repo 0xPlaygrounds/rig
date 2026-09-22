@@ -99,69 +99,82 @@ async fn drain_completion(ecs: &mut EcsAgent) {
 
 #[tokio::test]
 async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
-    with_gemini_cassette(
-        "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
-        |client| async move {
-            let mut ecs = setup(&client);
-            ecs.app
-                .world_mut()
-                .entity_mut(ecs.agent)
-                .insert(rig_ecs::agent::ToolAccess {
-                    allowed: Some(Default::default()),
-                    ..Default::default()
-                });
-            install_invalid_policy(&mut ecs, rig_ecs::agent::Resolution::Fail);
-            let run = ecs.app.world_mut().spawn_run(
-                ecs.agent,
-                &[],
-                "What is 21 + 21? Use the add tool.",
-                true,
-                Some(2),
-            );
-            let failure = ecs
-                .wait_for_outcome(run)
-                .await
-                .expect_err("disallowed call fails");
-            let Failure::UnknownToolCall { name } = failure else {
-                panic!("expected invalid tool failure, got {failure:?}")
-            };
-            assert_eq!(name, "add");
-            let access = ecs
-                .app
-                .world_mut()
-                .query_filtered::<&rig_ecs::agent::ToolAccess, With<Turn>>()
-                .single(ecs.app.world())
-                .expect("single turn snapshot");
-            assert_eq!(
-                access
-                    .executable
-                    .as_ref()
-                    .expect("executable snapshot")
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                vec!["add".to_string()]
-            );
-            assert!(
-                access
-                    .allowed
-                    .as_ref()
-                    .expect("allowed snapshot")
-                    .is_empty()
-            );
-            assert!(history_has_assistant_tool_call(
-                &history(&mut ecs, run),
-                "add"
-            ));
-            assert_eq!(ecs.app.world().resource::<InvalidPolicy>().seen.len(), 1);
-            drain_completion(&mut ecs).await;
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_gemini_cassette(
+                "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
+                |client| async move {
+                    let mut ecs = setup(&client);
+                    ecs.app
+                        .world_mut()
+                        .entity_mut(ecs.agent)
+                        .insert(rig_ecs::agent::ToolAccess {
+                            allowed: Some(Default::default()),
+                            ..Default::default()
+                        });
+                    install_invalid_policy(&mut ecs, rig_ecs::agent::Resolution::Fail);
+                    let run = ecs.app.world_mut().spawn_run(
+                        ecs.agent,
+                        &[],
+                        "What is 21 + 21? Use the add tool.",
+                        true,
+                        Some(2),
+                    );
+                    let failure = ecs
+                        .wait_for_outcome(run)
+                        .await
+                        .expect_err("disallowed call fails");
+                    let Failure::UnknownToolCall { name } = failure else {
+                        panic!("expected invalid tool failure, got {failure:?}")
+                    };
+                    assert_eq!(name, "add");
+                    let access = ecs
+                        .app
+                        .world_mut()
+                        .query_filtered::<&rig_ecs::agent::ToolAccess, With<Turn>>()
+                        .single(ecs.app.world())
+                        .expect("single turn snapshot");
+                    assert_eq!(
+                        access
+                            .executable
+                            .as_ref()
+                            .expect("executable snapshot")
+                            .keys()
+                            .cloned()
+                            .collect::<Vec<_>>(),
+                        vec!["add".to_string()]
+                    );
+                    assert!(
+                        access
+                            .allowed
+                            .as_ref()
+                            .expect("allowed snapshot")
+                            .is_empty()
+                    );
+                    assert!(history_has_assistant_tool_call(
+                        &history(&mut ecs, run),
+                        "add"
+                    ));
+                    assert_eq!(ecs.app.world().resource::<InvalidPolicy>().seen.len(), 1);
+                    drain_completion(&mut ecs).await;
+                },
+            )
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_agent_run_streamed_streamed_invalid_tool_call_fails_fast_mid_stream",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn streamed_repair_continues_the_same_stream() {
+    rig_test_support::goldens::world_golden_test(async {
+
     use super::super::agent_run_support::{Sum, assistant_tool_call_names};
     use crate::support::assert_mentions_expected_number;
     with_gemini_cassette("agent_run_streamed/streamed_repair_continues_the_same_stream", |client| async move {
@@ -188,6 +201,8 @@ async fn streamed_repair_continues_the_same_stream() {
         assert!(!recorded.iter().any(|name| name == "add"), "{recorded:?}");
         assert!(!ecs.app.world().resource::<InvalidPolicy>().seen.is_empty());
     }).await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_streamed_repair_continues_the_same_stream", log)).await
 }
 
 struct CompletedTurn {
@@ -243,88 +258,101 @@ fn completed_turns(ecs: &mut EcsAgent, run: Entity) -> Vec<CompletedTurn> {
 
 #[tokio::test]
 async fn streamed_skip_abandons_the_turn_and_recovers() {
-    use crate::support::assert_nonempty_response;
-    use rig::message::UserContent;
-    const REASON: &str = "The add tool is disabled for this request.";
-    with_gemini_cassette(
-        "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
-        |client| async move {
-            let mut ecs = setup(&client);
-            ecs.app.world_mut().entity_mut(ecs.agent).insert((
-                ToolChoiceSpec(None),
-                rig_ecs::agent::ToolAccess {
-                    allowed: Some(Default::default()),
-                    ..Default::default()
+    rig_test_support::goldens::world_golden_test(
+        async {
+            use crate::support::assert_nonempty_response;
+            use rig::message::UserContent;
+            const REASON: &str = "The add tool is disabled for this request.";
+            with_gemini_cassette(
+                "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
+                |client| async move {
+                    let mut ecs = setup(&client);
+                    ecs.app.world_mut().entity_mut(ecs.agent).insert((
+                        ToolChoiceSpec(None),
+                        rig_ecs::agent::ToolAccess {
+                            allowed: Some(Default::default()),
+                            ..Default::default()
+                        },
+                    ));
+                    install_invalid_policy(
+                        &mut ecs,
+                        rig_ecs::agent::Resolution::Skip {
+                            reason: REASON.into(),
+                        },
+                    );
+                    let run = ecs.app.world_mut().spawn_run(
+                        ecs.agent,
+                        &[],
+                        "What is 21 + 21? Use the add tool.",
+                        true,
+                        Some(3),
+                    );
+                    let output = ecs.wait_for_success(run).await;
+                    assert_nonempty_response(&output);
+                    assert_eq!(
+                        ecs.app.world().resource::<InvalidPolicy>().seen.len(),
+                        1,
+                        "first turn abandoned exactly once"
+                    );
+                    let turns = completed_turns(&mut ecs, run);
+                    assert!(turns.len() >= 2, "abandoned turn retains its completion");
+                    for turn in turns.iter().skip(1) {
+                        let (prompt, history) = turn
+                            .request
+                            .chat_history
+                            .split_last()
+                            .expect("retry prompt");
+                        assert!(history_has_assistant_tool_call(history, "add"));
+                        assert!(is_tool_result_user_message(prompt));
+                    }
+                    let retry = &turns[1].request.chat_history;
+                    let Message::User { content } = retry.last().expect("retry prompt") else {
+                        panic!("tool results are a user message")
+                    };
+                    let result = content
+                        .iter()
+                        .find_map(|part| match part {
+                            UserContent::ToolResult(result) => Some(result),
+                            _ => None,
+                        })
+                        .expect("synthetic skip result");
+                    assert!(result.call.is_generated());
+                    assert!(result.provider.is_none());
+                    let texts = super::super::agent_run_support::user_content_tool_result_texts(
+                        &UserContent::ToolResult(result.clone()),
+                    );
+                    assert_eq!(texts, [REASON]);
+                    let total = turns
+                        .iter()
+                        .fold(rig::completion::Usage::default(), |total, turn| {
+                            total + turn.usage
+                        });
+                    assert_eq!(
+                        ecs.app
+                            .world()
+                            .get::<rig_ecs::agent::Usage>(run)
+                            .expect("run usage")
+                            .0,
+                        total
+                    );
                 },
-            ));
-            install_invalid_policy(
-                &mut ecs,
-                rig_ecs::agent::Resolution::Skip {
-                    reason: REASON.into(),
-                },
-            );
-            let run = ecs.app.world_mut().spawn_run(
-                ecs.agent,
-                &[],
-                "What is 21 + 21? Use the add tool.",
-                true,
-                Some(3),
-            );
-            let output = ecs.wait_for_success(run).await;
-            assert_nonempty_response(&output);
-            assert_eq!(
-                ecs.app.world().resource::<InvalidPolicy>().seen.len(),
-                1,
-                "first turn abandoned exactly once"
-            );
-            let turns = completed_turns(&mut ecs, run);
-            assert!(turns.len() >= 2, "abandoned turn retains its completion");
-            for turn in turns.iter().skip(1) {
-                let (prompt, history) = turn
-                    .request
-                    .chat_history
-                    .split_last()
-                    .expect("retry prompt");
-                assert!(history_has_assistant_tool_call(history, "add"));
-                assert!(is_tool_result_user_message(prompt));
-            }
-            let retry = &turns[1].request.chat_history;
-            let Message::User { content } = retry.last().expect("retry prompt") else {
-                panic!("tool results are a user message")
-            };
-            let result = content
-                .iter()
-                .find_map(|part| match part {
-                    UserContent::ToolResult(result) => Some(result),
-                    _ => None,
-                })
-                .expect("synthetic skip result");
-            assert!(result.call.is_generated());
-            assert!(result.provider.is_none());
-            let texts = super::super::agent_run_support::user_content_tool_result_texts(
-                &UserContent::ToolResult(result.clone()),
-            );
-            assert_eq!(texts, [REASON]);
-            let total = turns
-                .iter()
-                .fold(rig::completion::Usage::default(), |total, turn| {
-                    total + turn.usage
-                });
-            assert_eq!(
-                ecs.app
-                    .world()
-                    .get::<rig_ecs::agent::Usage>(run)
-                    .expect("run usage")
-                    .0,
-                total
-            );
+            )
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_agent_run_streamed_streamed_skip_abandons_the_turn_and_recovers",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn streamed_hand_driven_multi_turn_run_completes() {
+    rig_test_support::goldens::world_golden_test(async {
+
     use super::super::agent_run_support::{Subtract, assert_canonical_assistant_order};
     use crate::support::assert_mentions_expected_number;
     use rig::{
@@ -361,6 +389,8 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         assert!(history_has_assistant_tool_call(&messages, "subtract"));
         assert_canonical_assistant_order(&messages);
     }).await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_streamed_hand_driven_multi_turn_run_completes", log)).await
 }
 
 fn setup<H: Socket>(client: &Bound<Gemini, H>) -> EcsAgent {
@@ -400,6 +430,8 @@ fn history(ecs: &mut EcsAgent, run: Entity) -> Vec<Message> {
 
 #[tokio::test]
 async fn builtin_streaming_max_turns_error_carries_pending_message() {
+    rig_test_support::goldens::world_golden_test(async {
+
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message",
         |client| async move {
@@ -444,6 +476,8 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
         },
     )
     .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_builtin_streaming_max_turns_error_carries_pending_message", log)).await
 }
 
 type Unissued<'w, 's> = Query<
@@ -478,6 +512,8 @@ fn observe_final(results: Query<&RunResult, Added<Settled>>, mut seen: ResMut<Sa
 
 #[tokio::test]
 async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
+    rig_test_support::goldens::world_golden_test(async {
+
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn",
         |client| async move {
@@ -524,4 +560,6 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
         },
     )
     .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_builtin_streaming_cancellation_history_includes_assistant_turn", log)).await
 }

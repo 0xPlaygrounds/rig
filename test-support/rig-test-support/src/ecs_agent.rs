@@ -154,6 +154,7 @@ impl EcsAgent {
             EffectLogRecorder::new()
         };
         Recording::install(app.world_mut(), recorder.clone());
+        crate::goldens::attach_world_recorder(&recorder);
         setup(app.world_mut());
         let model = Handlers::with(app.world_mut(), |handlers| {
             handlers.register(

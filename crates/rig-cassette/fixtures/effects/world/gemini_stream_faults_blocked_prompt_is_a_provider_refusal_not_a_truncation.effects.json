@@ -1,0 +1,125 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "stream_errors": {
+      "0": [
+        {
+          "item": 0,
+          "error": {
+            "kind": "provider_response",
+            "retryable": false,
+            "message": "ProviderResponseError: Gemini blocked the prompt: block_reason=SAFETY",
+            "code": "SAFETY",
+            "http_status": null,
+            "refusal": true,
+            "source_chain": [],
+            "provider_response": {
+              "status": null,
+              "body": "Gemini blocked the prompt: block_reason=SAFETY",
+              "provider_request_id": null,
+              "code": "SAFETY",
+              "refusal": true
+            }
+          }
+        }
+      ]
+    },
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 10359836813662952246
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": ""
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "pong?"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": false,
+          "message": "ProviderResponseError: Gemini blocked the prompt: block_reason=SAFETY",
+          "code": "SAFETY",
+          "http_status": null,
+          "refusal": true,
+          "source_chain": [],
+          "provider_response": {
+            "status": null,
+            "body": "Gemini blocked the prompt: block_reason=SAFETY",
+            "provider_request_id": null,
+            "code": "SAFETY",
+            "refusal": true
+          }
+        }
+      },
+      "events": [],
+      "scope": "parity/run#0"
+    }
+  ]
+}

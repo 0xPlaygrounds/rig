@@ -198,110 +198,145 @@ async fn streamed_run(
 
 #[tokio::test]
 async fn tool_dispatch_cancelled_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/tool_dispatch_cancelled",
-        |client| async move {
-            unary_tool_run(
-                client,
-                CancelAddDispatch,
-                CANCEL_ADD_DISPATCH,
-                &[EffectFamily::Completion],
-                false,
-            )
-            .await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/tool_dispatch_cancelled",
+            |client| async move {
+                let log = unary_tool_run(
+                    client,
+                    CancelAddDispatch,
+                    CANCEL_ADD_DISPATCH,
+                    &[EffectFamily::Completion],
+                    false,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_tool_dispatch_cancelled_effect_log",
+                    &log,
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool's result: the tool
 /// ran and its record holds the real result; the run stops after it.
 #[tokio::test]
 async fn tool_outcome_cancelled_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/tool_outcome_cancelled",
-        |client| async move {
-            let log = unary_tool_run(
-                client,
-                CancelAddOutcome,
-                CANCEL_ADD_OUTCOME,
-                &[EffectFamily::Completion, EffectFamily::Tool],
-                false,
-            )
-            .await;
-            assert!(
-                log.records[1].outcome.is_ok(),
-                "the record holds the tool's answer"
-            );
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/tool_outcome_cancelled",
+            |client| async move {
+                let log = unary_tool_run(
+                    client,
+                    CancelAddOutcome,
+                    CANCEL_ADD_OUTCOME,
+                    &[EffectFamily::Completion, EffectFamily::Tool],
+                    false,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_tool_outcome_cancelled_effect_log",
+                    &log,
+                );
+                assert!(
+                    log.records[1].outcome.is_ok(),
+                    "the record holds the tool's answer"
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
 #[tokio::test]
 async fn answer_outcome_cancelled_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/answer_outcome_cancelled",
-        |client| async move {
-            let mut ecs = agent(&client, CancelAnswer, BASIC_PREAMBLE, false);
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &[], BASIC_PROMPT, false, None);
-            cancelled_run(&mut ecs, run, CANCEL_ANSWER).await;
-            let log = ecs.effect_log();
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert!(
-                log.records[0].outcome.is_ok(),
-                "the record holds the answer"
-            );
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/answer_outcome_cancelled",
+            |client| async move {
+                let mut ecs = agent(&client, CancelAnswer, BASIC_PREAMBLE, false);
+                let run = ecs
+                    .app
+                    .world_mut()
+                    .spawn_run(ecs.agent, &[], BASIC_PROMPT, false, None);
+                cancelled_run(&mut ecs, run, CANCEL_ANSWER).await;
+                let log = ecs.effect_log();
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_answer_outcome_cancelled_effect_log",
+                    &log,
+                );
+                assert_eq!(families(&log), [EffectFamily::Completion]);
+                assert!(
+                    log.records[0].outcome.is_ok(),
+                    "the record holds the answer"
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_model_turn_finished` → `Stop` on the first turn.
 #[tokio::test]
 async fn turn_finished_stop_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/turn_finished_stop",
-        |client| async move {
-            unary_tool_run(
-                client,
-                StopAfterTurn,
-                STOP_AFTER_TURN,
-                &[EffectFamily::Completion],
-                false,
-            )
-            .await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/turn_finished_stop",
+            |client| async move {
+                let log = unary_tool_run(
+                    client,
+                    StopAfterTurn,
+                    STOP_AFTER_TURN,
+                    &[EffectFamily::Completion],
+                    false,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_turn_finished_stop_effect_log",
+                    &log,
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_model_turn_finished` → `Stop` at the answer turn of a tool program:
 /// the tool turn's records precede the stop.
 #[tokio::test]
 async fn answer_turn_stop_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/answer_turn_stop",
-        |client| async move {
-            unary_tool_run(
-                client,
-                StopAtAnswer,
-                STOP_AT_ANSWER,
-                &[
-                    EffectFamily::Completion,
-                    EffectFamily::Tool,
-                    EffectFamily::Completion,
-                ],
-                false,
-            )
-            .await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/answer_turn_stop",
+            |client| async move {
+                let log = unary_tool_run(
+                    client,
+                    StopAtAnswer,
+                    STOP_AT_ANSWER,
+                    &[
+                        EffectFamily::Completion,
+                        EffectFamily::Tool,
+                        EffectFamily::Completion,
+                    ],
+                    false,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_answer_turn_stop_effect_log",
+                    &log,
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 // -- streamed -----------------------------------------------------------------
@@ -311,34 +346,16 @@ async fn answer_turn_stop_effect_log() {
 /// every transport.
 #[tokio::test]
 async fn text_delta_stop_effect_log() {
-    // The consumer-cancel cell's cassette (Matrix D): the same program,
-    // asked for the same essay; a hook changes nothing on the wire.
-    with_anthropic_cassette("effect_corpus/cancelled_stream", |client| async move {
-        let log = streamed_run(client, StopOnTextDelta, STOP_ON_TEXT_DELTA, Streamed::Essay).await;
-        assert_eq!(families(&log), [EffectFamily::Completion]);
-        assert_eq!(
-            last_outcome_kind(&log),
-            Some(ErrorKind::Cancelled),
-            "{:?}",
-            log.records[0].outcome
-        );
-    })
-    .await;
-}
-
-/// `on_tool_call_delta` → `Stop`.
-#[tokio::test]
-async fn tool_call_delta_stop_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/tool_call_delta_stop",
-        |client| async move {
-            let log = streamed_run(
-                client,
-                StopOnToolCallDelta,
-                STOP_ON_TOOL_CALL_DELTA,
-                Streamed::Note,
-            )
-            .await;
+    crate::goldens::capture_world_programs(async {
+        // The consumer-cancel cell's cassette (Matrix D): the same program,
+        // asked for the same essay; a hook changes nothing on the wire.
+        with_anthropic_cassette("effect_corpus/cancelled_stream", |client| async move {
+            let log =
+                streamed_run(client, StopOnTextDelta, STOP_ON_TEXT_DELTA, Streamed::Essay).await;
+            crate::goldens::world_golden_effects(
+                "anthropic_endings_text_delta_stop_effect_log",
+                &log,
+            );
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert_eq!(
                 last_outcome_kind(&log),
@@ -346,72 +363,127 @@ async fn tool_call_delta_stop_effect_log() {
                 "{:?}",
                 log.records[0].outcome
             );
-        },
-    )
-    .await;
+        })
+        .await;
+    })
+    .await
+}
+
+/// `on_tool_call_delta` → `Stop`.
+#[tokio::test]
+async fn tool_call_delta_stop_effect_log() {
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/tool_call_delta_stop",
+            |client| async move {
+                let log = streamed_run(
+                    client,
+                    StopOnToolCallDelta,
+                    STOP_ON_TOOL_CALL_DELTA,
+                    Streamed::Note,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_tool_call_delta_stop_effect_log",
+                    &log,
+                );
+                assert_eq!(families(&log), [EffectFamily::Completion]);
+                assert_eq!(
+                    last_outcome_kind(&log),
+                    Some(ErrorKind::Cancelled),
+                    "{:?}",
+                    log.records[0].outcome
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_dispatch` → `Deny(Cancelled)`, streamed with events: the completion
 /// completed and is recorded whole; the tool never reaches the bus.
 #[tokio::test]
 async fn tool_dispatch_cancelled_streamed_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/tool_dispatch_cancelled_streamed",
-        |client| async move {
-            let log = streamed_run(
-                client,
-                CancelAddDispatch,
-                CANCEL_ADD_DISPATCH,
-                Streamed::Tools,
-            )
-            .await;
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert!(
-                log.records[0].outcome.is_ok(),
-                "the stream completed: {:?}",
-                log.records[0].outcome
-            );
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/tool_dispatch_cancelled_streamed",
+            |client| async move {
+                let log = streamed_run(
+                    client,
+                    CancelAddDispatch,
+                    CANCEL_ADD_DISPATCH,
+                    Streamed::Tools,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_tool_dispatch_cancelled_streamed_effect_log",
+                    &log,
+                );
+                assert_eq!(families(&log), [EffectFamily::Completion]);
+                assert!(
+                    log.records[0].outcome.is_ok(),
+                    "the stream completed: {:?}",
+                    log.records[0].outcome
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_model_turn_finished` → `Stop`, streamed with events.
 #[tokio::test]
 async fn turn_finished_stop_streamed_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/turn_finished_stop_streamed",
-        |client| async move {
-            let log = streamed_run(client, StopAfterTurn, STOP_AFTER_TURN, Streamed::Tools).await;
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert!(log.records[0].outcome.is_ok(), "the stream completed");
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/turn_finished_stop_streamed",
+            |client| async move {
+                let log =
+                    streamed_run(client, StopAfterTurn, STOP_AFTER_TURN, Streamed::Tools).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_turn_finished_stop_streamed_effect_log",
+                    &log,
+                );
+                assert_eq!(families(&log), [EffectFamily::Completion]);
+                assert!(log.records[0].outcome.is_ok(), "the stream completed");
+            },
+        )
+        .await;
+    })
+    .await
 }
 
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool, streamed.
 #[tokio::test]
 async fn tool_outcome_cancelled_streamed_effect_log() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/tool_outcome_cancelled_streamed",
-        |client| async move {
-            let log = streamed_run(
-                client,
-                CancelAddOutcome,
-                CANCEL_ADD_OUTCOME,
-                Streamed::Tools,
-            )
-            .await;
-            assert_eq!(
-                families(&log),
-                [EffectFamily::Completion, EffectFamily::Tool]
-            );
-            assert!(
-                log.records[1].outcome.is_ok(),
-                "the record holds the tool's answer"
-            );
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_endings_cassette(
+            "corpus_endings/tool_outcome_cancelled_streamed",
+            |client| async move {
+                let log = streamed_run(
+                    client,
+                    CancelAddOutcome,
+                    CANCEL_ADD_OUTCOME,
+                    Streamed::Tools,
+                )
+                .await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_endings_tool_outcome_cancelled_streamed_effect_log",
+                    &log,
+                );
+                assert_eq!(
+                    families(&log),
+                    [EffectFamily::Completion, EffectFamily::Tool]
+                );
+                assert!(
+                    log.records[1].outcome.is_ok(),
+                    "the record holds the tool's answer"
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }

@@ -7,22 +7,24 @@ use crate::support::assert_nonempty_response;
 use rig::providers::gemini;
 #[tokio::test]
 async fn hook_context_identity_stable_and_turn_advances_blocking() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let tap = EventTap::default();
-    let probe = tap.clone();
-    with_gemini_cassette(
-        "hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking",
-        |client| async move {
-            let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                Some("stress-agent"),
-                Some(0.0),
-            );
-            ecs.tool(add);
-            ecs.tool(subtract);
-            let response = runtime::prompt(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let tap = EventTap::default();
+            let probe = tap.clone();
+            with_gemini_cassette(
+                "hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking",
+                |client| async move {
+                    let mut ecs = runtime::agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        CHAIN_PREAMBLE,
+                        Some("stress-agent"),
+                        Some(0.0),
+                    );
+                    ecs.tool(add);
+                    ecs.tool(subtract);
+                    let response = runtime::prompt(
                 &mut ecs,
                 "First add 9 and 6 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
@@ -31,59 +33,81 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
                 vec![],
             )
             .await;
-            assert_nonempty_response(&response);
-            assert_eq!(probe.distinct_run_ids(), 1, "run_id must be stable");
-            assert_eq!(probe.is_streaming(), Some(false));
-            assert_eq!(probe.agent_name().as_deref(), Some("stress-agent"));
-            let turns = probe.distinct_turns();
-            assert_eq!(
-                turns.first().copied(),
-                Some(1),
-                "the first observed turn must be turn 1, saw {turns:?}"
-            );
-            assert!(
-                turns.len() >= 2 && *turns.last().expect("turn") >= 2,
-                "a dependent chain must reach >= 2 turns, saw {turns:?}"
-            );
+                    assert_nonempty_response(&response);
+                    assert_eq!(probe.distinct_run_ids(), 1, "run_id must be stable");
+                    assert_eq!(probe.is_streaming(), Some(false));
+                    assert_eq!(probe.agent_name().as_deref(), Some("stress-agent"));
+                    let turns = probe.distinct_turns();
+                    assert_eq!(
+                        turns.first().copied(),
+                        Some(1),
+                        "the first observed turn must be turn 1, saw {turns:?}"
+                    );
+                    assert!(
+                        turns.len() >= 2 && *turns.last().expect("turn") >= 2,
+                        "a dependent chain must reach >= 2 turns, saw {turns:?}"
+                    );
+                },
+            )
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_hook_context_identity_stable_and_turn_advances_blocking",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 #[tokio::test]
 async fn agent_name_absent_when_unconfigured_blocking() {
-    let add = CountingAdd::default();
-    let tap = EventTap::default();
-    let probe = tap.clone();
-    with_gemini_cassette(
-        "hook_stress_context/agent_name_absent_when_unconfigured_blocking",
-        |client| async move {
-            let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                None,
-                Some(0.0),
-            );
-            ecs.tool(add);
-            let response = runtime::prompt(
-                &mut ecs,
-                "Use the add tool to add 3 and 4, then report the result.",
-                4,
-                vec![tap],
-                vec![],
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let tap = EventTap::default();
+            let probe = tap.clone();
+            with_gemini_cassette(
+                "hook_stress_context/agent_name_absent_when_unconfigured_blocking",
+                |client| async move {
+                    let mut ecs = runtime::agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        CHAIN_PREAMBLE,
+                        None,
+                        Some(0.0),
+                    );
+                    ecs.tool(add);
+                    let response = runtime::prompt(
+                        &mut ecs,
+                        "Use the add tool to add 3 and 4, then report the result.",
+                        4,
+                        vec![tap],
+                        vec![],
+                    )
+                    .await;
+                    assert_nonempty_response(&response);
+                    assert_eq!(
+                        probe.agent_name(),
+                        None,
+                        "agent_name() must be None when the agent has no configured name"
+                    );
+                },
             )
             .await;
-            assert_nonempty_response(&response);
-            assert_eq!(
-                probe.agent_name(),
-                None,
-                "agent_name() must be None when the agent has no configured name"
-            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_agent_name_absent_when_unconfigured_blocking",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 #[tokio::test]
 async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking() {
+    rig_test_support::goldens::world_golden_test(async {
+
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     let add_calls = add.counter.clone();
@@ -138,25 +162,29 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
             },
         )
         .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_stress_context_scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking", log)).await
 }
 #[tokio::test]
 async fn block_id_correlates_tool_call_and_result_blocking() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let tap = EventTap::default();
-    let probe = tap.clone();
-    with_gemini_cassette(
-        "hook_stress_context/block_id_correlates_tool_call_and_result_blocking",
-        |client| async move {
-            let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                Some("stress-agent"),
-                Some(0.0),
-            );
-            ecs.tool(add);
-            ecs.tool(subtract);
-            let response = runtime::prompt(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let tap = EventTap::default();
+            let probe = tap.clone();
+            with_gemini_cassette(
+                "hook_stress_context/block_id_correlates_tool_call_and_result_blocking",
+                |client| async move {
+                    let mut ecs = runtime::agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        CHAIN_PREAMBLE,
+                        Some("stress-agent"),
+                        Some(0.0),
+                    );
+                    ecs.tool(add);
+                    ecs.tool(subtract);
+                    let response = runtime::prompt(
                 &mut ecs,
                 "First add 7 and 7 with the add tool. Then subtract 2 from that sum with the \
                      subtract tool. Report the final number.",
@@ -165,113 +193,146 @@ async fn block_id_correlates_tool_call_and_result_blocking() {
                 vec![],
             )
             .await;
-            assert_nonempty_response(&response);
-            let call_ids = probe.call_ids();
-            let result_ids = probe.result_ids();
-            assert!(!call_ids.is_empty(), "the run should make tool calls");
-            assert_eq!(
-                call_ids, result_ids,
-                "each ToolResult must carry the same block_id as its ToolCall, in order"
-            );
-            assert!(
-                call_ids.iter().all(|id| !id.is_empty()),
-                "block_ids must be non-empty"
-            );
+                    assert_nonempty_response(&response);
+                    let call_ids = probe.call_ids();
+                    let result_ids = probe.result_ids();
+                    assert!(!call_ids.is_empty(), "the run should make tool calls");
+                    assert_eq!(
+                        call_ids, result_ids,
+                        "each ToolResult must carry the same block_id as its ToolCall, in order"
+                    );
+                    assert!(
+                        call_ids.iter().all(|id| !id.is_empty()),
+                        "block_ids must be non-empty"
+                    );
+                },
+            )
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_block_id_correlates_tool_call_and_result_blocking",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 #[tokio::test]
 async fn two_observe_only_hooks_both_observe_the_run_blocking() {
-    let add = CountingAdd::default();
-    let first = EventTap::default();
-    let second = EventTap::default();
-    let first_probe = first.clone();
-    let second_probe = second.clone();
-    with_gemini_cassette(
-        "hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking",
-        |client| async move {
-            let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                Some("stress-agent"),
-                Some(0.0),
-            );
-            ecs.tool(add);
-            let response = runtime::prompt(
-                &mut ecs,
-                "Use the add tool to add 8 and 8, then report the result.",
-                4,
-                vec![first, second],
-                vec![],
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let first = EventTap::default();
+            let second = EventTap::default();
+            let first_probe = first.clone();
+            let second_probe = second.clone();
+            with_gemini_cassette(
+                "hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking",
+                |client| async move {
+                    let mut ecs = runtime::agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        CHAIN_PREAMBLE,
+                        Some("stress-agent"),
+                        Some(0.0),
+                    );
+                    ecs.tool(add);
+                    let response = runtime::prompt(
+                        &mut ecs,
+                        "Use the add tool to add 8 and 8, then report the result.",
+                        4,
+                        vec![first, second],
+                        vec![],
+                    )
+                    .await;
+                    assert_nonempty_response(&response);
+                    for tag in [
+                        "CompletionCall",
+                        "ToolCall",
+                        "ToolResult",
+                        "ModelTurnFinished",
+                    ] {
+                        assert_eq!(
+                            first_probe.count(tag),
+                            second_probe.count(tag),
+                            "both hooks must observe the same number of {tag} events"
+                        );
+                    }
+                    assert!(first_probe.count("ToolCall") >= 1);
+                },
             )
             .await;
-            assert_nonempty_response(&response);
-            for tag in [
-                "CompletionCall",
-                "ToolCall",
-                "ToolResult",
-                "ModelTurnFinished",
-            ] {
-                assert_eq!(
-                    first_probe.count(tag),
-                    second_probe.count(tag),
-                    "both hooks must observe the same number of {tag} events"
-                );
-            }
-            assert!(first_probe.count("ToolCall") >= 1);
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_two_observe_only_hooks_both_observe_the_run_blocking",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 #[tokio::test]
 async fn add_hook_appends_across_builder_and_request_blocking() {
-    let add = CountingAdd::default();
-    let builder_hook = EventTap::default();
-    let request_hook = EventTap::default();
-    let builder_probe = builder_hook.clone();
-    let request_probe = request_hook.clone();
-    with_gemini_cassette(
-        "hook_stress_context/add_hook_appends_across_builder_and_request_blocking",
-        |client| async move {
-            let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                Some("stress-agent"),
-                Some(0.0),
-            );
-            ecs.tool(add);
-            runtime::agent_tap(&mut ecs, builder_hook);
-            let response = runtime::prompt(
-                &mut ecs,
-                "Use the add tool to add 5 and 6, then report the result.",
-                4,
-                vec![request_hook],
-                vec![],
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let builder_hook = EventTap::default();
+            let request_hook = EventTap::default();
+            let builder_probe = builder_hook.clone();
+            let request_probe = request_hook.clone();
+            with_gemini_cassette(
+                "hook_stress_context/add_hook_appends_across_builder_and_request_blocking",
+                |client| async move {
+                    let mut ecs = runtime::agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        CHAIN_PREAMBLE,
+                        Some("stress-agent"),
+                        Some(0.0),
+                    );
+                    ecs.tool(add);
+                    runtime::agent_tap(&mut ecs, builder_hook);
+                    let response = runtime::prompt(
+                        &mut ecs,
+                        "Use the add tool to add 5 and 6, then report the result.",
+                        4,
+                        vec![request_hook],
+                        vec![],
+                    )
+                    .await;
+                    assert_nonempty_response(&response);
+                    assert!(
+                        builder_probe.count("CompletionCall") >= 1,
+                        "the agent-default (builder) hook must still fire"
+                    );
+                    assert!(
+                        request_probe.count("CompletionCall") >= 1,
+                        "the request-level hook must fire too"
+                    );
+                    assert_eq!(
+                        builder_probe.count("ToolCall"),
+                        request_probe.count("ToolCall"),
+                        "both stacked hooks observe the same tool calls"
+                    );
+                },
             )
             .await;
-            assert_nonempty_response(&response);
-            assert!(
-                builder_probe.count("CompletionCall") >= 1,
-                "the agent-default (builder) hook must still fire"
-            );
-            assert!(
-                request_probe.count("CompletionCall") >= 1,
-                "the request-level hook must fire too"
-            );
-            assert_eq!(
-                builder_probe.count("ToolCall"),
-                request_probe.count("ToolCall"),
-                "both stacked hooks observe the same tool calls"
-            );
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_add_hook_appends_across_builder_and_request_blocking",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 #[tokio::test]
 async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
-    let add = CountingAdd::default();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            with_gemini_cassette(
         "hook_stress_context/completion_call_patches_accumulate_from_two_hooks_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -319,16 +380,27 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_completion_call_patches_accumulate_from_two_hooks_blocking",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let multiply = CountingMultiply::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-    let multiply_calls = multiply.counter.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let multiply = CountingMultiply::default();
+            let add_calls = add.counter.clone();
+            let subtract_calls = subtract.counter.clone();
+            let multiply_calls = multiply.counter.clone();
+            with_gemini_cassette(
         "hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -395,4 +467,13 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_context_two_hooks_narrow_active_tools_to_intersection_blocking",
+                log,
+            )
+        },
+    )
+    .await
 }

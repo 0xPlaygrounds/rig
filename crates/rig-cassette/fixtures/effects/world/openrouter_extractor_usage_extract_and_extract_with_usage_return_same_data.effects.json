@@ -1,0 +1,383 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 9,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 8614665185509741022
+      },
+      "parity/run#1": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 8614665185509741022
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Bob Johnson is a 55 year old retired teacher."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "submit",
+              "description": "Submit the structured data you extracted from the provided text.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "age": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "profession": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "title": "Person",
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "name": "Bob Johnson",
+                  "age": 55,
+                  "profession": "retired teacher"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 166,
+            "output_tokens": 24,
+            "total_tokens": 190,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o-mini",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                },
+                "native_finish_reason": "tool_calls"
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "openai/gpt-4o-mini",
+            "object": "chat.completion",
+            "provider": "OpenAI",
+            "service_tier": null,
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 24,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "cost": 0.0000393,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.0000144,
+                "upstream_inference_cost": 0.0000393,
+                "upstream_inference_prompt_cost": 0.0000249
+              },
+              "is_byok": false,
+              "prompt_tokens": 166,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 190
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Bob Johnson is a 55 year old retired teacher."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "submit",
+              "description": "Submit the structured data you extracted from the provided text.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "age": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "profession": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "title": "Person",
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "name": "Bob Johnson",
+                  "age": 55,
+                  "profession": "retired teacher"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 166,
+            "output_tokens": 24,
+            "total_tokens": 190,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "openrouter",
+          "model": "openai/gpt-4o-mini",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": null,
+                  "reasoning": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_2",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                },
+                "native_finish_reason": "tool_calls"
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_2",
+            "model": "openai/gpt-4o-mini",
+            "object": "chat.completion",
+            "provider": "OpenAI",
+            "service_tier": null,
+            "system_fingerprint": "fp_REDACTED_1",
+            "usage": {
+              "completion_tokens": 24,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "cost": 0.0000393,
+              "cost_details": {
+                "upstream_inference_completions_cost": 0.0000144,
+                "upstream_inference_cost": 0.0000393,
+                "upstream_inference_prompt_cost": 0.0000249
+              },
+              "is_byok": false,
+              "prompt_tokens": 166,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 190
+            }
+          }
+        }
+      },
+      "scope": "parity/run#1"
+    }
+  ]
+}

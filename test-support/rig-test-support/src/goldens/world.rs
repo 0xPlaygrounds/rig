@@ -3,7 +3,7 @@
 use std::{cell::RefCell, collections::BTreeMap, future::Future, path::Path};
 
 use bevy_ecs::prelude::*;
-use rig_cassette::effect_log::EffectLog;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::serve::ServingPolicy;
 use rig_ecs::{
     agent::RunOf,
@@ -15,6 +15,35 @@ type Programs = BTreeMap<String, (ServingPolicy, Checkpoint)>;
 
 tokio::task_local! {
     static PROGRAMS: RefCell<Programs>;
+    static RECORDERS: RefCell<Vec<EffectLogRecorder>>;
+}
+
+/// Run a native cell and assert each attached world's final log with its oracle.
+/// Requires at least one recorder. The cell's return value is preserved.
+pub async fn world_golden_test<F: Future>(future: F, golden: impl Fn(&EffectLog)) -> F::Output {
+    capture_world_programs(RECORDERS.scope(RefCell::new(Vec::new()), async {
+        let output = future.await;
+        let logs = RECORDERS.with(|recorders| {
+            recorders
+                .borrow()
+                .iter()
+                .map(EffectLogRecorder::log)
+                .collect::<Vec<_>>()
+        });
+        assert!(
+            !logs.is_empty(),
+            "a native golden cell must attach its recorder"
+        );
+        for log in logs {
+            golden(&log);
+        }
+        output
+    }))
+    .await
+}
+
+pub(crate) fn attach_world_recorder(recorder: &EffectLogRecorder) {
+    let _ = RECORDERS.try_with(|recorders| recorders.borrow_mut().push(recorder.clone()));
 }
 
 /// Run a native producer with task-local pre-dispatch configuration capture.
@@ -34,10 +63,6 @@ pub fn capture_world_program(world: &mut World, run: Entity, log: &EffectLog) {
         "capture a run, not an agent"
     );
     let scope = world.get::<Scope>(run).expect("run scope").0.clone();
-    let already_captured = PROGRAMS.with(|programs| programs.borrow().contains_key(&scope));
-    if already_captured {
-        return;
-    }
     rig_cassette::ecs::identity::check_replayable(world, run, log)
         .expect("the producer's declared configuration is replay-compatible");
     let policy = world.resource::<Policy>().0;
@@ -49,7 +74,16 @@ pub fn capture_world_program(world: &mut World, run: Entity, log: &EffectLog) {
         entity.remove(std::any::type_name::<rig_ecs::bus::PendingEffect>());
     }
     PROGRAMS.with(|programs| {
-        programs.borrow_mut().insert(scope, (policy, scene));
+        let mut programs = programs.borrow_mut();
+        if let Some(previous) = programs.get(&scope) {
+            assert_eq!(
+                serde_json::to_value(previous).expect("previous program scene"),
+                serde_json::to_value(&(policy, &scene)).expect("program scene"),
+                "reused scopes must describe the same pre-dispatch configuration"
+            );
+        } else {
+            programs.insert(scope, (policy, scene));
+        }
     });
 }
 
@@ -71,18 +105,19 @@ pub(super) fn programs(path: &Path, log: &EffectLog, regenerate: bool) {
         let text = std::fs::read_to_string(path).expect("committed world program scenes");
         let committed: Programs = serde_json::from_str(&text).expect("valid world program scenes");
         assert_eq!(
-            committed.keys().collect::<Vec<_>>(),
-            scenes.keys().collect::<Vec<_>>()
+            serde_json::to_value(&committed).expect("committed program scenes"),
+            serde_json::to_value(&scenes).expect("captured program scenes"),
+            "the pre-dispatch configuration differs from its world fixture"
         );
     }
 }
 
 /// Exclude only observed delivery boundaries from fresh native-run comparisons.
-/// HTTP-backed unary, streamed, and concurrent cells race external readiness
+/// Native unary, streamed, and concurrent cells race worker and HTTP readiness
 /// against collection passes, so both batch numbers and stream groupings vary.
 /// Raw deliveries remain in fixtures for replay; program identities, records,
 /// stream errors, and all other header fields remain part of the comparison.
-pub(super) fn comparison(mut value: serde_json::Value) -> serde_json::Value {
+pub(super) fn without_delivery_boundaries(mut value: serde_json::Value) -> serde_json::Value {
     value
         .get_mut("header")
         .and_then(serde_json::Value::as_object_mut)

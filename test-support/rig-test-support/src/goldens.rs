@@ -16,7 +16,8 @@ use rig_cassette::effect_log::EffectLog;
 
 #[path = "goldens/world.rs"]
 mod world;
-pub use world::{capture_world_program, capture_world_programs};
+pub(crate) use world::attach_world_recorder;
+pub use world::{capture_world_program, capture_world_programs, world_golden_test};
 
 /// The families of a log's records, in order: the shape a producer asserts.
 #[allow(dead_code)] // not every target records
@@ -147,8 +148,10 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
     );
     let expected: serde_json::Value = serde_json::from_str(&committed).expect("world golden JSON");
     assert_eq!(
-        world::comparison(expected),
-        world::comparison(serde_json::to_value(log).expect("the world log serializes")),
+        world::without_delivery_boundaries(expected),
+        world::without_delivery_boundaries(
+            serde_json::to_value(log).expect("the world log serializes")
+        ),
         "the world's effects diverged from world golden `{name}`"
     );
 }

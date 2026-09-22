@@ -1,0 +1,254 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 1555609542898881154
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is 21 + 21? Use the add tool."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "required",
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 21,
+                  "y": 21
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 109,
+            "output_tokens": 20,
+            "total_tokens": 177,
+            "reasoning_tokens": 48
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 109,
+              "candidatesTokenCount": 20,
+              "totalTokenCount": 177,
+              "thoughtsTokenCount": 48,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 109
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "add",
+            "arguments": {
+              "x": 21,
+              "y": 21
+            },
+            "signature": "signature_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
+            "function": {
+              "name": "add",
+              "arguments": {
+                "x": 21,
+                "y": 21
+              }
+            },
+            "signature": "signature_REDACTED_1",
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 109,
+            "output_tokens": 20,
+            "total_tokens": 177,
+            "reasoning_tokens": 48
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 109,
+              "candidatesTokenCount": 20,
+              "totalTokenCount": 177,
+              "thoughtsTokenCount": 48,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 109
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

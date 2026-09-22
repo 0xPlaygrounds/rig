@@ -15,15 +15,17 @@ const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUST use the p
      reply with the final numeric answer in plain text.";
 #[tokio::test]
 async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-    let recorder = LifecycleRecorder::default();
-    let reader = ScratchpadReader::default();
-    let recorder_probe = recorder.clone();
-    let reader_probe = reader.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let add_calls = add.counter.clone();
+            let subtract_calls = subtract.counter.clone();
+            let recorder = LifecycleRecorder::default();
+            let reader = ScratchpadReader::default();
+            let recorder_probe = recorder.clone();
+            let reader_probe = reader.clone();
+            with_gemini_cassette(
         "hook_stress/lifecycle_and_scratchpad_thread_across_multi_turn_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -104,12 +106,23 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_main_lifecycle_and_scratchpad_thread_across_multi_turn_blocking",
+                log,
+            )
+        },
+    )
+    .await
 }
 const VAULT_FACT_ID: &str = "vault-note";
 const VAULT_FACT: &str = "Operational note: the vault access code is CINNABAR-42.";
 const VAULT_CODE: &str = "CINNABAR-42";
 #[tokio::test]
 async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
+    rig_test_support::goldens::world_golden_test(async {
+
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     let add_calls = add.counter.clone();
@@ -168,14 +181,18 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
         },
     )
     .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_stress_main_request_patch_injects_context_and_narrows_active_tools_blocking", log)).await
 }
 const REDACTION_MARKER: &str = "REDACTED-SUM-ZK7";
 #[tokio::test]
 async fn chained_arg_rewrite_then_result_redaction_blocking() {
-    let add = CountingAdd::default();
-    let recorder = ToolEventRecorder::default();
-    let recorder_probe = recorder.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let recorder = ToolEventRecorder::default();
+            let recorder_probe = recorder.clone();
+            with_gemini_cassette(
         "hook_stress/chained_arg_rewrite_then_result_redaction_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -230,27 +247,38 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_main_chained_arg_rewrite_then_result_redaction_blocking",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-    let recorder = LifecycleRecorder::default();
-    let recorder_probe = recorder.clone();
-    with_gemini_cassette(
-        "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
-        |client| async move {
-            let mut ecs = runtime::agent(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                "stress-agent",
-                Some(0.0),
-            );
-            ecs.tool(add);
-            ecs.tool(subtract);
-            let observed = runtime::prompt(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let add_calls = add.counter.clone();
+            let subtract_calls = subtract.counter.clone();
+            let recorder = LifecycleRecorder::default();
+            let recorder_probe = recorder.clone();
+            with_gemini_cassette(
+                "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
+                |client| async move {
+                    let mut ecs = runtime::agent(
+                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        CHAIN_PREAMBLE,
+                        "stress-agent",
+                        Some(0.0),
+                    );
+                    ecs.tool(add);
+                    ecs.tool(subtract);
+                    let observed = runtime::prompt(
                 &mut ecs,
                 "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
@@ -260,54 +288,66 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                 vec![],
             )
             .await;
-            let events = observed.trace.events;
-            let saw_final = observed.trace.final_text.is_some();
-            let final_text = observed.trace.final_text.unwrap_or_default();
-            assert!(saw_final, "the stream must yield a FinalResponse");
-            assert_nonempty_response(&final_text);
-            let first = |tag: &str| events.iter().position(|e| *e == tag);
-            let tool_call_at = first("tool_call").expect("a complete tool call is surfaced");
-            let exec_commit_at =
-                first("tool_execution_committed").expect("execution commit is surfaced");
-            let tool_result_at = first("tool_result").expect("a tool result is surfaced");
-            let final_at = first("final_response").expect("a final response is surfaced");
-            assert!(
-                tool_call_at < exec_commit_at,
-                "the model-emitted tool call must precede its execution commit: {events:?}"
-            );
-            assert!(
-                exec_commit_at <= tool_result_at,
-                "execution commit must precede its tool result: {events:?}"
-            );
-            assert!(
-                tool_result_at < final_at,
-                "tool results must precede the final response: {events:?}"
-            );
-            assert_eq!(
-                recorder_probe.is_streaming(),
-                Some(true),
-                "the streaming surface must report is_streaming() == true"
-            );
-            assert_eq!(
-                recorder_probe.distinct_run_ids(),
-                1,
-                "run_id must be stable across the streamed run too"
-            );
-            assert_eq!(recorder_probe.agent_name().as_deref(), Some("stress-agent"));
-            assert!(
-                recorder_probe.count("ModelTurnFinished") >= 2,
-                "ModelTurnFinished must fire per accepted turn on the streaming surface"
-            );
-            assert!(
-                add_calls.count() >= 1 && subtract_calls.count() >= 1,
-                "the streamed chain must exercise both tools"
-            );
+                    let events = observed.trace.events;
+                    let saw_final = observed.trace.final_text.is_some();
+                    let final_text = observed.trace.final_text.unwrap_or_default();
+                    assert!(saw_final, "the stream must yield a FinalResponse");
+                    assert_nonempty_response(&final_text);
+                    let first = |tag: &str| events.iter().position(|e| *e == tag);
+                    let tool_call_at =
+                        first("tool_call").expect("a complete tool call is surfaced");
+                    let exec_commit_at =
+                        first("tool_execution_committed").expect("execution commit is surfaced");
+                    let tool_result_at = first("tool_result").expect("a tool result is surfaced");
+                    let final_at = first("final_response").expect("a final response is surfaced");
+                    assert!(
+                        tool_call_at < exec_commit_at,
+                        "the model-emitted tool call must precede its execution commit: {events:?}"
+                    );
+                    assert!(
+                        exec_commit_at <= tool_result_at,
+                        "execution commit must precede its tool result: {events:?}"
+                    );
+                    assert!(
+                        tool_result_at < final_at,
+                        "tool results must precede the final response: {events:?}"
+                    );
+                    assert_eq!(
+                        recorder_probe.is_streaming(),
+                        Some(true),
+                        "the streaming surface must report is_streaming() == true"
+                    );
+                    assert_eq!(
+                        recorder_probe.distinct_run_ids(),
+                        1,
+                        "run_id must be stable across the streamed run too"
+                    );
+                    assert_eq!(recorder_probe.agent_name().as_deref(), Some("stress-agent"));
+                    assert!(
+                        recorder_probe.count("ModelTurnFinished") >= 2,
+                        "ModelTurnFinished must fire per accepted turn on the streaming surface"
+                    );
+                    assert!(
+                        add_calls.count() >= 1 && subtract_calls.count() >= 1,
+                        "the streamed chain must exercise both tools"
+                    );
+                },
+            )
+            .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_main_streaming_lifecycle_ordering_and_context_streaming_flag",
+                log,
+            )
         },
     )
-    .await;
+    .await
 }
 #[tokio::test]
 async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
+    rig_test_support::goldens::world_golden_test(async {
+
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     let add_calls = add.counter.clone();
@@ -366,11 +406,15 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
             },
         )
         .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_stress_main_multi_tool_workflow_pairs_calls_and_results_per_turn_blocking", log)).await
 }
 const SUBTRACT_SKIP_REASON: &str =
     "the subtract tool is offline; treat its result as unavailable and continue";
 #[tokio::test]
 async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
+    rig_test_support::goldens::world_golden_test(async {
+
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     let add_calls = add.counter.clone();
@@ -412,6 +456,8 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
             },
         )
         .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_stress_main_skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking", log)).await
 }
 /// Golden `gemini_tool_call_turns`: two tool turns on a wire that carries
 /// no tool-call ids. Every id in the log is minted from the block that
@@ -419,40 +465,47 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
 /// that nothing the engine mints is random.
 #[tokio::test]
 async fn tool_call_turns_effect_log() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    with_gemini_cassette(
-        "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
-        |client| async move {
-            let (saw_final, log) = super::ecs_stress_main_golden::run(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                CHAIN_PREAMBLE,
-                "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
+    crate::goldens::capture_world_programs(async {
+        let add = CountingAdd::default();
+        let subtract = CountingSubtract::default();
+        with_gemini_cassette(
+            "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
+            |client| async move {
+                let (saw_final, log) = super::ecs_stress_main_golden::run(
+                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                    CHAIN_PREAMBLE,
+                    "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
-                add,
-                subtract,
-            )
-            .await;
-            assert!(saw_final, "the stream must yield a FinalResponse");
-            let tool_ids: Vec<&rig::message::ToolCallId> = log
-                .records
-                .iter()
-                .filter_map(|record| match &record.outcome {
-                    Ok(rig::effect::Outcome::Completion(response)) => Some(response),
-                    _ => None,
-                })
-                .flat_map(|response| response.choice.iter())
-                .filter_map(|content| match content {
-                    rig::message::AssistantContent::ToolCall(call) => Some(&call.id),
-                    _ => None,
-                })
-                .collect();
-            assert!(!tool_ids.is_empty(), "the program calls tools");
-            assert!(
-                tool_ids.iter().all(|id| id.is_generated()),
-                "every id-less wire call is named by its block: {tool_ids:?}"
-            );
-        },
-    )
+                    add,
+                    subtract,
+                )
+                .await;
+                rig_test_support::goldens::world_golden_effects(
+                    "gemini_stress_main_tool_call_turns_effect_log",
+                    &log,
+                );
+                assert!(saw_final, "the stream must yield a FinalResponse");
+                let tool_ids: Vec<&rig::message::ToolCallId> = log
+                    .records
+                    .iter()
+                    .filter_map(|record| match &record.outcome {
+                        Ok(rig::effect::Outcome::Completion(response)) => Some(response),
+                        _ => None,
+                    })
+                    .flat_map(|response| response.choice.iter())
+                    .filter_map(|content| match content {
+                        rig::message::AssistantContent::ToolCall(call) => Some(&call.id),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(!tool_ids.is_empty(), "the program calls tools");
+                assert!(
+                    tool_ids.iter().all(|id| id.is_generated()),
+                    "every id-less wire call is named by its block: {tool_ids:?}"
+                );
+            },
+        )
+        .await;
+    })
     .await;
 }

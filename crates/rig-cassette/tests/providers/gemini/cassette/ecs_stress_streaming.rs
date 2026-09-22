@@ -9,9 +9,11 @@ use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
 use rig::providers::gemini;
 #[tokio::test]
 async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
-    let tap = EventTap::default();
-    let probe = tap.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let tap = EventTap::default();
+            let probe = tap.clone();
+            with_gemini_cassette(
         "hook_stress_streaming/streaming_text_only_emits_text_deltas_and_stream_finish",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -50,14 +52,25 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_streaming_streaming_text_only_emits_text_deltas_and_stream_finish",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn streaming_tool_turns_fire_model_turn_finished() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let tap = EventTap::default();
-    let probe = tap.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let tap = EventTap::default();
+            let probe = tap.clone();
+            with_gemini_cassette(
         "hook_stress_streaming/streaming_tool_turns_fire_model_turn_finished",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -97,11 +110,22 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_streaming_streaming_tool_turns_fire_model_turn_finished",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn streaming_result_redaction_reaches_final_response() {
-    let add = CountingAdd::default();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            with_gemini_cassette(
         "hook_stress_streaming/streaming_result_redaction_reaches_final_response",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -136,14 +160,25 @@ async fn streaming_result_redaction_reaches_final_response() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_streaming_streaming_result_redaction_reaches_final_response",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn streaming_active_tools_narrowing_filters_a_tool() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let add_calls = add.counter.clone();
-    let subtract_calls = subtract.counter.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let add_calls = add.counter.clone();
+            let subtract_calls = subtract.counter.clone();
+            with_gemini_cassette(
         "hook_stress_streaming/streaming_active_tools_narrowing_filters_a_tool",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -184,13 +219,24 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_streaming_streaming_active_tools_narrowing_filters_a_tool",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn streaming_skip_leaves_tool_unexecuted() {
-    let add = CountingAdd::default();
-    let subtract = CountingSubtract::default();
-    let subtract_calls = subtract.counter.clone();
-    with_gemini_cassette(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            let add = CountingAdd::default();
+            let subtract = CountingSubtract::default();
+            let subtract_calls = subtract.counter.clone();
+            with_gemini_cassette(
         "hook_stress_streaming/streaming_skip_leaves_tool_unexecuted",
         |client| async move {
             let mut ecs = runtime::agent(
@@ -224,9 +270,20 @@ async fn streaming_skip_leaves_tool_unexecuted() {
         },
     )
     .await;
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "gemini_stress_streaming_streaming_skip_leaves_tool_unexecuted",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
-async fn blocking_and_streaming_produce_same_final_answer() {
+async fn blocking_produces_the_same_expected_final_answer() {
+    rig_test_support::goldens::world_golden_test(async {
+
     const PROMPT: &str = "First add 10 and 5 with the add tool. Then subtract 3 from that sum with \
          the subtract tool. Report the final number.";
     const EXPECTED: i32 = 12;
@@ -248,6 +305,15 @@ async fn blocking_and_streaming_produce_same_final_answer() {
         },
     )
     .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_stress_streaming_blocking_produces_the_same_expected_final_answer", log)).await
+}
+
+#[tokio::test]
+async fn streaming_produces_the_same_expected_final_answer() {
+    rig_test_support::goldens::world_golden_test(async {
+const PROMPT: &str = "First add 10 and 5 with the add tool. Then subtract 3 from that sum with the subtract tool. Report the final number.";
+const EXPECTED: i32 = 12;
     let add_s = CountingAdd::default();
     let sub_s = CountingSubtract::default();
     with_gemini_cassette(
@@ -266,4 +332,6 @@ async fn blocking_and_streaming_produce_same_final_answer() {
         },
     )
     .await;
+
+}, |log| rig_test_support::goldens::world_golden_effects("gemini_stress_streaming_streaming_produces_the_same_expected_final_answer", log)).await
 }

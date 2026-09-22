@@ -1,0 +1,107 @@
+{
+  "parity/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::DefaultMaxTurns": 1,
+          "rig_ecs::agent::MaxTokens": 1024,
+          "rig_ecs::agent::MaxTurns": 3,
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 1,
+          "rig_ecs::agent::Grant": 3
+        },
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/tool#0",
+            "descriptor": {
+              "key": "parity/tool#0",
+              "family": {
+                "family": "tool",
+                "name": "add",
+                "description": "Add x and y together",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "description": "The first number to add"
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "The second number to add"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": true,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 4,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 5,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "What is 2 + 3? Use the tool, then state the result."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 1463892677143074425
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "none",
+          "additional_params": null,
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "category",
+              "summary"
+            ]
+          }
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle Rustaceans: talks, lightning demos, and open help for beginners and projects. Typically first Tuesday, 6:30–8:30 PM at a downtown venue. Free; RSVP recommended.\"}"
+            }
+          ],
+          "usage": {
+            "input_tokens": 71,
+            "output_tokens": 393,
+            "total_tokens": 464,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 320
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "annotations": [],
+                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle Rustaceans: talks, lightning demos, and open help for beginners and projects. Typically first Tuesday, 6:30–8:30 PM at a downtown venue. Free; RSVP recommended.\"}",
+                  "refusal": null,
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": null,
+            "usage": {
+              "completion_tokens": 393,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 320,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 71,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 464
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

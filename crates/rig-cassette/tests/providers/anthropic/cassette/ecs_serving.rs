@@ -128,6 +128,8 @@ async fn two_tools(
 
 #[tokio::test]
 async fn serial_concurrency_one_effect_log() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
@@ -135,51 +137,71 @@ async fn serial_concurrency_one_effect_log() {
                 serial_per_handler: true,
                 ..rig::serve::ServingPolicy::default()
             };
-            two_tools(client, serial, 1, false).await;
+            let log = two_tools(client, serial, 1, false).await;
+crate::goldens::world_golden_effects("anthropic_serving_serial_concurrency_one_effect_log", &log);
         },
     )
     .await;
+
+}).await
 }
 
 #[tokio::test]
 async fn concurrent_concurrency_one_effect_log() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            two_tools(client, rig::serve::ServingPolicy::default(), 1, false).await;
+            let log = two_tools(client, rig::serve::ServingPolicy::default(), 1, false).await;
+crate::goldens::world_golden_effects("anthropic_serving_concurrent_concurrency_one_effect_log", &log);
         },
     )
     .await;
+
+}).await
 }
 
 #[tokio::test]
 async fn concurrent_concurrency_two_effect_log() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            two_tools(client, rig::serve::ServingPolicy::default(), 2, false).await;
+            let log = two_tools(client, rig::serve::ServingPolicy::default(), 2, false).await;
+crate::goldens::world_golden_effects("anthropic_serving_concurrent_concurrency_two_effect_log", &log);
         },
     )
     .await;
+
+}).await
 }
 
 /// Events kept under concurrent dispatch: the stream's delivery is the
 /// record, and buffering does not reorder it.
 #[tokio::test]
 async fn concurrent_concurrency_two_events_effect_log() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            two_tools(client, rig::serve::ServingPolicy::default(), 2, true).await;
+            let log = two_tools(client, rig::serve::ServingPolicy::default(), 2, true).await;
+crate::goldens::world_golden_effects("anthropic_serving_concurrent_concurrency_two_events_effect_log", &log);
         },
     )
     .await;
+
+}).await
 }
 
 /// Every buffer at one: the park points are exercised, the trace is the
 /// same.
 #[tokio::test]
 async fn capacity_one_effect_log() {
+    crate::goldens::capture_world_programs(async {
+
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
@@ -188,78 +210,88 @@ async fn capacity_one_effect_log() {
                 stream_capacity: 1,
                 serial_per_handler: false,
             };
-            two_tools(client, bus, 2, false).await;
+            let log = two_tools(client, bus, 2, false).await;
+crate::goldens::world_golden_effects("anthropic_serving_capacity_one_effect_log", &log);
         },
     )
     .await;
+
+}).await
 }
 
 /// Serial serving over memory and a tool: three keys, each served one
 /// command at a time, in dispatch order.
 #[tokio::test]
 async fn serial_memory_tools_effect_log() {
-    with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
-        let mut ecs = EcsAgent::for_golden_with_setup(
-            client.completion(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            false,
-            |world| {
-                Handlers::with(world, |handlers| {
-                    handlers.register(
-                        crate::goldens::MEMORY_KEY,
-                        RuntimeHandler {
-                            inner: Arc::new(MemoryAdapter::new(
-                                rig::memory::InMemoryConversationMemory::new(),
-                            )),
-                            runtime: io_runtime(),
-                        },
-                    )
-                })
-                .expect("bus installed")
-                .expect("fresh memory");
-            },
-        );
-        let memory = ecs
-            .app
-            .world_mut()
-            .query::<(Entity, &Bound)>()
-            .iter(ecs.app.world())
-            .find(|(_, bound)| bound.key.as_str() == crate::goldens::MEMORY_KEY)
-            .expect("memory handler")
-            .0;
-        ecs.app.world_mut().entity_mut(ecs.agent).insert((
-            Temperature(Some(0.0)),
-            Remembers(memory),
-            Conversation(crate::goldens::CONVERSATION.into()),
-        ));
-        ecs.app
-            .world_mut()
-            .resource_mut::<Policy>()
-            .0
-            .serial_per_handler = true;
-        ecs.tool(Adder);
-        let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
-        assert!(output.contains("42"), "{}", output);
-        let log = ecs.effect_log();
-        assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Memory,
-                EffectFamily::Completion,
-                EffectFamily::Tool,
-                EffectFamily::Completion,
-                EffectFamily::Memory,
-            ]
-        );
-        assert!(
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
+            let mut ecs = EcsAgent::for_golden_with_setup(
+                client.completion(CLAUDE_SONNET_4_6),
+                TOOLS_PREAMBLE,
+                false,
+                |world| {
+                    Handlers::with(world, |handlers| {
+                        handlers.register(
+                            crate::goldens::MEMORY_KEY,
+                            RuntimeHandler {
+                                inner: Arc::new(MemoryAdapter::new(
+                                    rig::memory::InMemoryConversationMemory::new(),
+                                )),
+                                runtime: io_runtime(),
+                            },
+                        )
+                    })
+                    .expect("bus installed")
+                    .expect("fresh memory");
+                },
+            );
+            let memory = ecs
+                .app
+                .world_mut()
+                .query::<(Entity, &Bound)>()
+                .iter(ecs.app.world())
+                .find(|(_, bound)| bound.key.as_str() == crate::goldens::MEMORY_KEY)
+                .expect("memory handler")
+                .0;
+            ecs.app.world_mut().entity_mut(ecs.agent).insert((
+                Temperature(Some(0.0)),
+                Remembers(memory),
+                Conversation(crate::goldens::CONVERSATION.into()),
+            ));
             ecs.app
-                .world()
-                .resource::<rig_ecs::bus::Policy>()
+                .world_mut()
+                .resource_mut::<Policy>()
                 .0
-                .serial_per_handler
-        );
+                .serial_per_handler = true;
+            ecs.tool(Adder);
+            let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
+            assert!(output.contains("42"), "{}", output);
+            let log = ecs.effect_log();
+            crate::goldens::world_golden_effects(
+                "anthropic_serving_serial_memory_tools_effect_log",
+                &log,
+            );
+            assert_eq!(
+                families(&log),
+                [
+                    EffectFamily::Memory,
+                    EffectFamily::Completion,
+                    EffectFamily::Tool,
+                    EffectFamily::Completion,
+                    EffectFamily::Memory,
+                ]
+            );
+            assert!(
+                ecs.app
+                    .world()
+                    .resource::<rig_ecs::bus::Policy>()
+                    .0
+                    .serial_per_handler
+            );
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 /// A second model registered as the route `fast` and selected by the hook
@@ -268,28 +300,32 @@ async fn serial_memory_tools_effect_log() {
 /// both.
 #[tokio::test]
 async fn model_route_effect_log() {
-    with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
-        let mut ecs = routed_agent(&client, true);
-        let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
-        assert!(output.contains("42"), "{}", output);
-        let log = ecs.effect_log();
-        assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Completion,
-                EffectFamily::Tool,
-                EffectFamily::Completion
-            ]
-        );
-        assert_eq!(log.records[0].key.as_str(), "golden/model:default");
-        assert_eq!(log.records[2].key.as_str(), "golden/model:fast");
-        assert_eq!(
-            required_row(&log).get(&HandlerKey::from("golden/model:fast")),
-            Some(&EffectFamily::Completion),
-            "the route is in the required row"
-        );
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
+            let mut ecs = routed_agent(&client, true);
+            let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
+            assert!(output.contains("42"), "{}", output);
+            let log = ecs.effect_log();
+            crate::goldens::world_golden_effects("anthropic_serving_model_route_effect_log", &log);
+            assert_eq!(
+                families(&log),
+                [
+                    EffectFamily::Completion,
+                    EffectFamily::Tool,
+                    EffectFamily::Completion
+                ]
+            );
+            assert_eq!(log.records[0].key.as_str(), "golden/model:default");
+            assert_eq!(log.records[2].key.as_str(), "golden/model:fast");
+            assert_eq!(
+                required_row(&log).get(&HandlerKey::from("golden/model:fast")),
+                Some(&EffectFamily::Completion),
+                "the route is in the required row"
+            );
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 /// The route registered and never selected: the required row still names
@@ -297,32 +333,39 @@ async fn model_route_effect_log() {
 /// from the row alone.
 #[tokio::test]
 async fn model_route_unselected_effect_log() {
-    with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
-        let mut ecs = routed_agent(&client, false);
-        let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
-        assert!(output.contains("42"), "{}", output);
-        let log = ecs.effect_log();
-        assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Completion,
-                EffectFamily::Tool,
-                EffectFamily::Completion
-            ]
-        );
-        assert!(
-            log.records
-                .iter()
-                .all(|record| record.key.as_str() != "golden/model:fast"),
-            "the route was never selected"
-        );
-        assert_eq!(
-            required_row(&log).get(&HandlerKey::from("golden/model:fast")),
-            Some(&EffectFamily::Completion),
-            "the route is in the required row"
-        );
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
+            let mut ecs = routed_agent(&client, false);
+            let output = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
+            assert!(output.contains("42"), "{}", output);
+            let log = ecs.effect_log();
+            crate::goldens::world_golden_effects(
+                "anthropic_serving_model_route_unselected_effect_log",
+                &log,
+            );
+            assert_eq!(
+                families(&log),
+                [
+                    EffectFamily::Completion,
+                    EffectFamily::Tool,
+                    EffectFamily::Completion
+                ]
+            );
+            assert!(
+                log.records
+                    .iter()
+                    .all(|record| record.key.as_str() != "golden/model:fast"),
+                "the route was never selected"
+            );
+            assert_eq!(
+                required_row(&log).get(&HandlerKey::from("golden/model:fast")),
+                Some(&EffectFamily::Completion),
+                "the route is in the required row"
+            );
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 /// The same tool-call program over a host's bus: the host registers the
@@ -379,19 +422,30 @@ fn required_row(log: &rig::cassette::effect_log::EffectLog) -> &rig::effect::Eff
 
 #[tokio::test]
 async fn host_bus_effect_log() {
-    with_anthropic_corpus_serving_cassette("corpus_serving/host_bus", |client| async move {
-        over_host_bus(client, false).await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_serving_cassette("corpus_serving/host_bus", |client| async move {
+            let log = over_host_bus(client, false).await;
+            crate::goldens::world_golden_effects("anthropic_serving_host_bus_effect_log", &log);
+        })
+        .await;
     })
-    .await;
+    .await
 }
 
 #[tokio::test]
 async fn host_bus_streamed_effect_log() {
-    with_anthropic_corpus_serving_cassette(
-        "corpus_serving/host_bus_streamed",
-        |client| async move {
-            over_host_bus(client, true).await;
-        },
-    )
-    .await;
+    crate::goldens::capture_world_programs(async {
+        with_anthropic_corpus_serving_cassette(
+            "corpus_serving/host_bus_streamed",
+            |client| async move {
+                let log = over_host_bus(client, true).await;
+                crate::goldens::world_golden_effects(
+                    "anthropic_serving_host_bus_streamed_effect_log",
+                    &log,
+                );
+            },
+        )
+        .await;
+    })
+    .await
 }

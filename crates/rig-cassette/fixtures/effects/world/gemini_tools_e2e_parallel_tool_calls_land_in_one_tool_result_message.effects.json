@@ -1,0 +1,557 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 6,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 9,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "subtract",
+          "description": "Subtract y from x (i.e. x - y)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool"
+        },
+        "policy": 11835680409656454234
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Compute 3 + 4 and 10 - 2. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "subtract",
+              "description": "Subtract y from x (i.e. x - y)",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 3,
+                  "y": 4
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:1"
+              },
+              "function": {
+                "name": "subtract",
+                "arguments": {
+                  "x": 10,
+                  "y": 2
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 193,
+            "output_tokens": 37,
+            "total_tokens": 338,
+            "reasoning_tokens": 108
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "args": {
+                          "x": 3,
+                          "y": 4
+                        },
+                        "name": "add"
+                      },
+                      "thoughtSignature": "signature_REDACTED_1"
+                    },
+                    {
+                      "functionCall": {
+                        "args": {
+                          "x": 10,
+                          "y": 2
+                        },
+                        "name": "subtract"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishMessage": "Model generated function call(s).",
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
+            "usageMetadata": {
+              "candidatesTokenCount": 37,
+              "promptTokenCount": 193,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 193
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 108,
+              "totalTokenCount": 338
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":3,\"y\":4}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 7
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "subtract",
+        "args": "{\"x\":10,\"y\":2}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 8
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Compute 3 + 4 and 10 - 2. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 3,
+                      "y": 4
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
+                  "function": {
+                    "name": "subtract",
+                    "arguments": {
+                      "x": 10,
+                      "y": 2
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 7
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
+                  "name": "subtract",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 8
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "subtract",
+              "description": "Subtract y from x (i.e. x - y)",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "7\n8"
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_2"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 254,
+            "output_tokens": 3,
+            "total_tokens": 323,
+            "reasoning_tokens": 66
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "7\n8",
+                      "thoughtSignature": "signature_REDACTED_2"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_2",
+            "usageMetadata": {
+              "candidatesTokenCount": 3,
+              "promptTokenCount": 254,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 254
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 66,
+              "totalTokenCount": 323
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

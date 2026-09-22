@@ -16,54 +16,68 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 #[tokio::test]
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
-    with_openrouter_cassette_result(
-        "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
-            let log = Arc::new(Mutex::new(Vec::new()));
-            let (ping, manifest, labels, echo) = complex_tools(&log);
-            let mut agent = {
-                let mut ecs = EcsAgent::new(
-                    client.completion(SESSION_MODEL),
-                    COMPLEX_SESSION_PREAMBLE,
-                    10,
-                );
-                ecs.app.world_mut().entity_mut(ecs.agent).insert((
-                    rig_ecs::agent::DefaultMaxTurns(Some(10)),
-                    rig_ecs::agent::AdditionalParams(Some(
-                        json!({ "parallel_tool_calls" : false }),
-                    )),
-                ));
-                ecs.tool(ping);
-                ecs.tool(manifest);
-                ecs.tool(labels);
-                ecs.tool(echo);
-                install_observers(&mut ecs);
-                ecs
-            };
-            let response = run_session(&mut agent, COMPLEX_SESSION_PROMPT, false, None).await?;
-            let history = response.history;
-            assert_contains_all_case_insensitive(
-                &response.output,
-                &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
-            );
-            assert_complex_invocations(&log);
-            assert_history_records_sequential_tool_roundtrips(
-                &history,
-                &[
-                    PingEmpty::NAME,
-                    InspectManifest::NAME,
-                    JoinLabels::NAME,
-                    EscapeEcho::NAME,
-                ],
-            );
-            Ok(())
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_openrouter_cassette_result(
+                "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
+                |client| async move {
+                    let log = Arc::new(Mutex::new(Vec::new()));
+                    let (ping, manifest, labels, echo) = complex_tools(&log);
+                    let mut agent = {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(SESSION_MODEL),
+                            COMPLEX_SESSION_PREAMBLE,
+                            10,
+                        );
+                        ecs.app.world_mut().entity_mut(ecs.agent).insert((
+                            rig_ecs::agent::DefaultMaxTurns(Some(10)),
+                            rig_ecs::agent::AdditionalParams(Some(
+                                json!({ "parallel_tool_calls" : false }),
+                            )),
+                        ));
+                        ecs.tool(ping);
+                        ecs.tool(manifest);
+                        ecs.tool(labels);
+                        ecs.tool(echo);
+                        install_observers(&mut ecs);
+                        ecs
+                    };
+                    let response =
+                        run_session(&mut agent, COMPLEX_SESSION_PROMPT, false, None).await?;
+                    let history = response.history;
+                    assert_contains_all_case_insensitive(
+                        &response.output,
+                        &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
+                    );
+                    assert_complex_invocations(&log);
+                    assert_history_records_sequential_tool_roundtrips(
+                        &history,
+                        &[
+                            PingEmpty::NAME,
+                            InspectManifest::NAME,
+                            JoinLabels::NAME,
+                            EscapeEcho::NAME,
+                        ],
+                    );
+                    Ok(())
+                },
+            )
+            .await
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openrouter_tool_sessions_sequential_complex_tool_calls_nonstreaming",
+                log,
+            )
         },
     )
     .await
 }
 #[tokio::test]
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
-    with_openrouter_cassette_result(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_openrouter_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_streaming",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
@@ -127,86 +141,118 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
         },
     )
     .await
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openrouter_tool_sessions_sequential_complex_tool_calls_streaming",
+                log,
+            )
+        },
+    )
+    .await
 }
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
-    with_openrouter_cassette_result(
-        "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
-        |client| async move {
-            let mut agent = {
-                let mut ecs = EcsAgent::new(
-                    client.completion(SESSION_MODEL),
-                    TWO_TOOL_STREAM_PREAMBLE,
-                    5,
-                );
-                ecs.app.world_mut().entity_mut(ecs.agent).insert((
-                    rig_ecs::agent::DefaultMaxTurns(Some(5)),
-                    rig_ecs::agent::AdditionalParams(None),
-                ));
-                ecs.tool(AlphaSignal);
-                ecs.tool(BetaSignal);
-                install_observers(&mut ecs);
-                ecs
-            };
-            let response = run_session(&mut agent, TWO_TOOL_STREAM_PROMPT, false, None).await?;
-            let history = response.history;
-            assert_contains_all_case_insensitive(
-                &response.output,
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-            let calls = history_tool_calls(&history);
-            let call_names = calls
-                .iter()
-                .map(|call| call.name.as_str())
-                .collect::<Vec<_>>();
-            anyhow::ensure!(
-                calls.len() == 2
-                    && call_names.contains(&AlphaSignal::NAME)
-                    && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools in one model turn, saw {call_names:?}"
-            );
-            anyhow::ensure!(
-                calls[0].message_index == calls[1].message_index,
-                "parallel tool calls should be recorded on one assistant message"
-            );
-            let result_count = history_tool_results(&history).len();
-            anyhow::ensure!(
-                result_count == 2,
-                "expected two tool results, saw {result_count}"
-            );
-            Ok(())
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_openrouter_cassette_result(
+                "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
+                |client| async move {
+                    let mut agent = {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(SESSION_MODEL),
+                            TWO_TOOL_STREAM_PREAMBLE,
+                            5,
+                        );
+                        ecs.app.world_mut().entity_mut(ecs.agent).insert((
+                            rig_ecs::agent::DefaultMaxTurns(Some(5)),
+                            rig_ecs::agent::AdditionalParams(None),
+                        ));
+                        ecs.tool(AlphaSignal);
+                        ecs.tool(BetaSignal);
+                        install_observers(&mut ecs);
+                        ecs
+                    };
+                    let response =
+                        run_session(&mut agent, TWO_TOOL_STREAM_PROMPT, false, None).await?;
+                    let history = response.history;
+                    assert_contains_all_case_insensitive(
+                        &response.output,
+                        &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
+                    );
+                    let calls = history_tool_calls(&history);
+                    let call_names = calls
+                        .iter()
+                        .map(|call| call.name.as_str())
+                        .collect::<Vec<_>>();
+                    anyhow::ensure!(
+                        calls.len() == 2
+                            && call_names.contains(&AlphaSignal::NAME)
+                            && call_names.contains(&BetaSignal::NAME),
+                        "expected both zero-argument tools in one model turn, saw {call_names:?}"
+                    );
+                    anyhow::ensure!(
+                        calls[0].message_index == calls[1].message_index,
+                        "parallel tool calls should be recorded on one assistant message"
+                    );
+                    let result_count = history_tool_results(&history).len();
+                    anyhow::ensure!(
+                        result_count == 2,
+                        "expected two tool results, saw {result_count}"
+                    );
+                    Ok(())
+                },
+            )
+            .await
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openrouter_tool_sessions_parallel_tool_calls_single_turn_nonstreaming",
+                log,
+            )
         },
     )
     .await
 }
 #[tokio::test]
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
-    with_openrouter_cassette_result(
-        "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let mut agent = {
-                let mut ecs = EcsAgent::new(
-                    client.completion(SESSION_MODEL),
-                    TWO_TOOL_STREAM_PREAMBLE,
-                    1,
-                );
-                ecs.app.world_mut().entity_mut(ecs.agent).insert((
-                    rig_ecs::agent::DefaultMaxTurns(None),
-                    rig_ecs::agent::AdditionalParams(None),
-                ));
-                ecs.tool(AlphaSignal);
-                ecs.tool(BetaSignal);
-                install_observers(&mut ecs);
-                ecs
-            };
-            run_session(&mut agent, TWO_TOOL_STREAM_PROMPT, true, Some(5)).await?;
-            let observation = observation(&agent);
-            assert_two_tool_roundtrip_contract(
-                observation,
-                &[AlphaSignal::NAME, BetaSignal::NAME],
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-            Ok(())
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_openrouter_cassette_result(
+                "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
+                |client| async move {
+                    let mut agent = {
+                        let mut ecs = EcsAgent::new(
+                            client.completion(SESSION_MODEL),
+                            TWO_TOOL_STREAM_PREAMBLE,
+                            1,
+                        );
+                        ecs.app.world_mut().entity_mut(ecs.agent).insert((
+                            rig_ecs::agent::DefaultMaxTurns(None),
+                            rig_ecs::agent::AdditionalParams(None),
+                        ));
+                        ecs.tool(AlphaSignal);
+                        ecs.tool(BetaSignal);
+                        install_observers(&mut ecs);
+                        ecs
+                    };
+                    run_session(&mut agent, TWO_TOOL_STREAM_PROMPT, true, Some(5)).await?;
+                    let observation = observation(&agent);
+                    assert_two_tool_roundtrip_contract(
+                        observation,
+                        &[AlphaSignal::NAME, BetaSignal::NAME],
+                        &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
+                    );
+                    Ok(())
+                },
+            )
+            .await
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openrouter_tool_sessions_parallel_tool_calls_single_turn_streaming",
+                log,
+            )
         },
     )
     .await
@@ -214,7 +260,9 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 
 #[tokio::test]
 async fn nested_structured_output_schema_roundtrip() -> Result<()> {
-    with_openrouter_cassette_result(
+    rig_test_support::goldens::world_golden_test(
+        async {
+            with_openrouter_cassette_result(
         "agent_tool_sessions/nested_structured_output_schema_roundtrip",
         |client| async move {
             let mut agent = EcsAgent::new(
@@ -267,6 +315,15 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
                 "structured output should include the replay check"
             );
             Ok(())
+        },
+    )
+    .await
+        },
+        |log| {
+            rig_test_support::goldens::world_golden_effects(
+                "openrouter_tool_sessions_nested_structured_output_schema_roundtrip",
+                log,
+            )
         },
     )
     .await

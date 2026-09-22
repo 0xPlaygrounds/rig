@@ -1,0 +1,139 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 7181019410377862269
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is a glarb-glarb? Answer in one sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [
+            {
+              "id": "shaping-context",
+              "text": "Definition of a glarb-glarb: an ancient farming tool from planet Jiro."
+            }
+          ],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+            }
+          ],
+          "usage": {
+            "input_tokens": 65,
+            "output_tokens": 154,
+            "total_tokens": 219,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 128
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "annotations": [],
+                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+                  "refusal": null,
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": null,
+            "usage": {
+              "completion_tokens": 154,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 128,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 65,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 219
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

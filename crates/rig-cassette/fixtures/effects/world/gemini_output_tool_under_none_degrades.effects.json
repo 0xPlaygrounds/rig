@@ -1,0 +1,160 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 4824725639153212595
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": "none",
+          "additional_params": null,
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "category",
+              "summary"
+            ]
+          }
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle to network and discuss systems programming.\"}"
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 24,
+            "output_tokens": 30,
+            "total_tokens": 286,
+            "reasoning_tokens": 232
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle to network and discuss systems programming.\"}",
+                      "thoughtSignature": "signature_REDACTED_1"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_1",
+            "usageMetadata": {
+              "candidatesTokenCount": 30,
+              "promptTokenCount": 24,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 24
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 232,
+              "totalTokenCount": 286
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

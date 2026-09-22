@@ -1,0 +1,1287 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 43,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 47,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 50,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 53,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 55,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 57,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 60,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 61,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 62,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 63,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 66,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 67,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 71,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 73,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 83,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 83,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 1794619044897404914
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one short paragraph, explain what a solar eclipse is."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "A solar eclipse occurs when the Moon passes between the Earth and the Sun, temporarily blocking the Sun's light. This alignment can cause partial, total, or annular eclipses, depending on the distances between these celestial bodies. During a total solar eclipse, the Sun is completely obscured by the Moon, casting a shadow on parts of the Earth and briefly turning day into night."
+            }
+          ],
+          "usage": {
+            "input_tokens": 35,
+            "output_tokens": 77,
+            "total_tokens": 112,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "input_tokens": 35,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 77,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 112
+            },
+            "reasoning_metadata": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-4o-2024-08-06"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "A"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " solar"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " eclipse"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " occurs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " when"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Moon"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " passes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " between"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Earth"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Sun"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " temporarily"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " blocking"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Sun"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " light"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " This"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " alignment"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " can"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " cause"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " partial"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " total"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ann"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "ular"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " eclips"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "es"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " depending"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " distances"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " between"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " these"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " celestial"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " bodies"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " During"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " total"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " solar"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " eclipse"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Sun"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " completely"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " obsc"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "ured"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Moon"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " casting"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " shadow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " parts"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Earth"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " briefly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " turning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " day"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " into"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " night"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "message"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 35,
+            "output_tokens": 77,
+            "total_tokens": 112,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "input_tokens": 35,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 77,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 112
+            },
+            "reasoning_metadata": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-4o-2024-08-06"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

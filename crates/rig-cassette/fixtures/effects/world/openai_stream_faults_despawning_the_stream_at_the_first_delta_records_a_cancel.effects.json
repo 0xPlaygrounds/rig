@@ -1,0 +1,104 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 13900465514583475975
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one short paragraph, explain what a solar eclipse is."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "cancelled",
+          "retryable": false,
+          "message": "the consumer cancelled the dispatch before it was answered",
+          "code": null,
+          "http_status": null,
+          "refusal": false,
+          "source_chain": []
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "A"
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

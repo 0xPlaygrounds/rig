@@ -1,0 +1,122 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 8446033616978509048
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with exactly: agent raw probe"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "agent raw probe"
+            }
+          ],
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 6,
+            "total_tokens": 20,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "content": [
+              {
+                "text": "agent raw probe",
+                "type": "text"
+              }
+            ],
+            "id": "msg_REDACTED_1",
+            "model": "claude-haiku-4-5-20251001",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 14,
+              "output_tokens": 6,
+              "service_tier": "standard"
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

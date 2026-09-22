@@ -25,19 +25,19 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 crate::matrix::native_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: run_world;
     #[tokio::test]
-    inline_text_unary: ("image_matrix_responses/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY);
+    inline_text_unary: ("image_matrix_responses/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY, "openai_responses_inline_text_unary");
     #[tokio::test]
-    inline_text_streamed: ("image_matrix_responses/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED);
+    inline_text_streamed: ("image_matrix_responses/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "openai_responses_inline_text_streamed");
     #[tokio::test]
-    inline_mixed_order: ("image_matrix_responses/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER);
+    inline_mixed_order: ("image_matrix_responses/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER, "openai_responses_inline_mixed_order");
     #[tokio::test]
-    inline_tool_unary: ("image_matrix_responses/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY);
+    inline_tool_unary: ("image_matrix_responses/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY, "openai_responses_inline_tool_unary");
     #[tokio::test]
-    inline_tool_streamed: ("image_matrix_responses/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED);
+    inline_tool_streamed: ("image_matrix_responses/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "openai_responses_inline_tool_streamed");
     #[tokio::test]
-    inline_followup: ("image_matrix_responses/inline_followup", cells::IMAGE_INLINE_FOLLOWUP);
+    inline_followup: ("image_matrix_responses/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "openai_responses_inline_followup");
     #[tokio::test]
-    url_text_unary: ("image_matrix_responses/url_text_unary", cells::IMAGE_URL_TEXT_UNARY);
+    url_text_unary: ("image_matrix_responses/url_text_unary", cells::IMAGE_URL_TEXT_UNARY, "openai_responses_url_text_unary");
     #[tokio::test]
-    url_tool_unary: ("image_matrix_responses/url_tool_unary", cells::IMAGE_URL_TOOL_UNARY);
+    url_tool_unary: ("image_matrix_responses/url_tool_unary", cells::IMAGE_URL_TOOL_UNARY, "openai_responses_url_tool_unary");
 }

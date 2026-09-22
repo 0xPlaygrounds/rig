@@ -1,0 +1,516 @@
+{
+  "parity/run#0": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Ignore"
+          },
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "age": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint8",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "profession": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "title": "Person",
+              "$schema": "https://json-schema.org/draft/2020-12/schema"
+            }
+          },
+          "rig_ecs::agent::OutputToolConfig": {
+            "name": "submit",
+            "description": "Submit the structured data you extracted from the provided text.",
+            "augment_preamble": false
+          },
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ",
+          "rig_ecs::agent::ToolChoiceSpec": "required",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Bob Johnson is a 55 year old retired teacher."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 1,
+        "next_id": 0
+      },
+      "binaries": []
+    }
+  ],
+  "parity/run#1": [
+    {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    },
+    {
+      "format": 2,
+      "entities": [
+        {
+          "rig_ecs::bus::handlers::Bound": {
+            "key": "parity/model",
+            "descriptor": {
+              "key": "parity/model",
+              "family": {
+                "family": "completion",
+                "model": "parity",
+                "capabilities": {
+                  "composes_native_output_with_tools": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::DefaultMaxTurns": null,
+          "rig_ecs::agent::InvalidCalls": {
+            "retries": 0,
+            "unhandled": "Ignore"
+          },
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::Output": {
+            "mode": "Tool",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "age": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint8",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "profession": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "title": "Person",
+              "$schema": "https://json-schema.org/draft/2020-12/schema"
+            }
+          },
+          "rig_ecs::agent::OutputToolConfig": {
+            "name": "submit",
+            "description": "Submit the structured data you extracted from the provided text.",
+            "augment_preamble": false
+          },
+          "rig_ecs::agent::Owner": "parity",
+          "rig_ecs::agent::PolicyVersion": "ecs-native/v1",
+          "rig_ecs::agent::Preamble": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ",
+          "rig_ecs::agent::ToolChoiceSpec": "required",
+          "rig_ecs::agent::UsesModel": 0
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 1
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": "submit",
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunResult": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+          "rig_ecs::agent::RunSeq": 0,
+          "rig_ecs::agent::Settled": {},
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {
+            "input_tokens": 432,
+            "output_tokens": 262,
+            "total_tokens": 694,
+            "cached_input_tokens": 384,
+            "reasoning_tokens": 238
+          },
+          "rig_ecs::agent::UsesModel": 0,
+          "rig_ecs::bus::effect::Scope": "parity/run#0"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 3,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Bob Johnson is a 55 year old retired teacher."
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Outputs": {
+            "content": [
+              {
+                "type": "reasoning",
+                "id": "rs_REDACTED_1",
+                "content": [
+                  {
+                    "type": "summary",
+                    "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
+                  }
+                ]
+              },
+              {
+                "type": "toolcall",
+                "id": {
+                  "origin": "explicit",
+                  "id": "call_REDACTED_1"
+                },
+                "provider": {
+                  "call_id": "call_REDACTED_1",
+                  "item_id": "fc_REDACTED_1"
+                },
+                "function": {
+                  "name": "submit",
+                  "arguments": {
+                    "name": "Bob Johnson",
+                    "age": 55,
+                    "profession": "retired teacher"
+                  }
+                },
+                "signature": null,
+                "additional_params": null
+              }
+            ],
+            "message_id": null,
+            "done": true,
+            "usage_recorded": true,
+            "stream_validated": 0
+          },
+          "rig_ecs::agent::ToolAccess": {
+            "executable": {},
+            "allowed": []
+          },
+          "rig_ecs::agent::Turn": {},
+          "rig_ecs::systems::Folded": "Tool",
+          "rig_ecs::systems::Materialised": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 5,
+          "rig_ecs::bus::effect::EffectOutcome": {
+            "Ok": {
+              "outcome": "completion",
+              "choice": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "summary",
+                      "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "submit",
+                    "arguments": {
+                      "name": "Bob Johnson",
+                      "age": 55,
+                      "profession": "retired teacher"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ],
+              "usage": {
+                "input_tokens": 432,
+                "output_tokens": 262,
+                "total_tokens": 694,
+                "cached_input_tokens": 384,
+                "reasoning_tokens": 238
+              },
+              "message_id": null,
+              "response_id": "req_REDACTED_1",
+              "provider_request_id": "req_REDACTED_1",
+              "finish_reason": "tool_calls",
+              "provider": "xai",
+              "model": "grok-4.3",
+              "raw": {
+                "background": false,
+                "completed_at": 0,
+                "created_at": 0,
+                "error": null,
+                "frequency_penalty": 0.0,
+                "id": "req_REDACTED_1",
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "max_tool_calls": null,
+                "metadata": {
+                  "system_fingerprint": "fp_REDACTED_1"
+                },
+                "model": "grok-4.3",
+                "object": "response",
+                "output": [
+                  {
+                    "id": "rs_REDACTED_1",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  {
+                    "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                    "call_id": "call_REDACTED_1",
+                    "id": "fc_REDACTED_1",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  }
+                ],
+                "parallel_tool_calls": true,
+                "presence_penalty": 0.0,
+                "previous_response_id": null,
+                "prompt_cache_key": null,
+                "reasoning": {
+                  "effort": "low",
+                  "summary": "detailed"
+                },
+                "safety_identifier": null,
+                "service_tier": "default",
+                "status": "completed",
+                "store": true,
+                "temperature": 0.7,
+                "text": {
+                  "format": {
+                    "type": "text"
+                  }
+                },
+                "tool_choice": "required",
+                "tools": [
+                  {
+                    "description": "Submit the structured data you extracted from the provided text.",
+                    "name": "submit",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "properties": {
+                        "age": {
+                          "format": "uint8",
+                          "maximum": 255,
+                          "minimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "profession": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "title": "Person",
+                      "type": "object"
+                    },
+                    "strict": false,
+                    "type": "function"
+                  }
+                ],
+                "top_logprobs": 0,
+                "top_p": 0.95,
+                "truncation": "disabled",
+                "usage": {
+                  "context_details": {
+                    "input_tokens": 432,
+                    "output_tokens": 262
+                  },
+                  "cost_in_usd_ticks": 7918000,
+                  "input_tokens": 432,
+                  "input_tokens_details": {
+                    "cached_tokens": 384
+                  },
+                  "num_server_side_tools_used": 0,
+                  "num_sources_used": 0,
+                  "output_tokens": 262,
+                  "output_tokens_details": {
+                    "reasoning_tokens": 238
+                  },
+                  "total_tokens": 694
+                },
+                "user": null
+              }
+            }
+          },
+          "rig_ecs::bus::effect::Issued": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0,
+          "rig_ecs::bus::effect::Seq": 0
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 2,
+          "rig_ecs::agent::Role": "Assistant",
+          "rig_ecs::agent::Utterance": {},
+          "rig_ecs::agent::content::parts::MessageId": null
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Reasoning": {
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}"
+            }
+          }
+        },
+        {
+          "rig_ecs::agent::Cursor": {
+            "turn": 0
+          },
+          "rig_ecs::agent::InvalidRetries": 0,
+          "rig_ecs::agent::MaxTurns": 1,
+          "rig_ecs::agent::OutputRetries": 0,
+          "rig_ecs::agent::OutputToolName": null,
+          "rig_ecs::agent::ProviderRetried": 0,
+          "rig_ecs::agent::Ready": {},
+          "rig_ecs::agent::Run": {},
+          "rig_ecs::agent::RunOf": 1,
+          "rig_ecs::agent::RunPhase": "Assembling",
+          "rig_ecs::agent::RunSeq": 1,
+          "rig_ecs::agent::StreamRequested": false,
+          "rig_ecs::agent::Usage": {},
+          "rig_ecs::bus::effect::Scope": "parity/run#1"
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 10,
+          "rig_ecs::agent::Role": "User",
+          "rig_ecs::agent::Utterance": {}
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 11,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "Bob Johnson is a 55 year old retired teacher."
+            }
+          }
+        }
+      ],
+      "counters": {
+        "next_run": 2,
+        "next_id": 1
+      },
+      "binaries": []
+    }
+  ]
+}

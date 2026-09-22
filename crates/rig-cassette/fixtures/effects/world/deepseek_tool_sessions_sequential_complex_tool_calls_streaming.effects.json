@@ -1,0 +1,5193 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 15,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 20,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 23,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 25,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 30,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 32,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 34,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 35,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 21
+        }
+      },
+      {
+        "batch": 36,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 37,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 38,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 40,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 41,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 50,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 61,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 62,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 63,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 66,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 67,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 71,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 74,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 75,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 76,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 77,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 81,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 83,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 87,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 88,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 89,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 90,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 91,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 92,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 94,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 95,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 96,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 99,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 102,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 103,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 104,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 105,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 107,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 109,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 111,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 113,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 115,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 116,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 117,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 118,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 119,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 120,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 121,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 122,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 123,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 125,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 126,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 127,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 128,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 129,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 130,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 131,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 133,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 133,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 134,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 138,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 9
+        }
+      },
+      {
+        "batch": 139,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 140,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 141,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 142,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 143,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 144,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 145,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 146,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 147,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 148,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 149,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 150,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 151,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 152,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 8
+        }
+      },
+      {
+        "batch": 153,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 153,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 155,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 160,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 161,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 162,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 163,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 164,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 165,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 166,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 167,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 168,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 169,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 170,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 171,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 172,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 173,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 174,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 175,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 176,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 177,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 178,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 179,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 180,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 181,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 182,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 183,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 183,
+        "id": 8,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "ping_empty",
+          "description": "Return EMPTY-OK. This tool takes no arguments.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "parity/tool#1",
+        "family": {
+          "family": "tool",
+          "name": "inspect_manifest",
+          "description": "Validate a nested deployment manifest.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "flags": {
+                "type": "object",
+                "properties": {
+                  "critical": {
+                    "type": "boolean"
+                  },
+                  "retries": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "critical",
+                  "retries"
+                ]
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "weight": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "weight"
+                  ]
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "project",
+              "flags",
+              "steps",
+              "note"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#2",
+        "family": {
+          "family": "tool",
+          "name": "join_labels",
+          "description": "Join label strings with the requested separator.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "separator": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "labels",
+              "separator"
+            ]
+          }
+        }
+      },
+      {
+        "key": "parity/tool#3",
+        "family": {
+          "family": "tool",
+          "name": "escape_echo",
+          "description": "Echo a string containing escaping-sensitive characters.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion",
+      "parity/tool#0": "tool",
+      "parity/tool#1": "tool",
+      "parity/tool#2": "tool",
+      "parity/tool#3": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool",
+          "parity/tool#1": "tool",
+          "parity/tool#2": "tool",
+          "parity/tool#3": "tool"
+        },
+        "policy": 14573483727013330969
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            },
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Let me start with step 1: ping_empty."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "ping_empty",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 771,
+            "output_tokens": 38,
+            "total_tokens": 809,
+            "cached_input_tokens": 768
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 771,
+              "completion_tokens": 38,
+              "total_tokens": 809,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 3
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Let"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " me"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " start"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " step"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " ping"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "_empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "ping_empty"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_1"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_1"
+            },
+            "function": {
+              "name": "ping_empty",
+              "arguments": {}
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 771,
+            "output_tokens": 38,
+            "total_tokens": 809,
+            "cached_input_tokens": 768
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 771,
+              "completion_tokens": 38,
+              "total_tokens": 809,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 3
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "ping_empty",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "EMPTY-OK"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Let me start with step 1: ping_empty."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            },
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Step 2: inspect_manifest with the required parameters."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "inspect_manifest",
+                "arguments": {
+                  "project": "rig-deepseek",
+                  "flags": {
+                    "critical": true,
+                    "retries": 2
+                  },
+                  "steps": [
+                    {
+                      "name": "plan",
+                      "weight": 1
+                    },
+                    {
+                      "name": "verify",
+                      "weight": 2
+                    }
+                  ],
+                  "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 825,
+            "output_tokens": 157,
+            "total_tokens": 982,
+            "cached_input_tokens": 768
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 825,
+              "completion_tokens": 157,
+              "total_tokens": 982,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 57
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Step"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " inspect"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "_"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " required"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " parameters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_name",
+            "name": "inspect_manifest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "project"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "rig"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "-de"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ep"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "seek"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "flags"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " true"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ret"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ries"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "steps"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "["
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "name"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "plan"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "weight"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "},"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " {\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "name"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "verify"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "weight"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}]"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "note"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ";"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " two"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " says"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "hello"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " path"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " C"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ":\\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "rig"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "deep"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "seek"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_2",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_2",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_2",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_2"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_2"
+            },
+            "function": {
+              "name": "inspect_manifest",
+              "arguments": {
+                "project": "rig-deepseek",
+                "flags": {
+                  "critical": true,
+                  "retries": 2
+                },
+                "steps": [
+                  {
+                    "name": "plan",
+                    "weight": 1
+                  },
+                  {
+                    "name": "verify",
+                    "weight": 2
+                  }
+                ],
+                "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 825,
+            "output_tokens": 157,
+            "total_tokens": 982,
+            "cached_input_tokens": 768
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 825,
+              "completion_tokens": 157,
+              "total_tokens": 982,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 57
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 3,
+      "key": "parity/tool#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "inspect_manifest",
+        "args": "{\"project\":\"rig-deepseek\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "MANIFEST-OK project=rig-deepseek steps=2 retries=2"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Let me start with step 1: ping_empty."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Step 2: inspect_manifest with the required parameters."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-deepseek",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-deepseek steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            },
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Step 3: join_labels."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "function": {
+                "name": "join_labels",
+                "arguments": {
+                  "labels": [
+                    "north",
+                    "beta gamma",
+                    "quote:\"delta\"",
+                    "slash\\path"
+                  ],
+                  "separator": "|"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1003,
+            "output_tokens": 85,
+            "total_tokens": 1088,
+            "cached_input_tokens": 768
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1003,
+              "completion_tokens": 85,
+              "total_tokens": 1088,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 235
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_3",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Step"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "3"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " join"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "_labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_name",
+            "name": "join_labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "labels"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "[\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "orth"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "beta"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " gamma"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "quote"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ":\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "delta"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "slash"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "path"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\"]"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "separ"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ator"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "|"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_3",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_3",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_3",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_3"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_3"
+            },
+            "function": {
+              "name": "join_labels",
+              "arguments": {
+                "labels": [
+                  "north",
+                  "beta gamma",
+                  "quote:\"delta\"",
+                  "slash\\path"
+                ],
+                "separator": "|"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 1003,
+            "output_tokens": 85,
+            "total_tokens": 1088,
+            "cached_input_tokens": 768
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_3",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1003,
+              "completion_tokens": 85,
+              "total_tokens": 1088,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 235
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_3",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 5,
+      "key": "parity/tool#2",
+      "kind": {
+        "effect": "tool_call",
+        "name": "join_labels",
+        "args": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Let me start with step 1: ping_empty."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Step 2: inspect_manifest with the required parameters."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-deepseek",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-deepseek steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Step 3: join_labels."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            },
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Step 4: escape_echo with the exact text from the user."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "function": {
+                "name": "escape_echo",
+                "arguments": {
+                  "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1114,
+            "output_tokens": 76,
+            "total_tokens": 1190,
+            "cached_input_tokens": 1024
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1114,
+              "completion_tokens": 76,
+              "total_tokens": 1190,
+              "prompt_tokens_details": {
+                "cached_tokens": 1024
+              },
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 90
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_4",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Step"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " escape"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "_"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "echo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " exact"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " from"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " user"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_name",
+            "name": "escape_echo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "Line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "Line"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\\\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " back"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "slash"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " \\\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " un"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "icode"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " snow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "man"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " ☃"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_4",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_4",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_4",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_4"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_4"
+            },
+            "function": {
+              "name": "escape_echo",
+              "arguments": {
+                "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 1114,
+            "output_tokens": 76,
+            "total_tokens": 1190,
+            "cached_input_tokens": 1024
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_4",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1114,
+              "completion_tokens": 76,
+              "total_tokens": 1190,
+              "prompt_tokens_details": {
+                "cached_tokens": 1024
+              },
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 90
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_4",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 7,
+      "key": "parity/tool#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "escape_echo",
+        "args": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+              }
+            ]
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 8,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Let me start with step 1: ping_empty."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "ping_empty",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "ping_empty",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "EMPTY-OK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Step 2: inspect_manifest with the required parameters."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "inspect_manifest",
+                    "arguments": {
+                      "project": "rig-deepseek",
+                      "flags": {
+                        "critical": true,
+                        "retries": 2
+                      },
+                      "steps": [
+                        {
+                          "name": "plan",
+                          "weight": 1
+                        },
+                        {
+                          "name": "verify",
+                          "weight": 2
+                        }
+                      ],
+                      "note": "line one; line two says \"hello\" and path C:\\rig\\deepseek"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "inspect_manifest",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "MANIFEST-OK project=rig-deepseek steps=2 retries=2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Step 3: join_labels."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "join_labels",
+                    "arguments": {
+                      "labels": [
+                        "north",
+                        "beta gamma",
+                        "quote:\"delta\"",
+                        "slash\\path"
+                      ],
+                      "separator": "|"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "join_labels",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Step 4: escape_echo with the exact text from the user."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "escape_echo",
+                    "arguments": {
+                      "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "escape_echo",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "ping_empty",
+              "description": "Return EMPTY-OK. This tool takes no arguments.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "inspect_manifest",
+              "description": "Validate a nested deployment manifest.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "boolean"
+                      },
+                      "retries": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "retries"
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "weight"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "flags",
+                  "steps",
+                  "note"
+                ]
+              }
+            },
+            {
+              "name": "join_labels",
+              "description": "Join label strings with the requested separator.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "separator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "labels",
+                  "separator"
+                ]
+              }
+            },
+            {
+              "name": "escape_echo",
+              "description": "Echo a string containing escaping-sensitive characters.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            },
+            "parallel_tool_calls": false
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "All tools completed: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            }
+          ],
+          "usage": {
+            "input_tokens": 1226,
+            "output_tokens": 26,
+            "total_tokens": 1252,
+            "cached_input_tokens": 1152
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_5",
+          "finish_reason": "stop",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1226,
+              "completion_tokens": 26,
+              "total_tokens": 1252,
+              "prompt_tokens_details": {
+                "cached_tokens": 1152
+              },
+              "prompt_cache_hit_tokens": 1152,
+              "prompt_cache_miss_tokens": 74
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_5",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "All"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " tools"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " completed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " EMP"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "TY"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " MAN"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "IF"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "EST"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " LAB"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "ELS"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " ESC"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "APE"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "OK"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 1226,
+            "output_tokens": 26,
+            "total_tokens": 1252,
+            "cached_input_tokens": 1152
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_5",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1226,
+              "completion_tokens": 26,
+              "total_tokens": 1252,
+              "prompt_tokens_details": {
+                "cached_tokens": 1152
+              },
+              "prompt_cache_hit_tokens": 1152,
+              "prompt_cache_miss_tokens": 74
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_5",
+            "model": "deepseek-v4-flash",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ],
+      "scope": "parity/run#0"
+    }
+  ]
+}

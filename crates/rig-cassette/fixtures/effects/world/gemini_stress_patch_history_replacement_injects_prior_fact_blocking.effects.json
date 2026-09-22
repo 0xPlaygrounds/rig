@@ -1,0 +1,137 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "stress-agent/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 2634048083465296014
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a helpful assistant. Use the conversation so far to answer."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "For this session, the passphrase is OMEGA-7. Acknowledge and remember it."
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is the passphrase?"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The passphrase is OMEGA-7."
+            }
+          ],
+          "usage": {
+            "input_tokens": 41,
+            "output_tokens": 8,
+            "total_tokens": 79,
+            "reasoning_tokens": 30
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "The passphrase is OMEGA-7."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
+            "usageMetadata": {
+              "candidatesTokenCount": 8,
+              "promptTokenCount": 41,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 41
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 30,
+              "totalTokenCount": 79
+            }
+          }
+        }
+      },
+      "scope": "stress-agent/run#0"
+    }
+  ]
+}

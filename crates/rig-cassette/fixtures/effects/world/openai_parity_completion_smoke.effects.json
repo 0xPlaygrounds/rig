@@ -1,0 +1,189 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 16828383870205528679
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language focused on safety, speed, and concurrency without needing a garbage collector. Memory safety matters because it prevents common bugs like null pointer dereferencing and buffer overflows, enhancing security and reliability."
+            }
+          ],
+          "usage": {
+            "input_tokens": 38,
+            "output_tokens": 44,
+            "total_tokens": 82,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "background": false,
+            "billing": {
+              "payer": "developer"
+            },
+            "completed_at": 0,
+            "created_at": 0,
+            "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_REDACTED_1",
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
+            "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "Rust is a systems programming language focused on safety, speed, and concurrency without needing a garbage collector. Memory safety matters because it prevents common bugs like null pointer dereferencing and buffer overflows, enhancing security and reliability.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "usage": {
+              "input_tokens": 38,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 44,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 82
+            },
+            "user": null
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 1,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 1,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "stream_errors": {
+      "0": [
+        {
+          "item": 3,
+          "error": {
+            "kind": "provider_response",
+            "retryable": true,
+            "message": "ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":503,\"message\":\"The model is overloaded. Please try again later.\",\"status\":\"UNAVAILABLE\"}}",
+            "code": "UNAVAILABLE",
+            "http_status": 503,
+            "refusal": false,
+            "source_chain": [],
+            "provider_response": {
+              "status": 503,
+              "body": "{\"error\":{\"code\":503,\"message\":\"The model is overloaded. Please try again later.\",\"status\":\"UNAVAILABLE\"}}",
+              "provider_request_id": null
+            }
+          }
+        }
+      ]
+    },
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 5896072978280733190
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": true,
+          "message": "ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":503,\"message\":\"The model is overloaded. Please try again later.\",\"status\":\"UNAVAILABLE\"}}",
+          "code": "UNAVAILABLE",
+          "http_status": 503,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 503,
+            "body": "{\"error\":{\"code\":503,\"message\":\"The model is overloaded. Please try again later.\",\"status\":\"UNAVAILABLE\"}}",
+            "provider_request_id": null
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "A glarb-glarb is an ancient farming tool from the planet J"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "iro."
+          }
+        }
+      ],
+      "scope": "golden/run#0"
+    }
+  ]
+}

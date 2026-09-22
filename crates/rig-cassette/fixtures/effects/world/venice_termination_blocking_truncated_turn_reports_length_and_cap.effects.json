@@ -1,0 +1,139 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "parity/run#0": {
+        "required": {
+          "parity/model": "completion"
+        },
+        "policy": 3268588626416220700
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Write two sentences about maple trees."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+            }
+          ],
+          "usage": {
+            "input_tokens": 978,
+            "output_tokens": 16,
+            "total_tokens": 994
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "length",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "Maple trees are known for their vibrant fall foliage, which ranges from bright",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": []
+                }
+              }
+            ],
+            "cost": {
+              "diem": 0,
+              "usd": 0.0000956875
+            },
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "mistral-small-3-2-24b-instruct",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "usage": {
+              "completion_tokens": 16,
+              "prompt_tokens": 978,
+              "total_tokens": 994
+            },
+            "venice_parameters": {
+              "disable_thinking": false,
+              "enable_e2ee": true,
+              "enable_web_citations": false,
+              "enable_web_scraping": false,
+              "enable_web_search": "off",
+              "enable_x_search": false,
+              "include_search_results_in_stream": false,
+              "include_venice_system_prompt": true,
+              "return_search_results_as_documents": false,
+              "strip_thinking_response": false,
+              "web_search_citations": []
+            }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    }
+  ]
+}

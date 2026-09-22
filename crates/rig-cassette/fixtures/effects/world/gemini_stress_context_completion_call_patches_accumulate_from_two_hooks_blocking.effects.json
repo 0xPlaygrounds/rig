@@ -1,0 +1,199 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "parity/model",
+        "family": {
+          "family": "completion",
+          "model": "parity",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "parity/tool#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "parity/model": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "stress-agent/run#0": {
+        "required": {
+          "parity/model": "completion",
+          "parity/tool#0": "tool"
+        },
+        "policy": 2152607362322764698
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "parity/model",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a helpful assistant. Consult the provided context for any facts you are asked about; use a tool for arithmetic."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tell me both the harbor code and the orchard code."
+                }
+              ]
+            }
+          ],
+          "documents": [
+            {
+              "id": "harbor",
+              "text": "The harbor code is ALPHA-11."
+            },
+            {
+              "id": "orchard",
+              "text": "The orchard code is BETA-22."
+            }
+          ],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The harbor code is ALPHA-11. The orchard code is BETA-22."
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 130,
+            "output_tokens": 18,
+            "total_tokens": 208,
+            "reasoning_tokens": 60
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
+                      "thoughtSignature": "signature_REDACTED_1"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
+            "usageMetadata": {
+              "candidatesTokenCount": 18,
+              "promptTokenCount": 130,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 130
+                }
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 60,
+              "totalTokenCount": 208
+            }
+          }
+        }
+      },
+      "scope": "stress-agent/run#0"
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion"
+        },
+        "policy": 17526034538281334691
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "I'm sorry, I can't help."
+            }
+          ],
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 8,
+            "total_tokens": 18
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 10,
+              "completion_tokens": 8,
+              "total_tokens": 18
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-1",
+            "model": "gpt-4o"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "I'm sorry"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ", I can't help."
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 8,
+            "total_tokens": 18
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-1",
+          "provider": "openai",
+          "model": "gpt-4o",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 10,
+              "completion_tokens": 8,
+              "total_tokens": 18
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-1",
+            "model": "gpt-4o"
+          }
+        }
+      ],
+      "scope": "golden/run#0"
+    }
+  ]
+}
