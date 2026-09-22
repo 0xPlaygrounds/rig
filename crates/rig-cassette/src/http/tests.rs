@@ -877,7 +877,7 @@ fn safety_scans_ignore_key_prefixes_after_base64_punctuation() {
   method: POST
 then:
   status: 200
-  body: '{"signature":"Eq/AIzaSyExampleSecretToken1234567890ABCDE+AKIA0123456789ABCDEF=="}'
+  body: '{"signature":"Eq/AIzaSyExampleSecretToken1234567890ABCDEFGHIJ+AKIA0123456789ABCDEF=="}'
 "#,
     );
     assert!(
@@ -897,7 +897,7 @@ fn safety_scans_ignore_key_prefixes_inside_base64_blobs() {
   method: POST
 then:
   status: 200
-  body: '{"signature":"ErUBCkYIBRgCIkAIzaSyExampleSecretToken1234567890ABCDEAKIA0123456789ABCDEFGHASIA0123456789ABCDEFsk-proj-notakeyhereatall0123456789abcdef","x":1}'
+  body: '{"signature":"ErUBCkYIBRgCIkAIzaSyExampleSecretToken1234567890ABCDEFGHIJAKIA0123456789ABCDEFGHASIA0123456789ABCDEFsk-proj-notakeyhereatall0123456789abcdef","x":1}'
 "#,
     );
 
@@ -912,7 +912,7 @@ then:
   method: POST
 then:
   status: 200
-  body: '{"leaked":"AIzaSyExampleSecretToken1234567890ABCDE","aws":"AKIA0123456789ABCDEF"}'
+  body: '{"leaked":"AIzaSyExampleSecretToken1234567890ABCDEFGHIJ","aws":"AKIA0123456789ABCDEF"}'
 "#,
     );
     let failures = cassette_safety_failures(Path::new("fixture.yaml"), &leaked);
