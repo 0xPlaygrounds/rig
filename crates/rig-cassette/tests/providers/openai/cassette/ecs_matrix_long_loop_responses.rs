@@ -34,17 +34,12 @@ fn task_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'st
     }
 }
 
-async fn with_task_cassette<F, Fut>(scenario: &'static str, body: F)
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: std::future::Future<Output = ()>,
-{
-    with_openai_cassette(scenario, body).await;
+fn assert_task_requests(scenario: &str) {
     crate::ecs_matrix::long_tasks::assert_requests("openai", scenario);
 }
 
 crate::matrix::resume_matrix! {
-    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    wrapper: with_openai_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     task_repair: ("long_task_matrix/responses_repair", crate::ecs_matrix::long_tasks::REPAIR, None, "openai_responses_long_task_repair");
     #[tokio::test]

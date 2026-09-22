@@ -174,6 +174,10 @@ impl Parse for ResumeMatrix {
         field(input, "wire")?;
         input.parse::<Token![,]>()?;
         field(input, "run")?;
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+            field(input, "after")?;
+        }
         input.parse::<Token![;]>()?;
         let mut rows = Vec::new();
         let mut names = BTreeSet::new();

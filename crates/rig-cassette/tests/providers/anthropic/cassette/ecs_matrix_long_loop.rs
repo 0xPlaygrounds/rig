@@ -66,17 +66,12 @@ fn mixed_task_wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clo
     }
 }
 
-async fn with_task_cassette<F, Fut>(scenario: &'static str, body: F)
-where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
-    Fut: std::future::Future<Output = ()>,
-{
-    with_anthropic_cassette(scenario, body).await;
+fn assert_task_requests(scenario: &str) {
     crate::ecs_matrix::long_tasks::assert_requests("anthropic", scenario);
 }
 
 crate::matrix::resume_matrix! {
-    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    wrapper: with_anthropic_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     #[ignore = "Anthropic workspace API quota exhausted; native recording returned HTTP 400, reset 2026-10-01; unrecorded"]
     task_repair: ("long_task_matrix/repair", crate::ecs_matrix::long_tasks::REPAIR, None, "anthropic_long_task_repair");
@@ -86,14 +81,14 @@ crate::matrix::resume_matrix! {
 }
 
 crate::matrix::resume_matrix! {
-    wrapper: with_task_cassette, wire: automatic_task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    wrapper: with_anthropic_cassette, wire: automatic_task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     #[ignore = "Anthropic workspace API quota exhausted; unrecorded"]
     task_repair_streamed: ("long_task_matrix/repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "anthropic_long_task_repair_streamed");
 }
 
 crate::matrix::resume_matrix! {
-    wrapper: with_task_cassette, wire: mixed_task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    wrapper: with_anthropic_cassette, wire: mixed_task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     #[ignore = "Anthropic workspace API quota exhausted; unrecorded"]
     task_inventory: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, None, "anthropic_long_task_inventory");

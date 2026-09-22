@@ -41,17 +41,12 @@ fn task_wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel 
     }
 }
 
-async fn with_task_cassette<F, Fut>(scenario: &'static str, body: F)
-where
-    F: FnOnce(super::super::support::BoundGemini) -> Fut,
-    Fut: std::future::Future<Output = ()>,
-{
-    with_gemini_cassette(scenario, body).await;
+fn assert_task_requests(scenario: &str) {
     crate::ecs_matrix::long_tasks::assert_requests("gemini", scenario);
 }
 
 crate::matrix::resume_matrix! {
-    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    wrapper: with_gemini_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     task_repair: ("long_task_matrix/repair", crate::ecs_matrix::long_tasks::REPAIR, None, "gemini_long_task_repair");
     #[tokio::test]
@@ -61,7 +56,7 @@ crate::matrix::resume_matrix! {
 }
 
 crate::matrix::resume_matrix! {
-    wrapper: with_task_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world;
+    wrapper: with_gemini_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     task_inventory: ("long_task_matrix/inventory", crate::ecs_matrix::long_tasks::INVENTORY, None, "gemini_long_task_inventory");
     #[tokio::test]

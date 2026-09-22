@@ -42,9 +42,28 @@ macro_rules! native_matrix {
 
 pub use native_matrix;
 
-/// Emit registered test rows with the shared execution body.
+/// Emit native resume rows. An optional `after` callback inspects a scenario
+/// only after its cassette wrapper has finalized.
 #[macro_export]
 macro_rules! resume_matrix {
+    (
+        wrapper: $wrapper:path, wire: $wire:path, run: $run:path, after: $after:path;
+        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $golden:literal); )*
+    ) => {
+        $(
+            $(#[$attribute])*
+            async fn $name() {
+                $crate::goldens::capture_world_programs(async {
+                    $wrapper($scenario, |client| async move {
+                        let mut cell = $cell;
+                        cell.resume_after = $resume;
+                        $run(&$wire(&client), &cell, |log| $crate::goldens::world_golden_effects($golden, log)).await;
+                    }).await;
+                    $after($scenario);
+                }).await;
+            }
+        )*
+    };
     (
         wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
         $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $golden:literal); )*
