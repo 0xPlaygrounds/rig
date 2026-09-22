@@ -2,7 +2,7 @@
 
 use super::{One, Take};
 use crate::client::VerifyError;
-use crate::wire::Operation;
+use crate::wire::{Decoder, Operation, Output, Sink, WireEvent, WireFrame};
 
 /// Checking that a provider accepts the configured credentials.
 ///
@@ -30,4 +30,33 @@ impl Operation for Verify {
     }
 
     fn telemetry(_streaming: bool) -> Self::Telemetry {}
+}
+
+/// The decoder of every status-only credential check: a success status is
+/// the whole answer, and the body is not read for meaning.
+///
+/// Shared by the wires whose verification endpoint answers with an
+/// arbitrary document (Anthropic and every OpenAI-shaped dialect); a wire
+/// that validates the body's shape names a decoder of its own.
+#[derive(Debug, Default)]
+pub struct VerifyDecoder;
+
+impl Decoder<Verify> for VerifyDecoder {
+    type Event = ();
+
+    fn classify(&self, _frame: WireFrame) -> WireEvent<Self::Event> {
+        WireEvent::Known(())
+    }
+
+    fn interpret(&mut self, _event: Self::Event, out: &mut Output<Verify>) {
+        out.push(Ok(()));
+    }
+
+    /// A 2xx with an empty body still verifies: the driver only reaches
+    /// `finish` when nothing framed, and the status already said yes.
+    fn finish(&mut self, out: &mut Output<Verify>) {
+        if out.items().is_empty() {
+            out.push(Ok(()));
+        }
+    }
 }

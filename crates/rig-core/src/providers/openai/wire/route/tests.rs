@@ -209,6 +209,7 @@ fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
                 .header(http::header::AUTHORIZATION, "custom credential")
                 .header("x-custom-envelope", "applied")
         }),
+        modality_envelope: None,
     };
     let dialect = Dialect {
         quirks: Quirks {
@@ -319,6 +320,7 @@ fn completion_envelope_builder_errors_are_returned_on_both_routes() {
         default_endpoint: None,
         model_route: None,
         completion_envelope: Some(|_, _, builder| builder.header("invalid\nname", "value")),
+        modality_envelope: None,
     };
     let provider = OpenAI::with_key(
         &Dialect {

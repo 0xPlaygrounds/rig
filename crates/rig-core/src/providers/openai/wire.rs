@@ -615,7 +615,16 @@ pub struct DialectHooks {
     /// Called once by either completion encoder; builder errors remain attached
     /// and are returned when the encoder finishes the request.
     pub completion_envelope: Option<CompletionEnvelope>,
+    /// Stamp the envelope every modality request (embeddings, listing,
+    /// verification, transcription, images, speech) carries, on the finished
+    /// request. Runs after shared authentication, so a hook may replace the
+    /// credential header rather than add a second one.
+    pub modality_envelope: Option<ModalityEnvelope>,
 }
+
+/// A dialect's modality-request headers, applied to the built request.
+pub type ModalityEnvelope =
+    fn(&OpenAI, &mut http::Request<crate::wire::Body>) -> Result<(), http::Error>;
 
 /// A dialect's completion headers, applied to the authenticated request builder.
 pub type CompletionEnvelope = fn(
@@ -883,20 +892,17 @@ impl Dialect {
 /// modified definitions: writing only their name would silently lose their payload.
 impl Serialize for Dialect {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if dialects::by_name(self.name) != Some(self) {
-            return Err(serde::ser::Error::custom(
-                "an unregistered or modified OpenAI dialect cannot be persisted by name; use configuration overrides",
-            ));
-        }
-        serializer.serialize_str(self.name)
+        let registered = dialects::by_name(self.name) == Some(self);
+        crate::providers::internal::named_dialect::serialize(
+            serializer, "OpenAI", self.name, registered,
+        )
     }
 }
 
 impl<'de> Deserialize<'de> for Dialect {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        dialects::by_name(&name).copied().ok_or_else(|| {
-            serde::de::Error::custom(format!("unknown OpenAI-compatible dialect `{name}`"))
+        crate::providers::internal::named_dialect::deserialize(deserializer, "OpenAI", |name| {
+            dialects::by_name(name).copied()
         })
     }
 }

@@ -658,6 +658,7 @@ fn wrapper_owns_the_envelope_even_when_the_shared_dialect_has_a_hook() {
         default_endpoint: None,
         model_route: None,
         completion_envelope: Some(|_, _, _| panic!("the wrapper must replace this envelope")),
+        modality_envelope: None,
     };
     let dialect = Dialect {
         quirks: Quirks {
@@ -701,6 +702,7 @@ fn named_dialect_persistence_rejects_replaced_hook_definitions() {
         default_endpoint: HOOKS.default_endpoint,
         model_route: HOOKS.model_route,
         completion_envelope: HOOKS.completion_envelope,
+        modality_envelope: None,
     };
     let changed = Dialect {
         quirks: Quirks {

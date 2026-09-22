@@ -48,7 +48,7 @@ pub use adapter::{
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
     scrub_diagnostic,
 };
-pub(crate) use adapter::{AdapterSlot, lenient_count};
+pub(crate) use adapter::{AdapterSlot, ObservedError, lenient_count};
 
 #[cfg(test)]
 mod tests;

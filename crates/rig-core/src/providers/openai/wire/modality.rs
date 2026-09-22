@@ -72,21 +72,30 @@ fn get<E: crate::wire::WireError>(provider: &OpenAI, path: &str) -> Result<Encod
     )
 }
 
-/// Authenticate `builder`, and say what every endpoint on this wire says
-/// about its reply: one whole document, with the dialect's transport request
-/// id in the header it names.
+/// Authenticate `builder`, stamp the dialect's modality envelope when it
+/// has one, and say what every endpoint on this wire says about its reply:
+/// one whole document, with the dialect's transport request id in the
+/// header it names.
 ///
-/// Stated here rather than at each `encode` so the framing and the header
-/// cannot drift apart between endpoints.
+/// Stated here rather than at each `encode` so the framing, the header and
+/// the envelope cannot drift apart between endpoints.
 fn encoded<E: crate::wire::WireError>(
     provider: &OpenAI,
     builder: http::request::Builder,
     body: Body,
 ) -> Result<Encoded, E> {
-    let request = provider
+    let mut request = provider
         .authenticate(builder)
         .body(body)
         .map_err(|error| E::decode(error.to_string()))?;
+    if let Some(envelope) = provider
+        .dialect
+        .quirks
+        .hooks
+        .and_then(|hooks| hooks.modality_envelope)
+    {
+        envelope(provider, &mut request).map_err(|error| E::decode(error.to_string()))?;
+    }
     Ok(Encoded::new(request, Framing::Whole)
         .with_request_id_header(provider.dialect.request_id_header))
 }
@@ -1359,34 +1368,7 @@ impl Verify {
     }
 }
 
-/// The verification decoder.
-///
-/// The reply body is not read for meaning: a success status is the answer,
-/// and the 401/403 classification lives in [`VerifyError`]'s `WireError`
-/// impl, so this wire does not restate it.
-#[derive(Default)]
-pub struct VerifyDecoder;
-
-impl Decoder<VerifyOp> for VerifyDecoder {
-    type Event = ();
-
-    fn classify(&self, _frame: WireFrame) -> WireEvent<Self::Event> {
-        WireEvent::Known(())
-    }
-
-    fn interpret(&mut self, _event: Self::Event, out: &mut Output<VerifyOp>) {
-        out.push(Ok(()));
-    }
-
-    fn finish(&mut self, out: &mut Output<VerifyOp>) {
-        // A 200 with an empty body still verifies the credential: the status
-        // is the whole answer, so the fold must not see an empty reply as a
-        // missing payload.
-        if out.items().is_empty() {
-            out.push(Ok(()));
-        }
-    }
-}
+pub use crate::operation::VerifyDecoder;
 
 impl Wire for Verify {
     type Op = VerifyOp;

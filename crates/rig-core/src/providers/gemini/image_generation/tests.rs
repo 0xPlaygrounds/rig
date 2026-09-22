@@ -120,6 +120,7 @@ fn response_parsing_returns_first_non_thought_inline_image() {
         }),
         model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
         response_id: "response-id".to_string(),
+        error: None,
     };
 
     let parsed = response
@@ -155,6 +156,7 @@ fn response_parsing_rejects_text_only_response() {
         usage_metadata: None,
         model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
         response_id: "response-id".to_string(),
+        error: None,
     };
 
     let err = response

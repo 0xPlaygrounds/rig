@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::PROVIDER_NAME;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
-    Step, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
+    Step, TextContent, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta, map_interaction_status,
 };
 use crate::providers::gemini::streaming::shared_parts;
@@ -239,9 +239,9 @@ impl Decoder<Completion> for InteractionsDecoder {
                     );
                 }
                 delta => {
-                    if let Some(parts) =
-                        content_delta_to_parts(delta, self.open_function_steps.minted_ids())
-                    {
+                    if let Some(parts) = delta_content(delta).and_then(|content| {
+                        content_to_parts(content, self.open_function_steps.minted_ids())
+                    }) {
                         // Interleaving content ends an open thought block —
                         // the shared lifecycle synthesizes the boundary end.
                         self.reasoning.emit_chunk(parts, out);
@@ -429,6 +429,19 @@ fn function_step_end(
     slot.end_event(streaming::UnparseableToolInput::Error)
 }
 
+/// The content item a `step.delta` restates: a text or whole-call delta is
+/// the item itself, so it takes the one content → block mapping. Every
+/// other delta kind carries nothing the stream vocabulary models.
+fn delta_content(delta: ContentDelta) -> Option<Content> {
+    match delta {
+        ContentDelta::Text(TextDelta { text, annotations }) => {
+            text.map(|text| Content::Text(TextContent { text, annotations }))
+        }
+        ContentDelta::FunctionCall(call) => Some(Content::FunctionCall(call)),
+        _ => None,
+    }
+}
+
 /// A whole function call as one declared chunk (its start and end in the
 /// tool-event slot).
 fn function_call_parts(
@@ -472,16 +485,9 @@ fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Ve
             .into_iter()
             .filter_map(|content| content_to_parts(content, tool_ids))
             .collect(),
-        Step::FunctionCall(FunctionCallContent {
-            name,
-            arguments,
-            id,
-        }) => {
-            let Some(name) = name else {
-                return Vec::new();
-            };
-            vec![function_call_parts(name, arguments, id, tool_ids)]
-        }
+        Step::FunctionCall(call) => content_to_parts(Content::FunctionCall(call), tool_ids)
+            .into_iter()
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -497,11 +503,11 @@ fn content_to_parts(
 ) -> Option<ChunkParts> {
     match content {
         Content::Text(text) if !text.text.is_empty() => Some(text_parts(text.text)),
-        Content::FunctionCall(content) => {
-            step_start_to_parts(Step::FunctionCall(content), tool_ids)
-                .into_iter()
-                .next()
-        }
+        Content::FunctionCall(FunctionCallContent {
+            name,
+            arguments,
+            id,
+        }) => Some(function_call_parts(name?, arguments, id, tool_ids)),
         // A thought the reply states whole: the summary's text is the
         // block's content and the signature closes it, which is the same
         // pair the streamed `thought_summary`/`thought_signature` deltas
@@ -568,29 +574,6 @@ fn raw_content_parts(
             },
         ],
     })
-}
-
-fn content_delta_to_parts(
-    delta: ContentDelta,
-    tool_ids: &mut streaming::SyntheticIds,
-) -> Option<ChunkParts> {
-    match delta {
-        ContentDelta::Text(TextDelta {
-            text: Some(text), ..
-        }) => Some(text_parts(text)),
-        ContentDelta::FunctionCall(FunctionCallContent {
-            name,
-            arguments,
-            id,
-        }) => {
-            let name = name?;
-            Some(function_call_parts(name, arguments, id, tool_ids))
-        }
-        // Thought deltas (`thought_summary`, `thought_signature`) are
-        // stateful — the adapter accumulates and restates them in
-        // `interpret`, so they never reach this stateless mapping.
-        _ => None,
-    }
 }
 
 #[cfg(test)]

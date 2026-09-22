@@ -676,13 +676,15 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Response from the model supporting multiple candidate responses.
-    /// Safety ratings and content filtering are reported for both prompt in GenerateContentResponse.prompt_feedback
-    /// and for each candidate in finishReason and in safetyRatings.
-    /// The API:
-    ///     - Returns either all requested candidates or none of them
-    ///     - Returns no candidates at all only if there was something wrong with the prompt (check promptFeedback)
-    ///     - Reports feedback on each candidate in finishReason and safetyRatings.
+    /// The GenerateContent reply document: the whole `generateContent`
+    /// body, and equally one `streamGenerateContent` chunk, which is the
+    /// same document delivered in pieces.
+    ///
+    /// Safety ratings and content filtering are reported for the prompt in
+    /// `prompt_feedback` and for each candidate in `finish_reason` and
+    /// `safety_ratings`. The API returns either all requested candidates or
+    /// none of them, and none at all only when something was wrong with the
+    /// prompt.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerateContentResponse {
@@ -691,11 +693,18 @@ pub mod gemini_api_types {
         /// Candidate responses from the model.
         #[serde(default)]
         pub candidates: Vec<ContentCandidate>,
-        /// Returns the prompt's feedback related to the content filters.
+        /// The prompt's content-filter verdict. A set `blockReason` means the
+        /// prompt was refused and no candidate follows.
         pub prompt_feedback: Option<PromptFeedback>,
         /// Output only. Metadata on the generation requests' token usage.
         pub usage_metadata: Option<UsageMetadata>,
         pub model_version: Option<String>,
+        /// Gemini's error envelope, sent as a frame of its own when the
+        /// service aborts a stream in-band (`{"error":{"code":500,"message":
+        /// …,"status":"INTERNAL"}}`). Kept raw so every field (code, status,
+        /// message, details) survives into the report.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<Value>,
     }
 
     /// The model-visible text of a content's parts, in order.
