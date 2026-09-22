@@ -78,7 +78,8 @@ fn test_content_delta_text_event() {
         panic!("expected step delta");
     };
 
-    let parts = content_delta_to_parts(delta, &mut streaming::SyntheticIds::tool())
+    let parts = delta_content(delta)
+        .and_then(|content| content_to_parts(content, &mut streaming::SyntheticIds::tool()))
         .expect("parts should exist");
     assert_eq!(parts.text.as_deref(), Some("Hello"));
     assert!(parts.tool_events.is_empty());
@@ -502,7 +503,8 @@ fn test_content_delta_function_call_event() {
         panic!("expected step delta");
     };
 
-    let parts = content_delta_to_parts(delta, &mut streaming::SyntheticIds::tool())
+    let parts = delta_content(delta)
+        .and_then(|content| content_to_parts(content, &mut streaming::SyntheticIds::tool()))
         .expect("parts should exist");
     assert_eq!(parts.text, None);
     // A whole call is its start and its authoritative end.

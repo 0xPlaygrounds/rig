@@ -131,6 +131,39 @@ pub struct AdapterErrorEnvelope {
     pub message: Option<String>,
 }
 
+/// A provider's error envelope as the observation projection reads it off
+/// a raw payload: `{"code", "message", "type" | "status"}`.
+///
+/// One shape for every JSON wire in this crate, because they all spell the
+/// envelope this way apart from the key naming the error class (`type` on
+/// the OpenAI and Anthropic wires, `status` on Gemini's). The code is kept
+/// as a raw value: providers send it as a string or a number.
+#[derive(Default, Deserialize)]
+pub struct ObservedError {
+    pub code: Option<serde_json::Value>,
+    #[serde(rename = "type", alias = "status")]
+    pub kind: Option<String>,
+    pub message: Option<String>,
+}
+
+impl ObservedError {
+    /// Emit this envelope as the attempt's error-envelope fact, scrubbed.
+    pub fn emit(self, sink: &mut dyn crate::wire::ObservationSink) {
+        let code = self.code.map(|code| match code {
+            serde_json::Value::String(code) => sink.scrub(&code),
+            serde_json::Value::Number(code) => code.to_string(),
+            _ => "[invalid]".to_owned(),
+        });
+        sink.emit(AdapterEvent::ErrorEnvelope {
+            error: AdapterErrorEnvelope {
+                code,
+                status: self.kind.map(|value| sink.scrub(&value)),
+                message: self.message.map(|value| sink.scrub(&value)),
+            },
+        });
+    }
+}
+
 /// Deserialize one [`AdapterUsage`] counter a provider may send as a number,
 /// a string or `null`: anything that is not a `u64` stays unknown rather
 /// than failing the payload that carried it.

@@ -15,7 +15,6 @@
 //! # Ok(())
 //! # }
 //! ```
-use super::InputAudio;
 use crate::completion::CompletionError;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
@@ -2190,11 +2189,6 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
-    #[serde(rename = "tool")]
-    ToolResult {
-        tool_call_id: String,
-        output: ToolResultOutput,
-    },
 }
 
 impl Message {
@@ -2481,14 +2475,6 @@ pub enum UserContent {
         file_data: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         filename: Option<String>,
-    },
-    Audio {
-        input_audio: InputAudio,
-    },
-    #[serde(rename = "tool")]
-    ToolResult {
-        tool_call_id: String,
-        output: String,
     },
 }
 

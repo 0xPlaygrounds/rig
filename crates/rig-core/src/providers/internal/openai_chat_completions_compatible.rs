@@ -1,16 +1,14 @@
 //! Shared pieces of the OpenAI Chat Completions wire, for the providers that
 //! speak it.
 //!
-//! What is left here is what more than one wire's `Decoder` needs and no
-//! single provider owns: the in-band provider-error frame test, the
-//! `finish_reason` vocabulary, the decode-time policy for a tool call the
-//! provider truncated, and the streamed tool-call fragment shape with the
-//! eviction rule that tells two distinct calls apart. Frame splitting,
-//! triage, assembly and telemetry all belong to the driver.
+//! What is left here is what the chat decoder and the dialects' typed reply
+//! views both need: the in-band provider-error frame test, the
+//! `finish_reason` vocabulary, and the policy for a tool call the provider
+//! truncated under an output-length finish reason. Frame splitting, triage,
+//! assembly and telemetry all belong to the driver.
 
 use serde::{Deserialize, Deserializer};
 
-use super::tool_call_bridge::ToolCallSlot;
 use crate::completion::{CompletionError, FinishReason};
 
 /// The wire's in-band provider error envelope, when this frame is one.
@@ -132,64 +130,12 @@ where
     T: serde::de::DeserializeOwned,
     F: Fn(&serde_json::Value) -> bool,
 {
-    fn incomplete_arguments(call: &serde_json::Value) -> bool {
-        call.get("function")
-            .and_then(|function| function.get("arguments"))
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|raw| {
-                raw.trim().is_empty() || crate::json_utils::parse_tool_arguments(raw).is_err()
-            })
-    }
-
-    fn repair_incomplete_arguments(choice: &mut serde_json::Value) -> bool {
-        let Some(tool_calls) = choice
-            .get_mut("message")
-            .and_then(|message| message.get_mut("tool_calls"))
-            .and_then(serde_json::Value::as_array_mut)
-        else {
-            return false;
-        };
-
-        let mut repaired = false;
-        for call in tool_calls {
-            if !incomplete_arguments(call) {
-                continue;
-            }
-            let Some(arguments) = call
-                .get_mut("function")
-                .and_then(|function| function.get_mut("arguments"))
-            else {
-                continue;
-            };
-            *arguments = serde_json::Value::String("{}".to_owned());
-            repaired = true;
-        }
-        repaired
-    }
-
-    fn drop_incomplete_arguments(choice: &mut serde_json::Value) -> usize {
-        let Some(tool_calls) = choice
-            .get_mut("message")
-            .and_then(|message| message.get_mut("tool_calls"))
-            .and_then(serde_json::Value::as_array_mut)
-        else {
-            return 0;
-        };
-
-        let before = tool_calls.len();
-        tool_calls.retain(|call| !incomplete_arguments(call));
-        before - tool_calls.len()
-    }
-
     Vec::<serde_json::Value>::deserialize(deserializer)?
         .into_iter()
         .map(|mut choice| {
             if is_output_length(&choice) {
-                let mut repaired = choice.clone();
-                if repair_incomplete_arguments(&mut repaired)
-                    && serde_json::from_value::<T>(repaired).is_ok()
-                {
-                    let dropped = drop_incomplete_arguments(&mut choice);
+                let dropped = drop_tool_calls_cut_by_budget::<T>(&mut choice);
+                if dropped > 0 {
                     tracing::debug!(
                         dropped,
                         "dropping tool calls incomplete under an output-length finish reason"
@@ -202,101 +148,80 @@ where
         .collect()
 }
 
-/// A chunk's terminal reason, as reported by an OpenAI-compatible provider.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CompatibleFinishReason {
-    /// The chunk reported a terminal reason, normalized.
-    Reported(FinishReason),
-    /// The chunk carried no `finish_reason` field.
-    Absent,
+/// Drop from one raw output-length choice every tool call whose `arguments`
+/// string the budget cut short, returning how many were dropped.
+///
+/// Before anything is dropped, a copy with those arguments stubbed to `{}`
+/// must decode as `T`: a choice that is also broken elsewhere (a call
+/// missing its id, an unknown tool type) keeps its original error rather
+/// than having the evidence deleted underneath it. Shared by the typed reply
+/// views (which apply it on decode) and the chat decoder (which applies it
+/// to the raw body before classification), so the two cannot disagree about
+/// which calls a truncated turn still carries.
+pub(crate) fn drop_tool_calls_cut_by_budget<T>(choice: &mut serde_json::Value) -> usize
+where
+    T: serde::de::DeserializeOwned,
+{
+    let mut probe = choice.clone();
+    if !repair_incomplete_arguments(&mut probe) || serde_json::from_value::<T>(probe).is_err() {
+        return 0;
+    }
+    drop_incomplete_arguments(choice)
 }
 
-impl CompatibleFinishReason {
-    /// Whether the provider explicitly ended the turn to call tools.
-    pub(crate) fn is_tool_calls(&self) -> bool {
-        matches!(self, Self::Reported(FinishReason::ToolCalls))
-    }
+/// Whether a raw tool call's `arguments` string is unusable as tool input.
+///
+/// Empty counts as unusable alongside unparseable: `parse_tool_arguments`
+/// maps an empty string onto `{}` so a genuine zero-argument tool works, and
+/// a call cut before its first argument token is exactly what that
+/// normalization would disguise. Arguments a dialect sent as a raw JSON value
+/// rather than a string are never unusable: there is no half-written string.
+fn incomplete_arguments(call: &serde_json::Value) -> bool {
+    call.get("function")
+        .and_then(|function| function.get("arguments"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|raw| {
+            raw.trim().is_empty() || crate::json_utils::parse_tool_arguments(raw).is_err()
+        })
+}
 
-    /// The normalized reason, when the provider reported one.
-    pub(crate) fn reported(&self) -> Option<FinishReason> {
-        match self {
-            Self::Reported(reason) => Some(reason.clone()),
-            Self::Absent => None,
+fn message_tool_calls_mut(choice: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
+    choice
+        .get_mut("message")
+        .and_then(|message| message.get_mut("tool_calls"))
+        .and_then(serde_json::Value::as_array_mut)
+}
+
+fn repair_incomplete_arguments(choice: &mut serde_json::Value) -> bool {
+    let Some(tool_calls) = message_tool_calls_mut(choice) else {
+        return false;
+    };
+
+    let mut repaired = false;
+    for call in tool_calls {
+        if !incomplete_arguments(call) {
+            continue;
         }
+        let Some(arguments) = call
+            .get_mut("function")
+            .and_then(|function| function.get_mut("arguments"))
+        else {
+            continue;
+        };
+        *arguments = serde_json::Value::String("{}".to_owned());
+        repaired = true;
     }
+    repaired
 }
 
-/// The terminal state a chat-completions stream reached, from which a wire
-/// builds its own provider-native terminal record.
-#[derive(Debug, Clone)]
-pub(crate) struct CompatibleTerminal<U> {
-    /// Provider-native usage payload from the terminal event; `None` when the
-    /// stream never carried one.
-    pub(crate) usage: Option<U>,
-    /// Normalized finish reason, when the stream reported one.
-    pub(crate) finish_reason: Option<FinishReason>,
-    /// Provider-assigned response identifier, when emitted.
-    pub(crate) response_id: Option<String>,
-    /// Provider-reported model identifier, when emitted.
-    pub(crate) model: Option<String>,
-    /// Per-chunk primary-choice log probabilities, deep-merged in arrival
-    /// order so token arrays retain the exact streamed sequence.
-    pub(crate) logprobs: Option<crate::message::AdditionalParams>,
-    /// Provider-specific top-level chunk metadata, deep-merged in arrival
-    /// order so the raw terminal record does not lose additive wire fields.
-    pub(crate) additional_params: Option<crate::message::AdditionalParams>,
-}
+fn drop_incomplete_arguments(choice: &mut serde_json::Value) -> usize {
+    let Some(tool_calls) = message_tool_calls_mut(choice) else {
+        return 0;
+    };
 
-#[derive(Debug, Clone)]
-pub(crate) struct CompatibleToolCallChunk {
-    pub(crate) index: usize,
-    pub(crate) id: Option<String>,
-    pub(crate) name: Option<String>,
-    pub(crate) arguments: Option<String>,
-}
-
-impl CompatibleToolCallChunk {
-    fn has_nonempty_name(&self) -> bool {
-        self.name.as_ref().is_some_and(|name| !name.is_empty())
-    }
-
-    fn has_nonempty_arguments(&self) -> bool {
-        self.arguments
-            .as_ref()
-            .is_some_and(|arguments| !arguments.is_empty())
-    }
-
-    fn starts_new_tool_call(&self) -> bool {
-        self.has_nonempty_name()
-            && self
-                .arguments
-                .as_ref()
-                .is_none_or(std::string::String::is_empty)
-    }
-
-    /// Whether this one fragment carries a whole call — the shape
-    /// llama.cpp-based servers emit.
-    pub(crate) fn is_complete_single_chunk(&self) -> bool {
-        self.has_nonempty_name() && self.has_nonempty_arguments()
-    }
-}
-
-pub(crate) fn should_evict_distinct_named_tool_call(
-    existing: &ToolCallSlot,
-    incoming: &CompatibleToolCallChunk,
-) -> bool {
-    if let Some(new_id) = &incoming.id
-        && !new_id.is_empty()
-        && let Some(new_name) = &incoming.name
-        && incoming.has_nonempty_name()
-        && !existing.id.is_empty()
-        && existing.id != *new_id
-        && !existing.name.is_empty()
-    {
-        return existing.name != *new_name || incoming.starts_new_tool_call();
-    }
-
-    false
+    let before = tool_calls.len();
+    tool_calls.retain(|call| !incomplete_arguments(call));
+    before - tool_calls.len()
 }
 
 #[cfg(test)]

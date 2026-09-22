@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{
-    ContentCandidate, FinishReason, Part, PartKind, PromptFeedback, UsageMetadata,
+    ContentCandidate, FinishReason, GenerateContentResponse, Part, PartKind, UsageMetadata,
     map_finish_reason,
 };
 use super::completion::{
     PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
 };
 use crate::completion::CompletionError;
+use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::wire::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Mode,
-    ObservationSink, Output, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Mode, ObservationSink, Output, WireFrame,
 };
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
@@ -63,28 +63,6 @@ pub(crate) mod shared_parts {
             },
         ]
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamGenerateContentResponse {
-    pub response_id: Option<String>,
-    /// Candidate responses from the model.
-    #[serde(default)]
-    pub candidates: Vec<ContentCandidate>,
-    /// The prompt's content-filter verdict. A set `blockReason` means the
-    /// prompt was refused and no candidate follows: the chunk that carries
-    /// it is the whole answer.
-    pub prompt_feedback: Option<PromptFeedback>,
-    pub model_version: Option<String>,
-    pub usage_metadata: Option<UsageMetadata>,
-    /// Gemini's error envelope, sent as a frame of its own when the
-    /// service aborts a stream in-band (`{"error":{"code":500,"message":
-    /// …,"status":"INTERNAL"}}`). The provider's verdict, not an unknown
-    /// frame to skip: the stream closes after it, and without this the
-    /// turn ended as a truncation with the error lost. Kept raw so every
-    /// field (code, status, message, details) survives into the report.
-    pub error: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -219,9 +197,9 @@ impl GenerateContentDecoder {
 }
 
 impl Decoder<Completion> for GenerateContentDecoder {
-    type Event = StreamGenerateContentResponse;
+    type Event = GenerateContentResponse;
 
-    fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
+    fn classify(&self, frame: WireFrame) -> WireEvent<GenerateContentResponse> {
         // ID-only frames update terminal metadata without manufacturing an
         // Unknown content item (and therefore a semantic truncation tail).
         // This applies equally with observation enabled or disabled.
@@ -244,15 +222,17 @@ impl Decoder<Completion> for GenerateContentDecoder {
         )
     }
 
-    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut Output<Completion>) {
+    fn interpret(&mut self, data: GenerateContentResponse, out: &mut Output<Completion>) {
         if self.failed {
             return;
         }
 
         let span = tracing::Span::current();
-        if let Some(response_id) = data.response_id.as_deref() {
-            span.record("gen_ai.response.id", response_id);
-            self.final_response_id = Some(response_id.to_owned());
+        // The document defaults an absent id to the empty string, which is
+        // the same "not reported" the normalized record's setter filters.
+        if !data.response_id.is_empty() {
+            span.record("gen_ai.response.id", data.response_id.as_str());
+            self.final_response_id = Some(data.response_id.clone());
         }
         if let Some(model_version) = &data.model_version {
             span.record("gen_ai.response.model", model_version.as_str());
@@ -464,18 +444,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
         let response_id = metadata.response_id.map(scrub);
         sink.provider(verdict, response_id);
         if let Some(error) = metadata.error {
-            let code = error.code.map(|code| match code {
-                serde_json::Value::String(code) => sink.scrub(&code),
-                serde_json::Value::Number(code) => code.to_string(),
-                _ => "[invalid]".to_owned(),
-            });
-            sink.emit(AdapterEvent::ErrorEnvelope {
-                error: AdapterErrorEnvelope {
-                    code,
-                    status: error.status.map(|value| sink.scrub(&value)),
-                    message: error.message.map(|value| sink.scrub(&value)),
-                },
-            });
+            error.emit(sink);
         }
     }
 }
@@ -529,13 +498,6 @@ struct ObservedCandidate {
 #[serde(rename_all = "camelCase")]
 struct ObservedFeedback {
     block_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ObservedError {
-    code: Option<serde_json::Value>,
-    status: Option<String>,
-    message: Option<String>,
 }
 
 impl GenerateContentDecoder {

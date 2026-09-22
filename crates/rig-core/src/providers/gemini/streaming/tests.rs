@@ -62,7 +62,7 @@ fn test_deserialize_stream_response_with_single_text_part() {
         }
     });
 
-    let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
     assert_eq!(response.candidates.len(), 1);
     assert!(matches!(
         response.candidates[0].finish_reason,
@@ -122,7 +122,7 @@ fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
             }]
         });
 
-        let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+        let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
         let candidate = response
             .candidates
             .first()
@@ -204,8 +204,8 @@ fn test_deserialize_stream_response_with_usage_only_chunk() {
         }
     });
 
-    let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    assert_eq!(response.response_id.as_deref(), Some("response-123"));
+    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
+    assert_eq!(response.response_id, "response-123");
     assert_eq!(
         response.model_version.as_deref(),
         Some("gemini-2.0-flash-001")
@@ -244,7 +244,7 @@ fn test_deserialize_stream_response_with_multiple_text_parts() {
         }
     });
 
-    let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
     assert_eq!(response.candidates.len(), 1);
     let content = response.candidates[0]
         .content
@@ -299,7 +299,7 @@ fn test_deserialize_stream_response_with_multiple_tool_calls() {
         }
     });
 
-    let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
     let content = response.candidates[0]
         .content
         .as_ref()
@@ -367,7 +367,7 @@ fn test_deserialize_stream_response_with_mixed_parts() {
         }
     });
 
-    let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
     let content = response.candidates[0]
         .content
         .as_ref()
@@ -441,7 +441,7 @@ fn test_deserialize_stream_response_with_empty_parts() {
         }
     });
 
-    let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
     let content = response.candidates[0]
         .content
         .as_ref()

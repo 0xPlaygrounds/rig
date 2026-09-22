@@ -16,11 +16,11 @@
 //! [`copilot::wire::DIALECT`](crate::providers::copilot::wire::DIALECT).
 
 use crate::completion::{self, CompletionError, ProviderCapabilities};
+use crate::observe::ObservedError;
 use crate::operation::Completion;
 use crate::providers::openai::wire::{OpenAI, ResponsesContract};
 use crate::wire::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode,
-    ObservationSink, Wire,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode, ObservationSink, Wire,
 };
 use serde::{Deserialize, Serialize};
 
@@ -312,16 +312,6 @@ struct TokenDetails {
     reasoning_tokens: Option<u64>,
 }
 
-/// The error envelope this wire reports: `{"error": {code, message, type}}`;
-/// the stream's `error` event carries the same fields at the top.
-#[derive(Deserialize)]
-struct Envelope {
-    code: Option<serde_json::Value>,
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    message: Option<String>,
-}
-
 #[derive(Deserialize)]
 struct Usage {
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
@@ -352,7 +342,7 @@ struct ResponseObject {
     status: Option<String>,
     incomplete_details: Option<IncompleteDetails>,
     usage: Option<Usage>,
-    error: Option<Envelope>,
+    error: Option<ObservedError>,
 }
 
 #[derive(Deserialize)]
@@ -383,12 +373,15 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut dyn ObservationSink) {
     if payload.kind.as_deref() == Some("error") {
         // The event carries its envelope either nested under `error` or as
         // its own top-level fields; the nested form names the error type.
-        let error = payload.unwrapped.error.unwrap_or(Envelope {
-            code: payload.code,
-            kind: None,
-            message: payload.message,
-        });
-        envelope(sink, error);
+        payload
+            .unwrapped
+            .error
+            .unwrap_or(ObservedError {
+                code: payload.code,
+                kind: None,
+                message: payload.message,
+            })
+            .emit(sink);
         return;
     }
     let object = payload.response.unwrap_or(payload.unwrapped);
@@ -421,23 +414,8 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut dyn ObservationSink) {
     let response_id = object.id.map(|value| sink.scrub(&value));
     sink.provider(verdict, response_id);
     if let Some(error) = object.error {
-        envelope(sink, error);
+        error.emit(sink);
     }
-}
-
-fn envelope(sink: &mut dyn ObservationSink, error: Envelope) {
-    let code = error.code.map(|code| match code {
-        serde_json::Value::String(code) => sink.scrub(&code),
-        serde_json::Value::Number(code) => code.to_string(),
-        _ => "[invalid]".to_owned(),
-    });
-    sink.emit(AdapterEvent::ErrorEnvelope {
-        error: AdapterErrorEnvelope {
-            code,
-            status: error.kind.map(|value| sink.scrub(&value)),
-            message: error.message.map(|value| sink.scrub(&value)),
-        },
-    });
 }
 
 #[cfg(test)]

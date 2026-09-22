@@ -9,10 +9,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::completion::{CompletionError, CompletionRequest, FinishReason, ProviderCapabilities};
+use crate::observe::ObservedError;
 use crate::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    CompatibleFinishReason, CompatibleTerminal, CompatibleToolCallChunk, map_native_finish_reason,
-    map_openai_finish_reason, provider_error_envelope, should_evict_distinct_named_tool_call,
+    drop_tool_calls_cut_by_budget, map_native_finish_reason, map_openai_finish_reason,
+    provider_error_envelope,
 };
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 use crate::providers::internal::wire::classify_chat_completions_frame;
@@ -22,11 +23,13 @@ use crate::providers::openai::completion::{
 };
 use crate::streaming::{BlockId, Delta, MintKind, StreamEvent, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Decoder, Encoded,
-    Framing, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Decoder, Encoded, Framing, Mode,
+    ObservationSink, Output, Wire, WireEvent, WireFrame,
 };
 
-use super::dto::{ChatFrame, ChatUsage, StreamingCompletionResponse, delta_text};
+use super::dto::{
+    ChatChoice, ChatFrame, ChatUsage, StreamingCompletionResponse, StreamingDelta, delta_text,
+};
 use super::{BodyRewrite, OpenAI, OutputCap};
 
 /// The chat-completions wire: a provider configuration, a model, and the
@@ -253,71 +256,6 @@ impl Chat {
 
 fn as_array_mut(value: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
     value.as_array_mut()
-}
-
-/// The raw tool-call array of a unary choice's assistant message.
-///
-/// Reached on the body rather than on a decoded frame because the policy
-/// below turns on the *verbatim* `arguments` string, which the typed decode
-/// has already normalized away.
-fn message_tool_calls_mut(choice: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
-    choice
-        .get_mut("message")
-        .and_then(|message| message.get_mut("tool_calls"))
-        .and_then(as_array_mut)
-}
-
-/// Whether a raw tool call's `arguments` string is unusable as tool input.
-///
-/// Empty counts as unusable alongside unparseable: `parse_tool_arguments`
-/// maps an empty string onto `{}` so a genuine zero-argument tool works, and
-/// a call cut *before* its first argument token is exactly what that
-/// normalization would disguise as a zero-argument call. `"{}"` itself is
-/// neither empty nor unparseable and stays.
-///
-/// Arguments the dialect sent as a raw JSON value rather than a string
-/// (llama.cpp and Hugging Face both do) are never unusable: there is no
-/// half-written string to fail on.
-fn arguments_are_unusable(call: &serde_json::Value) -> bool {
-    call.get("function")
-        .and_then(|function| function.get("arguments"))
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|raw| {
-            raw.trim().is_empty() || crate::json_utils::parse_tool_arguments(raw).is_err()
-        })
-}
-
-/// Stub every unusable `arguments` string to `{}`, reporting whether any
-/// call needed it. The input to the compound-defect probe below.
-fn stub_unusable_arguments(choice: &mut serde_json::Value) -> bool {
-    let Some(calls) = message_tool_calls_mut(choice) else {
-        return false;
-    };
-    let mut stubbed = false;
-    for call in calls {
-        if !arguments_are_unusable(call) {
-            continue;
-        }
-        let Some(arguments) = call
-            .get_mut("function")
-            .and_then(|function| function.get_mut("arguments"))
-        else {
-            continue;
-        };
-        *arguments = serde_json::Value::String("{}".to_owned());
-        stubbed = true;
-    }
-    stubbed
-}
-
-/// Remove every call with unusable arguments, reporting how many went.
-fn drop_unusable_calls(choice: &mut serde_json::Value) -> usize {
-    let Some(calls) = message_tool_calls_mut(choice) else {
-        return 0;
-    };
-    let before = calls.len();
-    calls.retain(|call| !arguments_are_unusable(call));
-    before - calls.len()
 }
 
 /// Groq's compound-system native tools (`browser_search`, `code_interpreter`,
@@ -1014,19 +952,20 @@ impl ChatDecoder {
         }
     }
 
-    /// The normalized finish reason a choice reported.
+    /// The normalized finish reason a choice reported, `None` when the
+    /// chunk carried no `finish_reason`.
     ///
     /// A gateway's upstream-native reason is consulted only when the
     /// normalized field is absent or empty, which is OpenRouter's documented
     /// precedence; a direct provider has no native field to consult.
-    fn finish_reason(&self, choice: &super::dto::ChatChoice) -> CompatibleFinishReason {
+    fn finish_reason(&self, choice: &ChatChoice) -> Option<FinishReason> {
         if let Some(reason) = choice
             .finish_reason
             .as_ref()
             .map(super::dto::FinishReason::as_wire)
             .filter(|reason| !reason.is_empty())
         {
-            return CompatibleFinishReason::Reported(map_openai_finish_reason(reason));
+            return Some(map_openai_finish_reason(reason));
         }
         if self.quirks.native_finish_reason
             && let Some(native) = choice
@@ -1034,9 +973,9 @@ impl ChatDecoder {
                 .as_deref()
                 .filter(|reason| !reason.is_empty())
         {
-            return CompatibleFinishReason::Reported(map_native_finish_reason(native));
+            return Some(map_native_finish_reason(native));
         }
-        CompatibleFinishReason::Absent
+        None
     }
 
     /// Absorb the metadata every frame carries, whichever shape it is.
@@ -1063,36 +1002,25 @@ impl ChatDecoder {
     /// One `chat.completion.chunk`.
     fn interpret_chunk(&mut self, mut frame: ChatFrame, out: &mut Output<Completion>) {
         self.saw_any_valid_frame = true;
-        let choice = frame.primary().map(|choice| ChunkChoice {
-            finish_reason: self.finish_reason(choice),
-            text: delta_text(&choice.delta),
-            reasoning: choice
-                .delta
-                .reasoning_content
-                .clone()
-                .or_else(|| choice.delta.reasoning.clone()),
-            tool_calls: choice
-                .delta
-                .tool_calls
-                .iter()
-                .map(CompatibleToolCallChunk::from)
-                .collect(),
-            details: choice
-                .delta
-                .reasoning_details
-                .iter()
-                .filter_map(typed_detail)
-                .collect(),
-            logprobs: choice.logprobs.clone(),
-        });
         self.absorb_metadata(&mut frame);
-
-        let Some(choice) = choice else {
+        let Some(choice) = frame.into_primary() else {
             return;
         };
+        let finish_reason = self.finish_reason(&choice);
+        let text = delta_text(&choice.delta);
+        let StreamingDelta {
+            reasoning_content,
+            reasoning,
+            tool_calls,
+            reasoning_details,
+            ..
+        } = choice.delta;
+        let reasoning = reasoning_content.or(reasoning);
+        let details: Vec<unary::ReasoningDetails> =
+            reasoning_details.iter().filter_map(typed_detail).collect();
 
-        if let Some(reason) = choice.finish_reason.reported() {
-            self.final_finish_reason = Some(reason);
+        if let Some(reason) = &finish_reason {
+            self.final_finish_reason = Some(reason.clone());
             self.saw_terminal = true;
         }
 
@@ -1108,7 +1036,7 @@ impl ChatDecoder {
         // carries a reasoning block arrives before (or with) the tool call it
         // precedes, and a reasoning block never depends on an open slot.
         if self.quirks.reasoning_details {
-            for detail in &choice.details {
+            for detail in &details {
                 if let Some((id, provider_id, content)) = detail_reasoning(detail) {
                     out.reasoning_block(id, provider_id, content);
                 }
@@ -1121,10 +1049,11 @@ impl ChatDecoder {
         // carrying several at once keeps the wire's logical order — the model
         // reasons, speaks, then acts.
         let mut tool_events = Vec::new();
-        for incoming in choice.tool_calls {
-            if let Some(evicted) = self.open_tool_calls.evict_if(incoming.index, |existing| {
-                should_evict_distinct_named_tool_call(existing, &incoming)
-            }) {
+        for incoming in tool_calls {
+            if let Some(evicted) = self
+                .open_tool_calls
+                .evict_if(incoming.index, |existing| incoming.evicts(existing))
+            {
                 // The wire reused this call's slot: the evicted call is
                 // delivered even when its arguments never parse.
                 tool_events.push(evicted.end_event(UnparseableToolInput::EmptyObject));
@@ -1136,10 +1065,15 @@ impl ChatDecoder {
             let slot = self.open_tool_calls.open(
                 incoming.index,
                 incoming.id.as_deref(),
-                incoming.name.as_deref(),
+                incoming.function.name.as_deref(),
             );
 
-            if let Some(name) = incoming.name.as_ref().filter(|name| !name.is_empty()) {
+            if let Some(name) = incoming
+                .function
+                .name
+                .as_ref()
+                .filter(|name| !name.is_empty())
+            {
                 tool_events.push(StreamEvent::BlockDelta {
                     id: slot.key().clone(),
                     delta: Delta::ToolName { name: name.clone() },
@@ -1147,6 +1081,7 @@ impl ChatDecoder {
             }
 
             if let Some(arguments) = incoming
+                .function
                 .arguments
                 .as_ref()
                 .filter(|arguments| !arguments.is_empty())
@@ -1172,20 +1107,20 @@ impl ChatDecoder {
         let reasoning_signature = self
             .quirks
             .reasoning_details
-            .then(|| choice.details.iter().find_map(reasoning_signature))
+            .then(|| details.iter().find_map(reasoning_signature))
             .flatten();
 
         self.reasoning.emit_chunk(
             ChunkParts {
-                reasoning: choice.reasoning,
+                reasoning,
                 reasoning_signature,
-                text: choice.text,
+                text,
                 tool_events,
             },
             out,
         );
 
-        if choice.finish_reason.is_tool_calls() {
+        if matches!(finish_reason, Some(FinishReason::ToolCalls)) {
             for slot in self.open_tool_calls.drain_ordered() {
                 // `tool_calls` says the provider completed the call. Invalid
                 // JSON in that state is a provider defect, not evidence that
@@ -1208,10 +1143,7 @@ impl ChatDecoder {
         let Some(choice) = frame.primary() else {
             return false;
         };
-        if !matches!(
-            self.finish_reason(choice).reported(),
-            Some(FinishReason::Length)
-        ) {
+        if !matches!(self.finish_reason(choice), Some(FinishReason::Length)) {
             return false;
         }
         matches!(
@@ -1269,25 +1201,17 @@ impl ChatDecoder {
     /// `tool_calls` turn carrying malformed JSON is still a decode error —
     /// there the provider claims it finished, and malformed arguments are its
     /// own defect. Valid-JSON arguments are never touched, whatever they
-    /// contain: unexpected *content* is a schema problem, not a cut. And
-    /// before any call is dropped, a copy with its arguments stubbed to `{}`
-    /// must decode, so a choice that is *also* broken elsewhere (a call
-    /// missing its id, an unknown tool type) keeps its original error rather
-    /// than having the evidence deleted underneath it.
+    /// contain: unexpected *content* is a schema problem, not a cut. The
+    /// compound-defect guard is the shared policy's
+    /// (`drop_tool_calls_cut_by_budget`), so the raw-body pass here and the
+    /// typed reply views drop exactly the same calls.
     fn body_without_calls_cut_by_the_budget(&self, data: &str) -> Option<ChatFrame> {
         let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?;
         let mut dropped = 0;
         for choice in body.get_mut("choices").and_then(as_array_mut)? {
-            if !self.reports_output_length(choice) {
-                continue;
+            if self.reports_output_length(choice) {
+                dropped += drop_tool_calls_cut_by_budget::<ChatChoice>(choice);
             }
-            let mut probe = choice.clone();
-            if !stub_unusable_arguments(&mut probe)
-                || serde_json::from_value::<super::dto::ChatChoice>(probe).is_err()
-            {
-                continue;
-            }
-            dropped += drop_unusable_calls(choice);
         }
         if dropped == 0 {
             return None;
@@ -1331,7 +1255,7 @@ impl ChatDecoder {
         let logprobs = choice.logprobs.clone();
         self.absorb_metadata(&mut frame);
         self.logprobs = logprobs;
-        self.final_finish_reason = finish_reason.reported();
+        self.final_finish_reason = finish_reason;
         self.saw_terminal = true;
 
         // No message-id block: `chatcmpl-…` is a *response*-scoped id, not
@@ -1472,15 +1396,17 @@ impl ChatDecoder {
 
     /// Build and push the provider's terminal record.
     fn emit_terminal(&mut self, out: &mut Output<Completion>) {
-        let terminal = CompatibleTerminal {
+        let native = StreamingCompletionResponse {
             usage: self.final_usage.take(),
             finish_reason: self.final_finish_reason.take(),
             response_id: self.response_id.take(),
             model: self.response_model.take(),
-            logprobs: self.logprobs.take(),
+            // Stamped by the driver; the decoder never sees connection
+            // headers.
+            provider_request_id: None,
+            logprobs: self.logprobs.take().map(Into::into),
             additional_params: self.additional_params.take(),
         };
-        let native = StreamingCompletionResponse::from_terminal(terminal);
         // The provider's own terminal record rides along serialized — the
         // same capture the unary path performed before normalizing.
         match serde_json::to_value(&native) {
@@ -1488,16 +1414,6 @@ impl ChatDecoder {
             Err(error) => out.error(CompletionError::from(error)),
         }
     }
-}
-
-/// One chunk's primary choice, in the shape the state machine consumes.
-struct ChunkChoice {
-    finish_reason: CompatibleFinishReason,
-    text: Option<String>,
-    reasoning: Option<String>,
-    tool_calls: Vec<CompatibleToolCallChunk>,
-    details: Vec<unary::ReasoningDetails>,
-    logprobs: Option<crate::message::AdditionalParams>,
 }
 
 use crate::operation::Completion;
@@ -1691,18 +1607,7 @@ impl Decoder<Completion> for ChatDecoder {
         let response_id = payload.id.map(|value| sink.scrub(&value));
         sink.provider(verdict, response_id);
         if let Some(error) = payload.error {
-            let code = error.code.map(|code| match code {
-                serde_json::Value::String(code) => sink.scrub(&code),
-                serde_json::Value::Number(code) => code.to_string(),
-                _ => "[invalid]".to_owned(),
-            });
-            sink.emit(AdapterEvent::ErrorEnvelope {
-                error: AdapterErrorEnvelope {
-                    code,
-                    status: error.kind.map(|value| sink.scrub(&value)),
-                    message: error.message.map(|value| sink.scrub(&value)),
-                },
-            });
+            error.emit(sink);
         }
     }
 }
@@ -1745,15 +1650,6 @@ struct ObservedTokenDetails {
 #[derive(Default, Deserialize)]
 struct ObservedChoice {
     finish_reason: Option<String>,
-}
-
-/// The error envelope this wire sends: `{"error": {code, message, type}}`.
-#[derive(Deserialize)]
-struct ObservedError {
-    code: Option<serde_json::Value>,
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    message: Option<String>,
 }
 
 /// A gateway's encrypted-reasoning detail as a whole reasoning block.
