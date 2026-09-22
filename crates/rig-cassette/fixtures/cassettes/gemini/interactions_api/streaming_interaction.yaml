@@ -17,16 +17,16 @@ then:
     value: text/event-stream
   body: |+
     event: interaction.created
-    data: {"event_type":"interaction.created","interaction":{"id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","status":"in_progress"}}
+    data: {"event_type":"interaction.created","interaction":{"id":"v1_ChZ3cTZ5YXVLQlBkX1V6N0lQNkllZEdREhZ3cTZ5YXVLQlBkX1V6N0lQNkllZEdR","model":"gemini-3-flash-preview","object":"interaction","status":"in_progress"}}
 
     event: interaction.status_update
-    data: {"event_type":"interaction.status_update","interaction_id":"v1_REDACTED_1","status":"in_progress"}
+    data: {"event_type":"interaction.status_update","interaction_id":"v1_ChZ3cTZ5YXVLQlBkX1V6N0lQNkllZEdREhZ3cTZ5YXVLQlBkX1V6N0lQNkllZEdR","status":"in_progress"}
 
     event: step.start
     data: {"event_type":"step.start","index":0,"step":{"type":"thought"}}
 
     event: step.delta
-    data: {"delta":{"signature":"signature_REDACTED_1","type":"thought_signature"},"event_type":"step.delta","index":0}
+    data: {"delta":{"signature":"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","type":"thought_signature"},"event_type":"step.delta","index":0}
 
     event: step.stop
     data: {"event_type":"step.stop","index":0}
@@ -35,16 +35,16 @@ then:
     data: {"event_type":"step.start","index":1,"step":{"type":"model_output"}}
 
     event: step.delta
-    data: {"delta":{"text":"Red flakes drift from the bridge’s spine,\nTo bleed within the river’s silver line,\nWhere","type":"text"},"event_type":"step.delta","index":1}
+    data: {"delta":{"text":"Orange stains bleed into the rushing cold,\nWhere iron bones surrender to the flow,\nAnd rivers wash the red from","type":"text"},"event_type":"step.delta","index":1}
 
     event: step.delta
-    data: {"delta":{"text":" metal yields to water’s slow design.","type":"text"},"event_type":"step.delta","index":1}
+    data: {"delta":{"text":" what is old.","type":"text"},"event_type":"step.delta","index":1}
 
     event: step.stop
     data: {"event_type":"step.stop","index":1}
 
     event: interaction.completed
-    data: {"event_type":"interaction.completed","interaction":{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":13}],"raw_prompt_token":34,"total_cached_tokens":0,"total_input_tokens":13,"total_output_tokens":32,"total_thought_tokens":806,"total_tokens":851,"total_tool_use_tokens":0}}}
+    data: {"event_type":"interaction.completed","interaction":{"created":"1970-01-01T00:00:00Z","id":"v1_ChZ3cTZ5YXVLQlBkX1V6N0lQNkllZEdREhZ3cTZ5YXVLQlBkX1V6N0lQNkllZEdR","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":13}],"model_invocation_token_counts":[{"candidates_tokens_details":[{"modality":"text","tokens":32}],"prompt_tokens_details":[{"modality":"text","tokens":34}],"thoughts_tokens_details":[{"modality":"text","tokens":657}]}],"non_grounding_model_invocation_token_counts":[{"candidates_tokens_details":[{"modality":"text","tokens":32}],"prompt_tokens_details":[{"modality":"text","tokens":34}],"thoughts_tokens_details":[{"modality":"text","tokens":657}]}],"raw_prompt_token":34,"total_cached_tokens":0,"total_input_tokens":13,"total_output_tokens":28,"total_thought_tokens":657,"total_tokens":698,"total_tool_use_tokens":0}}}
 
     event: done
     data: [DONE]

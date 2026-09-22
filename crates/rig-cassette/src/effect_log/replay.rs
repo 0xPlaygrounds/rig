@@ -23,6 +23,7 @@ use rig_core::{
 
 use rig_core::serve::{Dispatch, Reply, Serve};
 
+use super::log::canonical_tool_args;
 use super::{EffectLog, stable_hash};
 
 /// Selects request comparison by payload or [`stable_hash`].
@@ -362,6 +363,7 @@ fn divergence_under(
     recorded: &EffectKind,
     got: &EffectKind,
 ) -> Option<String> {
+    let (recorded, got) = (&with_canonical_args(recorded), &with_canonical_args(got));
     match check {
         RequestCheck::Payload => divergence(recorded, got),
         RequestCheck::Hash => {
@@ -372,6 +374,16 @@ fn divergence_under(
                 .then(|| format!("hash {recorded:#018x} was recorded, {got:#018x} arrived"))
         }
     }
+}
+
+/// The effect with a tool call's arguments in canonical key order, so a
+/// replay does not diverge on key order alone.
+fn with_canonical_args(kind: &EffectKind) -> EffectKind {
+    let mut kind = kind.clone();
+    if let EffectKind::ToolCall { args, .. } = &mut kind {
+        *args = canonical_tool_args(args);
+    }
+    kind
 }
 
 /// Return a diagnostic for a request mismatch or serialization failure, or

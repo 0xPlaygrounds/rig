@@ -109,7 +109,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "A glarb-glarb is an ancient farming tool from the planet J"
+            "text": "A glarb-glarb"
           }
         },
         {
@@ -117,7 +117,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "iro."
+            "text": " is an ancient farming tool from the planet Jiro."
           }
         }
       ],

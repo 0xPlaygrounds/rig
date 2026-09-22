@@ -117,11 +117,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_096000372caff9e7006ab2b3f5f41087d08109ba924d9ea250",
               "content": [
                 {
                   "type": "encrypted",
-                  "content": "encrypted_content_REDACTED_1"
+                  "content": "gAAAAABqsrP4jWr85yNa21Kk9WILS5R2zKRcGhKrZd0BzWX7cRyzJj5LQcWX0dxyU5S2ot3-NonziMw1fqgIMtIVZ8k1rxaIUTozJV7vtygXFwOjltlMi3Rk0qjxIhoiqFfvyU7erAndfDqTEa3Tj-JNKEYPwSJQiSeTeWFZchYzPd5bdByPSPosHVEmuzlzsb7IKf6Sid95FIG6QOY157QyfUWdflpabCqHD7UGHwdn4KC2W-fEGKgW-VG-Vy4AfVFHU-wQ6xOo8yWSUT_X_CQn1dS3S4FNOH7yLe3Ej_rhvHyY9SVNwAdpX9lp7P74pVvN644Wymx9PytdywUyteaA7r0ZU0rZst_q6KhiagwW7_nXYREF1bOUMLJQwbkv2CuameUT2mV6VDbLBVU7MwOzLndWkd7oTHib03Ukd7KNsANuvU26_y7fTinyWAWM7JNnhzJb-XeRuwukA4eDA_qdh7wuOxO82sFzVPj5GHhOnsJGb3AFrkGoO67_S-HYRsoleOv3S5K6oZl4Xb77xPxsFJe-R2oBE_AprbOGPRX2uOFhe6hfQP2pFFLRmddzF714zcaRvbvxtR4qyEY2FeV9HTkAiHcFmbgiQDLcKBBqQWM3QRprNiIqds8aSU9Ix-RnhRpVz9oID1HkVO6ZJXNJf8XpJXAsrbPlNcFiiBFjWPc_HsOLOZYftAsYDbvV_tB-1-HClxFZOcqeNVzfW-gaOtBl1ZnVhrwdT14AJhW_S-cs1lR6Rj58_Tcbd5Slb4pL9_-Afp2z35zKUuDkTWA1NHY-dKQ9TWxpGWNGI2CQKoQxMT9YvvWOBjGmmnWaBPEtcC-e97JaWUFOXa9HuYyzfPik7XBi4ldt2ATSipG9GyI1lIpc1yr1G8e-fhHUGOuh1hBP7oZG9e5oYr1lyQS0Twu5oQHG35k1zvnwT8vYzpnOpXEO4vJzEWe1OD2pGITU9unkA336JkZ_wl69Vn3W9uqNwC6iI0qkLpIhaN7Nc8TBTQPp9RSgvUtZbatszAAiAw3GRapk-FsRsKaarHWnkDZ9VT3Ckkm34XSuxmqO5qs33CWMH3NeopEVgB5wODI3-US1FG8LBYF6_ZozH6P7gz5G1JUcdiS5g_udZZle1RbD-KIGhu5tzYXK9cXHegpYRa3Owc77Lsu9TtnHdDlEYtSa8gksWRxp1bqPKyBE98DOLsRvlA9ZhStBw1zl4NISmR3lfd6Cq-Fvpcdf_KnvM-YARo_m9Xu9l-MqJD5jdsCq96gJ7pgvR4s3TfnvjiYQCsq_GkVO-gQa3thGqJxRj5O2gOviczUIezcHnxcW0pyX-52qWHHfFUhR-zreRx1eTuCuNoN0bgIAk2qeBRFuh_0f41sQLZuFOJxYv4Ska03d6XcwL8HHcwgGSl3w10kT4bx9Xw_Dz0p_tPRskscIHWN_4RC6hti30hiYmVbLIzdiil_QQN1Vp3f_6zRJtC7X70ybOjojBegt5X-eui5PJU769-tSgE5r26_6xWgUK-kKnIXE5DlmLeNSsTmeUSyP_p7B6lBbxfUpqLGElxZntylGo9vy1b7oh19zPKHEvRjYn6fgq_CsICTvZaFSsv0G1vOA6vemPADyxAX54UrTFxToINXD-Xsa2Rn8ElWR4pTuLec31EfA8zu_Izsq2KtHGpWUM3ZjQUvnIdCjIf-9zCV_1h9TJkcvw4nPvPbnZvczKKE0YDo9CiRm0oViCpwezu6jSysdsyMwOBEWC7mvhbUNHQ2Iw2Z716LUDRhHS-7K4ItKv2GazJLSpCZeA6CaChpLmQ7c6tWfdS_CjvxJ7nRzprEQQNCBuQLexcbRuG2tmFw8iy0M1viSTEBqvKwlIN7XTHNn-6YDeu2U_4nEdvZnj-nzB-sxecMHdpYgqnnYjr9vlHINf9SXaY6UXIGe60e2NDuEkkteGyLJmmr1QfnsfFDxxnb2Y8o0Bij3TZIdkNs3wprXNCcMyDqAucWV0USvKXkWsGCnQHF5mT5Gv6mgCDRCL_Dfs905y_055XhZHLie4JsLqwUR_CVZIy9K73uEeaEWYWQ35t19KTl37DCtCpJipw=="
                 }
               ]
             },
@@ -129,11 +129,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_2orDDyExNDkWYTk57GoRPBFY"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_2orDDyExNDkWYTk57GoRPBFY",
+                "item_id": "fc_096000372caff9e7006ab2b3f8002087d0bfd17f067f75edb0"
               },
               "function": {
                 "name": "add",
@@ -148,14 +148,14 @@
           ],
           "usage": {
             "input_tokens": 104,
-            "output_tokens": 125,
-            "total_tokens": 229,
+            "output_tokens": 163,
+            "total_tokens": 267,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 64
+            "reasoning_tokens": 128
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_096000372caff9e7006ab2b3f57a7c87d09013088242a80744",
+          "provider_request_id": "req_18bc12d03d804c1085a5985c5245386a",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -168,7 +168,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_096000372caff9e7006ab2b3f57a7c87d09013088242a80744",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
@@ -180,15 +180,15 @@
             "output": [
               {
                 "content": [],
-                "encrypted_content": "encrypted_content_REDACTED_1",
-                "id": "rs_REDACTED_1",
+                "encrypted_content": "gAAAAABqsrP4jWr85yNa21Kk9WILS5R2zKRcGhKrZd0BzWX7cRyzJj5LQcWX0dxyU5S2ot3-NonziMw1fqgIMtIVZ8k1rxaIUTozJV7vtygXFwOjltlMi3Rk0qjxIhoiqFfvyU7erAndfDqTEa3Tj-JNKEYPwSJQiSeTeWFZchYzPd5bdByPSPosHVEmuzlzsb7IKf6Sid95FIG6QOY157QyfUWdflpabCqHD7UGHwdn4KC2W-fEGKgW-VG-Vy4AfVFHU-wQ6xOo8yWSUT_X_CQn1dS3S4FNOH7yLe3Ej_rhvHyY9SVNwAdpX9lp7P74pVvN644Wymx9PytdywUyteaA7r0ZU0rZst_q6KhiagwW7_nXYREF1bOUMLJQwbkv2CuameUT2mV6VDbLBVU7MwOzLndWkd7oTHib03Ukd7KNsANuvU26_y7fTinyWAWM7JNnhzJb-XeRuwukA4eDA_qdh7wuOxO82sFzVPj5GHhOnsJGb3AFrkGoO67_S-HYRsoleOv3S5K6oZl4Xb77xPxsFJe-R2oBE_AprbOGPRX2uOFhe6hfQP2pFFLRmddzF714zcaRvbvxtR4qyEY2FeV9HTkAiHcFmbgiQDLcKBBqQWM3QRprNiIqds8aSU9Ix-RnhRpVz9oID1HkVO6ZJXNJf8XpJXAsrbPlNcFiiBFjWPc_HsOLOZYftAsYDbvV_tB-1-HClxFZOcqeNVzfW-gaOtBl1ZnVhrwdT14AJhW_S-cs1lR6Rj58_Tcbd5Slb4pL9_-Afp2z35zKUuDkTWA1NHY-dKQ9TWxpGWNGI2CQKoQxMT9YvvWOBjGmmnWaBPEtcC-e97JaWUFOXa9HuYyzfPik7XBi4ldt2ATSipG9GyI1lIpc1yr1G8e-fhHUGOuh1hBP7oZG9e5oYr1lyQS0Twu5oQHG35k1zvnwT8vYzpnOpXEO4vJzEWe1OD2pGITU9unkA336JkZ_wl69Vn3W9uqNwC6iI0qkLpIhaN7Nc8TBTQPp9RSgvUtZbatszAAiAw3GRapk-FsRsKaarHWnkDZ9VT3Ckkm34XSuxmqO5qs33CWMH3NeopEVgB5wODI3-US1FG8LBYF6_ZozH6P7gz5G1JUcdiS5g_udZZle1RbD-KIGhu5tzYXK9cXHegpYRa3Owc77Lsu9TtnHdDlEYtSa8gksWRxp1bqPKyBE98DOLsRvlA9ZhStBw1zl4NISmR3lfd6Cq-Fvpcdf_KnvM-YARo_m9Xu9l-MqJD5jdsCq96gJ7pgvR4s3TfnvjiYQCsq_GkVO-gQa3thGqJxRj5O2gOviczUIezcHnxcW0pyX-52qWHHfFUhR-zreRx1eTuCuNoN0bgIAk2qeBRFuh_0f41sQLZuFOJxYv4Ska03d6XcwL8HHcwgGSl3w10kT4bx9Xw_Dz0p_tPRskscIHWN_4RC6hti30hiYmVbLIzdiil_QQN1Vp3f_6zRJtC7X70ybOjojBegt5X-eui5PJU769-tSgE5r26_6xWgUK-kKnIXE5DlmLeNSsTmeUSyP_p7B6lBbxfUpqLGElxZntylGo9vy1b7oh19zPKHEvRjYn6fgq_CsICTvZaFSsv0G1vOA6vemPADyxAX54UrTFxToINXD-Xsa2Rn8ElWR4pTuLec31EfA8zu_Izsq2KtHGpWUM3ZjQUvnIdCjIf-9zCV_1h9TJkcvw4nPvPbnZvczKKE0YDo9CiRm0oViCpwezu6jSysdsyMwOBEWC7mvhbUNHQ2Iw2Z716LUDRhHS-7K4ItKv2GazJLSpCZeA6CaChpLmQ7c6tWfdS_CjvxJ7nRzprEQQNCBuQLexcbRuG2tmFw8iy0M1viSTEBqvKwlIN7XTHNn-6YDeu2U_4nEdvZnj-nzB-sxecMHdpYgqnnYjr9vlHINf9SXaY6UXIGe60e2NDuEkkteGyLJmmr1QfnsfFDxxnb2Y8o0Bij3TZIdkNs3wprXNCcMyDqAucWV0USvKXkWsGCnQHF5mT5Gv6mgCDRCL_Dfs905y_055XhZHLie4JsLqwUR_CVZIy9K73uEeaEWYWQ35t19KTl37DCtCpJipw==",
+                "id": "rs_096000372caff9e7006ab2b3f5f41087d08109ba924d9ea250",
                 "summary": [],
                 "type": "reasoning"
               },
               {
                 "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_2orDDyExNDkWYTk57GoRPBFY",
+                "id": "fc_096000372caff9e7006ab2b3f8002087d0bfd17f067f75edb0",
                 "name": "add",
                 "status": "completed",
                 "type": "function_call"
@@ -241,7 +241,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -258,7 +257,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -271,11 +270,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 125,
+              "output_tokens": 163,
               "output_tokens_details": {
-                "reasoning_tokens": 64
+                "reasoning_tokens": 128
               },
-              "total_tokens": 229
+              "total_tokens": 267
             },
             "user": null
           }
@@ -334,11 +333,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_096000372caff9e7006ab2b3f5f41087d08109ba924d9ea250",
                   "content": [
                     {
                       "type": "encrypted",
-                      "content": "encrypted_content_REDACTED_1"
+                      "content": "gAAAAABqsrP4jWr85yNa21Kk9WILS5R2zKRcGhKrZd0BzWX7cRyzJj5LQcWX0dxyU5S2ot3-NonziMw1fqgIMtIVZ8k1rxaIUTozJV7vtygXFwOjltlMi3Rk0qjxIhoiqFfvyU7erAndfDqTEa3Tj-JNKEYPwSJQiSeTeWFZchYzPd5bdByPSPosHVEmuzlzsb7IKf6Sid95FIG6QOY157QyfUWdflpabCqHD7UGHwdn4KC2W-fEGKgW-VG-Vy4AfVFHU-wQ6xOo8yWSUT_X_CQn1dS3S4FNOH7yLe3Ej_rhvHyY9SVNwAdpX9lp7P74pVvN644Wymx9PytdywUyteaA7r0ZU0rZst_q6KhiagwW7_nXYREF1bOUMLJQwbkv2CuameUT2mV6VDbLBVU7MwOzLndWkd7oTHib03Ukd7KNsANuvU26_y7fTinyWAWM7JNnhzJb-XeRuwukA4eDA_qdh7wuOxO82sFzVPj5GHhOnsJGb3AFrkGoO67_S-HYRsoleOv3S5K6oZl4Xb77xPxsFJe-R2oBE_AprbOGPRX2uOFhe6hfQP2pFFLRmddzF714zcaRvbvxtR4qyEY2FeV9HTkAiHcFmbgiQDLcKBBqQWM3QRprNiIqds8aSU9Ix-RnhRpVz9oID1HkVO6ZJXNJf8XpJXAsrbPlNcFiiBFjWPc_HsOLOZYftAsYDbvV_tB-1-HClxFZOcqeNVzfW-gaOtBl1ZnVhrwdT14AJhW_S-cs1lR6Rj58_Tcbd5Slb4pL9_-Afp2z35zKUuDkTWA1NHY-dKQ9TWxpGWNGI2CQKoQxMT9YvvWOBjGmmnWaBPEtcC-e97JaWUFOXa9HuYyzfPik7XBi4ldt2ATSipG9GyI1lIpc1yr1G8e-fhHUGOuh1hBP7oZG9e5oYr1lyQS0Twu5oQHG35k1zvnwT8vYzpnOpXEO4vJzEWe1OD2pGITU9unkA336JkZ_wl69Vn3W9uqNwC6iI0qkLpIhaN7Nc8TBTQPp9RSgvUtZbatszAAiAw3GRapk-FsRsKaarHWnkDZ9VT3Ckkm34XSuxmqO5qs33CWMH3NeopEVgB5wODI3-US1FG8LBYF6_ZozH6P7gz5G1JUcdiS5g_udZZle1RbD-KIGhu5tzYXK9cXHegpYRa3Owc77Lsu9TtnHdDlEYtSa8gksWRxp1bqPKyBE98DOLsRvlA9ZhStBw1zl4NISmR3lfd6Cq-Fvpcdf_KnvM-YARo_m9Xu9l-MqJD5jdsCq96gJ7pgvR4s3TfnvjiYQCsq_GkVO-gQa3thGqJxRj5O2gOviczUIezcHnxcW0pyX-52qWHHfFUhR-zreRx1eTuCuNoN0bgIAk2qeBRFuh_0f41sQLZuFOJxYv4Ska03d6XcwL8HHcwgGSl3w10kT4bx9Xw_Dz0p_tPRskscIHWN_4RC6hti30hiYmVbLIzdiil_QQN1Vp3f_6zRJtC7X70ybOjojBegt5X-eui5PJU769-tSgE5r26_6xWgUK-kKnIXE5DlmLeNSsTmeUSyP_p7B6lBbxfUpqLGElxZntylGo9vy1b7oh19zPKHEvRjYn6fgq_CsICTvZaFSsv0G1vOA6vemPADyxAX54UrTFxToINXD-Xsa2Rn8ElWR4pTuLec31EfA8zu_Izsq2KtHGpWUM3ZjQUvnIdCjIf-9zCV_1h9TJkcvw4nPvPbnZvczKKE0YDo9CiRm0oViCpwezu6jSysdsyMwOBEWC7mvhbUNHQ2Iw2Z716LUDRhHS-7K4ItKv2GazJLSpCZeA6CaChpLmQ7c6tWfdS_CjvxJ7nRzprEQQNCBuQLexcbRuG2tmFw8iy0M1viSTEBqvKwlIN7XTHNn-6YDeu2U_4nEdvZnj-nzB-sxecMHdpYgqnnYjr9vlHINf9SXaY6UXIGe60e2NDuEkkteGyLJmmr1QfnsfFDxxnb2Y8o0Bij3TZIdkNs3wprXNCcMyDqAucWV0USvKXkWsGCnQHF5mT5Gv6mgCDRCL_Dfs905y_055XhZHLie4JsLqwUR_CVZIy9K73uEeaEWYWQ35t19KTl37DCtCpJipw=="
                     }
                   ]
                 },
@@ -346,11 +345,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_2orDDyExNDkWYTk57GoRPBFY"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_2orDDyExNDkWYTk57GoRPBFY",
+                    "item_id": "fc_096000372caff9e7006ab2b3f8002087d0bfd17f067f75edb0"
                   },
                   "function": {
                     "name": "add",
@@ -371,11 +370,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_2orDDyExNDkWYTk57GoRPBFY"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_2orDDyExNDkWYTk57GoRPBFY",
+                    "item_id": "fc_096000372caff9e7006ab2b3f8002087d0bfd17f067f75edb0"
                   },
                   "name": "add",
                   "content": [
@@ -430,15 +429,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 228,
+            "input_tokens": 266,
             "output_tokens": 5,
-            "total_tokens": 233,
+            "total_tokens": 271,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_096000372caff9e7006ab2b3f8f2b487d088b357a76dab70df",
+          "response_id": "resp_096000372caff9e7006ab2b3f870a087d09d035d11469083ca",
+          "provider_request_id": "req_94a5889011a64021a867c3babfa36f8d",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -451,7 +450,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_096000372caff9e7006ab2b3f870a087d09d035d11469083ca",
             "incomplete_details": null,
             "instructions": "You are a pirate. Answer in one short sentence.",
             "max_output_tokens": null,
@@ -470,7 +469,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_096000372caff9e7006ab2b3f8f2b487d088b357a76dab70df",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -523,7 +522,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -540,7 +538,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -548,7 +546,7 @@
             "top_p": 1.0,
             "truncation": "disabled",
             "usage": {
-              "input_tokens": 228,
+              "input_tokens": 266,
               "input_tokens_details": {
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
@@ -557,7 +555,7 @@
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 233
+              "total_tokens": 271
             },
             "user": null
           }

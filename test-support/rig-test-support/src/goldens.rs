@@ -62,10 +62,9 @@ pub fn golden_path(name: &str) -> std::path::PathBuf {
 /// of the oracle: a program that changed refuses before it diverges).
 ///
 /// In record mode this is a no-op: a golden is generated from the
-/// *replayed* cassette, never from a live recording, because the cassette
-/// is written with placeholders for provider ids (`msg_REDACTED_1`,
-/// `toolu_REDACTED_1`, …) and the golden must hold the same, or the first
-/// replay diverges on an id the record never held. A panic here would
+/// *replayed* cassette, never from a live recording, because the golden
+/// must hold exactly the bytes replay serves (the finalized cassette after
+/// scrubbing and volatile-field normalization), or the first replay diverges. A panic here would
 /// also discard the cassette the run just recorded (the wrapper writes a
 /// cassette only when the test body returns), so the loop is: record on
 /// the producer's filter, then regenerate the golden in replay mode.

@@ -182,10 +182,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_3044940"
+                "id": "call_131307"
               },
               "provider": {
-                "call_id": "call_3044940"
+                "call_id": "call_131307"
               },
               "function": {
                 "name": "add",
@@ -194,7 +194,7 @@
                   "y": 25
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "EqMCCqACAWkUfRPz+maZ/LO3w1BfqgRwECuJhgGeS9ICp3+zk3goj5FvO0fxaryjg2laRSZMlpD89Z6tpDgkX6EdLX3gT+7IV8ltr2Syy0drF+4fgPagl6sb4UpatW+Hnbej+SXIpe6rTfWZ0LwN0+hE21UoLm4Bgb3Ahqr2KtnC396DWK+7UIwtE+XQNtr28xRv9cdR2n8nr4GcNFmz0pmoNPl9ojYJmbStf5rItdv2pE4Z5Bt/8+WBksmgY5a7hBMH4rw2q6rXOZPY0x/+cJlO+GGsTbrsGq0146Jb/0Qzy4uTwxF5KMgP5CUkKhjjCs1VBHTJIT2zzVF+vSbkXEQfrcROFqMMO3ufDiDemQu7AGQYNVjKBhvlM+uJFJ5gFWPzbhVg",
               "additional_params": null
             }
           ],
@@ -205,7 +205,7 @@
             "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "wK2yavSrOa63qtsPlM6x6QE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -220,10 +220,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_3044940",
+                        "id": "call_131307",
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EqMCCqACAWkUfRPz+maZ/LO3w1BfqgRwECuJhgGeS9ICp3+zk3goj5FvO0fxaryjg2laRSZMlpD89Z6tpDgkX6EdLX3gT+7IV8ltr2Syy0drF+4fgPagl6sb4UpatW+Hnbej+SXIpe6rTfWZ0LwN0+hE21UoLm4Bgb3Ahqr2KtnC396DWK+7UIwtE+XQNtr28xRv9cdR2n8nr4GcNFmz0pmoNPl9ojYJmbStf5rItdv2pE4Z5Bt/8+WBksmgY5a7hBMH4rw2q6rXOZPY0x/+cJlO+GGsTbrsGq0146Jb/0Qzy4uTwxF5KMgP5CUkKhjjCs1VBHTJIT2zzVF+vSbkXEQfrcROFqMMO3ufDiDemQu7AGQYNVjKBhvlM+uJFJ5gFWPzbhVg"
                     }
                   ],
                   "role": "model"
@@ -234,7 +234,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "wK2yavSrOa63qtsPlM6x6QE",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,
@@ -308,10 +308,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_3044940"
+                    "id": "call_131307"
                   },
                   "provider": {
-                    "call_id": "call_3044940"
+                    "call_id": "call_131307"
                   },
                   "function": {
                     "name": "add",
@@ -320,7 +320,7 @@
                       "y": 25
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "EqMCCqACAWkUfRPz+maZ/LO3w1BfqgRwECuJhgGeS9ICp3+zk3goj5FvO0fxaryjg2laRSZMlpD89Z6tpDgkX6EdLX3gT+7IV8ltr2Syy0drF+4fgPagl6sb4UpatW+Hnbej+SXIpe6rTfWZ0LwN0+hE21UoLm4Bgb3Ahqr2KtnC396DWK+7UIwtE+XQNtr28xRv9cdR2n8nr4GcNFmz0pmoNPl9ojYJmbStf5rItdv2pE4Z5Bt/8+WBksmgY5a7hBMH4rw2q6rXOZPY0x/+cJlO+GGsTbrsGq0146Jb/0Qzy4uTwxF5KMgP5CUkKhjjCs1VBHTJIT2zzVF+vSbkXEQfrcROFqMMO3ufDiDemQu7AGQYNVjKBhvlM+uJFJ5gFWPzbhVg",
                   "additional_params": null
                 }
               ]
@@ -332,10 +332,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_3044940"
+                    "id": "call_131307"
                   },
                   "provider": {
-                    "call_id": "call_3044940"
+                    "call_id": "call_131307"
                   },
                   "name": "add",
                   "content": [
@@ -396,7 +396,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_2"
+                    "signature": "Eq0BCqoBAWkUfROvguTCEomSVgQgmUlxJM2SA2yK4S5topjWVRkmWZLdk5GDQGP6JTwoe3MJFi6VKpx2ajJbGMTnyvzso676i6e0zV9H1+zOJg56u0dE/FCpNB/ULSUaRL+xmfbcf6GdZCatZLrpBeFyw6QA+zmP/esZxFZRFrIauroWFnHB5ijZstyUKlxssyCOG/zPwrFD83mEUoS9J/4ySsiyQykH8K7JSPmQReM="
                   }
                 }
               ]
@@ -409,7 +409,7 @@
             "reasoning_tokens": 17
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "wa2yaoqFNKz-qtsPwsSUmQk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -420,7 +420,7 @@
                   "parts": [
                     {
                       "text": "42",
-                      "thoughtSignature": "signature_REDACTED_2"
+                      "thoughtSignature": "Eq0BCqoBAWkUfROvguTCEomSVgQgmUlxJM2SA2yK4S5topjWVRkmWZLdk5GDQGP6JTwoe3MJFi6VKpx2ajJbGMTnyvzso676i6e0zV9H1+zOJg56u0dE/FCpNB/ULSUaRL+xmfbcf6GdZCatZLrpBeFyw6QA+zmP/esZxFZRFrIauroWFnHB5ijZstyUKlxssyCOG/zPwrFD83mEUoS9J/4ySsiyQykH8K7JSPmQReM="
                     }
                   ],
                   "role": "model"
@@ -430,7 +430,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_2",
+            "responseId": "wa2yaoqFNKz-qtsPwsSUmQk",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 209,
@@ -476,10 +476,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_3044940"
+                    "id": "call_131307"
                   },
                   "provider": {
-                    "call_id": "call_3044940"
+                    "call_id": "call_131307"
                   },
                   "function": {
                     "name": "add",
@@ -488,7 +488,7 @@
                       "y": 25
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "EqMCCqACAWkUfRPz+maZ/LO3w1BfqgRwECuJhgGeS9ICp3+zk3goj5FvO0fxaryjg2laRSZMlpD89Z6tpDgkX6EdLX3gT+7IV8ltr2Syy0drF+4fgPagl6sb4UpatW+Hnbej+SXIpe6rTfWZ0LwN0+hE21UoLm4Bgb3Ahqr2KtnC396DWK+7UIwtE+XQNtr28xRv9cdR2n8nr4GcNFmz0pmoNPl9ojYJmbStf5rItdv2pE4Z5Bt/8+WBksmgY5a7hBMH4rw2q6rXOZPY0x/+cJlO+GGsTbrsGq0146Jb/0Qzy4uTwxF5KMgP5CUkKhjjCs1VBHTJIT2zzVF+vSbkXEQfrcROFqMMO3ufDiDemQu7AGQYNVjKBhvlM+uJFJ5gFWPzbhVg",
                   "additional_params": null
                 }
               ]
@@ -500,10 +500,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_3044940"
+                    "id": "call_131307"
                   },
                   "provider": {
-                    "call_id": "call_3044940"
+                    "call_id": "call_131307"
                   },
                   "name": "add",
                   "content": [
@@ -531,7 +531,7 @@
                       "type": "text",
                       "content": {
                         "text": "",
-                        "signature": "signature_REDACTED_2"
+                        "signature": "Eq0BCqoBAWkUfROvguTCEomSVgQgmUlxJM2SA2yK4S5topjWVRkmWZLdk5GDQGP6JTwoe3MJFi6VKpx2ajJbGMTnyvzso676i6e0zV9H1+zOJg56u0dE/FCpNB/ULSUaRL+xmfbcf6GdZCatZLrpBeFyw6QA+zmP/esZxFZRFrIauroWFnHB5ijZstyUKlxssyCOG/zPwrFD83mEUoS9J/4ySsiyQykH8K7JSPmQReM="
                       }
                     }
                   ]

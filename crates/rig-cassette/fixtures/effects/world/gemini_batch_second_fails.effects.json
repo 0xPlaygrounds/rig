@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -44,14 +44,6 @@
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 14,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -187,26 +179,26 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_1374018"
+                "id": "call_95302"
               },
               "provider": {
-                "call_id": "call_1374018"
+                "call_id": "call_95302"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
               "additional_params": null
             },
             {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_1374019"
+                "id": "call_95303"
               },
               "provider": {
-                "call_id": "call_1374019"
+                "call_id": "call_95303"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -219,11 +211,11 @@
           "usage": {
             "input_tokens": 181,
             "output_tokens": 26,
-            "total_tokens": 311,
-            "reasoning_tokens": 104
+            "total_tokens": 312,
+            "reasoning_tokens": 105
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "MKyyaoj5Jt2iqtsP2ojWwAI",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -231,8 +223,8 @@
             "usage_metadata": {
               "promptTokenCount": 181,
               "candidatesTokenCount": 26,
-              "totalTokenCount": 311,
-              "thoughtsTokenCount": 104,
+              "totalTokenCount": 312,
+              "thoughtsTokenCount": 105,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -242,59 +234,59 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "id_REDACTED_1"
+            "response_id": "MKyyaoj5Jt2iqtsP2ojWwAI"
           }
         }
       },
       "events": [
         {
           "event": "block_start",
-          "id": "wire:call_1374018",
+          "id": "wire:call_95302",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:call_1374018",
+          "id": "wire:call_95302",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_1374018",
+            "tool_id": "call_95302",
             "name": "lookup_harbor_label",
             "arguments": {},
-            "signature": "signature_REDACTED_1",
+            "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_1374018"
+              "id": "call_95302"
             },
             "provider": {
-              "call_id": "call_1374018"
+              "call_id": "call_95302"
             },
             "function": {
               "name": "lookup_harbor_label",
               "arguments": {}
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
             "additional_params": null
           }
         },
         {
           "event": "block_start",
-          "id": "wire:call_1374019",
+          "id": "wire:call_95303",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:call_1374019",
+          "id": "wire:call_95303",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_1374019",
+            "tool_id": "call_95303",
             "name": "lookup_orchard_label",
             "arguments": {},
             "on_unparseable": "error"
@@ -303,10 +295,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_1374019"
+              "id": "call_95303"
             },
             "provider": {
-              "call_id": "call_1374019"
+              "call_id": "call_95303"
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -321,20 +313,20 @@
           "usage": {
             "input_tokens": 181,
             "output_tokens": 26,
-            "total_tokens": 311,
-            "reasoning_tokens": 104
+            "total_tokens": 312,
+            "reasoning_tokens": 105
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "MKyyaoj5Jt2iqtsP2ojWwAI",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 181,
               "candidatesTokenCount": 26,
-              "totalTokenCount": 311,
-              "thoughtsTokenCount": 104,
+              "totalTokenCount": 312,
+              "thoughtsTokenCount": 105,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -344,7 +336,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "id_REDACTED_1"
+            "response_id": "MKyyaoj5Jt2iqtsP2ojWwAI"
           }
         }
       ],
@@ -438,26 +430,26 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_1374018"
+                    "id": "call_95302"
                   },
                   "provider": {
-                    "call_id": "call_1374018"
+                    "call_id": "call_95302"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
                   "additional_params": null
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_1374019"
+                    "id": "call_95303"
                   },
                   "provider": {
-                    "call_id": "call_1374019"
+                    "call_id": "call_95303"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -475,10 +467,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_1374018"
+                    "id": "call_95302"
                   },
                   "provider": {
-                    "call_id": "call_1374018"
+                    "call_id": "call_95302"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -492,10 +484,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_1374019"
+                    "id": "call_95303"
                   },
                   "provider": {
-                    "call_id": "call_1374019"
+                    "call_id": "call_95303"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -543,34 +535,49 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard tool reports that the orchard lookup is broken."
+              "text": "The harbor label is crimson-harbor, but the orchard lookup is broken."
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM="
+                  }
+                }
+              ]
             }
           ],
           "usage": {
-            "input_tokens": 351,
-            "output_tokens": 20,
-            "total_tokens": 371
+            "input_tokens": 352,
+            "output_tokens": 16,
+            "total_tokens": 460,
+            "reasoning_tokens": 92
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "MayyasmXOePkqtsPqIKmgAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 351,
-              "candidatesTokenCount": 20,
-              "totalTokenCount": 371,
+              "promptTokenCount": 352,
+              "candidatesTokenCount": 16,
+              "totalTokenCount": 460,
+              "thoughtsTokenCount": 92,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 351
+                  "tokenCount": 352
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "id_REDACTED_2"
+            "response_id": "MayyasmXOePkqtsPqIKmgAk"
           }
         }
       },
@@ -587,52 +594,60 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "The harbor"
+            "text": "The harbor label is crimson-harbor, but the orchard lookup is broken."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " label is crimson-harbor and the orchard tool reports that the orchard lookup is broken"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "."
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM=",
+            "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "",
+                  "signature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM="
+                }
+              }
+            ]
           }
         },
         {
           "event": "final",
           "usage": {
-            "input_tokens": 351,
-            "output_tokens": 20,
-            "total_tokens": 371
+            "input_tokens": 352,
+            "output_tokens": 16,
+            "total_tokens": 460,
+            "reasoning_tokens": 92
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "MayyasmXOePkqtsPqIKmgAk",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 351,
-              "candidatesTokenCount": 20,
-              "totalTokenCount": 371,
+              "promptTokenCount": 352,
+              "candidatesTokenCount": 16,
+              "totalTokenCount": 460,
+              "thoughtsTokenCount": 92,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 351
+                  "tokenCount": 352
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "id_REDACTED_2"
+            "response_id": "MayyasmXOePkqtsPqIKmgAk"
           }
         }
       ],

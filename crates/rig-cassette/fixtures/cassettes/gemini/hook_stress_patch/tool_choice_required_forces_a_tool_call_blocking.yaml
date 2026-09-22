@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":12,"y":30},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":77,"promptTokensDetails":[{"modality":"TEXT","tokenCount":77}],"serviceTier":"standard","thoughtsTokenCount":56,"totalTokenCount":153}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":12,"y":30},"name":"add"},"thoughtSignature":"CskBAWkUfRM3RLRAx58bI0k3HGMLpuEtKAe/VeZ6pMcTNoSFd+ukY/QOhsv2Pprby6nV2Iravt3GoUspInY+HhR072J2L91Jdu7freHLvoqWDX24S9jRVEYElc5f9L1HBLyJ9JZXd79LRShn1qZ9buCCeNbokcx5UWklpgmjXQbfORV8HKbNbQLkGULqI09/fRxQx2P6VB9KJ3mucliYJUQrby2z0hg1oqb0UpdHF5xmtrnWbNGjhuRKhd7yQ3Vdxv90JAdBqQWZ6SWY"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"g66yau2SG5uhz7IPytCZEA","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":77,"promptTokensDetails":[{"modality":"TEXT","tokenCount":77}],"serviceTier":"standard","thoughtsTokenCount":56,"totalTokenCount":153}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -28,10 +28,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"Use the add tool to compute 12 plus 30, then report the number.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":12,"y":30},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to compute 12 plus 30, then report the number.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":12,"y":30},"name":"add"},"thought":false,"thoughtSignature":"CskBAWkUfRM3RLRAx58bI0k3HGMLpuEtKAe/VeZ6pMcTNoSFd+ukY/QOhsv2Pprby6nV2Iravt3GoUspInY+HhR072J2L91Jdu7freHLvoqWDX24S9jRVEYElc5f9L1HBLyJ9JZXd79LRShn1qZ9buCCeNbokcx5UWklpgmjXQbfORV8HKbNbQLkGULqI09/fRxQx2P6VB9KJ3mucliYJUQrby2z0hg1oqb0UpdHF5xmtrnWbNGjhuRKhd7yQ3Vdxv90JAdBqQWZ6SWY"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"The result of 12 plus 30 is 42."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":111,"promptTokensDetails":[{"modality":"TEXT","tokenCount":111}],"serviceTier":"standard","totalTokenCount":126}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The sum of 12 and 30 is 42."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"hK6yatHQD8ifz7IP2cnoGQ","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":111,"promptTokensDetails":[{"modality":"TEXT","tokenCount":111}],"serviceTier":"standard","totalTokenCount":126}}'

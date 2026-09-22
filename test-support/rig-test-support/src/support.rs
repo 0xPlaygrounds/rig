@@ -529,6 +529,49 @@ pub fn assert_nonempty_bytes(bytes: &[u8]) {
     assert!(!bytes.is_empty(), "Expected non-empty bytes.");
 }
 
+/// The container an image payload's leading bytes declare.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageContainer {
+    Png,
+    Jpeg,
+    Webp,
+    Gif,
+}
+
+/// Classify decoded image bytes by their magic number, or `None` when they
+/// are not an image at all (a fixture placeholder decodes to `hello`).
+pub fn image_container(bytes: &[u8]) -> Option<ImageContainer> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some(ImageContainer::Png)
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        Some(ImageContainer::Jpeg)
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some(ImageContainer::Webp)
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some(ImageContainer::Gif)
+    } else {
+        None
+    }
+}
+
+/// Assert the bytes are a real image: a recognized container with a body
+/// behind the header, not a placeholder.
+pub fn assert_image_bytes(bytes: &[u8]) -> ImageContainer {
+    let container = image_container(bytes).unwrap_or_else(|| {
+        panic!(
+            "expected image bytes, got {} bytes starting {:?}",
+            bytes.len(),
+            &bytes[..bytes.len().min(8)]
+        )
+    });
+    assert!(
+        bytes.len() > 64,
+        "expected an image body behind the {container:?} header, got {} bytes",
+        bytes.len()
+    );
+    container
+}
+
 /// Assert the expected embedding count and nonzero, consistent vector dimensions.
 pub fn assert_embeddings_nonempty_and_consistent(embeddings: &[Embedding], expected_count: usize) {
     assert_eq!(
@@ -1121,11 +1164,11 @@ pub fn assert_wire_value_matches(
 /// Compare a generated token (response id, system fingerprint, request id)
 /// observed by a test with the value its fixture holds.
 ///
-/// Fixtures are placeholder-scrubbed (`chatcmpl-REDACTED_1`, `fp_REDACTED_1`,
-/// `req_REDACTED_1`), so on the recording pass the live token cannot equal
-/// the fixture's; both are then required to be present and non-empty. On
-/// replay the harness serves the scrubbed bytes back, so equality is exact —
-/// which is what CI runs. Presence must agree in both modes.
+/// On the recording pass the fixture being compared against is the previous
+/// recording (or a legacy placeholder), so the live token cannot equal it;
+/// both are then required to be present and non-empty. On replay the harness
+/// serves the recorded bytes back, so equality is exact, which is what CI
+/// runs. Presence must agree in both modes.
 pub fn assert_matches_recorded_token(actual: Option<&str>, recorded: Option<&str>, context: &str) {
     match crate::cassettes::CassetteMode::current() {
         crate::cassettes::CassetteMode::Replay => {

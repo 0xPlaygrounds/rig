@@ -16,7 +16,7 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -151,7 +151,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_1"
+                    "signature": "EoACCv0BAWkUfRNBV3bPr4ILv7rkhHTdMr9hDLWDwUIhPvVLyFwav9j38fDhxkLwJ2sz+8ZSaDgC3sfrohQ4qKpyiH3nEe/hgmxlF40dFqM6nszFyUShb3dST1k6U+FJCqET9NmAA7L1q9RcufENqeclRsNG9qmpen8He93Xt6R7LY4an00eBgLYv56oEIhZjfQCuxw5BM3bB/92U3uiAtTdssXDM44apugbidWDLbDmvup8fd0qClRbc6OAwt3bFE9JFPYJK0YHqnSNSoqiUdfsNfCtGG0rlrO1AEBnbnUqnE8UlwqZ8ArmZH5569ct3bx0dbLb+jpQ9cW29J08k4cy4g=="
                   }
                 }
               ]
@@ -164,7 +164,7 @@
             "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "Wq2yapHnH7foz7IPx-_ZWQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -175,7 +175,7 @@
                   "parts": [
                     {
                       "text": "ready.",
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EoACCv0BAWkUfRNBV3bPr4ILv7rkhHTdMr9hDLWDwUIhPvVLyFwav9j38fDhxkLwJ2sz+8ZSaDgC3sfrohQ4qKpyiH3nEe/hgmxlF40dFqM6nszFyUShb3dST1k6U+FJCqET9NmAA7L1q9RcufENqeclRsNG9qmpen8He93Xt6R7LY4an00eBgLYv56oEIhZjfQCuxw5BM3bB/92U3uiAtTdssXDM44apugbidWDLbDmvup8fd0qClRbc6OAwt3bFE9JFPYJK0YHqnSNSoqiUdfsNfCtGG0rlrO1AEBnbnUqnE8UlwqZ8ArmZH5569ct3bx0dbLb+jpQ9cW29J08k4cy4g=="
                     }
                   ],
                   "role": "model"
@@ -185,7 +185,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "Wq2yapHnH7foz7IPx-_ZWQ",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 19,

@@ -23,14 +23,14 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 11,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -180,11 +180,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_07280274e797bb41006ab2b2d9842087d099a150f83a4c84aa",
               "content": [
                 {
                   "type": "encrypted",
-                  "content": "encrypted_content_REDACTED_1"
+                  "content": "gAAAAABqsrLbsDRreLjJwsZ9BjkHyBYZYnr6t9Ye-lqZRpL506jyhi_H1ZkWezsu9_j8iV7shiM27rmaLTELyC-vXtmADldlYgiO6e7AcbOg_3ZrUtfSPcAhJkcOcsid0cp0kpCphMf10ahe9kznDHGeJZmY_7AO01SjLaSPItaj6ZInpBZRN5ThVO6AHyqlbDSAI8kI8JEnzSrm93-Vd4Ljrplp7jVQfirR-SEi9AsFD7KIZDqzED1WH0byzsTniCjZIgyaIxga2A9yYahFTaOB3AN1oAOSnoZMrpkzAfD2fKYV03Qr8W7cLUoAyLqdT_QfeRTAMTgIMS775r6p8rfi5tB8oS7Vk9jCNm3RxF5P62SKYj89dFWoeq3UvYVnDrakydA2XGDR_knlYnSFYVEyY7zpgTfc_JlDsSIbcvwEuumK5eg9oOuhM7JOvfnomKPrqDUw5bDCC2Zwa3QYyJ1JXDaTmAt_vOcDrExR32hevV3BSeLAJDgTyzgB6i7rJ5tt_VjpHsYI-KWyP-SXBKZzD1jOt0yRB6JCvprPLvauPlTRbvKzeWWtEOtGVboWu-GO5GEP40KvfR1ZdniJ4UXm1ME-YUM94OTT5DKkUMlhr3t0sMlPJKxNwwWYr5Ow17j_oD_q5CTqyJc9mgqCF13dIOUu_hO6lGBGa3cCkbTBMM1D7hnaisZ3zHxdI-XOx4GVFhoihSKMYl3bBp1cjn6g5QPQqGeKLTv1w3s_EgejrknA7Em_8wI0K4iLkJ1Rg87GcIEUFT4eUAUFQWDOfvUoiqDQsjfFWvhiOEeDcssfOrFAGj9MXcFDXHBGxeis8wCqmDOZHmVygqk758rBjXE-SyKtrGH7FwS194na1VRc0_N02x6kPdmyZrH-z6868mNA9dQlE8c-NrbzRmKSfUXqH_t3uqTib6dtATtCKIlMkxBtkiUUK1Uc6fGzIXAoV1pExSiWc8FObtoNDVLEMy_s-bs3Dht43e1cKV04ApRkFzlWxuF_rQgTdoXk5pQfRB-9zQu9uWZfamPdGSFudJZzYhe5DP6PkRlf41L276jf_bEl63DJsjt8aTmIGidkKCfUByIrURq1M6k6A4j_gLHqdaxD9ty3C_2x4zdpUJXRQpo2rcpxcvnMFEN283XyPfSGDju9ybRQIPvd5_eXpiPOf_dNX4ebxfFskFkP-pMhimpTyDOISD-ic3ah_fYRk6RfQCTb9SYuxaZj_jd8_Eh5f6rjmEjxIPSV-xusjcaXjbvQAY-x1VjWBYDugAhpSY1F8mmVQt_-baNIDf_ZiAmAB8ak4v305sWG2tlIwutE-PReS2PhunjKyK1l3UgqXCmAubLvZlioYnP9LSVbu8wWnbGOPOyjMa8mNjsCSXAUD9HXR5vYB6WGeVXnCqvv-5rJeyNfdsrdKnnyC9Ez8KP-WK9qQAHqBZIrLVHK3IvPAx2qyKFEOzZLdcTQb5gNFtGTDFENq7dqKHvbh51h4tjDStIM6rt-89JcQQ2VbWTHC_gP5MT1OcO5N-Kv9FIk3SZ_zqCe18NQNkhpGcLTXI-wgsjgm3ZljDpuYzqtj3X71FAeVz2LsuIyL4Bz4axjXnVKqSPj_iRCJrHv9wgJTxXJlEXSAykGrM3h24ew344sxGLm_s-3Hy6AbR03NOLu_rhZzE5ibEMIB6yHscl0Jsf6JpeeUPBOc0SjzBA4HRhoaePE305l2dQN3VEdzBfHSF303pls-eU4"
                 }
               ]
             },
@@ -192,11 +192,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_lZOkcZCMEviIFhhRIVHhRDOI"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_lZOkcZCMEviIFhhRIVHhRDOI",
+                "item_id": "fc_07280274e797bb41006ab2b2dabe3087d09fb9e1ea2370bf53"
               },
               "function": {
                 "name": "add",
@@ -211,14 +211,14 @@
           ],
           "usage": {
             "input_tokens": 104,
-            "output_tokens": 150,
-            "total_tokens": 254,
+            "output_tokens": 108,
+            "total_tokens": 212,
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_07280274e797bb41006ab2b2d8b4d487d0a4d159c6a7039b60",
+          "provider_request_id": "req_b8382af06b9a4023b872da1471524fbc",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -231,7 +231,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_07280274e797bb41006ab2b2d8b4d487d0a4d159c6a7039b60",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
@@ -243,15 +243,15 @@
             "output": [
               {
                 "content": [],
-                "encrypted_content": "encrypted_content_REDACTED_1",
-                "id": "rs_REDACTED_1",
+                "encrypted_content": "gAAAAABqsrLbsDRreLjJwsZ9BjkHyBYZYnr6t9Ye-lqZRpL506jyhi_H1ZkWezsu9_j8iV7shiM27rmaLTELyC-vXtmADldlYgiO6e7AcbOg_3ZrUtfSPcAhJkcOcsid0cp0kpCphMf10ahe9kznDHGeJZmY_7AO01SjLaSPItaj6ZInpBZRN5ThVO6AHyqlbDSAI8kI8JEnzSrm93-Vd4Ljrplp7jVQfirR-SEi9AsFD7KIZDqzED1WH0byzsTniCjZIgyaIxga2A9yYahFTaOB3AN1oAOSnoZMrpkzAfD2fKYV03Qr8W7cLUoAyLqdT_QfeRTAMTgIMS775r6p8rfi5tB8oS7Vk9jCNm3RxF5P62SKYj89dFWoeq3UvYVnDrakydA2XGDR_knlYnSFYVEyY7zpgTfc_JlDsSIbcvwEuumK5eg9oOuhM7JOvfnomKPrqDUw5bDCC2Zwa3QYyJ1JXDaTmAt_vOcDrExR32hevV3BSeLAJDgTyzgB6i7rJ5tt_VjpHsYI-KWyP-SXBKZzD1jOt0yRB6JCvprPLvauPlTRbvKzeWWtEOtGVboWu-GO5GEP40KvfR1ZdniJ4UXm1ME-YUM94OTT5DKkUMlhr3t0sMlPJKxNwwWYr5Ow17j_oD_q5CTqyJc9mgqCF13dIOUu_hO6lGBGa3cCkbTBMM1D7hnaisZ3zHxdI-XOx4GVFhoihSKMYl3bBp1cjn6g5QPQqGeKLTv1w3s_EgejrknA7Em_8wI0K4iLkJ1Rg87GcIEUFT4eUAUFQWDOfvUoiqDQsjfFWvhiOEeDcssfOrFAGj9MXcFDXHBGxeis8wCqmDOZHmVygqk758rBjXE-SyKtrGH7FwS194na1VRc0_N02x6kPdmyZrH-z6868mNA9dQlE8c-NrbzRmKSfUXqH_t3uqTib6dtATtCKIlMkxBtkiUUK1Uc6fGzIXAoV1pExSiWc8FObtoNDVLEMy_s-bs3Dht43e1cKV04ApRkFzlWxuF_rQgTdoXk5pQfRB-9zQu9uWZfamPdGSFudJZzYhe5DP6PkRlf41L276jf_bEl63DJsjt8aTmIGidkKCfUByIrURq1M6k6A4j_gLHqdaxD9ty3C_2x4zdpUJXRQpo2rcpxcvnMFEN283XyPfSGDju9ybRQIPvd5_eXpiPOf_dNX4ebxfFskFkP-pMhimpTyDOISD-ic3ah_fYRk6RfQCTb9SYuxaZj_jd8_Eh5f6rjmEjxIPSV-xusjcaXjbvQAY-x1VjWBYDugAhpSY1F8mmVQt_-baNIDf_ZiAmAB8ak4v305sWG2tlIwutE-PReS2PhunjKyK1l3UgqXCmAubLvZlioYnP9LSVbu8wWnbGOPOyjMa8mNjsCSXAUD9HXR5vYB6WGeVXnCqvv-5rJeyNfdsrdKnnyC9Ez8KP-WK9qQAHqBZIrLVHK3IvPAx2qyKFEOzZLdcTQb5gNFtGTDFENq7dqKHvbh51h4tjDStIM6rt-89JcQQ2VbWTHC_gP5MT1OcO5N-Kv9FIk3SZ_zqCe18NQNkhpGcLTXI-wgsjgm3ZljDpuYzqtj3X71FAeVz2LsuIyL4Bz4axjXnVKqSPj_iRCJrHv9wgJTxXJlEXSAykGrM3h24ew344sxGLm_s-3Hy6AbR03NOLu_rhZzE5ibEMIB6yHscl0Jsf6JpeeUPBOc0SjzBA4HRhoaePE305l2dQN3VEdzBfHSF303pls-eU4",
+                "id": "rs_07280274e797bb41006ab2b2d9842087d099a150f83a4c84aa",
                 "summary": [],
                 "type": "reasoning"
               },
               {
                 "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_lZOkcZCMEviIFhhRIVHhRDOI",
+                "id": "fc_07280274e797bb41006ab2b2dabe3087d09fb9e1ea2370bf53",
                 "name": "add",
                 "status": "completed",
                 "type": "function_call"
@@ -304,7 +304,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -321,7 +320,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -334,11 +333,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 150,
+              "output_tokens": 108,
               "output_tokens_details": {
                 "reasoning_tokens": 64
               },
-              "total_tokens": 254
+              "total_tokens": 212
             },
             "user": null
           }
@@ -399,11 +398,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_07280274e797bb41006ab2b2d9842087d099a150f83a4c84aa",
                   "content": [
                     {
                       "type": "encrypted",
-                      "content": "encrypted_content_REDACTED_1"
+                      "content": "gAAAAABqsrLbsDRreLjJwsZ9BjkHyBYZYnr6t9Ye-lqZRpL506jyhi_H1ZkWezsu9_j8iV7shiM27rmaLTELyC-vXtmADldlYgiO6e7AcbOg_3ZrUtfSPcAhJkcOcsid0cp0kpCphMf10ahe9kznDHGeJZmY_7AO01SjLaSPItaj6ZInpBZRN5ThVO6AHyqlbDSAI8kI8JEnzSrm93-Vd4Ljrplp7jVQfirR-SEi9AsFD7KIZDqzED1WH0byzsTniCjZIgyaIxga2A9yYahFTaOB3AN1oAOSnoZMrpkzAfD2fKYV03Qr8W7cLUoAyLqdT_QfeRTAMTgIMS775r6p8rfi5tB8oS7Vk9jCNm3RxF5P62SKYj89dFWoeq3UvYVnDrakydA2XGDR_knlYnSFYVEyY7zpgTfc_JlDsSIbcvwEuumK5eg9oOuhM7JOvfnomKPrqDUw5bDCC2Zwa3QYyJ1JXDaTmAt_vOcDrExR32hevV3BSeLAJDgTyzgB6i7rJ5tt_VjpHsYI-KWyP-SXBKZzD1jOt0yRB6JCvprPLvauPlTRbvKzeWWtEOtGVboWu-GO5GEP40KvfR1ZdniJ4UXm1ME-YUM94OTT5DKkUMlhr3t0sMlPJKxNwwWYr5Ow17j_oD_q5CTqyJc9mgqCF13dIOUu_hO6lGBGa3cCkbTBMM1D7hnaisZ3zHxdI-XOx4GVFhoihSKMYl3bBp1cjn6g5QPQqGeKLTv1w3s_EgejrknA7Em_8wI0K4iLkJ1Rg87GcIEUFT4eUAUFQWDOfvUoiqDQsjfFWvhiOEeDcssfOrFAGj9MXcFDXHBGxeis8wCqmDOZHmVygqk758rBjXE-SyKtrGH7FwS194na1VRc0_N02x6kPdmyZrH-z6868mNA9dQlE8c-NrbzRmKSfUXqH_t3uqTib6dtATtCKIlMkxBtkiUUK1Uc6fGzIXAoV1pExSiWc8FObtoNDVLEMy_s-bs3Dht43e1cKV04ApRkFzlWxuF_rQgTdoXk5pQfRB-9zQu9uWZfamPdGSFudJZzYhe5DP6PkRlf41L276jf_bEl63DJsjt8aTmIGidkKCfUByIrURq1M6k6A4j_gLHqdaxD9ty3C_2x4zdpUJXRQpo2rcpxcvnMFEN283XyPfSGDju9ybRQIPvd5_eXpiPOf_dNX4ebxfFskFkP-pMhimpTyDOISD-ic3ah_fYRk6RfQCTb9SYuxaZj_jd8_Eh5f6rjmEjxIPSV-xusjcaXjbvQAY-x1VjWBYDugAhpSY1F8mmVQt_-baNIDf_ZiAmAB8ak4v305sWG2tlIwutE-PReS2PhunjKyK1l3UgqXCmAubLvZlioYnP9LSVbu8wWnbGOPOyjMa8mNjsCSXAUD9HXR5vYB6WGeVXnCqvv-5rJeyNfdsrdKnnyC9Ez8KP-WK9qQAHqBZIrLVHK3IvPAx2qyKFEOzZLdcTQb5gNFtGTDFENq7dqKHvbh51h4tjDStIM6rt-89JcQQ2VbWTHC_gP5MT1OcO5N-Kv9FIk3SZ_zqCe18NQNkhpGcLTXI-wgsjgm3ZljDpuYzqtj3X71FAeVz2LsuIyL4Bz4axjXnVKqSPj_iRCJrHv9wgJTxXJlEXSAykGrM3h24ew344sxGLm_s-3Hy6AbR03NOLu_rhZzE5ibEMIB6yHscl0Jsf6JpeeUPBOc0SjzBA4HRhoaePE305l2dQN3VEdzBfHSF303pls-eU4"
                     }
                   ]
                 },
@@ -411,11 +410,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_lZOkcZCMEviIFhhRIVHhRDOI"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_lZOkcZCMEviIFhhRIVHhRDOI",
+                    "item_id": "fc_07280274e797bb41006ab2b2dabe3087d09fb9e1ea2370bf53"
                   },
                   "function": {
                     "name": "add",
@@ -436,11 +435,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_lZOkcZCMEviIFhhRIVHhRDOI"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_lZOkcZCMEviIFhhRIVHhRDOI",
+                    "item_id": "fc_07280274e797bb41006ab2b2dabe3087d09fb9e1ea2370bf53"
                   },
                   "name": "add",
                   "content": [
@@ -495,15 +494,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 265,
+            "input_tokens": 223,
             "output_tokens": 5,
-            "total_tokens": 270,
+            "total_tokens": 228,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_07280274e797bb41006ab2b2dbcab087d0b81b86d415743704",
+          "response_id": "resp_07280274e797bb41006ab2b2db41c487d09df05112e5bc8e07",
+          "provider_request_id": "req_3b7953932edc48e08a6125a6874b7178",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -516,7 +515,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_07280274e797bb41006ab2b2db41c487d09df05112e5bc8e07",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
@@ -535,7 +534,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_07280274e797bb41006ab2b2dbcab087d0b81b86d415743704",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -588,7 +587,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -605,7 +603,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -613,7 +611,7 @@
             "top_p": 1.0,
             "truncation": "disabled",
             "usage": {
-              "input_tokens": 265,
+              "input_tokens": 223,
               "input_tokens_details": {
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
@@ -622,7 +620,7 @@
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 270
+              "total_tokens": 228
             },
             "user": null
           }
@@ -655,11 +653,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_07280274e797bb41006ab2b2d9842087d099a150f83a4c84aa",
                   "content": [
                     {
                       "type": "encrypted",
-                      "content": "encrypted_content_REDACTED_1"
+                      "content": "gAAAAABqsrLbsDRreLjJwsZ9BjkHyBYZYnr6t9Ye-lqZRpL506jyhi_H1ZkWezsu9_j8iV7shiM27rmaLTELyC-vXtmADldlYgiO6e7AcbOg_3ZrUtfSPcAhJkcOcsid0cp0kpCphMf10ahe9kznDHGeJZmY_7AO01SjLaSPItaj6ZInpBZRN5ThVO6AHyqlbDSAI8kI8JEnzSrm93-Vd4Ljrplp7jVQfirR-SEi9AsFD7KIZDqzED1WH0byzsTniCjZIgyaIxga2A9yYahFTaOB3AN1oAOSnoZMrpkzAfD2fKYV03Qr8W7cLUoAyLqdT_QfeRTAMTgIMS775r6p8rfi5tB8oS7Vk9jCNm3RxF5P62SKYj89dFWoeq3UvYVnDrakydA2XGDR_knlYnSFYVEyY7zpgTfc_JlDsSIbcvwEuumK5eg9oOuhM7JOvfnomKPrqDUw5bDCC2Zwa3QYyJ1JXDaTmAt_vOcDrExR32hevV3BSeLAJDgTyzgB6i7rJ5tt_VjpHsYI-KWyP-SXBKZzD1jOt0yRB6JCvprPLvauPlTRbvKzeWWtEOtGVboWu-GO5GEP40KvfR1ZdniJ4UXm1ME-YUM94OTT5DKkUMlhr3t0sMlPJKxNwwWYr5Ow17j_oD_q5CTqyJc9mgqCF13dIOUu_hO6lGBGa3cCkbTBMM1D7hnaisZ3zHxdI-XOx4GVFhoihSKMYl3bBp1cjn6g5QPQqGeKLTv1w3s_EgejrknA7Em_8wI0K4iLkJ1Rg87GcIEUFT4eUAUFQWDOfvUoiqDQsjfFWvhiOEeDcssfOrFAGj9MXcFDXHBGxeis8wCqmDOZHmVygqk758rBjXE-SyKtrGH7FwS194na1VRc0_N02x6kPdmyZrH-z6868mNA9dQlE8c-NrbzRmKSfUXqH_t3uqTib6dtATtCKIlMkxBtkiUUK1Uc6fGzIXAoV1pExSiWc8FObtoNDVLEMy_s-bs3Dht43e1cKV04ApRkFzlWxuF_rQgTdoXk5pQfRB-9zQu9uWZfamPdGSFudJZzYhe5DP6PkRlf41L276jf_bEl63DJsjt8aTmIGidkKCfUByIrURq1M6k6A4j_gLHqdaxD9ty3C_2x4zdpUJXRQpo2rcpxcvnMFEN283XyPfSGDju9ybRQIPvd5_eXpiPOf_dNX4ebxfFskFkP-pMhimpTyDOISD-ic3ah_fYRk6RfQCTb9SYuxaZj_jd8_Eh5f6rjmEjxIPSV-xusjcaXjbvQAY-x1VjWBYDugAhpSY1F8mmVQt_-baNIDf_ZiAmAB8ak4v305sWG2tlIwutE-PReS2PhunjKyK1l3UgqXCmAubLvZlioYnP9LSVbu8wWnbGOPOyjMa8mNjsCSXAUD9HXR5vYB6WGeVXnCqvv-5rJeyNfdsrdKnnyC9Ez8KP-WK9qQAHqBZIrLVHK3IvPAx2qyKFEOzZLdcTQb5gNFtGTDFENq7dqKHvbh51h4tjDStIM6rt-89JcQQ2VbWTHC_gP5MT1OcO5N-Kv9FIk3SZ_zqCe18NQNkhpGcLTXI-wgsjgm3ZljDpuYzqtj3X71FAeVz2LsuIyL4Bz4axjXnVKqSPj_iRCJrHv9wgJTxXJlEXSAykGrM3h24ew344sxGLm_s-3Hy6AbR03NOLu_rhZzE5ibEMIB6yHscl0Jsf6JpeeUPBOc0SjzBA4HRhoaePE305l2dQN3VEdzBfHSF303pls-eU4"
                     }
                   ]
                 },
@@ -667,11 +665,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_lZOkcZCMEviIFhhRIVHhRDOI"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_lZOkcZCMEviIFhhRIVHhRDOI",
+                    "item_id": "fc_07280274e797bb41006ab2b2dabe3087d09fb9e1ea2370bf53"
                   },
                   "function": {
                     "name": "add",
@@ -692,11 +690,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_lZOkcZCMEviIFhhRIVHhRDOI"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_lZOkcZCMEviIFhhRIVHhRDOI",
+                    "item_id": "fc_07280274e797bb41006ab2b2dabe3087d09fb9e1ea2370bf53"
                   },
                   "name": "add",
                   "content": [
@@ -710,7 +708,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_07280274e797bb41006ab2b2dbcab087d0b81b86d415743704",
               "content": [
                 {
                   "type": "text",

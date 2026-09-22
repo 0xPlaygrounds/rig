@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 1,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 1,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -127,7 +127,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "A glarb-glarb is an ancient farming tool from the planet J"
+            "text": "A glarb-glarb"
           }
         },
         {
@@ -135,7 +135,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "iro."
+            "text": " is an ancient farming tool from the planet Jiro."
           }
         }
       ],

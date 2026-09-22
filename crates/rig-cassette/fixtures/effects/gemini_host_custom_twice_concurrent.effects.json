@@ -123,7 +123,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_1"
+                    "signature": "EoACCv0BAWkUfROeS4WoD3evdImZoVbey56tIyjzY5hvggnWJVrMqBg4gFAqcL/477VKXcxCpgI+zkkkW0i/S0XkoQJne6AMTFbiX+SNxJRraYgkAEE8hlcrPhWGTg6987ZBBGQsmqdRtCkaTP/EqKDUz1ryHFSlq/4vbnQSBOS9gqkAm3yMFL54FTr1+G+Or6lpoH7rRNTDnj/+cC0ceX03f5CE60oM7Z0I+S/2VM2IEOsNXTRBzKJB6/EH4Jm5wqBMobnzHC9EzHncpg5R1++6QQLxkYAy54rwRJ4wclMXWVJZPP4lYlAEfgBmlCevENWGq289br/6YuBhTpeG7DbE6g=="
                   }
                 }
               ]
@@ -132,11 +132,11 @@
           "usage": {
             "input_tokens": 19,
             "output_tokens": 2,
-            "total_tokens": 76,
-            "reasoning_tokens": 55
+            "total_tokens": 58,
+            "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "WK2yasChL7OLmtkPhf6S6Qg",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -147,7 +147,7 @@
                   "parts": [
                     {
                       "text": "ready.",
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EoACCv0BAWkUfROeS4WoD3evdImZoVbey56tIyjzY5hvggnWJVrMqBg4gFAqcL/477VKXcxCpgI+zkkkW0i/S0XkoQJne6AMTFbiX+SNxJRraYgkAEE8hlcrPhWGTg6987ZBBGQsmqdRtCkaTP/EqKDUz1ryHFSlq/4vbnQSBOS9gqkAm3yMFL54FTr1+G+Or6lpoH7rRNTDnj/+cC0ceX03f5CE60oM7Z0I+S/2VM2IEOsNXTRBzKJB6/EH4Jm5wqBMobnzHC9EzHncpg5R1++6QQLxkYAy54rwRJ4wclMXWVJZPP4lYlAEfgBmlCevENWGq289br/6YuBhTpeG7DbE6g=="
                     }
                   ],
                   "role": "model"
@@ -157,7 +157,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "WK2yasChL7OLmtkPhf6S6Qg",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 19,
@@ -168,8 +168,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 55,
-              "totalTokenCount": 76
+              "thoughtsTokenCount": 37,
+              "totalTokenCount": 58
             }
           }
         }

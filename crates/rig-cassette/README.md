@@ -156,20 +156,20 @@ requests with an absent recorded body must be empty. SSE and ordinary binary
 responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
-The engine retains secret and generated-identifier scrubbing, strict request
-matching, and safety validation. Repository-specific source scans and fixture
-censuses remain with each caller. Rig's adapter in
+The engine retains credential scrubbing, strict request matching, and safety
+validation. Provider-issued values (ids, signatures, encrypted reasoning,
+cache keys, cursors, generated images) are recorded verbatim, and request
+matching compares recorded bytes as they are. Repository-specific source
+scans and fixture censuses remain with each caller. Rig's adapter in
 `test-support/rig-test-support/src/cassettes.rs` is a thin path binding that
 supplies `crates/rig-cassette/fixtures/cassettes`; a downstream can supply
 `fixtures/cassettes` of its own instead. `Retry-After` response headers retain
 canonical seconds or HTTP dates for replay diagnostics; malformed values are
-discarded instead of persisting arbitrary server text. Generated request IDs
-remain placeholdered. Home-directory paths are scrubbed separately because token
-and credential scans cannot identify operator names or cache layouts. Only paths
-at the beginning of a string value are eligible, preserving embedded public URLs
-and the model basename. Spaces remain part of the path to avoid leaking account
-names. Cursor placeholders retain equality and distinction across requests and
-responses so pagination progress checks behave the same during replay.
+discarded instead of persisting arbitrary server text. Home-directory paths are
+scrubbed separately because credential scans cannot identify operator names or
+cache layouts. Only paths at the beginning of a string value are eligible,
+preserving embedded public URLs and the model basename. Spaces remain part of
+the path to avoid leaking account names.
 
 ## The corpora
 
@@ -215,7 +215,7 @@ same recorded HTTP. Native-only long-task cells use only the native producer:
    mode.
 2. **Produce the agent golden.** The same producer runs again in replay mode under
    `RIG_REGENERATE_GOLDEN=1`, so the golden is generated from the *replayed*
-   cassette and holds the cassette's placeholders rather than live ids.
+   cassette and holds exactly the bytes replay serves.
 3. **Produce the world golden.** Run the corresponding native cell with
    `RIG_PROVIDER_TEST_MODE=replay RIG_REGENERATE_GOLDEN=1`. It writes only its
    world fixture under `fixtures/effects/world/`. Names come from the native

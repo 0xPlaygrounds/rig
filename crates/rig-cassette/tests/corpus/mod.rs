@@ -2205,9 +2205,20 @@ pub fn golden(fixture: &str) -> EffectLog {
 
 /// A record as data: its kind, outcome, published tool output and events.
 pub fn as_data(record: &EffectRecord) -> serde_json::Value {
+    let mut kind = serde_json::to_value(&record.kind).expect("an effect kind serializes");
+    // A tool call's arguments are a JSON string whose key order depends on
+    // whether `serde_json`'s `preserve_order` is unified into the build;
+    // compare them as JSON so the golden holds in every feature set.
+    if let Some(args) = kind.get_mut("args")
+        && let Some(parsed) = args
+            .as_str()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+    {
+        *args = parsed;
+    }
     serde_json::json!({
         "key": record.key,
-        "kind": record.kind,
+        "kind": kind,
         "outcome": record.outcome,
         "tool_output": record.tool_output,
         "events": record.events,

@@ -15,4 +15,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"You should pack sunscreen for your trip to Tokyo, as it is sunny with light clouds."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":266,"promptTokensDetails":[{"modality":"TEXT","tokenCount":266}],"serviceTier":"standard","totalTokenCount":284}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"Based on the sunny weather with light clouds in Tokyo, you should pack sunscreen."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"WKeyaqXIGbWjqtsPsMv8yAs","usageMetadata":{"candidatesTokenCount":16,"promptTokenCount":266,"promptTokensDetails":[{"modality":"TEXT","tokenCount":266}],"serviceTier":"standard","totalTokenCount":282}}'

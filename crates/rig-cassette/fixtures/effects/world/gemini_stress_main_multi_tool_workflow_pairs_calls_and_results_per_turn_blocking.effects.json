@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -204,7 +204,7 @@
                   "y": 8
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "Ct4CAWkUfRNOnfzZlWMdtoTS92T5lWobSlWjxjpfTXzKW3LSOX6p3s5UebKE6GkxhmGti0EUrlFzlW0kIs6OTAiGFtBrsrnMI0BwNzmG2wQxExDbrk4ntPUMi/VJDprJbkI+sdsJPy4LhtNPFabOO/KkAeXJFEiq7qOzo8xRU+bmsXrpgPC3nQyH/wf22Id15AH99CuGKX1dEFMAJEAqyGCi79c2TXfFNurm1e7TZKJRMoxQgpS8Il5lPS1rbUZMfyiDlUDPkuaHKpwzpg8a3a4MLEsQJYfgHCqSHX4zf9I6vSyLO1aD+sDc81fNcwrMkbwQfBUjz6rKvsbGCNdcetL7SFlp3duPXfHXpwEt/UONjji3B/0ItRrjKqZEOgdM8UzgmSypyI1KzaV6RA3gXuKHH61wZBlAjaBVjawQGGfX/Frv+4qPvLvW6UUcCj6lA62BTtkwYpEUoYjZExcjrXM=",
               "additional_params": null
             },
             {
@@ -227,11 +227,11 @@
           "usage": {
             "input_tokens": 180,
             "output_tokens": 38,
-            "total_tokens": 293,
-            "reasoning_tokens": 75
+            "total_tokens": 298,
+            "reasoning_tokens": 80
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "Zq6yauiLLOGfqtsPpcP90AE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -248,7 +248,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "Ct4CAWkUfRNOnfzZlWMdtoTS92T5lWobSlWjxjpfTXzKW3LSOX6p3s5UebKE6GkxhmGti0EUrlFzlW0kIs6OTAiGFtBrsrnMI0BwNzmG2wQxExDbrk4ntPUMi/VJDprJbkI+sdsJPy4LhtNPFabOO/KkAeXJFEiq7qOzo8xRU+bmsXrpgPC3nQyH/wf22Id15AH99CuGKX1dEFMAJEAqyGCi79c2TXfFNurm1e7TZKJRMoxQgpS8Il5lPS1rbUZMfyiDlUDPkuaHKpwzpg8a3a4MLEsQJYfgHCqSHX4zf9I6vSyLO1aD+sDc81fNcwrMkbwQfBUjz6rKvsbGCNdcetL7SFlp3duPXfHXpwEt/UONjji3B/0ItRrjKqZEOgdM8UzgmSypyI1KzaV6RA3gXuKHH61wZBlAjaBVjawQGGfX/Frv+4qPvLvW6UUcCj6lA62BTtkwYpEUoYjZExcjrXM="
                     },
                     {
                       "functionCall": {
@@ -268,7 +268,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "Zq6yauiLLOGfqtsPpcP90AE",
             "usageMetadata": {
               "candidatesTokenCount": 38,
               "promptTokenCount": 180,
@@ -279,8 +279,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 75,
-              "totalTokenCount": 293
+              "thoughtsTokenCount": 80,
+              "totalTokenCount": 298
             }
           }
         }
@@ -376,7 +376,7 @@
                       "y": 8
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "Ct4CAWkUfRNOnfzZlWMdtoTS92T5lWobSlWjxjpfTXzKW3LSOX6p3s5UebKE6GkxhmGti0EUrlFzlW0kIs6OTAiGFtBrsrnMI0BwNzmG2wQxExDbrk4ntPUMi/VJDprJbkI+sdsJPy4LhtNPFabOO/KkAeXJFEiq7qOzo8xRU+bmsXrpgPC3nQyH/wf22Id15AH99CuGKX1dEFMAJEAqyGCi79c2TXfFNurm1e7TZKJRMoxQgpS8Il5lPS1rbUZMfyiDlUDPkuaHKpwzpg8a3a4MLEsQJYfgHCqSHX4zf9I6vSyLO1aD+sDc81fNcwrMkbwQfBUjz6rKvsbGCNdcetL7SFlp3duPXfHXpwEt/UONjji3B/0ItRrjKqZEOgdM8UzgmSypyI1KzaV6RA3gXuKHH61wZBlAjaBVjawQGGfX/Frv+4qPvLvW6UUcCj6lA62BTtkwYpEUoYjZExcjrXM=",
                   "additional_params": null
                 },
                 {
@@ -499,7 +499,7 @@
             "total_tokens": 272
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "Z66yau3jJ6foqtsPr97O0Ac",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -519,7 +519,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_2",
+            "responseId": "Z66yau3jJ6foqtsPr97O0Ac",
             "usageMetadata": {
               "candidatesTokenCount": 28,
               "promptTokenCount": 244,

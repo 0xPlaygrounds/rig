@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 12,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -148,18 +148,18 @@
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
               "additional_params": null
             }
           ],
           "usage": {
             "input_tokens": 103,
             "output_tokens": 13,
-            "total_tokens": 150,
-            "reasoning_tokens": 34
+            "total_tokens": 152,
+            "reasoning_tokens": 36
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "iLCyavyRItP6qtsPpamtkAQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -167,8 +167,8 @@
             "usage_metadata": {
               "promptTokenCount": 103,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 150,
-              "thoughtsTokenCount": 34,
+              "totalTokenCount": 152,
+              "thoughtsTokenCount": 36,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -179,7 +179,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "iLCyavyRItP6qtsPpamtkAQ"
           }
         }
       },
@@ -198,7 +198,7 @@
             "close": "tool_call",
             "name": "lookup_harbor_label",
             "arguments": {},
-            "signature": "signature_REDACTED_1",
+            "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
             "on_unparseable": "error"
           },
           "block": {
@@ -211,7 +211,7 @@
               "name": "lookup_harbor_label",
               "arguments": {}
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
             "additional_params": null
           }
         },
@@ -220,20 +220,20 @@
           "usage": {
             "input_tokens": 103,
             "output_tokens": 13,
-            "total_tokens": 150,
-            "reasoning_tokens": 34
+            "total_tokens": 152,
+            "reasoning_tokens": 36
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "iLCyavyRItP6qtsPpamtkAQ",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 103,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 150,
-              "thoughtsTokenCount": 34,
+              "totalTokenCount": 152,
+              "thoughtsTokenCount": 36,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -244,7 +244,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "iLCyavyRItP6qtsPpamtkAQ"
           }
         }
       ],
@@ -311,7 +311,7 @@
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "CiQBaRR9E0AKF3616Trvv2SyGZhPfFRv4Rw9MffORos4lLsUzswKXAFpFH0TvQk/boLrwTsNIEX2ZlwACW07QsW8AVTSH1UESvP1WSFM5S5IGcIYi+DLkXj0QZnduzLn9tuMMo5wcfwOXSsWxjIUT+bPU+zlhSBqzxEzww9y8T1X3c/ACnYBaRR9E3f8xOO0WyQwJGes8EZddS6dYK/Un5H2iGQ9vR5q5iDw6AsyrKZxKgxAWy1Dqv0gaWmBT4zWkN9ZGwKZLSBS4WPiYDBZU5yMtMjMgw9A8nh++yNIjzNrLUP/ZZPE62lPo9nyNZn2GTMo4FdnYKN4r3No",
                   "additional_params": null
                 }
               ]
@@ -364,34 +364,34 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is crimson-harbor."
+              "text": "The result of the harbor label lookup is crimson-harbor."
             }
           ],
           "usage": {
-            "input_tokens": 172,
-            "output_tokens": 10,
-            "total_tokens": 182
+            "input_tokens": 174,
+            "output_tokens": 14,
+            "total_tokens": 188
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "ibCyatzRC4OVmtkPituHuQk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 172,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 182,
+              "promptTokenCount": 174,
+              "candidatesTokenCount": 14,
+              "totalTokenCount": 188,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 172
+                  "tokenCount": 174
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "ibCyatzRC4OVmtkPituHuQk"
           }
         }
       },
@@ -408,7 +408,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "The alpha signal marker"
+            "text": "The result of the"
           }
         },
         {
@@ -416,36 +416,36 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " is crimson-harbor."
+            "text": " harbor label lookup is crimson-harbor."
           }
         },
         {
           "event": "final",
           "usage": {
-            "input_tokens": 172,
-            "output_tokens": 10,
-            "total_tokens": 182
+            "input_tokens": 174,
+            "output_tokens": 14,
+            "total_tokens": 188
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "ibCyatzRC4OVmtkPituHuQk",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 172,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 182,
+              "promptTokenCount": 174,
+              "candidatesTokenCount": 14,
+              "totalTokenCount": 188,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 172
+                  "tokenCount": 174
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "ibCyatzRC4OVmtkPituHuQk"
           }
         }
       ],

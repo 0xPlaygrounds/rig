@@ -84,7 +84,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_1"
+                    "signature": "EtwCCtkCAWkUfRPdlbSgqDY07NTZ/qduu31SIKbNnwQE+Xl2cvN8lUc/j8Gij6E9wJhLwKxmJC72ouPfaPfq8HXOP/O7e7wpfpUJJwmUzN98rVkqeavxQRXB92g8WMdvEuMUcV1LDhV3HlqGibvieGzqSiEkFt8t4oIi/f6WAudy8UBi20QZsFvkdsFXpUk+cV69jARKWLFmik36tL+oHRD8jA9WchITqEB7yB3GMj57J3O5JelHBGtpCPqVS6fEQNYARE+qrZZthuuNTSyXo4Fcab57eiWk0OTV/o349jrMG4sVIwGfvewTd+/i4ikRQd+Hqknto2DrSaHx3UvlRQkDCrOA2OIfTRPiRUWUQ8IxGJ45vZ4o6FzRkj+a/zhCraf5cQfble3TQHyM4AkaqmXYyukISUyYQj5UK4ljQxRJsMyroA8AOpdmqyGgMaL61ZDlh4iRNQUcaikOyQEM"
                   }
                 }
               ]
@@ -93,11 +93,11 @@
           "usage": {
             "input_tokens": 1115,
             "output_tokens": 9,
-            "total_tokens": 1230,
-            "reasoning_tokens": 106
+            "total_tokens": 1177,
+            "reasoning_tokens": 53
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "q66yaqiBB9-eqtsP-7XRqAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -108,7 +108,7 @@
                   "parts": [
                     {
                       "text": "The dominant non-background color is red.",
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EtwCCtkCAWkUfRPdlbSgqDY07NTZ/qduu31SIKbNnwQE+Xl2cvN8lUc/j8Gij6E9wJhLwKxmJC72ouPfaPfq8HXOP/O7e7wpfpUJJwmUzN98rVkqeavxQRXB92g8WMdvEuMUcV1LDhV3HlqGibvieGzqSiEkFt8t4oIi/f6WAudy8UBi20QZsFvkdsFXpUk+cV69jARKWLFmik36tL+oHRD8jA9WchITqEB7yB3GMj57J3O5JelHBGtpCPqVS6fEQNYARE+qrZZthuuNTSyXo4Fcab57eiWk0OTV/o349jrMG4sVIwGfvewTd+/i4ikRQd+Hqknto2DrSaHx3UvlRQkDCrOA2OIfTRPiRUWUQ8IxGJ45vZ4o6FzRkj+a/zhCraf5cQfble3TQHyM4AkaqmXYyukISUyYQj5UK4ljQxRJsMyroA8AOpdmqyGgMaL61ZDlh4iRNQUcaikOyQEM"
                     }
                   ],
                   "role": "model"
@@ -118,7 +118,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "q66yaqiBB9-eqtsP-7XRqAk",
             "usageMetadata": {
               "candidatesTokenCount": 9,
               "promptTokenCount": 1115,
@@ -133,8 +133,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 106,
-              "totalTokenCount": 1230
+              "thoughtsTokenCount": 53,
+              "totalTokenCount": 1177
             }
           }
         }

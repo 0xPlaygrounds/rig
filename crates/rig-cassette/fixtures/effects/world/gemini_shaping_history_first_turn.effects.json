@@ -104,7 +104,7 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_1"
+                    "signature": "EsACCr0CAWkUfRON8VkKz/78QncB7t9C/DjYVbwbGI5DZ+w+6duYsUdVwNQlzARaSPo0My/IHwiQcRv6mcV9crgVmqMIhBB01EWO2a0U+Ub7adJqhypPhIqYUmomjfleDnaujjdtJCx7dT/eH4T7jcRv4X3Adre1TdOqeD3i4F1y8PxsoDchl7hWIodqPEUKuvO+w2PFg+/L0mqfpXglSqr9seA60gZWpisaw4R/kvSrJvpDgpRoZbrnqM9w/LXQWPQ1/qqRicqGmYScv/eUIjEBm+MiOftNJje+7fC8vSujMaHg3hw+4pV1/jAqOcfkOCyCNYic/tJBs+NfGwu9lGy12X0U0cbFrvSEHgRZ/AjRCjRUAsbAmApmVE+ocNeLjksgO8nO1EO+WKHsXcCnE3998PzXBqb11aYXYvj/fXrFGbU="
                   }
                 }
               ]
@@ -117,7 +117,7 @@
             "reasoning_tokens": 54
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "ya2yaqmbLISgz7IP9fTZEA",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -128,7 +128,7 @@
                   "parts": [
                     {
                       "text": "Ada",
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "EsACCr0CAWkUfRON8VkKz/78QncB7t9C/DjYVbwbGI5DZ+w+6duYsUdVwNQlzARaSPo0My/IHwiQcRv6mcV9crgVmqMIhBB01EWO2a0U+Ub7adJqhypPhIqYUmomjfleDnaujjdtJCx7dT/eH4T7jcRv4X3Adre1TdOqeD3i4F1y8PxsoDchl7hWIodqPEUKuvO+w2PFg+/L0mqfpXglSqr9seA60gZWpisaw4R/kvSrJvpDgpRoZbrnqM9w/LXQWPQ1/qqRicqGmYScv/eUIjEBm+MiOftNJje+7fC8vSujMaHg3hw+4pV1/jAqOcfkOCyCNYic/tJBs+NfGwu9lGy12X0U0cbFrvSEHgRZ/AjRCjRUAsbAmApmVE+ocNeLjksgO8nO1EO+WKHsXcCnE3998PzXBqb11aYXYvj/fXrFGbU="
                     }
                   ],
                   "role": "model"
@@ -138,7 +138,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "id_REDACTED_1",
+            "responseId": "ya2yaqmbLISgz7IP9fTZEA",
             "usageMetadata": {
               "candidatesTokenCount": 1,
               "promptTokenCount": 33,

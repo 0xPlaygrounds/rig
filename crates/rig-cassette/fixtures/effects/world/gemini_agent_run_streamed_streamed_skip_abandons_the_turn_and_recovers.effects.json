@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,38 +10,22 @@
         }
       },
       {
-        "batch": 4,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
-        "batch": 9,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -173,7 +157,7 @@
                   "y": 21
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
               "additional_params": null
             }
           ],
@@ -184,7 +168,7 @@
             "reasoning_tokens": 47
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "AKyyatr5MIHAz7IPp-fGkQU",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -204,7 +188,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "AKyyatr5MIHAz7IPp-fGkQU"
           }
         }
       },
@@ -226,7 +210,7 @@
               "x": 21,
               "y": 21
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
             "on_unparseable": "error"
           },
           "block": {
@@ -242,7 +226,7 @@
                 "y": 21
               }
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
             "additional_params": null
           }
         },
@@ -256,7 +240,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "AKyyatr5MIHAz7IPp-fGkQU",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -275,7 +259,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "AKyyatr5MIHAz7IPp-fGkQU"
           }
         }
       ],
@@ -320,7 +304,7 @@
                       "y": 21
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
                   "additional_params": null
                 }
               ]
@@ -383,7 +367,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "I am"
+              "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21."
             },
             {
               "type": "reasoning",
@@ -393,33 +377,29 @@
                   "type": "text",
                   "content": {
                     "text": "",
-                    "signature": "signature_REDACTED_2"
+                    "signature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
                   }
                 }
               ]
-            },
-            {
-              "type": "text",
-              "text": " sorry, but the add tool is disabled, so I cannot help you with this request."
             }
           ],
           "usage": {
             "input_tokens": 197,
-            "output_tokens": 20,
-            "total_tokens": 229,
-            "reasoning_tokens": 12
+            "output_tokens": 23,
+            "total_tokens": 251,
+            "reasoning_tokens": 31
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "Aayyaq6yHMvVz7IPwYepGQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 197,
-              "candidatesTokenCount": 20,
-              "totalTokenCount": 229,
-              "thoughtsTokenCount": 12,
+              "candidatesTokenCount": 23,
+              "totalTokenCount": 251,
+              "thoughtsTokenCount": 31,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -429,7 +409,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "Aayyaq6yHMvVz7IPwYepGQ"
           }
         }
       },
@@ -446,7 +426,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "I am"
+            "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21."
           }
         },
         {
@@ -454,7 +434,7 @@
           "id": "minted:reasoning:0",
           "end": {
             "close": "reasoning",
-            "signature": "signature_REDACTED_2",
+            "signature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA==",
             "wire_sent": false
           },
           "block": {
@@ -465,46 +445,31 @@
                 "type": "text",
                 "content": {
                   "text": "",
-                  "signature": "signature_REDACTED_2"
+                  "signature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
                 }
               }
             ]
           }
         },
         {
-          "event": "block_start",
-          "id": "minted:text:1",
-          "kind": {
-            "kind": "text"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:1",
-          "delta": {
-            "delta": "text",
-            "text": " sorry, but the add tool is disabled, so I cannot help you with this request."
-          }
-        },
-        {
           "event": "final",
           "usage": {
             "input_tokens": 197,
-            "output_tokens": 20,
-            "total_tokens": 229,
-            "reasoning_tokens": 12
+            "output_tokens": 23,
+            "total_tokens": 251,
+            "reasoning_tokens": 31
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "Aayyaq6yHMvVz7IPwYepGQ",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 197,
-              "candidatesTokenCount": 20,
-              "totalTokenCount": 229,
-              "thoughtsTokenCount": 12,
+              "candidatesTokenCount": 23,
+              "totalTokenCount": 251,
+              "thoughtsTokenCount": 31,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -514,7 +479,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "Aayyaq6yHMvVz7IPwYepGQ"
           }
         }
       ],

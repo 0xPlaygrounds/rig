@@ -74,33 +74,29 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
               "content": [
                 {
-                  "type": "summary",
-                  "content": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language designed for performance, concurrency, and memory safety through its ownership and borrowing system, all without using a garbage collector. Memory safety is crucial because it helps avoid bugs such as null or dangling pointers, data races, and security vulnerabilities, enhancing the reliability and security of programs."
-                },
-                {
                   "type": "encrypted",
-                  "content": "encrypted_content_REDACTED_2"
+                  "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
                 }
               ]
             },
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that provides performance and control like C/C++ while enforcing memory safety and concurrency guarantees through its ownership and borrowing system (without a garbage collector). Memory safety matters because it prevents bugs such as null/dangling pointers, buffer overflows, and data races that cause crashes, incorrect behavior, and security vulnerabilities."
+              "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 156,
-            "total_tokens": 193,
+            "output_tokens": 134,
+            "total_tokens": 171,
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+          "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -110,11 +106,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 156,
+              "output_tokens": 134,
               "output_tokens_details": {
                 "reasoning_tokens": 64
               },
-              "total_tokens": 193
+              "total_tokens": 171
             },
             "reasoning_metadata": {
               "context": "current_turn",
@@ -124,8 +120,8 @@
             },
             "reasoning_context": "current_turn",
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
             "model": "gpt-5-mini-2025-08-07"
           }
         }
@@ -133,507 +129,23 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
           "kind": {
             "kind": "reasoning",
-            "provider_id": "rs_REDACTED_1"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "**Explaining Rust and Memory Safety**\n\nRust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " systems"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " programming"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " language"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " designed"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " for"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " performance"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " concurrency"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " through"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " its"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ownership"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " borrowing"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " system"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " all"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " without"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " using"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " garbage"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " collector"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " crucial"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " because"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " it"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " helps"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " avoid"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " bugs"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " such"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " as"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " null"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " dangling"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " pointers"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " data"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " races"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " security"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " vulnerabilities"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " enhancing"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " reliability"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " security"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " programs"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
+            "provider_id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
           "end": {
             "close": "reasoning",
             "reasoning": {
-              "id": "rs_REDACTED_1",
+              "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
               "content": [
                 {
-                  "type": "summary",
-                  "content": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language designed for performance, concurrency, and memory safety through its ownership and borrowing system, all without using a garbage collector. Memory safety is crucial because it helps avoid bugs such as null or dangling pointers, data races, and security vulnerabilities, enhancing the reliability and security of programs."
-                },
-                {
                   "type": "encrypted",
-                  "content": "encrypted_content_REDACTED_2"
+                  "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
                 }
               ]
             },
@@ -641,29 +153,25 @@
           },
           "block": {
             "type": "reasoning",
-            "id": "rs_REDACTED_1",
+            "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
             "content": [
               {
-                "type": "summary",
-                "content": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language designed for performance, concurrency, and memory safety through its ownership and borrowing system, all without using a garbage collector. Memory safety is crucial because it helps avoid bugs such as null or dangling pointers, data races, and security vulnerabilities, enhancing the reliability and security of programs."
-              },
-              {
                 "type": "encrypted",
-                "content": "encrypted_content_REDACTED_2"
+                "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
               }
             ]
           }
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": "Rust"
@@ -671,7 +179,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " is"
@@ -679,7 +187,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " a"
@@ -687,7 +195,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " modern"
@@ -695,7 +203,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " systems"
@@ -703,7 +211,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " programming"
@@ -711,7 +219,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " language"
@@ -719,7 +227,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " that"
@@ -727,7 +235,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " provides"
@@ -735,7 +243,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " performance"
@@ -743,23 +251,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " control"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " like"
@@ -767,7 +259,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " C"
@@ -775,7 +267,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": "/C"
@@ -783,7 +275,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": "++"
@@ -791,7 +283,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " while"
@@ -799,7 +291,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " enforcing"
@@ -807,39 +299,31 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": " memory"
+            "text": " strong"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": " safety"
+            "text": " compile"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": " and"
+            "text": "-time"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " concurrency"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " guarantees"
@@ -847,111 +331,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": " through"
+            "text": " for"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": " its"
+            "text": " memory"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " ownership"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " borrowing"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " system"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " ("
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": "without"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " garbage"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " collector"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": ")."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " Memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " safety"
@@ -959,7 +355,87 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " safe"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " concurrency"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " collector"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " Memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " matters"
@@ -967,7 +443,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " because"
@@ -975,7 +451,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " it"
@@ -983,7 +459,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " prevents"
@@ -991,7 +467,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " bugs"
@@ -999,7 +475,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " such"
@@ -1007,7 +483,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " as"
@@ -1015,47 +491,31 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": " null"
+            "text": " use"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": "/d"
+            "text": "-after"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
-            "text": "ang"
+            "text": "-free"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": "ling"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " pointers"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": ","
@@ -1063,7 +523,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " buffer"
@@ -1071,7 +531,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " over"
@@ -1079,7 +539,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": "flows"
@@ -1087,7 +547,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": ","
@@ -1095,7 +555,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " and"
@@ -1103,7 +563,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " data"
@@ -1111,7 +571,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " races"
@@ -1119,7 +579,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " that"
@@ -1127,7 +587,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " cause"
@@ -1135,7 +595,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " crashes"
@@ -1143,39 +603,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " incorrect"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " behavior"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " and"
@@ -1183,7 +611,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " security"
@@ -1191,7 +619,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": " vulnerabilities"
@@ -1199,7 +627,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "delta": {
             "delta": "text",
             "text": "."
@@ -1207,7 +635,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "kind": {
             "kind": "message"
           }
@@ -1216,15 +644,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 156,
-            "total_tokens": 193,
+            "output_tokens": 134,
+            "total_tokens": 171,
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+          "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
@@ -1233,11 +661,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 156,
+              "output_tokens": 134,
               "output_tokens_details": {
                 "reasoning_tokens": 64
               },
-              "total_tokens": 193
+              "total_tokens": 171
             },
             "reasoning_metadata": {
               "context": "current_turn",
@@ -1247,8 +675,8 @@
             },
             "reasoning_context": "current_turn",
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
             "model": "gpt-5-mini-2025-08-07"
           }
         }

@@ -16,10 +16,10 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_REDACTED_1
+    value: req_011CfJrHyjU6nHSiGkLZV1ue
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":609,"output_tokens":4,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfJrHzCW42m4wrdM3TvGd","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":609,"output_tokens":4,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
@@ -31,10 +31,16 @@ then:
     data: {"delta":{"thinking":"The user wants to","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"thinking":" multiply 17 and 23.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" multiply","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"signature":"signature_REDACTED_1","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":" 17 and","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 23.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"EpoCCpIBCBIYAipAUy8/ZnegRgCrwh/oDmcoYO9gfTMCQbf7pw9/X2WA+eCcedqeWerBHHTnBK2hTtxy5pPn/SZ9LlRRGkWhZZgwojIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB3e3K1QYSDAC216d77WPytIEPHRoMIKl7X8FVr5cJBB9zIjCsVCVlzbe1MVaHtvJ4mou/zbdiPzwzUcYZRnLz4zN6MNeAUvap/5mYt6JmjGBydBgqNYeDL43CfPmDz1//KrNbc+pK61tJIFAvIocfaE8seKDC+y9Vj3jg46K3+7Iyg0/V0Bz91K5KGAE=","type":"signature_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -43,31 +49,49 @@ then:
     data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"delta":{"text":"Sure! Let me compute 17 times 23 right away!","type":"text_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"text":"Sure","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"! Let","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" me compute","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 17 × 23 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"right","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" away!","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":1,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"multiply","type":"tool_use"},"index":2,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01GcapS72ghE8zbc6ZJjZSvG","input":{},"name":"multiply","type":"tool_use"},"index":2,"type":"content_block_start"}
 
     event: content_block_delta
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"a\": 17","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"a\": 1","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", \"b\"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"7","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":": 23}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", \"b\": ","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"23}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":2,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":609,"output_tokens":104,"output_tokens_details":{"thinking_tokens":17}}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":609,"output_tokens":104,"output_tokens_details":{"thinking_tokens":17}}}
 
     event: message_stop
     data: {"type":"message_stop"}

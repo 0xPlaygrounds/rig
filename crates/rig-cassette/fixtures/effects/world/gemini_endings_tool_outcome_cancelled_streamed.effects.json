@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,14 +18,14 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -149,10 +149,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_1385752"
+                "id": "call_243109"
               },
               "provider": {
-                "call_id": "call_1385752"
+                "call_id": "call_243109"
               },
               "function": {
                 "name": "add",
@@ -161,7 +161,7 @@
                   "y": 25
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "EtICCs8CAWkUfROdXS0ZGFI7Jq3V35FIz9UxbSbJ6Jw42yHDMoG7Z6Kc4MfXP1w9E9wZCXqhTk95sJjg1B/4T8+C+onhWNp0NcOD6OV54OE5LE3Zwh7b6g9ycgxdnTG0433TCoST7oQQ5wgKE6sEw7kU5qG0p8lCbg3bHRqVIvvjbR7wAqKXXl4dLrbTJjtQuTvj3Q1oPThslg7xgOVz/15kZXzB6TvHpm2b2e4htyeXST9pcBwsJEei3QY//monleobXalTrutGdAqWNG2SGPs92MQW/lC2cD7x9NniQu7PnEAj7Ndj3XPBjYUUSWHMDwgCtWlJoAsTp10jXy63xmGtMsaHkzisepOyX/53OriUlLMkXBgdTPsnAn2n1jSBei3hKCsLA9XVyT4/QNWldnxNVDU4FLxUQdieGhqMXDSniJNqfcGbDllG6I6Su/TS0mPfZs0=",
               "additional_params": null
             }
           ],
@@ -172,7 +172,7 @@
             "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "TayyarEGhYua2Q-9s4SwCQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -191,40 +191,40 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "id_REDACTED_1"
+            "response_id": "TayyarEGhYua2Q-9s4SwCQ"
           }
         }
       },
       "events": [
         {
           "event": "block_start",
-          "id": "wire:call_1385752",
+          "id": "wire:call_243109",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:call_1385752",
+          "id": "wire:call_243109",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_1385752",
+            "tool_id": "call_243109",
             "name": "add",
             "arguments": {
               "x": 17,
               "y": 25
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "EtICCs8CAWkUfROdXS0ZGFI7Jq3V35FIz9UxbSbJ6Jw42yHDMoG7Z6Kc4MfXP1w9E9wZCXqhTk95sJjg1B/4T8+C+onhWNp0NcOD6OV54OE5LE3Zwh7b6g9ycgxdnTG0433TCoST7oQQ5wgKE6sEw7kU5qG0p8lCbg3bHRqVIvvjbR7wAqKXXl4dLrbTJjtQuTvj3Q1oPThslg7xgOVz/15kZXzB6TvHpm2b2e4htyeXST9pcBwsJEei3QY//monleobXalTrutGdAqWNG2SGPs92MQW/lC2cD7x9NniQu7PnEAj7Ndj3XPBjYUUSWHMDwgCtWlJoAsTp10jXy63xmGtMsaHkzisepOyX/53OriUlLMkXBgdTPsnAn2n1jSBei3hKCsLA9XVyT4/QNWldnxNVDU4FLxUQdieGhqMXDSniJNqfcGbDllG6I6Su/TS0mPfZs0=",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_1385752"
+              "id": "call_243109"
             },
             "provider": {
-              "call_id": "call_1385752"
+              "call_id": "call_243109"
             },
             "function": {
               "name": "add",
@@ -233,7 +233,7 @@
                 "y": 25
               }
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "EtICCs8CAWkUfROdXS0ZGFI7Jq3V35FIz9UxbSbJ6Jw42yHDMoG7Z6Kc4MfXP1w9E9wZCXqhTk95sJjg1B/4T8+C+onhWNp0NcOD6OV54OE5LE3Zwh7b6g9ycgxdnTG0433TCoST7oQQ5wgKE6sEw7kU5qG0p8lCbg3bHRqVIvvjbR7wAqKXXl4dLrbTJjtQuTvj3Q1oPThslg7xgOVz/15kZXzB6TvHpm2b2e4htyeXST9pcBwsJEei3QY//monleobXalTrutGdAqWNG2SGPs92MQW/lC2cD7x9NniQu7PnEAj7Ndj3XPBjYUUSWHMDwgCtWlJoAsTp10jXy63xmGtMsaHkzisepOyX/53OriUlLMkXBgdTPsnAn2n1jSBei3hKCsLA9XVyT4/QNWldnxNVDU4FLxUQdieGhqMXDSniJNqfcGbDllG6I6Su/TS0mPfZs0=",
             "additional_params": null
           }
         },
@@ -247,7 +247,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "TayyarEGhYua2Q-9s4SwCQ",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
@@ -265,7 +265,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "id_REDACTED_1"
+            "response_id": "TayyarEGhYua2Q-9s4SwCQ"
           }
         }
       ],

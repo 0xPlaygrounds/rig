@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,22 +32,46 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 11,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 11,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 21,
+        "batch": 17,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -227,18 +251,18 @@
                   "y": 6
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
               "additional_params": null
             }
           ],
           "usage": {
             "input_tokens": 162,
             "output_tokens": 19,
-            "total_tokens": 241,
-            "reasoning_tokens": 60
+            "total_tokens": 262,
+            "reasoning_tokens": 81
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "ka6yavOQF4aNmtkP6-y0sQM",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -246,8 +270,8 @@
             "usage_metadata": {
               "promptTokenCount": 162,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 241,
-              "thoughtsTokenCount": 60,
+              "totalTokenCount": 262,
+              "thoughtsTokenCount": 81,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -258,7 +282,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "ka6yavOQF4aNmtkP6-y0sQM"
           }
         }
       },
@@ -280,7 +304,7 @@
               "x": 14,
               "y": 6
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
             "on_unparseable": "error"
           },
           "block": {
@@ -296,7 +320,7 @@
                 "y": 6
               }
             },
-            "signature": "signature_REDACTED_1",
+            "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
             "additional_params": null
           }
         },
@@ -305,20 +329,20 @@
           "usage": {
             "input_tokens": 162,
             "output_tokens": 19,
-            "total_tokens": 241,
-            "reasoning_tokens": 60
+            "total_tokens": 262,
+            "reasoning_tokens": 81
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "ka6yavOQF4aNmtkP6-y0sQM",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 162,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 241,
-              "thoughtsTokenCount": 60,
+              "totalTokenCount": 262,
+              "thoughtsTokenCount": 81,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -329,7 +353,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "ka6yavOQF4aNmtkP6-y0sQM"
           }
         }
       ],
@@ -399,7 +423,7 @@
                       "y": 6
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
                   "additional_params": null
                 }
               ]
@@ -482,6 +506,10 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "The sum of 14 and 6 is 20.\n"
+            },
+            {
               "type": "toolcall",
               "id": {
                 "origin": "generated",
@@ -499,35 +527,58 @@
             }
           ],
           "usage": {
-            "input_tokens": 255,
-            "output_tokens": 19,
-            "total_tokens": 274
+            "input_tokens": 276,
+            "output_tokens": 32,
+            "total_tokens": 308
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "kq6yatzPE56ImtkPjfrG6QQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 255,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 274,
+              "promptTokenCount": 276,
+              "candidatesTokenCount": 32,
+              "totalTokenCount": 308,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 255
+                  "tokenCount": 276
                 }
               ]
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "kq6yatzPE56ImtkPjfrG6QQ"
           }
         }
       },
       "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "The sum of "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "14 and 6 is 20.\n"
+          }
+        },
         {
           "event": "block_start",
           "id": "minted:tool:0",
@@ -567,31 +618,31 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 255,
-            "output_tokens": 19,
-            "total_tokens": 274
+            "input_tokens": 276,
+            "output_tokens": 32,
+            "total_tokens": 308
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "kq6yatzPE56ImtkPjfrG6QQ",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 255,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 274,
+              "promptTokenCount": 276,
+              "candidatesTokenCount": 32,
+              "totalTokenCount": 308,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 255
+                  "tokenCount": 276
                 }
               ]
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "kq6yatzPE56ImtkPjfrG6QQ"
           }
         }
       ],
@@ -636,7 +687,7 @@
                       "y": 6
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "CnIBaRR9EwSMJcGOFUdmD3jKT1y55A7g1iDrTamWzZ9WPU8KABY92wYY1NhcgxzzoLBswBeKdv8grIPWO2gBuuJ9dveQB1dxcjrj/FYppVg8mvBqrJt1nLSINyiGbgbgCrFDs3dhsDJRIlzcAxz0u8dTkcAKxQEBaRR9Ew+6Z/gFVYwnEsIf8qPTxLbtZus6x/uG9fQN0+nvswaUYt9ZtOvrVTCgHp2+d1q4ptNFJYzfQ1ZSbowfn5LNmeyKm2yl7bU30rIxJ74EYPajtQCYH5HPcJj0MYjhfm2sH9LiEEXZ8A9wrzjvR53MdJ7yRxw8AG4McsrkN8WJLJe65n+Ihsb/BZ8fSN5ILKJH1u58Aoh1+qihIXIPYoPX4m2ev5sAog1DFoOymcEVZvzHvvxs/LJbDgD8OJ9s9aPX0wpnAWkUfRN7npZ6bAIFmCu4/jhCX4Dc7Vx5ERU4VdDy6yiX3Wb2pBq4wIc6R14nR6a+GA1ni/Nz2FZxaNkRvM1fZFgM6VZNruXhSIAMsdqfRs1hrLbFV/xRr/PsZdA7lpeutPTtZG4Vbw==",
                   "additional_params": null
                 }
               ]
@@ -664,6 +715,10 @@
               "role": "assistant",
               "id": null,
               "content": [
+                {
+                  "type": "text",
+                  "text": "The sum of 14 and 6 is 20.\n"
+                },
                 {
                   "type": "toolcall",
                   "id": {
@@ -761,49 +816,34 @@
           "choice": [
             {
               "type": "text",
-              "text": "14 + 6 = 20. The subtract tool is unavailable, so I cannot subtract 9 from 40."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "signature_REDACTED_2"
-                  }
-                }
-              ]
+              "text": "I was able to add 14 and 6 to get 20. However, the subtract tool is currently offline, so I cannot subtract 9 from 40."
             }
           ],
           "usage": {
-            "input_tokens": 295,
-            "output_tokens": 27,
-            "total_tokens": 400,
-            "reasoning_tokens": 78
+            "input_tokens": 331,
+            "output_tokens": 37,
+            "total_tokens": 368
           },
           "message_id": null,
-          "response_id": "id_REDACTED_3",
+          "response_id": "kq6yau7-Mp-JqtsP3pTD0QE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 295,
-              "candidatesTokenCount": 27,
-              "totalTokenCount": 400,
-              "thoughtsTokenCount": 78,
+              "promptTokenCount": 331,
+              "candidatesTokenCount": 37,
+              "totalTokenCount": 368,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 295
+                  "tokenCount": 331
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_3"
+            "response_id": "kq6yau7-Mp-JqtsP3pTD0QE"
           }
         }
       },
@@ -820,60 +860,52 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "14 + 6 = 20. The subtract tool is unavailable, so I cannot subtract 9 from 40."
+            "text": "I was"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "signature": "signature_REDACTED_2",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "",
-                  "signature": "signature_REDACTED_2"
-                }
-              }
-            ]
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " able to add 14 and 6 to get 20. However, the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " subtract tool is currently offline, so I cannot subtract 9 from 40."
           }
         },
         {
           "event": "final",
           "usage": {
-            "input_tokens": 295,
-            "output_tokens": 27,
-            "total_tokens": 400,
-            "reasoning_tokens": 78
+            "input_tokens": 331,
+            "output_tokens": 37,
+            "total_tokens": 368
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_3",
+          "response_id": "kq6yau7-Mp-JqtsP3pTD0QE",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 295,
-              "candidatesTokenCount": 27,
-              "totalTokenCount": 400,
-              "thoughtsTokenCount": 78,
+              "promptTokenCount": 331,
+              "candidatesTokenCount": 37,
+              "totalTokenCount": 368,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 295
+                  "tokenCount": 331
                 }
               ]
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_3"
+            "response_id": "kq6yau7-Mp-JqtsP3pTD0QE"
           }
         }
       ],

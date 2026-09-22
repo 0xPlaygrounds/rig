@@ -149,7 +149,7 @@
                   "y": 8
                 }
               },
-              "signature": "signature_REDACTED_1",
+              "signature": "CocBAWkUfRNtbYhGf++VMdxt18CEcm2lwfB/ih/AZ5GSzHkv7P2/dIrJDIX8Qa0egLNz3F+j+xCLUTdEdq8MWC2TYfsqSj3dUxiOveZxJh5P9hByO8f/xl2gngoriSvsZeNSZXZGmkXYDfhpM0JexGlItFP1ptde313EZ5+bNyGvkWWu3PZp91N2",
               "additional_params": null
             }
           ],
@@ -160,7 +160,7 @@
             "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "gK6yavfWIdvAqtsPi_GegAk",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -177,7 +177,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "signature_REDACTED_1"
+                      "thoughtSignature": "CocBAWkUfRNtbYhGf++VMdxt18CEcm2lwfB/ih/AZ5GSzHkv7P2/dIrJDIX8Qa0egLNz3F+j+xCLUTdEdq8MWC2TYfsqSj3dUxiOveZxJh5P9hByO8f/xl2gngoriSvsZeNSZXZGmkXYDfhpM0JexGlItFP1ptde313EZ5+bNyGvkWWu3PZp91N2"
                     }
                   ],
                   "role": "model"
@@ -188,7 +188,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "gK6yavfWIdvAqtsPi_GegAk",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 128,
@@ -271,7 +271,7 @@
                       "y": 8
                     }
                   },
-                  "signature": "signature_REDACTED_1",
+                  "signature": "CocBAWkUfRNtbYhGf++VMdxt18CEcm2lwfB/ih/AZ5GSzHkv7P2/dIrJDIX8Qa0egLNz3F+j+xCLUTdEdq8MWC2TYfsqSj3dUxiOveZxJh5P9hByO8f/xl2gngoriSvsZeNSZXZGmkXYDfhpM0JexGlItFP1ptde313EZ5+bNyGvkWWu3PZp91N2",
                   "additional_params": null
                 }
               ]
@@ -343,7 +343,7 @@
             "total_tokens": 162
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "ga6yaqDyC8-O6dkPzcrF8Ac",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -363,7 +363,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_2",
+            "responseId": "ga6yaqDyC8-O6dkPzcrF8Ac",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 160,

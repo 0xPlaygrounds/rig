@@ -251,8 +251,8 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("recorded terminal response must be a Responses envelope");
     let mut live = serde_json::to_value(&from_raw).expect("provider type should serialize");
     let mut from_wire = serde_json::to_value(&from_wire).expect("provider type should serialize");
-    // Generated ids and the creation stamp are placeholdered on disk; only a
-    // replay compares them exactly, a live recording checks presence and shape.
+    // A live recording mints fresh ids and stamps; only a replay compares them
+    // exactly, a live recording checks presence and shape.
     for field in ["id", "created_at"] {
         assert_wire_value_matches(&live, &from_wire, field);
         if matches!(CassetteMode::current(), CassetteMode::Record) {
