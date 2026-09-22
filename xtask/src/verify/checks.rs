@@ -132,7 +132,9 @@ pub(super) fn all() -> Vec<Check> {
                 "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay) or test(/(^|::)(ecs|corpus)_/))) and not (package(rig) and test(golden_pairing))",
             ])],
         ),
-        // Parity cells have one lane owner; default-tests excludes them. They
+        // Parity cells have one lane owner; default-tests excludes them. Each
+        // cell asserts its own runtime's record against the cell; no log is
+        // compared across runtimes. They
         // moved with the cassette-backed provider suites, so the predicate is
         // `package(rig-cassette)` now, qualified away from the two absorbed
         // verification binaries whose `corpus_` module names would otherwise

@@ -6,21 +6,22 @@ a listed or ignored registration does not establish execution or parity.
 Models, prompts, budgets, tool definitions and expected values belong in the
 tests, not a second handwritten inventory.
 
-## Native identity expectations
+## Each runtime owns its record
 
-The native log's payload is compared to its original golden. Native-only
-metadata is pinned in `test-support/rig-test-support/src/ecs_goldens/identities.json`: every program's
-policy hash, the exact record-to-scope boundaries and exceptional dispatch IDs.
-Each program's required row is compared to the original header's required row.
-Consecutive IDs starting at zero are implicit. The compact data preserves empty
-programs and repeated scope blocks without duplicating requests and responses.
+A native cell's effect log is the world's own: its records carry a run
+`scope`, and its header carries the run's required row and policy hash under
+that scope (`rig_cassette::ecs::identity::stamp_run`). An agent producer's
+log is the agent's own, with its builder spec, hook list and required row.
+The two are not compared, normalized into each other, or pinned against a
+second fixture. A native cell asserts what its program contracts: the run's
+ending, the committed history against the last request and the answer, the
+tool invocations and their results, the usage the wire reported, and the
+family-specific facts named below. The agent producer asserts the same
+contract on its side and writes the golden that replay consumes.
 
-Policy hashes cover `rig_cassette::ecs::identity::spec_json`, including budgets and bound
-descriptors. A deliberate policy change requires reviewing and updating its
-fixed expectations. Identity checks compare independently committed values;
-they do not derive the expected policy from the actual program under test.
-The pairing guard requires every identity entry to have a native consumer and
-every original golden to have exactly one original producer.
+The world interpreters under `crates/rig-cassette/tests/corpus/` and
+`tests/world_replay.rs` are replay, not comparison: they answer every effect
+from a golden by id and check the bus reproduces the trace it was given.
 
 ## Execution and comparison boundaries
 
@@ -49,22 +50,15 @@ The helpers in [shared test drivers](../../test-support/rig-test-support/src) de
   fresh-world persistence framework. Host notes and nested calls must complete
   before teardown; gated controls establish those waits independently of quick
   cassette responses.
-- `ecs_goldens.rs` compares complete logs. It maps strictly increasing nominal
-  effect IDs bijectively by position, including parent and error references;
-  parents must exist and precede children. Native records must have corresponding
-  scoped program identities. Cross-runtime comparison omits those native-only
-  scopes/programs; compact fixed expectations retain them and the native IDs. Scheduling-dependent
-  delivery batches are excluded from stable golden equality. Requests, responses,
-  usage, errors and positions, tool publications, descriptors, builder identity
-  and causal relationships remain compared. These goldens do not certify
-  delivery-sensitive policy equivalence.
+- `goldens.rs` compares an agent producer's log to its committed golden as
+  data, header included. No helper compares a native log to that golden.
 - Per-run settings remain separate from agent defaults, including undeclared
   default budgets. Host bus policy can be undeclared in a comparison header
   without changing actual serving policy. Declared policy names do not hash
   application implementation or establish its correctness.
 
 Keep HTTP recordings and original goldens unchanged during ordinary regression
-runs. Never normalize away a new semantic difference to make parity pass.
+runs. Never weaken a native cell's assertions to make it pass.
 
 ## Family-specific obligations
 
