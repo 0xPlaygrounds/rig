@@ -28,10 +28,6 @@ pub const GPT_OSS_SAFEGUARD_20B: &str = "openai/gpt-oss-safeguard-20b";
 pub const QWEN3_8_27B: &str = "qwen/qwen3.8-27b";
 /// The `minimaxai/minimax-m2.7` model (preview, enterprise). Used for chat completion.
 pub const MINIMAX_M2_7: &str = "minimaxai/minimax-m2.7";
-/// The `groq/compound` agentic system (built-in web search and code execution).
-pub const COMPOUND: &str = "groq/compound";
-/// The `groq/compound-mini` agentic system (built-in web search and code execution).
-pub const COMPOUND_MINI: &str = "groq/compound-mini";
 
 /// The `whisper-large-v3` transcription model.
 pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
