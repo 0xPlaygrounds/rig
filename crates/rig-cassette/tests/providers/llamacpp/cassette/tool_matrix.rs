@@ -633,7 +633,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
         .expect_err("a specific tool choice must not be sent to llama.cpp");
 
     assert!(
-        matches!(error, rig::completion::CompletionError::ProviderError(_)),
+        matches!(error, rig::error::ProviderError::Provider(_)),
         "the refusal must be rig's own, not a transport failure — which is what \
          reaching the dead address would produce: {error:?}"
     );
@@ -686,7 +686,7 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
         .expect("opening the stream must fail before anything is sent");
 
     assert!(
-        matches!(error, rig::completion::CompletionError::ProviderError(_)),
+        matches!(error, rig::error::ProviderError::Provider(_)),
         "the refusal must be rig's own, not the connection error the dead \
          address would produce: {error:?}"
     );

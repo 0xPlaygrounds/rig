@@ -1,7 +1,8 @@
+use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::{
     agent::Agent,
-    completion::{CompletionError, PromptError},
+    completion::PromptError,
     extractor::Extractor,
     message::Message,
     providers::anthropic::{self, wire::Anthropic},
@@ -36,7 +37,7 @@ impl ReasoningAgent {
             .await
             .map_err(|e| {
                 tracing::error!("Extraction error: {:?}", e);
-                CompletionError::ProviderError("".into())
+                ProviderError::Provider("".into())
             })?
             .output;
         if extracted.steps.is_empty() {

@@ -29,21 +29,21 @@ fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn to_stream_result(
-    stream: impl futures::Stream<Item = Result<StreamEvent, CompletionError>> + Send + 'static,
+    stream: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
 ) -> StreamingResult {
     Box::pin(stream)
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn to_stream_result(
-    stream: impl futures::Stream<Item = Result<StreamEvent, CompletionError>> + 'static,
+    stream: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + 'static,
 ) -> StreamingResult {
     Box::pin(stream)
 }
 
 /// Script a provider's output through the same helpers adapters use, so
 /// the scripted events speak exactly the grammar a wire would.
-fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, CompletionError>> {
+fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
     build(&mut out);
     out.into_items()
@@ -368,9 +368,7 @@ async fn a_stream_that_errors_mid_stream_keeps_content_and_omits_the_terminal() 
     // record the provider did not send.
     let mut stream = scripted(|out| {
         out.text("partial");
-        out.error(CompletionError::ProviderError(
-            "connection reset".to_string(),
-        ));
+        out.error(ProviderError::Provider("connection reset".to_string()));
     });
 
     let mut saw_error = false;
@@ -847,7 +845,7 @@ async fn re_polling_a_drained_stream_preserves_the_aggregated_choice() {
 async fn a_provider_error_mentioning_aborted_reaches_the_consumer() {
     let mut stream = scripted(|out| {
         out.text("partial");
-        out.error(CompletionError::ProviderError(
+        out.error(ProviderError::Provider(
             "upstream aborted the request".to_string(),
         ));
     });
@@ -1590,9 +1588,7 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
                 "no extra provider frames exist"
             );
             sender
-                .unbounded_send(Err(CompletionError::ResponseError(
-                    "recoverable probe".into(),
-                )))
+                .unbounded_send(Err(ProviderError::Response("recoverable probe".into())))
                 .expect("send error");
             assert!(
                 matches!(response.next().now_or_never(), Some(Some(Err(_)))),

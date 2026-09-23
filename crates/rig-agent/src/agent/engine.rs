@@ -12,6 +12,7 @@ use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
 use crate::bus::{DispatchOptions, MemoryHandle};
+use rig_core::error::ProviderError;
 use rig_core::{
     completion::{FinishReason, ModelRef, ResponseIdentity},
     effect::{EffectId, EffectKind, Outcome},
@@ -48,7 +49,7 @@ use super::{
 };
 use crate::run::UnhandledInvalidToolCall;
 use crate::{
-    completion::{CompletionError, PromptError, Usage},
+    completion::{PromptError, Usage},
     json_utils,
     streaming::{Delta, StreamEvent, StreamedUserContent},
     tool::{ToolCatalog, ToolResult},
@@ -131,8 +132,8 @@ pub(crate) trait TurnSource: WasmCompatSend {
 /// Per the emission contract (`rig_core::streaming`) that absence means
 /// truncation, never a successful zero-usage completion, and a truncated
 /// stream has no document to record a completion call from.
-fn truncated_stream_error() -> CompletionError {
-    CompletionError::ResponseError(
+fn truncated_stream_error() -> ProviderError {
+    ProviderError::Response(
         "provider stream ended without a terminal record; treating the turn as truncated"
             .to_string(),
     )
@@ -423,7 +424,7 @@ where
                     }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
-                        let err = StreamingError::Completion(CompletionError::ResponseError(
+                        let err = StreamingError::Completion(ProviderError::Response(
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
                         ));
@@ -691,7 +692,7 @@ where
         for slot in collected {
             let Some(CollectedToolResult { content, block_id, surface }) = slot else {
                 yield Err(StreamingError::Prompt(PromptError::CompletionError(
-                    CompletionError::ResponseError(
+                    ProviderError::Response(
                         "tool execution finished without producing every result".to_string(),
                     ),
                 )));
@@ -933,7 +934,7 @@ impl TurnSource for StreamingTurnSource {
                                     | StreamEvent::BlockEnd { block: None, .. }
                             );
                             if provider_final_seen && visible_content {
-                                yield Err(CompletionError::ResponseError(
+                                yield Err(ProviderError::Response(
                                     "provider stream emitted visible assistant content after its final response"
                                         .to_string(),
                                 )
@@ -995,7 +996,7 @@ impl TurnSource for StreamingTurnSource {
                                 }) = item_slot.as_ref()
                             {
                                 let Some(aggregated) = assembler.aggregated_reasoning(id) else {
-                                    yield Err(CompletionError::ResponseError(format!(
+                                    yield Err(ProviderError::Response(format!(
                                         "reasoning delta `{id}` was ingested without a pending aggregate"
                                     ))
                                     .into());

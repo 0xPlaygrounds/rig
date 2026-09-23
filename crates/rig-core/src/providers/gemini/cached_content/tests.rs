@@ -54,7 +54,7 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
             let error =
                 error.unwrap_or_else(|| panic!("{label} should refuse the handle {smuggled:?}"));
             assert!(
-                matches!(error, CachedContentError::Invalid(_)),
+                matches!(error, ProviderError::Request(_)),
                 "{label} on {smuggled:?}: {error:?}"
             );
         }
@@ -139,7 +139,7 @@ fn an_empty_cache_is_rejected_before_it_bills_for_storage() {
         .display_name("empty")
         .validate()
         .expect_err("an empty cached content should be refused");
-    assert!(matches!(error, CachedContentError::Invalid(_)), "{error:?}");
+    assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
 }
 
 #[test]
@@ -392,10 +392,7 @@ async fn an_empty_body_acknowledges_a_delete_but_answers_no_get() {
         .get("cachedContents/leaky")
         .await
         .expect_err("an empty 200 carries no resource");
-    assert!(
-        matches!(error, CachedContentError::ResponseError(_)),
-        "{error:?}"
-    );
+    assert!(matches!(error, ProviderError::Response(_)), "{error:?}");
 }
 
 /// A body that names a resource and then fails to deserialize is the
@@ -417,10 +414,7 @@ async fn a_malformed_resource_body_is_a_decode_error() {
         .await
         .expect_err("a `name` that is not a string cannot decode");
 
-    assert!(
-        matches!(error, CachedContentError::JsonError(_)),
-        "{error:?}"
-    );
+    assert!(matches!(error, ProviderError::Json(_)), "{error:?}");
 }
 
 /// The `{}` every recorded delete is answered with is the whole reply —
@@ -462,7 +456,7 @@ async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
         .await
         .expect_err("a listing page is not one cached content");
     assert!(
-        matches!(&on_get, CachedContentError::ResponseError(message) if message.contains("listing page")),
+        matches!(&on_get, ProviderError::Response(message) if message.contains("listing page")),
         "{on_get:?}"
     );
 
@@ -471,7 +465,7 @@ async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
         .await
         .expect_err("one cached content is not a listing page");
     assert!(
-        matches!(&on_list, CachedContentError::ResponseError(message) if message.contains("not a listing page")),
+        matches!(&on_list, ProviderError::Response(message) if message.contains("not a listing page")),
         "{on_list:?}"
     );
 }

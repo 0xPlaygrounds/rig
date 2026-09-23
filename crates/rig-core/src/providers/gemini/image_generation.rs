@@ -14,10 +14,9 @@ use super::completion::gemini_api_types::{
     PartKind, ResponseModality, Role,
 };
 use crate::completion::Usage;
+use crate::error::ProviderError;
 use crate::image_generation;
-use crate::image_generation::{
-    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
-};
+use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
 use crate::operation::ImageGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wire::{
@@ -34,7 +33,7 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
     fn normalize(
         self,
         provider: &str,
-    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+    ) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
         let image = first_image_bytes(&self)?;
         let usage = self
             .usage_metadata
@@ -55,9 +54,7 @@ fn generate_content_path(model: &str) -> String {
     format!("/v1beta/models/{model}:generateContent")
 }
 
-fn create_request_body(
-    generation_request: ImageGenerationRequest,
-) -> Result<Value, ImageGenerationError> {
+fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Value, ProviderError> {
     let request = GenerateContentRequest {
         contents: vec![Content {
             role: Some(Role::User),
@@ -120,7 +117,7 @@ fn aspect_ratio(width: u32, height: u32) -> Option<String> {
     }
 }
 
-fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, ImageGenerationError> {
+fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, ProviderError> {
     for candidate in &response.candidates {
         let Some(content) = &candidate.content else {
             continue;
@@ -137,7 +134,7 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Imag
                 }
 
                 return BASE64_STANDARD.decode(&inline_data.data).map_err(|err| {
-                    ImageGenerationError::ResponseError(format!(
+                    ProviderError::Response(format!(
                         "Gemini image data was not valid base64: {err}"
                     ))
                 });
@@ -145,7 +142,7 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Imag
         }
     }
 
-    Err(ImageGenerationError::ResponseError(
+    Err(ProviderError::Response(
         "Gemini image generation response did not include image data".into(),
     ))
 }
@@ -187,7 +184,7 @@ impl Wire for Images {
         &self,
         request: ImageGenerationRequest,
         _mode: Mode,
-    ) -> Result<Encoded, ImageGenerationError> {
+    ) -> Result<Encoded, ProviderError> {
         let body = serde_json::to_vec(&create_request_body(request)?)?;
         let request = http::Request::post(format!(
             "{}{}?key={}",
@@ -197,7 +194,7 @@ impl Wire for Images {
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::Bytes(body))
-        .map_err(|error| ImageGenerationError::HttpError(error.into()))?;
+        .map_err(|error| ProviderError::Http(error.into()))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }

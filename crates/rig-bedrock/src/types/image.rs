@@ -1,9 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use rig_core::{
-    completion::CompletionError,
-    message::{DocumentSourceKind, Image, ImageMediaType, MimeType},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, MimeType};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 
@@ -13,16 +11,16 @@ use super::converse_output::{ImageBlock, ImageFormat, ImageSource};
 pub struct RigImage(pub Image);
 
 impl TryFrom<RigImage> for aws_bedrock::ImageBlock {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(image: RigImage) -> Result<Self, Self::Error> {
-        let maybe_format: Option<Result<aws_bedrock::ImageFormat, CompletionError>> =
+        let maybe_format: Option<Result<aws_bedrock::ImageFormat, ProviderError>> =
             image.0.media_type.map(|f| match f {
                 ImageMediaType::JPEG => Ok(aws_bedrock::ImageFormat::Jpeg),
                 ImageMediaType::PNG => Ok(aws_bedrock::ImageFormat::Png),
                 ImageMediaType::GIF => Ok(aws_bedrock::ImageFormat::Gif),
                 ImageMediaType::WEBP => Ok(aws_bedrock::ImageFormat::Webp),
-                e => Err(CompletionError::ProviderError(format!(
+                e => Err(ProviderError::Provider(format!(
                     "Unsupported format {}",
                     e.to_mime_type()
                 ))),
@@ -35,26 +33,26 @@ impl TryFrom<RigImage> for aws_bedrock::ImageBlock {
         }?;
 
         let DocumentSourceKind::Base64(data) = image.0.data else {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 "Only base64 encoded strings are allowed for image input on AWS Bedrock".into(),
             ));
         };
 
         let img_data = BASE64_STANDARD
             .decode(data)
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
         let blob = aws_smithy_types::Blob::new(img_data);
         let result = aws_bedrock::ImageBlock::builder()
             .set_format(format)
             .source(aws_bedrock::ImageSource::Bytes(blob))
             .build()
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
         Ok(result)
     }
 }
 
 impl TryFrom<ImageBlock> for RigImage {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(image: ImageBlock) -> Result<Self, Self::Error> {
         let media_type = match image.format {
@@ -62,7 +60,7 @@ impl TryFrom<ImageBlock> for RigImage {
             ImageFormat::Jpeg => Ok(ImageMediaType::JPEG),
             ImageFormat::Png => Ok(ImageMediaType::PNG),
             ImageFormat::Webp => Ok(ImageMediaType::WEBP),
-            ImageFormat::Unknown(format) => Err(CompletionError::ProviderError(format!(
+            ImageFormat::Unknown(format) => Err(ProviderError::Provider(format!(
                 "Unsupported format {format}"
             ))),
         }?;
@@ -72,9 +70,7 @@ impl TryFrom<ImageBlock> for RigImage {
                 let encoded_img = BASE64_STANDARD.encode(blob.inner);
                 Ok(encoded_img)
             }
-            _ => Err(CompletionError::ProviderError(
-                "Image source is missing".into(),
-            )),
+            _ => Err(ProviderError::Provider("Image source is missing".into())),
         }?;
         Ok(RigImage(Image {
             data: DocumentSourceKind::Base64(data),

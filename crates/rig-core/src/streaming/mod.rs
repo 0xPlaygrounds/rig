@@ -15,8 +15,9 @@ mod event;
 
 use futures::StreamExt as _;
 
-use crate::completion::{CompletionError, CompletionResponse, Usage};
+use crate::completion::{CompletionResponse, Usage};
 use crate::error::ErrorReport;
+use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
 pub use accumulator::BlockAccumulator;
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
@@ -425,12 +426,12 @@ mod unknown_payload_tests;
 /// Adapter events with provider errors. [`StreamingCompletionResponse::stream`]
 /// converts errors to [`ErrorReport`] for consumers.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, CompletionError>> + Send>>;
+pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>> + Send>>;
 
 /// The stream a provider hands to [`StreamingCompletionResponse::stream`]
 /// (browser wasm: `!Send` allowed).
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, CompletionError>>>>;
+pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>>>>;
 
 /// The one stream item type: what [`StreamingCompletionResponse`] yields,
 /// what the accumulator applies, what the bus carries.
@@ -553,9 +554,9 @@ impl StreamingCompletionResponse {
     ///
     /// Events not yet polled are not part of the choice: drain the stream
     /// first when the whole turn is wanted.
-    pub fn finish(self) -> Result<CompletionResponse, CompletionError> {
+    pub fn finish(self) -> Result<CompletionResponse, ProviderError> {
         let Some(terminal) = self.response.as_ref() else {
-            return Err(CompletionError::ResponseError(
+            return Err(ProviderError::Response(
                 "provider stream ended without a terminal record; treating the turn as truncated"
                     .to_owned(),
             ));

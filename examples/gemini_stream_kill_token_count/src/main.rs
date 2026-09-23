@@ -50,8 +50,9 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::{CompletionError, CompletionModel, Usage};
+use rig::completion::{CompletionModel, Usage};
 use rig::error::ErrorReport;
+use rig::error::ProviderError;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini::Gemini;
@@ -135,11 +136,9 @@ impl Stream for Disrupt {
                 Disruption::TransportError => {
                     // The same in-band shape a real transport failure takes:
                     // the provider's error, mapped to the stream's report.
-                    return Poll::Ready(Some(Err(ErrorReport::from(
-                        &CompletionError::ProviderError(
-                            "injected mid-stream transport drop".to_string(),
-                        ),
-                    ))));
+                    return Poll::Ready(Some(Err(ErrorReport::from(&ProviderError::Provider(
+                        "injected mid-stream transport drop".to_string(),
+                    )))));
                 }
                 Disruption::Stall => {
                     // Park forever without scheduling a wake: the consumer's

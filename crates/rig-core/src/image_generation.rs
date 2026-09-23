@@ -11,25 +11,12 @@
 //! # }
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
+use crate::error::ProviderError;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
-
-crate::provider_response::provider_error_enum!(
-    ImageGenerationError, "image generation" {
-        #[cfg(not(target_family = "wasm"))]
-        /// Error building the image generation request
-        #[error("RequestError: {0}")]
-        RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-        #[cfg(target_family = "wasm")]
-        /// Error building the image generation request
-        #[error("RequestError: {0}")]
-        RequestError(#[from] Box<dyn std::error::Error + 'static>),
-    }
-);
 
 /// Generated image bytes and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,7 +78,7 @@ crate::provider_response::modality_response_metadata_setters!(ImageGenerationRes
 /// provider name.
 pub trait NormalizeImageGenerationResponse {
     /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<ImageGenerationResponse, ImageGenerationError>;
+    fn normalize(self, provider: &str) -> Result<ImageGenerationResponse, ProviderError>;
 }
 
 /// Generates images from prompts. Only [`Self::image_generation_request`]
@@ -100,8 +87,7 @@ pub trait ImageGenerationModel: WasmCompatSend + WasmCompatSync {
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ImageGenerationError>>
-    + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend;
 
     fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self, Missing>
     where
@@ -118,8 +104,8 @@ where
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ImageGenerationError>>
-    + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend
+    {
         (**self).image_generation(request)
     }
 }
@@ -217,7 +203,7 @@ where
         )
     }
 
-    pub async fn send(self) -> Result<ImageGenerationResponse, ImageGenerationError> {
+    pub async fn send(self) -> Result<ImageGenerationResponse, ProviderError> {
         let (model, request) = self.into_parts();
         model.image_generation(request).await
     }

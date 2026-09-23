@@ -11,6 +11,7 @@
 
 use std::borrow::Cow;
 
+use crate::error::ProviderError;
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
@@ -18,11 +19,8 @@ pub use crate::http_client::framing::Framing;
 pub use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
 pub use crate::providers::internal::wire::WireEvent;
 
-mod error;
 pub(crate) mod secret;
 
-pub use error::WireError;
-pub(crate) use error::impl_wire_error;
 pub use secret::Secret;
 
 /// One transport frame, after framing but before decoding.
@@ -175,8 +173,6 @@ pub trait Operation: Sized + 'static {
     type Event: WasmCompatSend + 'static;
     /// The normalized response the events fold into.
     type Response;
-    /// The operation's error enum.
-    type Error: WireError;
     /// What a runtime accounts for. `()` for operations with nothing to
     /// declare.
     type Capabilities: Default;
@@ -246,6 +242,12 @@ pub trait Operation: Sized + 'static {
 
     /// Records streamed event metadata on the operation span. Defaults to no action.
     fn record_event(_span: &tracing::Span, _event: &Self::Event) {}
+
+    /// Adds the provider and request path to a failed reply's error. The
+    /// default adds nothing.
+    fn with_route(error: ProviderError, _provider: &str, _path: &str) -> ProviderError {
+        error
+    }
 }
 
 /// What the driver learned about a unary reply beyond its events: the
@@ -270,13 +272,13 @@ pub trait Sink<Op: Operation>: Default {
     type Laws: Default + WasmCompatSend;
 
     /// Push one event or one in-band error.
-    fn push(&mut self, item: Result<Op::Event, Op::Error>);
+    fn push(&mut self, item: Result<Op::Event, ProviderError>);
 
     /// Take everything pushed since the last drain.
-    fn drain(&mut self) -> std::vec::Drain<'_, Result<Op::Event, Op::Error>>;
+    fn drain(&mut self) -> std::vec::Drain<'_, Result<Op::Event, ProviderError>>;
 
     /// What this sink holds, without taking it.
-    fn items(&self) -> &[Result<Op::Event, Op::Error>];
+    fn items(&self) -> &[Result<Op::Event, ProviderError>];
 
     /// Check the operation's sequence laws over this batch.
     fn check_laws(&self, _laws: &mut Self::Laws) {}
@@ -286,10 +288,10 @@ pub trait Sink<Op: Operation>: Default {
 pub trait Fold<Op: Operation>: Default {
     /// Absorb one event. An error fails the whole operation: a buffered
     /// reply has no stream to carry an in-band defect.
-    fn absorb(&mut self, event: Op::Event) -> Result<(), Op::Error>;
+    fn absorb(&mut self, event: Op::Event) -> Result<(), ProviderError>;
 
     /// The folded response.
-    fn finish(self, reply: Reply) -> Result<Op::Response, Op::Error>;
+    fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError>;
 }
 
 /// Where a decoder's observation projection writes its facts.
@@ -384,7 +386,7 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
 
     /// The request to send. Pure: it may read `self`, `request` and `mode`,
     /// and nothing else.
-    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, Error<Self>>;
+    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, ProviderError>;
 
     /// A fresh decoder for one reply, in the mode [`Self::encode`] was
     /// given.
@@ -434,8 +436,6 @@ pub type Request<W> = <<W as Wire>::Op as Operation>::Request;
 pub type Response<W> = <<W as Wire>::Op as Operation>::Response;
 /// A wire's event type.
 pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
-/// A wire's error type.
-pub type Error<W> = <<W as Wire>::Op as Operation>::Error;
 /// A wire's capability type.
 pub type Capabilities<W> = <<W as Wire>::Op as Operation>::Capabilities;
 /// A wire's telemetry operation type.

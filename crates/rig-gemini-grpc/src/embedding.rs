@@ -12,7 +12,8 @@
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 
-use rig_core::embeddings::{self, EmbeddingError};
+use rig_core::embeddings;
+use rig_core::error::ProviderError;
 
 use super::Client;
 use super::proto::{self, EmbedContentRequest};
@@ -40,14 +41,14 @@ impl EmbeddingModel {
     pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
-    ) -> Result<Vec<proto::EmbedContentResponse>, EmbeddingError> {
+    ) -> Result<Vec<proto::EmbedContentResponse>, ProviderError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
         let mut responses = Vec::with_capacity(documents_vec.len());
 
         let mut grpc_client = self
             .client
             .grpc_client()
-            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
 
         for doc in documents_vec {
             let request = EmbedContentRequest {
@@ -91,7 +92,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
         rig_core::telemetry::instrument_modality(
             super::completion::PROVIDER_NAME,
             &self.model,
@@ -107,7 +108,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                             vec: embedding.values.into_iter().map(|v| v as f64).collect(),
                         });
                     } else {
-                        return Err(EmbeddingError::ResponseError(
+                        return Err(ProviderError::Response(
                             "No embedding in response".to_string(),
                         ));
                     }
@@ -128,8 +129,8 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
 /// Preserves tonic status display text as an error body with RPC code and retry
 /// classification. Transport failures use the same representation.
-fn rpc_error(status: &tonic::Status) -> EmbeddingError {
-    EmbeddingError::from_provider_body(status.to_string())
+fn rpc_error(status: &tonic::Status) -> ProviderError {
+    ProviderError::from_provider_body(status.to_string())
         .with_provider_code(Some(super::completion::grpc_code_name(status.code())))
         .with_transient(Some(super::completion::transient_grpc_code(status.code())))
 }

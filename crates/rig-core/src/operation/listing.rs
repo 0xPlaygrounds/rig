@@ -7,7 +7,8 @@
 //! ```
 
 use super::One;
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::error::ProviderError;
+use crate::model::{Model, ModelList};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Lists provider models, concatenating pages requested through
@@ -19,7 +20,6 @@ impl Operation for ModelListing {
     type Request = ();
     type Event = ModelList;
     type Response = ModelList;
-    type Error = ModelListingError;
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = ModelListingFold;
@@ -32,6 +32,10 @@ impl Operation for ModelListing {
     }
 
     fn telemetry(_streaming: bool) -> Self::Telemetry {}
+
+    fn with_route(error: ProviderError, provider: &str, path: &str) -> ProviderError {
+        crate::model::listing::with_route(error, provider, path)
+    }
 }
 
 /// Concatenates the pages of a model listing, in arrival order.
@@ -41,12 +45,12 @@ pub struct ModelListingFold {
 }
 
 impl Fold<ModelListing> for ModelListingFold {
-    fn absorb(&mut self, page: ModelList) -> Result<(), ModelListingError> {
+    fn absorb(&mut self, page: ModelList) -> Result<(), ProviderError> {
         self.models.extend(page);
         Ok(())
     }
 
-    fn finish(self, _reply: Reply) -> Result<ModelList, ModelListingError> {
+    fn finish(self, _reply: Reply) -> Result<ModelList, ProviderError> {
         Ok(ModelList::new(self.models))
     }
 }

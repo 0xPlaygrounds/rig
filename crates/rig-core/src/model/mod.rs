@@ -15,4 +15,4 @@
 
 pub mod listing;
 
-pub use listing::{Model, ModelList, ModelLister, ModelListingError};
+pub use listing::{Model, ModelList, ModelLister};

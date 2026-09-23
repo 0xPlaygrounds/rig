@@ -24,11 +24,10 @@ use crate::{
         OutcomeAction, OutcomeEvent, OutputMode, RequestPatch, StreamingError,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
-    completion::{
-        AssistantContent, CompletionError, CompletionModel, Message, PromptError, ToolDefinition,
-    },
+    completion::{AssistantContent, CompletionModel, Message, PromptError, ToolDefinition},
     tool::{Tool, ToolContext},
 };
+use rig_core::error::ProviderError;
 use rig_core::message::{ToolChoice, UserContent};
 
 /// Typed failure from a portable model-conformance scenario.
@@ -39,7 +38,7 @@ pub enum ScenarioError {
     Prompt(#[from] PromptError),
     /// A direct model completion failed.
     #[error(transparent)]
-    Completion(#[from] CompletionError),
+    Completion(#[from] ProviderError),
     /// A streaming agent run failed.
     #[error(transparent)]
     Streaming(#[from] StreamingError),

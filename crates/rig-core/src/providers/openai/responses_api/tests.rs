@@ -634,7 +634,7 @@ fn responses_tool_choice_specific_empty_names_error() {
 
     assert!(matches!(
         converted,
-        Err(CompletionError::RequestError(error))
+        Err(ProviderError::Request(error))
             if error.to_string().contains("at least one function name")
     ));
 }
@@ -2282,7 +2282,7 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
     // rig#2314: a provider with a request-id contract preserves its
     // non-success responses as ProviderResponse, so the transport id has
     // a home on the error; this mock sent no header, so the id is None.
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(error.provider_request_id(), None);
     assert_eq!(
         error.provider_response_status(),

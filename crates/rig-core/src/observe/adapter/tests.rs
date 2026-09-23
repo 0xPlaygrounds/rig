@@ -3,7 +3,8 @@ use crate::observe::ObservationLog;
 
 #[test]
 fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
-    use crate::{completion::CompletionError, http_client::Error};
+    use crate::error::ProviderError;
+    use crate::http_client::Error;
     for (native, boundary) in [
         (Error::NoHeaders, AdapterErrorBoundary::Request),
         (
@@ -16,7 +17,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
             AdapterErrorBoundary::Unknown,
         ),
     ] {
-        let error = CompletionError::HttpError(native);
+        let error = ProviderError::Http(native);
         let report = crate::error::ErrorReport::from(&error);
         assert_eq!(report.kind, crate::error::ErrorKind::Http);
         let log = Arc::new(ObservationLog::default());
@@ -1160,7 +1161,7 @@ impl crate::completion::CompletionModel for OrdinaryOnly {
     async fn completion(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError> {
+    ) -> Result<crate::completion::CompletionResponse, crate::error::ProviderError> {
         crate::test_utils::MockCompletionModel::text("ordinary")
             .completion(request)
             .await
@@ -1169,8 +1170,7 @@ impl crate::completion::CompletionModel for OrdinaryOnly {
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
-    {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, crate::error::ProviderError> {
         use crate::test_utils::{MockCompletionModel, MockStreamEvent};
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("ordinary stream"),

@@ -1,6 +1,6 @@
+use crate::error::ProviderError;
 use crate::{
-    client::VerifyError,
-    model::{Model, ModelList, ModelListingError},
+    model::{Model, ModelList, listing},
     operation::{ModelListing, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
@@ -98,18 +98,17 @@ struct ListingPage {
     next_cursor: Option<String>,
 }
 
-fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ModelListingError> {
+fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderError> {
     let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
-        ModelListingError::parse_error_with_context("Gemini", path, &error, body)
+        listing::parse_error("Gemini", path, format_args!("parse_error={error}"), body)
     })?;
 
     let models = page
         .models
         .into_iter()
         .map(|entry| {
-            Model::try_from(entry).map_err(|error| {
-                ModelListingError::parse_error_with_details("Gemini", path, error, body)
-            })
+            Model::try_from(entry)
+                .map_err(|error| listing::parse_error("Gemini", path, error, body))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -141,7 +140,7 @@ fn list_models_request(
     provider: &super::Gemini,
     auth: Auth,
     page_token: Option<&str>,
-) -> Result<http::Request<Body>, ModelListingError> {
+) -> Result<http::Request<Body>, ProviderError> {
     let path = list_models_path(page_token);
     let trimmed = path.trim_start_matches('/');
     let base_url = &provider.base_url;
@@ -154,9 +153,7 @@ fn list_models_request(
         Auth::Header => http::Request::get(format!("{base_url}/{trimmed}"))
             .header("x-goog-api-key", provider.api_key.expose()),
     };
-    request
-        .body(Body::empty())
-        .map_err(|error| ModelListingError::request_error(error.to_string()))
+    request.body(Body::empty()).map_err(ProviderError::from)
 }
 
 /// The GenerateContent model-listing wire: `GET /v1beta/models`, paged on
@@ -183,7 +180,7 @@ impl Wire for Models {
     }
 
     /// A listing never streams, so both modes send the one request.
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         Ok(Encoded::new(
             list_models_request(&self.provider, Auth::Query, None)?,
             Framing::Whole,
@@ -219,7 +216,7 @@ impl Wire for InteractionsModels {
     }
 
     /// A listing never streams, so both modes send the one request.
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         Ok(Encoded::new(
             list_models_request(&self.provider, Auth::Header, None)?,
             Framing::Whole,
@@ -300,14 +297,14 @@ impl Wire for VerifyKey {
         super::PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, VerifyError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         let request = http::Request::get(format!(
             "{}/v1beta/models?key={}",
             self.provider.base_url,
             self.provider.api_key.expose()
         ))
         .body(Body::empty())
-        .map_err(|error| VerifyError::HttpError(crate::http_client::Error::Protocol(error)))?;
+        .map_err(|error| ProviderError::Http(crate::http_client::Error::Protocol(error)))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 

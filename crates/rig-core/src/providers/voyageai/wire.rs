@@ -8,9 +8,10 @@
 
 use crate::client::env::{self, EnvError};
 use crate::driver::{HasEmbedding, HasRerank};
-use crate::embeddings::{Embedding as Vector, EmbeddingError};
+use crate::embeddings::Embedding as Vector;
+use crate::error::ProviderError;
 use crate::operation::{Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest};
-use crate::rerank::{RerankError, RerankResponse, RerankResult};
+use crate::rerank::{RerankResponse, RerankResult};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
@@ -164,7 +165,7 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
         let mut body = serde_json::Map::new();
         body.insert("model".to_owned(), serde_json::json!(self.model));
         body.insert("input".to_owned(), serde_json::json!(texts));
@@ -184,7 +185,7 @@ impl Wire for Embeddings {
             .provider
             .post("/embeddings")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EmbeddingError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -290,7 +291,7 @@ impl Wire for Rerank {
         Some(&self.model)
     }
 
-    fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, RerankError> {
+    fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
         let mut body = serde_json::Map::new();
         body.insert("query".to_owned(), serde_json::json!(request.query));
         body.insert("documents".to_owned(), serde_json::json!(request.documents));
@@ -309,7 +310,7 @@ impl Wire for Rerank {
             .provider
             .post("/rerank")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| RerankError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -372,7 +373,7 @@ impl Decoder<RerankOp> for RerankDecoder {
             RerankReply::Reply(reply) => reply,
             // Preserve the provider body; the driver adds the actual HTTP status.
             RerankReply::Failure(body) => {
-                out.push(Err(RerankError::from_provider_body(body)));
+                out.push(Err(ProviderError::from_provider_body(body)));
                 return;
             }
         };

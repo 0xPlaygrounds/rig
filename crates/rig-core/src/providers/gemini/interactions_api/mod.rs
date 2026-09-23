@@ -9,7 +9,8 @@
 //! # }
 //! ```
 
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::CompletionRequest;
+use crate::error::ProviderError;
 use crate::message::{self, MimeType};
 use crate::telemetry::CompletionOperation;
 use crate::wire::Mode;
@@ -68,7 +69,7 @@ impl crate::wire::Wire for Interactions {
         &self,
         request: CompletionRequest,
         mode: crate::wire::Mode,
-    ) -> Result<crate::wire::Encoded, CompletionError> {
+    ) -> Result<crate::wire::Encoded, ProviderError> {
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, crate::wire::Mode::Streaming);
@@ -100,7 +101,7 @@ impl crate::wire::Wire for Interactions {
                 self.provider.api_key.expose(),
             )
             .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
         // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }
@@ -172,7 +173,7 @@ impl crate::wire::Wire for InteractionResume {
         &self,
         _request: CompletionRequest,
         mode: crate::wire::Mode,
-    ) -> Result<crate::wire::Encoded, CompletionError> {
+    ) -> Result<crate::wire::Encoded, ProviderError> {
         let (path, framing) = match mode {
             Mode::Unary => (
                 format!("/v1beta/interactions/{}", self.interaction_id),
@@ -195,7 +196,7 @@ impl crate::wire::Wire for InteractionResume {
                 self.provider.api_key.expose(),
             )
             .body(crate::wire::Body::empty())
-            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
         Ok(crate::wire::Encoded::new(request, framing))
     }
 
@@ -208,7 +209,7 @@ pub(crate) fn create_request_body(
     model: String,
     completion_request: CompletionRequest,
     stream_override: Option<bool>,
-) -> Result<CreateInteractionRequest, CompletionError> {
+) -> Result<CreateInteractionRequest, ProviderError> {
     let chat_history = completion_request.chat_history_with_documents();
 
     let mut history = Vec::new();
@@ -219,11 +220,11 @@ pub(crate) fn create_request_body(
     let (history_system, history) = split_system_messages_from_history(history);
 
     let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&history)
-        .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        .map_err(|error| ProviderError::Request(Box::new(error)))?;
     let mut steps = Vec::new();
     for (position, message) in history.into_iter().enumerate() {
-        let mut converted = Step::from_message(message)
-            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        let mut converted =
+            Step::from_message(message).map_err(|error| ProviderError::Request(Box::new(error)))?;
         tool_ids
             .apply(
                 position,
@@ -233,7 +234,7 @@ pub(crate) fn create_request_body(
                     _ => None,
                 }),
             )
-            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            .map_err(|error| ProviderError::Request(Box::new(error)))?;
         steps.extend(converted);
     }
 
@@ -292,12 +293,10 @@ pub(crate) fn create_request_body(
     let response_mime_type = params.response_mime_type.take();
 
     if response_format.is_some() && response_mime_type.is_none() {
-        return Err(CompletionError::RequestError(Box::new(
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "response_mime_type is required when response_format is set",
-            ),
-        )));
+        return Err(ProviderError::Request(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "response_mime_type is required when response_format is set",
+        ))));
     }
 
     Ok(CreateInteractionRequest {
@@ -379,7 +378,8 @@ fn split_data_uri(
 /// ```
 pub mod interactions_api_types {
     use super::{media_parts, split_data_uri};
-    use crate::completion::{CompletionError, Usage};
+    use crate::completion::Usage;
+    use crate::error::ProviderError;
     use crate::message::{self, MimeType};
     use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
@@ -1888,7 +1888,7 @@ pub mod interactions_api_types {
     }
 
     impl TryFrom<crate::completion::ToolDefinition> for Tool {
-        type Error = CompletionError;
+        type Error = ProviderError;
 
         fn try_from(tool: crate::completion::ToolDefinition) -> Result<Self, Self::Error> {
             Ok(Tool::Function(FunctionTool {
@@ -1900,7 +1900,7 @@ pub mod interactions_api_types {
     }
 
     impl TryFrom<message::ToolChoice> for ToolChoice {
-        type Error = CompletionError;
+        type Error = ProviderError;
 
         fn try_from(tool_choice: message::ToolChoice) -> Result<Self, Self::Error> {
             match tool_choice {

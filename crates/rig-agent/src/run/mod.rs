@@ -27,7 +27,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, ToolDefinition};
+use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
+use rig_core::error::ProviderError;
 use rig_core::streaming::BlockId;
 
 use rig_core::message::{
@@ -995,7 +996,7 @@ impl AgentRun {
                 if turn_delivered_no_answer(&items)
                     && let Some(reason) = self.truncating_finish_reason()
                 {
-                    return Err(CompletionError::ResponseError(reason.no_answer_message()).into());
+                    return Err(ProviderError::Response(reason.no_answer_message()).into());
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.

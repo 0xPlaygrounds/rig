@@ -1494,7 +1494,7 @@ impl rig_core::rerank::RerankModel for MockRerank {
         &self,
         _query: &str,
         documents: Vec<String>,
-    ) -> Result<rig_core::rerank::RerankResponse, rig_core::rerank::RerankError> {
+    ) -> Result<rig_core::rerank::RerankResponse, rig_core::error::ProviderError> {
         let mut results: Vec<rig_core::rerank::RerankResult> = documents
             .iter()
             .enumerate()

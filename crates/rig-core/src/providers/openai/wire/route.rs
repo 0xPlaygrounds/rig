@@ -9,7 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
+use crate::completion::{CompletionRequest, ProviderCapabilities};
+use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{ResponsesDecoder, ResponsesEvent};
 use crate::providers::openai::responses_api::wire::Responses;
@@ -83,7 +84,7 @@ impl OpenAiWire {
             &CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
-    ) -> Result<Encoded, CompletionError> {
+    ) -> Result<Encoded, ProviderError> {
         on_route!(self, wire => wire.encode_with_headers(request, mode, headers))
     }
 
@@ -193,7 +194,7 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.route())
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
         on_route!(self, wire => wire.encode(request, mode))
     }
 

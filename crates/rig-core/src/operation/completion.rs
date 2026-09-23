@@ -10,7 +10,8 @@
 //! assert_eq!(output.len(), 3);
 //! ```
 
-use crate::completion::{CompletionError, CompletionRequest, CompletionResponse};
+use crate::completion::{CompletionRequest, CompletionResponse};
+use crate::error::ProviderError;
 use crate::streaming::{
     Absorbed, BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, FoldStep, MintKind,
     StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd, UnknownPayload,
@@ -29,7 +30,6 @@ impl Operation for Completion {
     type Request = CompletionRequest;
     type Event = StreamEvent;
     type Response = CompletionResponse;
-    type Error = CompletionError;
     type Capabilities = crate::completion::ProviderCapabilities;
     type Output = AdapterOutput;
     type Fold = CompletionFold;
@@ -132,15 +132,15 @@ impl Operation for Completion {
 impl Sink<Completion> for AdapterOutput {
     type Laws = Laws;
 
-    fn push(&mut self, item: Result<StreamEvent, CompletionError>) {
+    fn push(&mut self, item: Result<StreamEvent, ProviderError>) {
         AdapterOutput::push(self, item);
     }
 
-    fn drain(&mut self) -> std::vec::Drain<'_, Result<StreamEvent, CompletionError>> {
+    fn drain(&mut self) -> std::vec::Drain<'_, Result<StreamEvent, ProviderError>> {
         AdapterOutput::drain(self)
     }
 
-    fn items(&self) -> &[Result<StreamEvent, CompletionError>] {
+    fn items(&self) -> &[Result<StreamEvent, ProviderError>] {
         AdapterOutput::items(self)
     }
 
@@ -167,7 +167,7 @@ pub struct CompletionFold {
 }
 
 impl Fold<Completion> for CompletionFold {
-    fn absorb(&mut self, event: StreamEvent) -> Result<(), CompletionError> {
+    fn absorb(&mut self, event: StreamEvent) -> Result<(), ProviderError> {
         let step = FoldStep {
             accumulator: &mut self.accumulator,
             response: &mut self.terminal,
@@ -179,11 +179,11 @@ impl Fold<Completion> for CompletionFold {
             Absorbed::Yield(_) | Absorbed::Skip => Ok(()),
             // A buffered reply has no stream to carry an in-band defect, so
             // a block the wire promised and then malformed fails the call.
-            Absorbed::Failed(report) => Err(CompletionError::ResponseError(report.message)),
+            Absorbed::Failed(report) => Err(ProviderError::Response(report.message)),
         }
     }
 
-    fn finish(self, reply: Reply) -> Result<CompletionResponse, CompletionError> {
+    fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
         // The buffered reply's document is the response's `raw`, not the
         // terminal record's: the wire decoded the whole body at once.
         let issuer = self
@@ -215,7 +215,7 @@ impl Fold<Completion> for CompletionFold {
 /// message starts. Frame-classification errors are handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
-    items: Vec<Result<StreamEvent, CompletionError>>,
+    items: Vec<Result<StreamEvent, ProviderError>>,
     /// Minter for text blocks opened by a bare text delta.
     text_ids: Option<SyntheticIds>,
     /// The block receiving bare text deltas and metadata, until a boundary
@@ -256,7 +256,7 @@ impl AdapterOutput {
 
     /// Push one event verbatim. A block this output opened itself for a
     /// bare delta is closed first when `item` is its boundary.
-    pub fn push(&mut self, item: Result<StreamEvent, CompletionError>) {
+    pub fn push(&mut self, item: Result<StreamEvent, ProviderError>) {
         if self.self_closing
             && let Ok(event) = &item
             && event.block_id().is_some()
@@ -332,7 +332,7 @@ impl AdapterOutput {
         )
     }
 
-    fn push_raw(&mut self, item: Result<StreamEvent, CompletionError>) {
+    fn push_raw(&mut self, item: Result<StreamEvent, ProviderError>) {
         if let Ok(event) = &item
             && let Some(id) = event.block_id()
         {
@@ -364,22 +364,22 @@ impl AdapterOutput {
     }
 
     /// Push an in-band error item.
-    pub fn error(&mut self, error: CompletionError) {
+    pub fn error(&mut self, error: ProviderError) {
         self.items.push(Err(error));
     }
 
     /// What this output holds, without taking it.
-    pub fn items(&self) -> &[Result<StreamEvent, CompletionError>] {
+    pub fn items(&self) -> &[Result<StreamEvent, ProviderError>] {
         &self.items
     }
 
     /// Iterate the buffered items.
-    pub fn iter(&self) -> std::slice::Iter<'_, Result<StreamEvent, CompletionError>> {
+    pub fn iter(&self) -> std::slice::Iter<'_, Result<StreamEvent, ProviderError>> {
         self.items.iter()
     }
 
     /// Drain the buffered items, keeping the block bookkeeping.
-    pub fn drain(&mut self) -> std::vec::Drain<'_, Result<StreamEvent, CompletionError>> {
+    pub fn drain(&mut self) -> std::vec::Drain<'_, Result<StreamEvent, ProviderError>> {
         self.items.drain(..)
     }
 
@@ -394,7 +394,7 @@ impl AdapterOutput {
     }
 
     /// Take the buffered items.
-    pub fn into_items(self) -> Vec<Result<StreamEvent, CompletionError>> {
+    pub fn into_items(self) -> Vec<Result<StreamEvent, ProviderError>> {
         self.items
     }
 

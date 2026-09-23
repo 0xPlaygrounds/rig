@@ -21,8 +21,8 @@ use rig_agent::{
         StreamingResult,
     },
     completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message,
-        PromptError, ProviderCapabilities, Usage,
+        CompletionModel, CompletionRequest, CompletionResponse, Message, PromptError,
+        ProviderCapabilities, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
@@ -31,6 +31,7 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_core::error::ProviderError;
 use rig_core::{
     error::ErrorKind,
     message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent},
@@ -248,11 +249,11 @@ impl Script {
 fn completion_from_script(
     script: &Script,
     request: CompletionRequest,
-) -> Result<CompletionResponse, CompletionError> {
+) -> Result<CompletionResponse, ProviderError> {
     script.record(request);
     let turn = script.next_turn();
     if let Turn::Error(message) = &turn {
-        return Err(CompletionError::ProviderError(message.clone()));
+        return Err(ProviderError::Provider(message.clone()));
     }
     Ok(CompletionResponse::new(
         turn.choice(),
@@ -266,11 +267,11 @@ fn completion_from_script(
 fn stream_from_script(
     script: &Script,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<StreamingCompletionResponse, ProviderError> {
     script.record(request);
     let turn = script.next_turn();
     if let Turn::Error(message) = &turn {
-        return Err(CompletionError::ProviderError(message.clone()));
+        return Err(ProviderError::Provider(message.clone()));
     }
     let mut events = vec![Ok(StreamEvent::BlockStart {
         id: BlockId::wire(turn.message_id()),
@@ -342,7 +343,7 @@ fn stream_from_script(
             events.push(Ok(StreamEvent::text(text_block, text.clone())));
         }
         // Handled by the early return above.
-        Turn::Error(_) => return Err(CompletionError::ProviderError("unreachable".to_owned())),
+        Turn::Error(_) => return Err(ProviderError::Provider("unreachable".to_owned())),
     }
     events.push(Ok(StreamEvent::Final(
         StreamFinal::new(script.provider, turn.usage(), serde_json::json!({}))
@@ -367,14 +368,14 @@ macro_rules! impl_test_model {
             async fn completion(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<CompletionResponse, CompletionError> {
+            ) -> Result<CompletionResponse, ProviderError> {
                 completion_from_script(&self.0, request)
             }
 
             async fn stream(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse, CompletionError> {
+            ) -> Result<StreamingCompletionResponse, ProviderError> {
                 stream_from_script(&self.0, request)
             }
 
@@ -1360,7 +1361,7 @@ impl CompletionModel for GatedToolModel {
     async fn completion(
         &self,
         _request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         self.started.notify_one();
         self.release.notified().await;
         let turn = Turn::tool("lookup", 3, "gated-tool-message");
@@ -1373,7 +1374,7 @@ impl CompletionModel for GatedToolModel {
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         Ok(StreamingCompletionResponse::stream(
             "gated",
             Box::pin(stream::iter([
@@ -1457,16 +1458,16 @@ impl CompletionModel for PendingUnaryModel {
     async fn completion(
         &self,
         _request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         let _guard = DropGuard(self.dropped.clone());
         self.started.notify_one();
-        std::future::pending::<Result<CompletionResponse, CompletionError>>().await
+        std::future::pending::<Result<CompletionResponse, ProviderError>>().await
     }
 
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         Ok(StreamingCompletionResponse::stream(
             "pending",
             Box::pin(stream::empty()),
@@ -1481,7 +1482,7 @@ struct PendingRawStream {
 }
 
 impl Stream for PendingRawStream {
-    type Item = Result<StreamEvent, CompletionError>;
+    type Item = Result<StreamEvent, ProviderError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if !self.notified {
@@ -1508,7 +1509,7 @@ impl CompletionModel for PendingStreamingModel {
     async fn completion(
         &self,
         _request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         Ok(CompletionResponse::new(
             vec![AssistantContent::text("unused")],
             Usage::default(),
@@ -1520,7 +1521,7 @@ impl CompletionModel for PendingStreamingModel {
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let raw: rig_agent::streaming::StreamingResult = Box::pin(PendingRawStream {
             started: self.started.clone(),
             dropped: self.dropped.clone(),

@@ -14,19 +14,12 @@
 //! # }
 //! ```
 
+use crate::error::ProviderError;
 use crate::{
     completion::{ResponseIdentity, Usage},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
-
-crate::provider_response::provider_error_enum!(
-    RerankError, "reranking" {
-        /// URL construction or parsing failed while preparing a provider request.
-        #[error("UrlError: {0}")]
-        UrlError(#[from] url::ParseError),
-    }
-);
 
 /// Trait for reranking models that score documents by relevance to a query.
 pub trait RerankModel: WasmCompatSend + WasmCompatSync {
@@ -38,7 +31,7 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<RerankResponse, RerankError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + WasmCompatSend;
 }
 
 /// A single reranked document result.

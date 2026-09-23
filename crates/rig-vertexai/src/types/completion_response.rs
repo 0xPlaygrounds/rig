@@ -1,7 +1,8 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::{CompletionError, CompletionResponse, Usage};
+use rig_core::completion::{CompletionResponse, Usage};
+use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
@@ -43,7 +44,7 @@ pub fn map_finish_reason(
 }
 
 impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: VertexGenerateContentOutput) -> Result<Self, Self::Error> {
         let response = &value.0;
@@ -51,14 +52,15 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
         // consumed into normalized content.
         let raw = serde_json::to_value(response)?;
 
-        let candidate = response.candidates.first().ok_or_else(|| {
-            CompletionError::ProviderError("No candidates in response".to_string())
-        })?;
+        let candidate = response
+            .candidates
+            .first()
+            .ok_or_else(|| ProviderError::Provider("No candidates in response".to_string()))?;
 
         let content = candidate
             .content
             .as_ref()
-            .ok_or_else(|| CompletionError::ProviderError("No content in candidate".to_string()))?;
+            .ok_or_else(|| ProviderError::Provider("No content in candidate".to_string()))?;
 
         let mut assistant_contents = Vec::new();
         // Vertex function calls carry no id: the `index`-th call of the
@@ -108,7 +110,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 }
             } else if let Some(inline_data) = part.inline_data() {
                 if signature.is_some() {
-                    return Err(CompletionError::ResponseError(
+                    return Err(ProviderError::Response(
                         "Vertex inline images with thought_signature cannot be replayed through assistant history"
                             .to_string(),
                     ));
@@ -136,12 +138,12 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                         ));
                     }
                     Some(MediaType::Image(media_type)) => {
-                        return Err(CompletionError::ResponseError(format!(
+                        return Err(ProviderError::Response(format!(
                             "Unsupported Vertex inline image media type {media_type:?}; it cannot be replayed through assistant history"
                         )));
                     }
                     _ => {
-                        return Err(CompletionError::ResponseError(format!(
+                        return Err(ProviderError::Response(format!(
                             "Unsupported Vertex inline media type {:?}",
                             inline_data.mime_type
                         )));

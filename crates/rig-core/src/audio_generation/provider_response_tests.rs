@@ -5,7 +5,7 @@ use http::StatusCode;
 #[test]
 fn audio_generation_error_provider_response_helpers_with_preserved_json_body() {
     let body = r#"{"error":{"message":"invalid voice"}}"#;
-    let error = AudioGenerationError::ProviderResponse(
+    let error = ProviderError::ProviderResponse(
         provider_response::ProviderResponseError::without_status(body.to_string()),
     );
 
@@ -20,12 +20,11 @@ fn audio_generation_error_provider_response_helpers_with_preserved_json_body() {
 #[test]
 fn audio_generation_error_provider_response_helpers_with_http_non_success() {
     let body = r#"{"error":{"message":"bad request"}}"#;
-    let error =
-        AudioGenerationError::from_transport_error(http_client::Error::non_success_with_details(
-            StatusCode::BAD_REQUEST,
-            http::HeaderMap::new(),
-            body.to_string(),
-        ));
+    let error = ProviderError::from_transport_error(http_client::Error::non_success_with_details(
+        StatusCode::BAD_REQUEST,
+        http::HeaderMap::new(),
+        body.to_string(),
+    ));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(
@@ -40,7 +39,7 @@ fn audio_generation_error_provider_response_helpers_with_http_non_success() {
 
 #[test]
 fn audio_generation_error_provider_error_is_not_a_provider_response() {
-    let error = AudioGenerationError::ProviderError("internal diagnostic".to_string());
+    let error = ProviderError::Provider("internal diagnostic".to_string());
 
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
@@ -49,7 +48,7 @@ fn audio_generation_error_provider_error_is_not_a_provider_response() {
 
 #[test]
 fn audio_generation_error_provider_response_helpers_with_unrelated_variant() {
-    let error = AudioGenerationError::ResponseError("parse failed".to_string());
+    let error = ProviderError::Response("parse failed".to_string());
 
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);

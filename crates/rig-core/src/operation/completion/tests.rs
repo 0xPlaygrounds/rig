@@ -221,7 +221,7 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
     use crate::streaming::{StreamEvent, StreamFinal, StreamingCompletionResponse};
     use futures::StreamExt;
 
-    type Items = Vec<Result<StreamEvent, crate::completion::CompletionError>>;
+    type Items = Vec<Result<StreamEvent, crate::error::ProviderError>>;
     let terminal = || StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null);
 
     // A provider that opens its own stream knows the issuer up front.

@@ -265,7 +265,7 @@ pub(crate) fn events_from_response(
             // stream consumer as an unmodeled item, verbatim.
             AssistantContent::Image(image) => match serde_json::to_value(image) {
                 Ok(value) => out.unknown(crate::streaming::UnknownPayload::new(value)),
-                Err(error) => out.error(crate::completion::CompletionError::JsonError(error)),
+                Err(error) => out.error(crate::error::ProviderError::Json(error)),
             },
             AssistantContent::ToolCall(call) => {
                 // The durable handle is separate from the assembly key and

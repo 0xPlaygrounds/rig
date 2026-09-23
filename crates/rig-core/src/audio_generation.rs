@@ -11,25 +11,12 @@
 //! # }
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
+use crate::error::ProviderError;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
-
-crate::provider_response::provider_error_enum!(
-    AudioGenerationError, "audio generation" {
-        #[cfg(not(target_family = "wasm"))]
-        /// Error building the audio generation request
-        #[error("RequestError: {0}")]
-        RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-        #[cfg(target_family = "wasm")]
-        /// Error building the audio generation request
-        #[error("RequestError: {0}")]
-        RequestError(#[from] Box<dyn std::error::Error + 'static>),
-    }
-);
 
 /// Generated audio and normalized provider metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,7 +78,7 @@ crate::provider_response::modality_response_metadata_setters!(AudioGenerationRes
 /// provider name.
 pub trait NormalizeAudioGenerationResponse {
     /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, AudioGenerationError>;
+    fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, ProviderError>;
 }
 
 /// Generates speech from text. Only [`Self::audio_generation_request`] requires
@@ -100,8 +87,7 @@ pub trait AudioGenerationModel: WasmCompatSend + WasmCompatSync {
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, AudioGenerationError>>
-    + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend;
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing>
     where
@@ -118,8 +104,8 @@ where
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, AudioGenerationError>>
-    + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend
+    {
         (**self).audio_generation(request)
     }
 }
@@ -223,7 +209,7 @@ where
         )
     }
 
-    pub async fn send(self) -> Result<AudioGenerationResponse, AudioGenerationError> {
+    pub async fn send(self) -> Result<AudioGenerationResponse, ProviderError> {
         let (model, request) = self.into_parts();
         model.audio_generation(request).await
     }

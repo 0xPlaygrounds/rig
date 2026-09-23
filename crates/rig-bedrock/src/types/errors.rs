@@ -6,10 +6,8 @@ use aws_sdk_bedrockruntime::operation::converse::ConverseError;
 use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError;
 use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
 use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
-use rig_core::completion::CompletionError;
-use rig_core::embeddings::EmbeddingError;
+use rig_core::error::ProviderError;
 use rig_core::http_client::StatusCode;
-use rig_core::image_generation::ImageGenerationError;
 
 /// What a service error said about itself: the provider's message when it
 /// supplied one, Rig's fallback prose otherwise, and the exception type as
@@ -125,59 +123,27 @@ impl Transport {
     }
 }
 
-/// The funnel's setters, so [`gated`] can stamp any capability error, and
-/// its transport variant for a failure that never produced a reply.
-trait ProviderReply: Sized {
-    fn stamp(
-        self,
-        status: Option<StatusCode>,
-        code: Option<String>,
-        transient: Option<bool>,
-    ) -> Self;
-    fn transport_failure(message: String) -> Self;
-}
-
-macro_rules! provider_reply {
-    ($($error:ty),+ $(,)?) => {$(
-        impl ProviderReply for $error {
-            fn stamp(
-                self,
-                status: Option<StatusCode>,
-                code: Option<String>,
-                transient: Option<bool>,
-            ) -> Self {
-                self.with_provider_status(status)
-                    .with_provider_code(code)
-                    .with_transient(transient)
-            }
-            fn transport_failure(message: String) -> Self {
-                Self::HttpError(rig_core::http_client::Error::instance(
-                    std::io::Error::other(message),
-                ))
-            }
-        }
-    )+};
-}
-provider_reply!(CompletionError, EmbeddingError, ImageGenerationError);
-
 /// Constructs a provider response error when a message or status is available,
 /// preserving status, code, and retry hints. Otherwise uses a transport error for
 /// SDK timeout/dispatch failures or a plain fallback diagnostic.
-fn gated<E: ProviderReply>(
-    (message, fallback, code): Classified,
-    transport: Transport,
-    from_body: impl FnOnce(String) -> E,
-    provider_error: impl FnOnce(String) -> E,
-) -> E {
+fn gated((message, fallback, code): Classified, transport: Transport) -> ProviderError {
     let transient = code
         .as_deref()
         .map(transient_exception)
         .or(transport.transient);
+    let reply = |body: String, status: Option<StatusCode>| {
+        ProviderError::from_provider_body(body)
+            .with_provider_status(status)
+            .with_provider_code(code)
+            .with_transient(transient)
+    };
     match (message, transport.status) {
-        (Some(body), status) => from_body(body).stamp(status, code, transient),
-        (None, Some(status)) => from_body(String::new()).stamp(Some(status), code, transient),
-        (None, None) if transport.transient == Some(true) => E::transport_failure(fallback),
-        (None, None) => provider_error(fallback),
+        (Some(body), status) => reply(body, status),
+        (None, Some(status)) => reply(String::new(), Some(status)),
+        (None, None) if transport.transient == Some(true) => ProviderError::Http(
+            rig_core::http_client::Error::instance(std::io::Error::other(fallback)),
+        ),
+        (None, None) => ProviderError::Provider(fallback),
     }
 }
 
@@ -236,93 +202,54 @@ service_error_message!(
 
 pub struct AwsSdkInvokeModelError(pub SdkError<InvokeModelError, HttpResponse>);
 
-impl From<AwsSdkInvokeModelError> for ImageGenerationError {
+impl From<AwsSdkInvokeModelError> for ProviderError {
     fn from(value: AwsSdkInvokeModelError) -> Self {
         let raw_body = raw_response_body(&value.0);
         let transport = Transport::of(&value.0);
         gated(
             with_raw_body(invoke_model_message(value.0.into_service_error()), raw_body),
             transport,
-            ImageGenerationError::from_provider_body,
-            ImageGenerationError::ProviderError,
-        )
-    }
-}
-
-impl From<AwsSdkInvokeModelError> for EmbeddingError {
-    fn from(value: AwsSdkInvokeModelError) -> Self {
-        let raw_body = raw_response_body(&value.0);
-        let transport = Transport::of(&value.0);
-        gated(
-            with_raw_body(invoke_model_message(value.0.into_service_error()), raw_body),
-            transport,
-            EmbeddingError::from_provider_body,
-            EmbeddingError::ProviderError,
         )
     }
 }
 
 pub struct AwsSdkConverseError(pub SdkError<ConverseError, HttpResponse>);
 
-/// Attaches the AWS request ID to preserved provider response errors.
-/// Other error variants remain unchanged.
-fn attach_request_id(error: CompletionError, request_id: Option<String>) -> CompletionError {
-    match error {
-        CompletionError::ProviderResponse(response) => {
-            CompletionError::ProviderResponse(response.with_provider_request_id(request_id))
-        }
-        other => other,
-    }
-}
-
-impl From<AwsSdkConverseError> for CompletionError {
+impl From<AwsSdkConverseError> for ProviderError {
     fn from(value: AwsSdkConverseError) -> Self {
         let raw_body = raw_response_body(&value.0);
         let transport = Transport::of(&value.0);
         let request_id =
             aws_sdk_bedrockruntime::operation::RequestId::request_id(&value.0).map(str::to_string);
-        attach_request_id(
-            gated(
-                with_raw_body(converse_message(value.0.into_service_error()), raw_body),
-                transport,
-                CompletionError::from_provider_body,
-                CompletionError::ProviderError,
-            ),
-            request_id,
+        gated(
+            with_raw_body(converse_message(value.0.into_service_error()), raw_body),
+            transport,
         )
+        .with_provider_request_id(request_id)
     }
 }
 
 pub(crate) fn converse_stream_output_completion_error(
     err: ConverseStreamOutputError,
-) -> CompletionError {
-    gated(
-        converse_stream_output_message(err),
-        Transport::default(),
-        CompletionError::from_provider_body,
-        CompletionError::ProviderError,
-    )
+) -> ProviderError {
+    gated(converse_stream_output_message(err), Transport::default())
 }
 
 pub struct AwsSdkConverseStreamError(pub SdkError<ConverseStreamError, HttpResponse>);
-impl From<AwsSdkConverseStreamError> for CompletionError {
+impl From<AwsSdkConverseStreamError> for ProviderError {
     fn from(value: AwsSdkConverseStreamError) -> Self {
         let raw_body = raw_response_body(&value.0);
         let transport = Transport::of(&value.0);
         let request_id =
             aws_sdk_bedrockruntime::operation::RequestId::request_id(&value.0).map(str::to_string);
-        attach_request_id(
-            gated(
-                with_raw_body(
-                    converse_stream_message(value.0.into_service_error()),
-                    raw_body,
-                ),
-                transport,
-                CompletionError::from_provider_body,
-                CompletionError::ProviderError,
+        gated(
+            with_raw_body(
+                converse_stream_message(value.0.into_service_error()),
+                raw_body,
             ),
-            request_id,
+            transport,
         )
+        .with_provider_request_id(request_id)
     }
 }
 

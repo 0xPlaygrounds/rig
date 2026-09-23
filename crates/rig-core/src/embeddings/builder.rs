@@ -16,11 +16,11 @@ use std::{cmp::max, ops::Range};
 
 use futures::{StreamExt, stream};
 
+use crate::error::ProviderError;
 use crate::{
     completion::Usage,
     embeddings::{
-        Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
-        embed::TextEmbedder,
+        Embed, EmbedError, Embedding, EmbeddingModel, EmbeddingResponse, embed::TextEmbedder,
     },
 };
 
@@ -83,7 +83,7 @@ where
     /// Propagates provider and transport errors. Returns an error identifying
     /// the document if it produces no text or a batch returns too few embeddings.
     /// Empty embedded collections produce no text. Surplus embeddings are ignored.
-    pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, EmbeddingError> {
+    pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, ProviderError> {
         let (result, _usage) = self.build_with_usage().await?;
         Ok(result)
     }
@@ -98,7 +98,7 @@ where
     /// here; both are described on [`Self::build`].
     pub(crate) async fn build_with_usage(
         self,
-    ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), EmbeddingError> {
+    ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), ProviderError> {
         use stream::TryStreamExt;
 
         // Per-text slots preserve order even when a document spans batches
@@ -123,7 +123,7 @@ where
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
 
                 let response: EmbeddingResponse = self.model.embed_texts_response(batch).await?;
-                Ok::<_, EmbeddingError>((
+                Ok::<_, ProviderError>((
                     slots
                         .into_iter()
                         .zip(response.embeddings)
@@ -158,7 +158,7 @@ where
 
         for (index, (doc, span)) in docs.into_iter().zip(spans).enumerate() {
             if span.is_empty() {
-                return Err(crate::embeddings::EmbeddingError::ResponseError(format!(
+                return Err(crate::error::ProviderError::Response(format!(
                     "document {index} produced no text to embed, so it has no \
                      embeddings to return; an empty collection in an `#[embed]` \
                      field embeds nothing"
@@ -172,7 +172,7 @@ where
                 .take(span.len())
                 .collect::<Option<Vec<Embedding>>>()
                 .ok_or_else(|| {
-                    crate::embeddings::EmbeddingError::ResponseError(format!(
+                    crate::error::ProviderError::Response(format!(
                         "provider returned fewer embeddings than texts sent: \
                          document {index} is missing at least one of its {} texts \
                          (slots {}..{} of {total_texts})",

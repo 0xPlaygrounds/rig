@@ -7,7 +7,7 @@ use super::completion::gemini_api_types::{
 use super::completion::{
     PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
 };
-use crate::completion::CompletionError;
+use crate::error::ProviderError;
 use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
@@ -80,7 +80,7 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     }
 }
 
-fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
+fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<ProviderError> {
     let reason = choice.finish_reason.as_ref()?;
     function_call_finish_reason_error(reason, choice.finish_message.as_deref())
 }
@@ -202,8 +202,8 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 .filter(|status| status.is_client_error() || status.is_server_error());
             let body = serde_json::json!({ "error": error }).to_string();
             let error = match status {
-                Some(status) => CompletionError::from_http_response(status, body),
-                None => crate::provider_response::completion_error_from_body(body),
+                Some(status) => ProviderError::from_http_response(status, body),
+                None => crate::error::ProviderError::from_provider_body(body),
             };
             out.push(Err(error));
             return;
@@ -270,7 +270,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
             .and_then(map_finish_reason)
             .is_some_and(|reason| reason.truncated_output());
         if self.whole && !self.delivered && !cut_short {
-            out.error(CompletionError::ResponseError(
+            out.error(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
             return;
@@ -548,7 +548,7 @@ impl GenerateContentDecoder {
             }
             Part { part, .. } => {
                 // Unexpected response parts must fail rather than silently discard content.
-                out.error(CompletionError::ResponseError(format!(
+                out.error(ProviderError::Response(format!(
                     "Gemini response part kind {} carries no assistant content rig can account for",
                     part_kind_name(&part)
                 )));

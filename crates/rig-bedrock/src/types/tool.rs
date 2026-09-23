@@ -1,16 +1,14 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use super::{converse_output::ToolResultContentBlock, image::RigImage, json::AwsDocument};
-use rig_core::{
-    completion::CompletionError,
-    message::{Text, ToolResultContent},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{Text, ToolResultContent};
 use serde_json::Value;
 
 pub struct RigToolResultContent(pub ToolResultContent);
 
 impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: RigToolResultContent) -> Result<Self, Self::Error> {
         match value.0 {
@@ -36,7 +34,7 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
 }
 
 impl TryFrom<ToolResultContentBlock> for RigToolResultContent {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: ToolResultContentBlock) -> Result<Self, Self::Error> {
         match value {
@@ -50,7 +48,7 @@ impl TryFrom<ToolResultContentBlock> for RigToolResultContent {
             ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
                 ToolResultContent::Text(Text::new(text)),
             )),
-            _ => Err(CompletionError::ProviderError(
+            _ => Err(ProviderError::Provider(
                 "ToolResultContentBlock contains unsupported variant".into(),
             )),
         }

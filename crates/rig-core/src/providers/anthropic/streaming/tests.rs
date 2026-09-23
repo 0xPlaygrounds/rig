@@ -29,7 +29,7 @@ fn interpret(adapter: &mut MessagesDecoder, event: StreamingEvent) -> Vec<Stream
 fn interpret_items(
     adapter: &mut MessagesDecoder,
     event: StreamingEvent,
-) -> Vec<Result<StreamEvent, CompletionError>> {
+) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
     adapter.interpret(event, &mut out);
     out.into_items()
@@ -41,7 +41,7 @@ fn interpret_items(
 fn interpret_all(
     adapter: &mut MessagesDecoder,
     events: impl IntoIterator<Item = StreamingEvent>,
-) -> Vec<Result<StreamEvent, CompletionError>> {
+) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
     for event in events {
         adapter.interpret(event, &mut out);
@@ -65,14 +65,14 @@ fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
 /// the driver would yield it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn to_stream_result(
-    items: Vec<Result<StreamEvent, CompletionError>>,
+    items: Vec<Result<StreamEvent, ProviderError>>,
 ) -> crate::streaming::StreamingResult {
     Box::pin(futures::stream::iter(items))
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn to_stream_result(
-    items: Vec<Result<StreamEvent, CompletionError>>,
+    items: Vec<Result<StreamEvent, ProviderError>>,
 ) -> crate::streaming::StreamingResult {
     Box::pin(futures::stream::iter(items))
 }
@@ -87,7 +87,7 @@ fn built_streaming_body(
     model: &str,
     request: CompletionRequest,
     strict_tools: bool,
-) -> Result<Value, CompletionError> {
+) -> Result<Value, ProviderError> {
     use crate::wire::{Body, Mode, Wire};
 
     let wire = crate::providers::anthropic::wire::Anthropic::new("test-key").messages(model);
@@ -100,10 +100,10 @@ fn built_streaming_body(
     let request = encoded
         .requests
         .first()
-        .ok_or_else(|| CompletionError::RequestError("the wire encoded no request".into()))?;
+        .ok_or_else(|| ProviderError::Request("the wire encoded no request".into()))?;
     match request.body() {
         Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
-        Body::Multipart(_) => Err(CompletionError::RequestError(
+        Body::Multipart(_) => Err(ProviderError::Request(
             "the Messages endpoint takes JSON".into(),
         )),
     }

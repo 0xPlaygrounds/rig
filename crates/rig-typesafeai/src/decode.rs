@@ -1,18 +1,18 @@
 //! Typed conversion after protocol validation.
-use crate::Error;
+use rig_core::error::ProviderError;
 use serde::de::DeserializeOwned;
 
 /// Direct conversion from a validated protocol answer into its application type.
 pub(crate) trait DecodeAnswer: Sized {
-    fn decode(answer: &crate::types::Answer) -> Result<Self, Error>;
+    fn decode(answer: &crate::types::Answer) -> Result<Self, ProviderError>;
 }
 
-fn wrong_kind() -> Error {
-    Error::InvalidResponse("answer kind differs from question kind".into())
+fn wrong_kind() -> ProviderError {
+    ProviderError::Response("answer kind differs from question kind".into())
 }
 
 impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
-    fn decode(answer: &crate::types::Answer) -> Result<Self, Error> {
+    fn decode(answer: &crate::types::Answer) -> Result<Self, ProviderError> {
         let crate::types::Answer::Choice {
             choice,
             probabilities,
@@ -21,7 +21,7 @@ impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
         else {
             return Err(wrong_kind());
         };
-        let label = |label: &str| -> Result<T, Error> {
+        let label = |label: &str| -> Result<T, ProviderError> {
             Ok(T::deserialize(serde::de::value::StrDeserializer::<
                 serde_json::Error,
             >::new(label))?)
@@ -31,19 +31,19 @@ impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
             probabilities: probabilities
                 .iter()
                 .map(|(key, value)| Ok((label(key)?, *value)))
-                .collect::<Result<_, Error>>()?,
+                .collect::<Result<_, ProviderError>>()?,
             confidence: *confidence,
         })
     }
 }
 
-fn index(key: &str) -> Result<usize, Error> {
+fn index(key: &str) -> Result<usize, ProviderError> {
     key.parse()
-        .map_err(|_| Error::InvalidResponse(format!("invalid score index: {key}")))
+        .map_err(|_| ProviderError::Response(format!("invalid score index: {key}")))
 }
 
 impl DecodeAnswer for crate::DynamicScoreAnswer {
-    fn decode(answer: &crate::types::Answer) -> Result<Self, Error> {
+    fn decode(answer: &crate::types::Answer) -> Result<Self, ProviderError> {
         let crate::types::Answer::Score {
             score,
             probabilities,
@@ -58,18 +58,18 @@ impl DecodeAnswer for crate::DynamicScoreAnswer {
             probabilities: probabilities
                 .iter()
                 .map(|(key, value)| Ok((index(key)?, *value)))
-                .collect::<Result<_, Error>>()?,
+                .collect::<Result<_, ProviderError>>()?,
             legend: legend
                 .iter()
                 .map(|(key, value)| Ok((index(key)?, value.clone())))
-                .collect::<Result<_, Error>>()?,
+                .collect::<Result<_, ProviderError>>()?,
             confidence: *confidence,
         })
     }
 }
 
 impl DecodeAnswer for crate::NoulAnswer {
-    fn decode(answer: &crate::types::Answer) -> Result<Self, Error> {
+    fn decode(answer: &crate::types::Answer) -> Result<Self, ProviderError> {
         let crate::types::Answer::Noul { noul } = answer else {
             return Err(wrong_kind());
         };

@@ -9,6 +9,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
+use rig::error::ProviderError;
 use rig::model::ModelLister;
 
 use super::support::{with_mistral_cassette_bogus_key_result, with_mistral_cassette_result};
@@ -40,11 +41,9 @@ async fn list_models_smoke() -> Result<()> {
 }
 
 /// rig#2079 — the shared fetch path classifies a rejected listing as
-/// `ApiError` carrying provider, path, status and a body preview.
+/// the provider's reply, with its status and a route naming provider and path.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()> {
-    use rig::model::ModelListingError;
-
     with_mistral_cassette_bogus_key_result(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
@@ -54,21 +53,19 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ModelListingError::ApiError {
-                status_code,
-                message,
-            } = &error
-            else {
+            let ProviderError::ProviderResponse(response) = &error else {
                 anyhow::bail!(
-                    "a rejected listing must classify as ApiError\nDisplay: {error}\n\
+                    "a rejected listing must keep the provider's reply\nDisplay: {error}\n\
                      Debug: {error:#?}"
                 );
             };
+            let status_code = response.status.map(|status| status.as_u16());
+            let message = error.to_string();
 
-            anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
+            anyhow::ensure!(status_code == Some(401), "unexpected status: {error:#?}");
             // `provider=` is the wire's descriptor name — the same `mistral`
             // every normalized response reports, not a display label.
-            for expected in ["provider=mistral", "path=/v1/models", "status=401"] {
+            for expected in ["provider=mistral", "path=/v1/models", "status 401"] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

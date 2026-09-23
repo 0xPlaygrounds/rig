@@ -1,7 +1,8 @@
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
+use rig_core::error::ProviderError;
 use rig_core::image_generation;
-use rig_core::image_generation::{ImageGenerationError, NormalizeImageGenerationResponse};
+use rig_core::image_generation::NormalizeImageGenerationResponse;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -100,25 +101,25 @@ impl NormalizeImageGenerationResponse for TextToImageResponse {
     fn normalize(
         self,
         provider: &str,
-    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+    ) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
         if let Some(error) = self.error {
-            return Err(ImageGenerationError::ResponseError(error));
+            return Err(ProviderError::Response(error));
         }
 
         if let Some(images) = self.images {
             let image = images.first().ok_or_else(|| {
-                ImageGenerationError::ResponseError("Bedrock image response was empty".into())
+                ProviderError::Response("Bedrock image response was empty".into())
             })?;
             let data = BASE64_STANDARD
                 .decode(image)
-                .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
+                .map_err(|err| ProviderError::Response(err.to_string()))?;
 
             return Ok(image_generation::ImageGenerationResponse::new(
                 data, provider,
             ));
         }
 
-        Err(ImageGenerationError::ResponseError(
+        Err(ProviderError::Response(
             "Malformed response from model".to_string(),
         ))
     }

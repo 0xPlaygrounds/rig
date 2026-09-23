@@ -1,6 +1,7 @@
 //! Typesafe's unary evaluation operation, using Rig's shared HTTP driver.
 
 use rig_core::client::{EnvError, env};
+use rig_core::error::ProviderError;
 use rig_core::operation::{One, Take};
 use rig_core::wire::{
     Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
@@ -8,7 +9,6 @@ use rig_core::wire::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::Error;
 use crate::types::{Request, Response};
 
 /// A batch of independent questions about one state.
@@ -18,7 +18,6 @@ impl Operation for Evaluation {
     type Request = Request;
     type Event = Response;
     type Response = Response;
-    type Error = Error;
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = Take<Self>;
@@ -96,9 +95,9 @@ impl Wire for Jev {
         Some("/v1/systemone")
     }
 
-    fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, Error> {
+    fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, ProviderError> {
         if self.token.is_empty() || self.model.trim().is_empty() {
-            return Err(Error::InvalidRequest(
+            return Err(ProviderError::Request(
                 "credential and model must be nonempty".into(),
             ));
         }

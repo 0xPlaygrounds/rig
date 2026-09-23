@@ -1,3 +1,4 @@
+use rig_core::error::ProviderError;
 use rig_core::{ProviderResponseError, http_client};
 
 use super::*;
@@ -5,7 +6,7 @@ use super::*;
 #[test]
 fn prompt_error_forwards_provider_response_to_completion_error() {
     let body = r#"{"error":{"message":"boom"}}"#;
-    let inner = CompletionError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+    let inner = ProviderError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let error = PromptError::CompletionError(inner);
 
     assert_eq!(
@@ -25,7 +26,7 @@ fn prompt_error_forwards_provider_response_to_completion_error() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
-    let error = PromptError::CompletionError(CompletionError::from_transport_error(
+    let error = PromptError::CompletionError(ProviderError::from_transport_error(
         http_client::Error::non_success_with_details(
             http::StatusCode::UNAUTHORIZED,
             http::HeaderMap::new(),
@@ -49,7 +50,7 @@ fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
     let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
-    let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+    let error = PromptError::CompletionError(ProviderError::ProviderResponse(
         ProviderResponseError::without_status(body),
     ));
 
@@ -83,14 +84,14 @@ fn prompt_error_forwards_captured_response_headers() {
 
     for completion_error in [
         // A preserved response, with and without a request id.
-        CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
+        ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
             .with_provider_request_id(Some("req_abc".to_string()))
             .with_response_headers(Some(headers.clone())),
-        CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
+        ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
             .with_response_headers(Some(headers.clone())),
         // A transport that reported the reply as an error routes through
         // the same funnel, headers included.
-        CompletionError::from_transport_error(http_client::Error::InvalidStatusCodeWithDetails {
+        ProviderError::from_transport_error(http_client::Error::InvalidStatusCodeWithDetails {
             status: http::StatusCode::TOO_MANY_REQUESTS,
             body: body.to_string(),
             headers: headers.clone(),
@@ -137,7 +138,7 @@ fn prompt_error_reports_no_headers_for_unrelated_variants() {
 /// through `PromptError` (and, transitively, `StructuredOutputError`).
 #[test]
 fn prompt_error_forwards_the_provider_request_id() {
-    let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+    let error = PromptError::CompletionError(ProviderError::ProviderResponse(
         ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
             .with_provider_request_id(Some("req_failed_call".to_string())),
     ));
@@ -165,7 +166,7 @@ fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
 fn structured_output_error_provider_response_helpers_forward_prompt_error() {
     let body = r#"{"error":{"message":"bad input"}}"#;
     let error = StructuredOutputError::PromptError(PromptError::CompletionError(
-        CompletionError::ProviderResponse(ProviderResponseError::new(
+        ProviderError::ProviderResponse(ProviderResponseError::new(
             http::StatusCode::BAD_REQUEST,
             body,
         )),

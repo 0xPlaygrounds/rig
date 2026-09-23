@@ -1,11 +1,15 @@
 use http::StatusCode;
 
 use super::*;
-use crate::{http_client, provider_response::ProviderResponseError};
+use crate::{
+    http_client::{self, Error as H},
+    observe::AdapterErrorBoundary,
+    provider_response::ProviderResponseError,
+};
 
 /// A non-success reply as a transport reports it, routed like a `?` would.
-fn http_error(status: u16) -> CompletionError {
-    CompletionError::from_transport_error(http_client::Error::non_success_with_details(
+fn http_error(status: u16) -> ProviderError {
+    ProviderError::from_transport_error(http_client::Error::non_success_with_details(
         StatusCode::from_u16(status).expect("valid status"),
         http::HeaderMap::new(),
         "body".to_string(),
@@ -15,7 +19,7 @@ fn http_error(status: u16) -> CompletionError {
 #[test]
 fn retrieval_wrapping_preserves_embedding_error_classification() {
     for (status, retryable) in [(400, false), (429, true), (503, true)] {
-        let inner = EmbeddingError::ProviderResponse(ProviderResponseError::new(
+        let inner = ProviderError::ProviderResponse(ProviderResponseError::new(
             StatusCode::from_u16(status).expect("valid status"),
             "embedding request failed",
         ));
@@ -283,7 +287,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         http_client::Error::Instance("connection reset by peer".into()),
     ];
     for error in transient {
-        let error = CompletionError::HttpError(error);
+        let error = ProviderError::Http(error);
         assert!(error.is_retryable(), "{error}");
         let report = error.report();
         assert_eq!(report.kind, ErrorKind::Http);
@@ -298,7 +302,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         ),
     ];
     for error in permanent {
-        let error = CompletionError::HttpError(error);
+        let error = ProviderError::Http(error);
         assert!(!error.is_retryable(), "{error}");
         assert!(!error.report().retryable, "{error}");
     }
@@ -307,7 +311,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
     assert!(http_error(503).is_retryable());
     // A provider response without a status decides nothing either.
     assert!(
-        !CompletionError::ProviderResponse(ProviderResponseError::without_status("body"))
+        !ProviderError::ProviderResponse(ProviderResponseError::without_status("body"))
             .is_retryable()
     );
 }
@@ -348,7 +352,7 @@ fn tool_retryability_has_one_answer_on_every_surface() {
 
 #[test]
 fn completion_provider_response_classifies_by_status() {
-    let error = CompletionError::ProviderResponse(ProviderResponseError::new(
+    let error = ProviderError::ProviderResponse(ProviderResponseError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "down",
     ));
@@ -361,16 +365,10 @@ fn completion_provider_response_classifies_by_status() {
 #[test]
 fn completion_non_http_variants_are_not_retryable() {
     let cases = [
+        (ProviderError::Response("bad".into()), ErrorKind::Response),
+        (ProviderError::Provider("bad".into()), ErrorKind::Provider),
         (
-            CompletionError::ResponseError("bad".into()),
-            ErrorKind::Response,
-        ),
-        (
-            CompletionError::ProviderError("bad".into()),
-            ErrorKind::Provider,
-        ),
-        (
-            CompletionError::UrlError(url::ParseError::EmptyHost),
+            ProviderError::Url(url::ParseError::EmptyHost),
             ErrorKind::Url,
         ),
     ];
@@ -458,7 +456,7 @@ fn a_provider_response_travels_with_the_report() {
     // the wire, and survives serde.
     let mut headers = http::HeaderMap::new();
     headers.insert("retry-after", http::HeaderValue::from_static("7"));
-    let error = CompletionError::ProviderResponse(
+    let error = ProviderError::ProviderResponse(
         ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
             .with_provider_request_id(Some("req-9".to_owned()))
             .with_headers(Some(headers)),
@@ -509,24 +507,19 @@ fn a_provider_response_travels_with_the_report() {
         Some(StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(http.provider_response_body(), Some("body"));
-    let plain = ErrorReport::from(&CompletionError::ProviderError("oops".to_owned()));
+    let plain = ErrorReport::from(&ProviderError::Provider("oops".to_owned()));
     assert!(plain.provider_response.is_none());
     assert_eq!(plain.provider_response_body(), None);
 }
 
 #[test]
-fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
+fn provider_reports_retain_structured_provider_metadata() {
     let response = ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, "retry later")
         .with_provider_request_id(Some("req-retained".into()));
-    let embedding = EmbeddingError::ProviderResponse(response.clone());
-    let rerank = RerankError::ProviderResponse(response.clone());
+    let direct = ProviderError::ProviderResponse(response.clone());
     let wrapped =
-        VectorStoreError::EmbeddingError(EmbeddingError::ProviderResponse(response.clone()));
-    for report in [
-        ErrorReport::from(&embedding),
-        ErrorReport::from(&rerank),
-        ErrorReport::from(&wrapped),
-    ] {
+        VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()));
+    for report in [ErrorReport::from(&direct), ErrorReport::from(&wrapped)] {
         assert_eq!(report.request_id.as_deref(), Some("req-retained"));
         assert_eq!(
             serde_json::to_value(report.provider_response.as_ref()).unwrap(),
@@ -541,21 +534,17 @@ fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
 }
 
 /// A transport rejection routed through the `From` conversion is the
-/// provider's reply on every capability: body, headers and status ride on
-/// the report, and the kind says so. `HttpError` itself cannot carry any of
-/// them, so a report from one has no provider response.
+/// provider's reply: body, headers and status ride on the report, and the
+/// kind says so. `Http` itself cannot carry any of them, so a report from
+/// one has no provider response.
 #[test]
-fn embedding_and_rerank_http_reports_retain_body_and_headers() {
-    for report in [
-        ErrorReport::from(EmbeddingError::HttpError(http_client::Error::StreamEnded)),
-        ErrorReport::from(RerankError::HttpError(http_client::Error::StreamEnded)),
-    ] {
-        assert_eq!(report.kind, ErrorKind::Http);
-        assert_eq!(report.http_status, None);
-        assert!(report.provider_response.is_none());
-        assert!(report.retryable);
-    }
-    let make_error = || {
+fn http_reports_retain_body_and_headers() {
+    let report = ErrorReport::from(ProviderError::Http(http_client::Error::StreamEnded));
+    assert_eq!(report.kind, ErrorKind::Http);
+    assert_eq!(report.http_status, None);
+    assert!(report.provider_response.is_none());
+    assert!(report.retryable);
+    let error = || {
         let mut headers = http::HeaderMap::new();
         headers.insert("retry-after", http::HeaderValue::from_static("7"));
         http_client::Error::InvalidStatusCodeWithDetails {
@@ -564,26 +553,22 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
             headers,
         }
     };
-    for report in [
-        ErrorReport::from(EmbeddingError::from(make_error())),
-        ErrorReport::from(RerankError::from(make_error())),
-    ] {
-        assert_eq!(report.kind, ErrorKind::ProviderResponse);
-        let response = report.provider_response.expect("structured HTTP response");
-        assert_eq!(response.body, "temporary outage");
-        assert_eq!(
-            response
-                .headers
-                .as_ref()
-                .expect("retained headers")
-                .get("retry-after")
-                .expect("retry header"),
-            "7"
-        );
-        assert_eq!(response.status, Some(StatusCode::SERVICE_UNAVAILABLE));
-        assert!(report.retryable);
-        assert!(report.request_id.is_none());
-    }
+    let report = ErrorReport::from(ProviderError::from(error()));
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    let response = report.provider_response.expect("structured HTTP response");
+    assert_eq!(response.body, "temporary outage");
+    assert_eq!(
+        response
+            .headers
+            .as_ref()
+            .expect("retained headers")
+            .get("retry-after")
+            .expect("retry header"),
+        "7"
+    );
+    assert_eq!(response.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(report.retryable);
+    assert!(report.request_id.is_none());
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -603,7 +588,7 @@ fn wrapped_memory_error_retains_nested_sources() {
 
 #[test]
 fn wrapped_document_error_retains_nested_sources() {
-    let error = EmbeddingError::DocumentError(Box::new(NestedBackendError(std::io::Error::other(
+    let error = ProviderError::Request(Box::new(NestedBackendError(std::io::Error::other(
         "document",
     ))));
     assert!(
@@ -612,4 +597,238 @@ fn wrapped_document_error_retains_nested_sources() {
     let report = ErrorReport::from(&error);
     assert_eq!(report.source_chain, vec!["backend failed", "document"]);
     assert_eq!(report.message, error.to_string());
+}
+
+/// Reports captured from the per-operation error enums `ProviderError`
+/// replaced, one row per former variant whose report is unchanged. The
+/// completion, embedding, rerank, transcription, image, audio and cached
+/// content enums produced identical reports for identical inputs, so each
+/// shared case is one row. Every field, the serialized reply included, and
+/// the observation boundary must match.
+#[test]
+fn reports_match_the_replaced_error_enums() {
+    let cases: Vec<(&str, ProviderError, &str, AdapterErrorBoundary)> = vec![
+        (
+            "*::HttpError(StreamEnded)",
+            ProviderError::Http(H::StreamEnded),
+            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Stream ended","refusal":false,"retryable":true,"source_chain":[]}"#,
+            AdapterErrorBoundary::Transport,
+        ),
+        (
+            "*::HttpError(Instance)",
+            ProviderError::Http(H::instance(std::io::Error::other("conn reset"))),
+            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: conn reset","refusal":false,"retryable":true,"source_chain":[]}"#,
+            AdapterErrorBoundary::Unknown,
+        ),
+        (
+            "*::HttpError(NoHeaders)",
+            ProviderError::Http(H::NoHeaders),
+            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Request in error state, cannot access headers","refusal":false,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::Request,
+        ),
+        (
+            "*::JsonError",
+            ProviderError::Json(json_error()),
+            r#"{"code":null,"http_status":null,"kind":"json","message":"JsonError: EOF while parsing an object at line 1 column 1","refusal":false,"retryable":false,"source_chain":["EOF while parsing an object at line 1 column 1"]}"#,
+            AdapterErrorBoundary::Decode,
+        ),
+        (
+            "*::ResponseError",
+            ProviderError::Response("bad shape".into()),
+            r#"{"code":null,"http_status":null,"kind":"response","message":"ResponseError: bad shape","refusal":false,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::Decode,
+        ),
+        (
+            "*::ProviderError",
+            ProviderError::Provider("provider said no".into()),
+            r#"{"code":null,"http_status":null,"kind":"provider","message":"ProviderError: provider said no","refusal":false,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::ProviderResponse,
+        ),
+        (
+            "*::from_http_response(429)+id+headers",
+            ProviderError::from_http_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":{"type":"rate_limit"}}"#,
+            )
+            .with_provider_request_id(Some("req_1".into()))
+            .with_response_headers(Some(headers())),
+            r#"{"code":"rate_limit","http_status":429,"kind":"provider_response","message":"ProviderResponseError: status 429 Too Many Requests: {\"error\":{\"type\":\"rate_limit\"}} (request id: req_1)","provider_response":{"body":"{\"error\":{\"type\":\"rate_limit\"}}","provider_request_id":"req_1","status":429},"refusal":false,"request_id":"req_1","retryable":true,"source_chain":[]}"#,
+            AdapterErrorBoundary::ProviderResponse,
+        ),
+        (
+            "*::from_http_response(400)",
+            ProviderError::from_http_response(StatusCode::BAD_REQUEST, "plain body"),
+            r#"{"code":null,"http_status":400,"kind":"provider_response","message":"ProviderResponseError: status 400 Bad Request: plain body","provider_response":{"body":"plain body","provider_request_id":null,"status":400},"refusal":false,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::ProviderResponse,
+        ),
+        (
+            "*::from_transport_error(503)",
+            ProviderError::from_transport_error(transport_503()),
+            r#"{"code":"overloaded","http_status":503,"kind":"provider_response","message":"ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_response":{"body":"{\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_request_id":null,"status":503},"refusal":false,"retryable":true,"source_chain":[]}"#,
+            AdapterErrorBoundary::ProviderResponse,
+        ),
+        (
+            "*::from_provider_body+refusal",
+            ProviderError::ProviderResponse(
+                ProviderResponseError::without_status(r#"{"error":{"code":"content_filter"}}"#)
+                    .with_refusal(true)
+                    .with_code(Some("REFUSED".into())),
+            ),
+            r#"{"code":"REFUSED","http_status":null,"kind":"provider_response","message":"ProviderResponseError: {\"error\":{\"code\":\"content_filter\"}}","provider_response":{"body":"{\"error\":{\"code\":\"content_filter\"}}","code":"REFUSED","provider_request_id":null,"refusal":true,"status":null},"refusal":true,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::ProviderResponse,
+        ),
+        (
+            "*::from_provider_body+transient",
+            ProviderError::from_provider_body("sdk said busy").with_transient(Some(true)),
+            r#"{"code":null,"http_status":null,"kind":"provider_response","message":"ProviderResponseError: sdk said busy","provider_response":{"body":"sdk said busy","provider_request_id":null,"status":null,"transient":true},"refusal":false,"retryable":true,"source_chain":[]}"#,
+            AdapterErrorBoundary::ProviderResponse,
+        ),
+        (
+            "Completion/Embedding/Rerank::UrlError",
+            ProviderError::Url(url_error()),
+            r#"{"code":null,"http_status":null,"kind":"url","message":"UrlError: relative URL without a base","refusal":false,"retryable":false,"source_chain":["relative URL without a base"]}"#,
+            AdapterErrorBoundary::Request,
+        ),
+        (
+            "Completion/Transcription/ImageGeneration/AudioGeneration::RequestError",
+            ProviderError::Request(boxed()),
+            r#"{"code":null,"http_status":null,"kind":"request","message":"RequestError: io broke","refusal":false,"retryable":false,"source_chain":["io broke"]}"#,
+            AdapterErrorBoundary::Request,
+        ),
+        (
+            "Embedding::UnsupportedParameter",
+            ProviderError::UnsupportedParameter {
+                provider: "voyage",
+                parameter: "dimensions",
+            },
+            r#"{"code":null,"http_status":null,"kind":"request","message":"voyage embeddings do not support the `dimensions` parameter","refusal":false,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::Request,
+        ),
+        (
+            "Embedding::InvalidParameterValue",
+            ProviderError::InvalidParameterValue {
+                provider: "doubleword",
+                parameter: "dimensions",
+                requirement: "to be greater than zero",
+            },
+            r#"{"code":null,"http_status":null,"kind":"request","message":"doubleword embeddings require `dimensions` to be greater than zero","refusal":false,"retryable":false,"source_chain":[]}"#,
+            AdapterErrorBoundary::Request,
+        ),
+    ];
+    for (case, error, expected, boundary) in cases {
+        let expected: serde_json::Value = serde_json::from_str(expected).expect("expected report");
+        assert_eq!(
+            serde_json::to_value(error.report()).expect("report serializes"),
+            expected,
+            "{case}"
+        );
+        assert_eq!(error.boundary(), boundary, "{case}");
+    }
+}
+
+fn headers() -> http::HeaderMap {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    headers.insert("x-request-id", http::HeaderValue::from_static("req_hdr"));
+    headers
+}
+
+fn json_error() -> serde_json::Error {
+    serde_json::from_str::<serde_json::Value>("{").expect_err("malformed JSON")
+}
+
+fn url_error() -> url::ParseError {
+    url::Url::parse("not a url").expect_err("relative URL")
+}
+
+fn boxed() -> BoxError {
+    Box::new(std::io::Error::other("io broke"))
+}
+
+fn transport_503() -> H {
+    H::InvalidStatusCodeWithDetails {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        body: r#"{"error":{"code":"overloaded","message":"busy"}}"#.to_owned(),
+        headers: headers(),
+    }
+}
+
+/// Response-shaped embedding faults keep their `response` report and now
+/// report the decode boundary that kind implies; the replaced enums
+/// reported `request` for every operation-specific variant.
+#[test]
+fn response_shaped_faults_report_the_decode_boundary() {
+    for error in [
+        ProviderError::UnsupportedResponseEncoding {
+            provider: "openai",
+            encoding_format: "base64",
+        },
+        ProviderError::MissingUsage { provider: "openai" },
+        ProviderError::MismatchedDimensions {
+            provider: "llamacpp".into(),
+            requested: 128,
+            returned: 1024,
+        },
+    ] {
+        assert_eq!(error.kind(), ErrorKind::Response, "{error}");
+        assert_eq!(error.boundary(), AdapterErrorBoundary::Decode, "{error}");
+    }
+}
+
+/// An expired cache and a rejected credential keep the provider's reply:
+/// status, body, and request ID reach the report, which the replaced
+/// `CachedContentError::Expired` and `VerifyError::InvalidAuthentication`
+/// discarded.
+#[test]
+fn verdicts_on_a_handle_or_credential_keep_the_reply() {
+    let expired = ProviderError::CacheExpired {
+        name: "cachedContents/abc".into(),
+        response: ProviderResponseError::new(StatusCode::NOT_FOUND, "not found body")
+            .with_provider_request_id(Some("req_c".into())),
+    };
+    assert_eq!(
+        expired.to_string(),
+        "cached content `cachedContents/abc` is expired or was deleted: not found body"
+    );
+    let rejected = ProviderError::InvalidAuthentication(ProviderResponseError::new(
+        StatusCode::UNAUTHORIZED,
+        "bad key",
+    ));
+    assert_eq!(
+        rejected.to_string(),
+        "invalid authentication: status 401 Unauthorized: bad key"
+    );
+    for (error, status) in [(&expired, 404), (&rejected, 401)] {
+        let report = error.report();
+        assert_eq!(report.kind, ErrorKind::ProviderResponse);
+        assert_eq!(report.http_status, Some(status));
+        assert!(!report.retryable);
+        assert!(report.provider_response.is_some());
+        assert_eq!(error.boundary(), AdapterErrorBoundary::ProviderResponse);
+    }
+    assert_eq!(expired.provider_request_id(), Some("req_c"));
+}
+
+/// Request-building failures from every operation share `Request` and its
+/// text, whatever the replaced enum called them.
+#[test]
+fn request_building_failures_share_one_shape() {
+    let document = ProviderError::Request(boxed());
+    let invalid = ProviderError::Request("bad name".into());
+    let http = ProviderError::from(
+        http::Request::builder()
+            .method("bad method")
+            .body(())
+            .expect_err("invalid method"),
+    );
+    assert_eq!(document.to_string(), "RequestError: io broke");
+    assert_eq!(invalid.to_string(), "RequestError: bad name");
+    assert_eq!(http.to_string(), "RequestError: invalid HTTP method");
+    for error in [document, invalid, http] {
+        let report = error.report();
+        assert_eq!(report.kind, ErrorKind::Request);
+        assert!(!report.retryable);
+        assert_eq!(report.source_chain.len(), 1, "{error}");
+        assert_eq!(error.boundary(), AdapterErrorBoundary::Request);
+    }
 }

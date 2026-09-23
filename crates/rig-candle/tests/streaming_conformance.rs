@@ -7,7 +7,8 @@
 //! so the malformed/unknown scenarios self-report as skipped.
 
 use rig_candle::{CandleCompletionResponse, FinishReason as CandleFinishReason, GenerationEvent};
-use rig_core::completion::{CompletionError, FinishReason};
+use rig_core::completion::FinishReason;
+use rig_core::error::ProviderError;
 use rig_core::streaming::{BlockId, ToolCallEnd};
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
@@ -18,18 +19,18 @@ type CandleEvent = GenerationEvent;
 fn driver() -> WireDriver {
     WireDriver::new("candle", |chunks| {
         Box::pin(async move {
-            let events: Vec<Result<CandleEvent, CompletionError>> = chunks
+            let events: Vec<Result<CandleEvent, ProviderError>> = chunks
                 .into_iter()
                 .map(|chunk| match chunk {
                     Ok(frame) => frame
                         .downcast_event::<CandleEvent>()
                         .cloned()
                         .ok_or_else(|| {
-                            CompletionError::ProviderError(
+                            ProviderError::Provider(
                                 "candle conformance frames must be generation events".to_string(),
                             )
                         }),
-                    Err(error) => Err(CompletionError::HttpError(error)),
+                    Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
             let stream = rig_candle::stream_from_events(futures::stream::iter(events));

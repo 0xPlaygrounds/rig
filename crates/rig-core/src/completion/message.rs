@@ -1,8 +1,7 @@
+use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 use thiserror::Error;
-
-use super::CompletionError;
 
 /// A provider-agnostic chat message.
 ///
@@ -46,9 +45,9 @@ pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Resu
 
 /// Returns a response error using [`EMPTY_RESPONSE_ERROR`] for an empty list.
 /// Callers must handle provider-legal empty outcomes before invoking this guard.
-pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, CompletionError> {
+pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, ProviderError> {
     require_non_empty(items, || {
-        CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
+        ProviderError::Response(EMPTY_RESPONSE_ERROR.to_owned())
     })
 }
 
@@ -1818,9 +1817,9 @@ pub enum MessageError {
     ConversionError(String),
 }
 
-impl From<MessageError> for CompletionError {
+impl From<MessageError> for ProviderError {
     fn from(error: MessageError) -> Self {
-        CompletionError::RequestError(error.into())
+        ProviderError::Request(error.into())
     }
 }
 

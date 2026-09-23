@@ -15,6 +15,7 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::FinishReason;
+use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
@@ -22,7 +23,7 @@ use rig_core::streaming::BlockId;
 
 use super::policy::InvalidToolCallReason;
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
-use rig_core::completion::{CompletionError, Message, Usage};
+use rig_core::completion::{Message, Usage};
 use rig_core::json_utils;
 use rig_core::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 
@@ -605,12 +606,9 @@ impl StreamedTurnAssembler {
     /// Returns an error when the provider stream is inconsistent (argument
     /// deltas finishing without a validated tool name) or when an invalid
     /// tool call is still awaiting resolution.
-    pub fn ingest(
-        &mut self,
-        item: &StreamEvent,
-    ) -> Result<Vec<StreamedTurnEvent>, CompletionError> {
+    pub fn ingest(&mut self, item: &StreamEvent) -> Result<Vec<StreamedTurnEvent>, ProviderError> {
         if self.pending_invalid.is_some() {
-            return Err(CompletionError::ResponseError(
+            return Err(ProviderError::Response(
                 "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
             ));
         }
@@ -921,12 +919,12 @@ impl StreamedTurnAssembler {
 
     /// Error when argument deltas were buffered for a tool call whose name
     /// never validated, indicating an inconsistent provider stream.
-    pub fn pending_delta_error(&self) -> Option<CompletionError> {
+    pub fn pending_delta_error(&self) -> Option<ProviderError> {
         self.delta_states
             .iter()
             .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
             .map(|(block_id, state)| {
-                CompletionError::ResponseError(format!(
+                ProviderError::Response(format!(
                     "streamed tool call arguments received before a validated tool name for block_id `{block_id}` ({} buffered argument delta(s))",
                     state.buffered_arguments.len()
                 ))

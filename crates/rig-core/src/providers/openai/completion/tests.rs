@@ -1168,7 +1168,7 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
         supports_tools: true,
     });
 
-    assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    assert!(matches!(result, Err(ProviderError::Request(_))));
 }
 
 #[test]

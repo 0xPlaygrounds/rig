@@ -34,7 +34,7 @@ fn assert_is_request_id(id: Option<&str>) {
 
 /// An error must keep both halves of its context: the id *and* the body.
 /// Losing either one is what makes a provider failure unactionable.
-fn assert_error_keeps_id_and_body(error: &rig::completion::CompletionError) {
+fn assert_error_keeps_id_and_body(error: &rig::error::ProviderError) {
     assert_is_request_id(error.provider_request_id());
     assert!(
         error.provider_response_body().is_some(),
@@ -43,7 +43,7 @@ fn assert_error_keeps_id_and_body(error: &rig::completion::CompletionError) {
 }
 
 /// The streaming twin: an in-band stream failure is an `ErrorReport`, which
-/// carries the same preserved id and body as the `CompletionError`.
+/// carries the same preserved id and body as the `ProviderError`.
 fn assert_report_keeps_id_and_body(report: &ErrorReport) {
     assert_is_request_id(report.provider_request_id());
     assert!(

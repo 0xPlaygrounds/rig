@@ -64,7 +64,7 @@ impl EmbeddingModel for Tiny {
     async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<EmbeddingResponse, rig_core::embeddings::EmbeddingError> {
+    ) -> Result<EmbeddingResponse, rig_core::error::ProviderError> {
         Ok(EmbeddingResponse::new(
             texts
                 .into_iter()

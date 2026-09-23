@@ -15,8 +15,8 @@ use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
     completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Document,
-        Message, PromptError, ToolDefinition,
+        CompletionModel, CompletionRequest, CompletionRequestBuilder, Document, Message,
+        PromptError, ToolDefinition,
     },
     run::response::PromptResponse,
     tool::{
@@ -26,6 +26,7 @@ use crate::{
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
+use rig_core::error::ProviderError;
 use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
@@ -69,7 +70,7 @@ pub(crate) async fn build_prepared_completion_request(
     chat_history: &[Message],
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
-) -> Result<PreparedCompletionRequest, CompletionError> {
+) -> Result<PreparedCompletionRequest, ProviderError> {
     let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
@@ -99,9 +100,7 @@ pub(crate) async fn build_prepared_completion_request(
             other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
         })
         .map_err(|report| {
-            CompletionError::RequestError(
-                format!("Failed to get tool definitions: {report}").into(),
-            )
+            ProviderError::Request(format!("Failed to get tool definitions: {report}").into())
         })?;
         dynamic_tool_ids.extend(ids);
     }

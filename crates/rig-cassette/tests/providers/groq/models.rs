@@ -10,6 +10,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
+use rig::error::ProviderError;
 use rig::model::ModelLister;
 use rig::providers::openai::wire::GROQ;
 
@@ -55,7 +56,7 @@ async fn list_models_smoke() -> Result<()> {
 }
 
 /// rig#2079 — the shared fetch path classifies a rejected listing as
-/// `ApiError` carrying provider, path, status and a body preview.
+/// the provider's reply, with its status and a route naming provider and path.
 ///
 /// Pins that the Groq lister routes its failures through the same triage as
 /// every other provider, not just its successes. The provider name and the
@@ -66,8 +67,6 @@ async fn list_models_smoke() -> Result<()> {
 /// suffix.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()> {
-    use rig::model::ModelListingError;
-
     with_groq_cassette_bogus_key_result(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
@@ -77,23 +76,21 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ModelListingError::ApiError {
-                status_code,
-                message,
-            } = &error
-            else {
+            let ProviderError::ProviderResponse(response) = &error else {
                 anyhow::bail!(
-                    "a rejected listing must classify as ApiError\nDisplay: {error}\n\
+                    "a rejected listing must keep the provider's reply\nDisplay: {error}\n\
                      Debug: {error:#?}"
                 );
             };
+            let status_code = response.status.map(|status| status.as_u16());
+            let message = error.to_string();
 
-            anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
+            anyhow::ensure!(status_code == Some(401), "unexpected status: {error:#?}");
             let provider = format!("provider={}", GROQ.name);
             for expected in [
                 provider.as_str(),
                 GROQ.quirks.models_path,
-                "status=401",
+                "status 401",
                 "Invalid API Key",
             ] {
                 anyhow::ensure!(

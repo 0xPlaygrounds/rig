@@ -1,4 +1,4 @@
-//! Environment configuration helpers and provider construction and verification errors.
+//! Environment configuration helpers and provider construction errors.
 //! Bind provider configuration to a transport through [`Bound`](crate::driver::Bound).
 //!
 //! ```no_run
@@ -10,13 +10,12 @@
 //! ```
 
 pub mod env;
-pub mod verify;
+pub(crate) mod verify;
 
 use std::env::VarError;
 use thiserror::Error;
 
 pub use env::EnvError;
-pub use verify::VerifyError;
 
 use crate::http_client;
 

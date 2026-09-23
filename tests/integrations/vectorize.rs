@@ -497,7 +497,7 @@ impl EmbeddingModel for MockEmbeddingModel {
     async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<rig::embeddings::EmbeddingResponse, rig::embeddings::EmbeddingError> {
+    ) -> Result<rig::embeddings::EmbeddingResponse, rig::error::ProviderError> {
         let texts: Vec<String> = texts.into_iter().collect();
         let embeddings = texts
             .into_iter()

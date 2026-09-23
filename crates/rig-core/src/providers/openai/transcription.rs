@@ -1,6 +1,7 @@
 use crate::completion::Usage;
+use crate::error::ProviderError;
 use crate::transcription;
-use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
+use crate::transcription::NormalizeTranscriptionResponse;
 use serde::{Deserialize, Serialize};
 
 pub const WHISPER_1: &str = "whisper-1";
@@ -77,7 +78,7 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
     fn normalize(
         self,
         provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
         let usage = match &self.usage {
             Some(TranscriptionUsage::Tokens {
                 input_tokens,

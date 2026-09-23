@@ -1,7 +1,8 @@
 //! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel).
 
+use crate::error::ProviderError;
 use crate::{
-    completion::{CompletionError, Usage},
+    completion::Usage,
     message::ReasoningContent,
     streaming::{StreamFinal, ToolCallEnd, UnparseableToolInput},
 };
@@ -28,9 +29,9 @@ pub fn mock_final(usage: Usage) -> StreamFinal {
 /// error.
 fn fixture_additional_params(
     value: serde_json::Value,
-) -> Result<Option<crate::message::AdditionalParams>, CompletionError> {
+) -> Result<Option<crate::message::AdditionalParams>, ProviderError> {
     crate::message::AdditionalParams::try_from_value(value).map_err(|other| {
-        CompletionError::ProviderError(format!(
+        ProviderError::Provider(format!(
             "mock stream fixture `additional_params` must be a JSON object, got: {other}"
         ))
     })
@@ -251,7 +252,7 @@ impl MockStreamEvent {
         self,
         out: &mut AdapterOutput,
         tool_ids: &mut crate::streaming::SyntheticIds,
-    ) -> Result<(), CompletionError> {
+    ) -> Result<(), ProviderError> {
         match self {
             Self::Text(text) => out.text(text),
             Self::TextStart {
@@ -269,7 +270,7 @@ impl MockStreamEvent {
                     // The real variant is non-empty by construction; an empty
                     // fixture object is a scripting mistake, not a no-op.
                     None => {
-                        return Err(CompletionError::ProviderError(
+                        return Err(ProviderError::Provider(
                             "mock stream fixture `TextAdditionalParams` carries no data — \
                              drop the event instead"
                                 .to_string(),

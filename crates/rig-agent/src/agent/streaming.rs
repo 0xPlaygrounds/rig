@@ -6,6 +6,7 @@
 //! # }
 //! ```
 
+use rig_core::error::ProviderError;
 use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, PromptError};
+use crate::completion::PromptError;
 use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::assistant_text_from_choice;
 use rig_core::message::Message;
@@ -246,7 +247,7 @@ pub(crate) fn finalize_streamed_choice(
 pub enum StreamingError {
     /// The provider stream failed.
     #[error("CompletionError: {0}")]
-    Completion(#[from] CompletionError),
+    Completion(#[from] ProviderError),
     /// Structured failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]
     Report(#[from] rig_core::error::ErrorReport),
@@ -505,7 +506,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(CompletionError::ResponseError(
+                PromptError::CompletionError(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })

@@ -21,6 +21,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use crate::error::ProviderError;
 use crate::operation;
 use crate::providers::internal::{
     wire::{classify_or, classify_untyped_line},
@@ -36,51 +37,25 @@ const CACHED_CONTENTS_PATH: &str = "/v1beta/cachedContents";
 /// Gemini caps a page of `cachedContents` at 1000.
 const MAX_PAGE_SIZE: usize = 1000;
 
-crate::provider_response::provider_error_enum! {
-    /// A cache operation failure. Provider responses retain their body and status.
-    CachedContentError, "cached content" {
-        /// Access to an existing handle returned 403 or 404.
-        /// `message` retains the provider's explanation, including non-expiry
-        /// causes such as credential or quota failures.
-        #[error("gemini cached content `{name}` is expired or was deleted: {message}")]
-        Expired { name: String, message: String },
-
-        /// A caller-side mistake caught before the request went out.
-        #[error("invalid gemini cached content request: {0}")]
-        Invalid(String),
-
-        #[error("could not build the request: {0}")]
-        Request(#[from] http::Error),
-    }
-}
-
-impl CachedContentError {
-    /// Convert 403 and 404 responses for `name` to [`Self::Expired`], retaining
-    /// the provider message. Other failures are unchanged.
-    /// Call only for existing handles, never for cache creation.
-    pub(crate) fn on_handle(self, name: &str) -> Self {
-        match self {
-            Self::ProviderResponse(response)
-                if matches!(
-                    response.status,
-                    Some(http::StatusCode::FORBIDDEN | http::StatusCode::NOT_FOUND)
-                ) =>
-            {
-                Self::Expired {
-                    name: name.to_owned(),
-                    message: response.body,
-                }
+/// Converts a 403 or 404 reply for the existing handle `name` to
+/// [`ProviderError::CacheExpired`], keeping the reply. Other failures are
+/// unchanged. Call only for existing handles, never for cache creation.
+pub(crate) fn on_handle(error: ProviderError, name: &str) -> ProviderError {
+    match error {
+        ProviderError::ProviderResponse(response)
+            if matches!(
+                response.status,
+                Some(http::StatusCode::FORBIDDEN | http::StatusCode::NOT_FOUND)
+            ) =>
+        {
+            ProviderError::CacheExpired {
+                name: name.to_owned(),
+                response,
             }
-            other => other,
         }
+        other => other,
     }
 }
-
-crate::error::impl_report_for_provider_error!(
-    CachedContentError,
-    // Expiry represents a provider response, not a caller-side request fault.
-    CachedContentError::Expired { .. } => ErrorKind::ProviderResponse,
-);
 
 /// A relative lifetime or absolute expiry time for cached content.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -205,12 +180,12 @@ impl NewCachedContent {
         self
     }
 
-    fn validate(&self) -> Result<(), CachedContentError> {
+    fn validate(&self) -> Result<(), ProviderError> {
         if self.contents.is_empty() && self.system_instruction.is_none() {
-            return Err(CachedContentError::Invalid(
+            return Err(ProviderError::Request(
                 "a cached content needs contents or a system instruction; an empty cache would \
                  bill for storage and cache nothing"
-                    .to_owned(),
+                    .into(),
             ));
         }
         Ok(())
@@ -244,7 +219,7 @@ pub struct CachedContent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_time: Option<String>,
     /// When this cache lapses. After it does, using the handle fails with
-    /// [`CachedContentError::Expired`].
+    /// [`ProviderError::CacheExpired`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expire_time: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -299,7 +274,7 @@ pub enum CachedContentReply {
 impl CachedContentReply {
     /// Extract the resource returned by creation, lookup, or expiry update.
     /// Return a response error for a page or acknowledgement.
-    pub fn resource(self) -> Result<CachedContent, CachedContentError> {
+    pub fn resource(self) -> Result<CachedContent, ProviderError> {
         match self {
             Self::Resource(resource) => Ok(resource),
             other => Err(other.mismatch("one cached content")),
@@ -309,7 +284,7 @@ impl CachedContentReply {
     /// The entries `list` asks for, as the fold concatenated the pages. An
     /// empty collection is answered with the empty object, which is
     /// [`Self::Acknowledged`].
-    pub fn entries(self) -> Result<Vec<CachedContent>, CachedContentError> {
+    pub fn entries(self) -> Result<Vec<CachedContent>, ProviderError> {
         match self {
             Self::Page(page) => Ok(page.cached_contents),
             Self::Acknowledged => Ok(Vec::new()),
@@ -318,13 +293,13 @@ impl CachedContentReply {
     }
 
     /// Build a response error naming the actual and expected reply shapes.
-    fn mismatch(&self, wanted: &str) -> CachedContentError {
+    fn mismatch(&self, wanted: &str) -> ProviderError {
         let carried = match self {
             Self::Resource(_) => "one cached content",
             Self::Page(_) => "a listing page",
             Self::Acknowledged => "nothing to read, only a success status",
         };
-        CachedContentError::ResponseError(format!("the reply carried {carried}, not {wanted}"))
+        ProviderError::Response(format!("the reply carried {carried}, not {wanted}"))
     }
 }
 
@@ -395,11 +370,7 @@ impl Wire for CachedContents {
     /// A resource call never streams, so both modes send the one request.
     /// A handle is validated by `resource_path` before anything is built,
     /// and an empty cache is refused before it bills.
-    fn encode(
-        &self,
-        request: CachedContentRequest,
-        _mode: Mode,
-    ) -> Result<Encoded, CachedContentError> {
+    fn encode(&self, request: CachedContentRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
         let request = match request {
             CachedContentRequest::Create(new) => {
                 new.validate()?;
@@ -489,7 +460,7 @@ fn as_resource(data: &str) -> WireEvent<CachedContentReply> {
 }
 
 /// Serialize the expiry patch with an update mask naming its only field.
-fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), CachedContentError> {
+fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), ProviderError> {
     let (field, value) = match expiry {
         CacheExpiry::Ttl(ttl) => ("ttl", CacheExpiry::ttl_string(ttl)),
         CacheExpiry::ExpireTime(at) => ("expireTime", at),
@@ -510,16 +481,19 @@ fn qualify_model(model: &str) -> String {
 /// Build `/v1beta/cachedContents/<id>` from a bare id or prefixed handle.
 /// Reject empty ids and characters other than ASCII letters, digits, `-`, and
 /// `_` to prevent path traversal, query injection, or resource retargeting.
-fn resource_path(name: &str) -> Result<String, CachedContentError> {
+fn resource_path(name: &str) -> Result<String, ProviderError> {
     let id = name.strip_prefix("cachedContents/").unwrap_or(name);
     let is_id_char = |ch: char| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_');
     if id.is_empty() || !id.chars().all(is_id_char) {
-        return Err(CachedContentError::Invalid(format!(
-            "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
-             `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
-             where a `?`, `#` or `/` silently retargets the call at a different resource — and \
-             this is the path that deletes"
-        )));
+        return Err(ProviderError::Request(
+            format!(
+                "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
+                 `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
+                 where a `?`, `#` or `/` silently retargets the call at a different resource — \
+                 and this is the path that deletes"
+            )
+            .into(),
+        ));
     }
     Ok(format!("{CACHED_CONTENTS_PATH}/{id}"))
 }

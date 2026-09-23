@@ -9,7 +9,8 @@
 //! the SDK.
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::{CompletionError, FinishReason};
+use rig_core::completion::FinishReason;
+use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
 };
@@ -17,18 +18,18 @@ use rig_core::test_utils::streaming_conformance::{
 fn driver() -> WireDriver {
     WireDriver::new("aws_bedrock", |chunks| {
         Box::pin(async move {
-            let events: Vec<Result<aws_bedrock::ConverseStreamOutput, CompletionError>> = chunks
+            let events: Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>> = chunks
                 .into_iter()
                 .map(|chunk| match chunk {
                     Ok(frame) => frame
                         .downcast_event::<aws_bedrock::ConverseStreamOutput>()
                         .cloned()
                         .ok_or_else(|| {
-                            CompletionError::ProviderError(
+                            ProviderError::Provider(
                                 "bedrock conformance frames must be Converse events".to_string(),
                             )
                         }),
-                    Err(error) => Err(CompletionError::HttpError(error)),
+                    Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
             let stream = rig::bedrock::streaming::stream_from_events(futures::stream::iter(events));

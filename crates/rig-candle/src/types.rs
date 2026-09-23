@@ -7,7 +7,8 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use rig_core::completion::{CompletionError, Usage};
+use rig_core::completion::Usage;
+use rig_core::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -215,9 +216,9 @@ pub enum CandleError {
     StreamingChannelClosed,
 }
 
-impl From<CandleError> for CompletionError {
+impl From<CandleError> for ProviderError {
     fn from(error: CandleError) -> Self {
-        CompletionError::ProviderError(error.to_string())
+        ProviderError::Provider(error.to_string())
     }
 }
 

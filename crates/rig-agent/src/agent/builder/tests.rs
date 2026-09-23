@@ -22,10 +22,10 @@ fn builder_accepts_non_clone_model() {
         ) -> impl Future<
             Output = Result<
                 rig_core::completion::CompletionResponse,
-                rig_core::completion::CompletionError,
+                rig_core::error::ProviderError,
             >,
         > + rig_core::wasm_compat::WasmCompatSend {
-            std::future::ready(Err(rig_core::completion::CompletionError::ProviderError(
+            std::future::ready(Err(rig_core::error::ProviderError::Provider(
                 "compile-time probe".to_string(),
             )))
         }
@@ -36,10 +36,10 @@ fn builder_accepts_non_clone_model() {
         ) -> impl Future<
             Output = Result<
                 rig_core::streaming::StreamingCompletionResponse,
-                rig_core::completion::CompletionError,
+                rig_core::error::ProviderError,
             >,
         > + rig_core::wasm_compat::WasmCompatSend {
-            std::future::ready(Err(rig_core::completion::CompletionError::ProviderError(
+            std::future::ready(Err(rig_core::error::ProviderError::Provider(
                 "compile-time probe".to_string(),
             )))
         }

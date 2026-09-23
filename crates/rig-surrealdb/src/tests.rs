@@ -1,6 +1,7 @@
 use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
+use rig_core::error::ProviderError;
 use rig_core::{
-    embeddings::{Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingResponse},
     vector_store::{VectorStoreIndex, request::Filter},
 };
 use serde_json::json;
@@ -21,7 +22,7 @@ impl EmbeddingModel for MockEmbeddingModel {
     async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         Ok(EmbeddingResponse::new(
             texts
                 .into_iter()

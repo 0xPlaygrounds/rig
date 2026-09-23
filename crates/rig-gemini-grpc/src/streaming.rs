@@ -10,8 +10,9 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde_json::{Map, Value};
 
-use rig_core::completion::{CompletionError, CompletionRequest};
+use rig_core::completion::CompletionRequest;
 use rig_core::driver::{run_wire_stream, warn_unmodeled};
+use rig_core::error::ProviderError;
 use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
@@ -216,7 +217,7 @@ fn terminal_record(
 /// Normalizes typed protobuf events through the shared completion driver.
 /// No gRPC transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
-    events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, CompletionError>>
+    events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, ProviderError>>
     + WasmCompatSend
     + 'static,
 ) -> streaming::StreamingCompletionResponse {
@@ -234,12 +235,12 @@ pub(crate) async fn stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<streaming::StreamingCompletionResponse, ProviderError> {
     let request = super::completion::create_grpc_request(&model, completion_request)?;
 
     let mut grpc_client = client
         .grpc_client()
-        .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+        .map_err(|e| ProviderError::Provider(e.to_string()))?;
 
     let mut response_stream = grpc_client
         .stream_generate_content(request)

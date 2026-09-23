@@ -2,9 +2,9 @@
 
 use anyhow::{Result, bail};
 use rig::typesafeai::{
-    Choice, ChoiceAnswer, Error, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
+    Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
-use rig::{completion::Message, prelude::*, providers::openai::OpenAI};
+use rig::{completion::Message, error::ProviderError, prelude::*, providers::openai::OpenAI};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
@@ -41,7 +41,7 @@ struct Assessment<R = ChoiceAnswer<Route>, U = ScoreAnswer<Urgency>, C = NoulAns
 type AssessmentQuery = Assessment<Choice<Route>, Score<Urgency>, Noul>;
 
 impl AssessmentQuery {
-    fn new() -> Result<Self, Error> {
+    fn new() -> Result<Self, ProviderError> {
         Ok(Self {
             route: Choice::<Route>::new(
                 "Select the most useful support route for the current message, using history for context.",
@@ -89,7 +89,7 @@ impl<R: Query, U: Query, C: Query> Query for Assessment<R, U, C> {
     type Response = Assessment<R::Response, U::Response, C::Response>;
     type Output = Assessment<R::Output, U::Output, C::Output>;
 
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, Error> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
         Ok(Assessment {
             route: self.route.decode(response.route)?,
             urgency: self.urgency.decode(response.urgency)?,

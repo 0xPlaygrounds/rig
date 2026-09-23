@@ -1,5 +1,6 @@
 use crate::embeddings::embed::{EmbedError, TextEmbedder};
-use crate::embeddings::{Embed, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse};
+use crate::embeddings::{Embed, Embedding, EmbeddingModel, EmbeddingResponse};
+use crate::error::ProviderError;
 use crate::test_utils::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 
 use super::EmbeddingsBuilder;
@@ -227,7 +228,7 @@ impl EmbeddingModel for SlowFirstBatchModel {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         let nth = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if nth == 0 {
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
@@ -276,7 +277,7 @@ impl EmbeddingModel for DescendingLatencyModel {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         let nth = self
             .batches
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u64;
@@ -412,7 +413,7 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
         .expect_err("a document with no texts has no embeddings");
 
     assert!(
-        matches!(error, EmbeddingError::ResponseError(_)),
+        matches!(error, ProviderError::Response(_)),
         "unexpected error variant: {error:?}"
     );
     assert!(
@@ -459,7 +460,7 @@ impl EmbeddingModel for OneAtATimeReversedLatency {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         let documents: Vec<String> = documents.into_iter().collect();
         // Earlier texts wait longer, so completion order is close to the
         // reverse of submission order. Texts are named `d{doc}t{i}`, so the

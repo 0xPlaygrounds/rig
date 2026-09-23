@@ -23,7 +23,7 @@ fn hello_request() -> CompletionRequest {
 /// built the typed response directly, since that type does not model the
 /// tag. Whatever the decoder or the fold rejects surfaces here as the
 /// error the driver would report.
-fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse, CompletionError> {
+fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse, ProviderError> {
     let mut body = body.clone();
     if let Some(map) = body.as_object_mut() {
         map.entry("type").or_insert_with(|| json!("message"));
@@ -2661,7 +2661,7 @@ fn empty_response_outside_the_legal_terminals_still_errors() {
 
         assert!(matches!(
             err,
-            CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
+            ProviderError::Response(message) if message == EMPTY_RESPONSE_ERROR
         ));
     }
 }
@@ -3411,7 +3411,7 @@ async fn completion_http_non_success_preserves_status_and_body() {
     // rig#2314: a provider with a request-id contract preserves its
     // non-success responses as ProviderResponse, so the transport id has
     // a home on the error; this mock sent no header, so the id is None.
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(error.provider_request_id(), None);
     assert_eq!(
         error.provider_response_status(),
@@ -3444,7 +3444,7 @@ async fn completion_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("completion should fail with provider error envelope");
 
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
 }
@@ -3473,7 +3473,7 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
 
     // A rejected SSE handshake is the provider's reply, classified like the
     // unary driver's and the in-band envelopes': one funnel.
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

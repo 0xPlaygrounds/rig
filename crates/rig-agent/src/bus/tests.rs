@@ -1,3 +1,4 @@
+use rig_core::error::ProviderError;
 use rig_core::serve::Dispatch;
 use std::{
     sync::{
@@ -29,7 +30,7 @@ use rig_core::{
     id::ConversationId,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
-    rerank::{RerankError, RerankModel, RerankResponse, RerankResult},
+    rerank::{RerankModel, RerankResponse, RerankResult},
     streaming::StreamEvent,
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolExecutionError, ToolOutput},
@@ -1806,7 +1807,7 @@ impl RerankModel for CloneCountingRerank {
         &self,
         _query: &str,
         documents: Vec<String>,
-    ) -> Result<RerankResponse, RerankError> {
+    ) -> Result<RerankResponse, ProviderError> {
         Ok(RerankResponse::new(
             documents
                 .into_iter()
@@ -1882,8 +1883,8 @@ impl RerankModel for NonCloneRerank {
         &self,
         _query: &str,
         _documents: Vec<String>,
-    ) -> Result<RerankResponse, RerankError> {
-        Err(RerankError::ResponseError("probe".to_owned()))
+    ) -> Result<RerankResponse, ProviderError> {
+        Err(ProviderError::Response("probe".to_owned()))
     }
 }
 

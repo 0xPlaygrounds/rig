@@ -14,9 +14,10 @@ pub use request::VectorSearchRequest;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
+use crate::error::ProviderError;
 use crate::{
     Embed,
-    embeddings::{Embedding, EmbeddingError},
+    embeddings::Embedding,
     tool::PortableTool,
     vector_store::request::{FilterError, SearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -32,7 +33,7 @@ pub mod request;
 pub enum VectorStoreError {
     /// Embedding generation failed while preparing a vector query or insert.
     #[error("Embedding error: {0}")]
-    EmbeddingError(#[from] EmbeddingError),
+    EmbeddingError(#[from] ProviderError),
 
     /// JSON serialization or deserialization failed.
     #[error("Json error: {0}")]

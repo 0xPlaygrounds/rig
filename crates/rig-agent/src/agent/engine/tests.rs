@@ -20,9 +20,7 @@ use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
 use crate::agent::run::OutputMode;
 use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
-use crate::completion::{
-    CompletionError, CompletionModel, FinishReason, Message, PromptError, Usage,
-};
+use crate::completion::{CompletionModel, FinishReason, Message, PromptError, Usage};
 use crate::streaming::{Delta, StreamEvent, StreamedUserContent};
 use crate::test_utils::{
     MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
@@ -32,6 +30,7 @@ use crate::tool::{
     Tool, ToolContext, ToolExecutionError, ToolSet,
     server::{ToolServer, ToolServerHandle},
 };
+use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
 };
@@ -1356,7 +1355,7 @@ async fn visible_assistant_items_after_final_are_rejected() {
         assert!(
             matches!(
                 error,
-                Some(StreamingError::Completion(CompletionError::ResponseError(ref message)))
+                Some(StreamingError::Completion(ProviderError::Response(ref message)))
                     if message.contains("visible assistant content after its final response")
             ),
             "{case}: expected malformed-response error, got {error:?}"
@@ -1387,7 +1386,7 @@ async fn visible_item_after_non_emittable_final_is_rejected() {
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Completion(CompletionError::ResponseError(message)))
+        Some(StreamingError::Completion(ProviderError::Response(message)))
             if message.contains("visible assistant content after its final response")
     ));
 }
@@ -2491,6 +2490,7 @@ mod structured_tool_results {
 /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
 mod span_safety_net {
     use crate::agent::telemetry::build_chat_span;
+    use rig_core::error::ProviderError;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
@@ -2506,7 +2506,7 @@ mod span_safety_net {
         AgentBuilder, HookContext, MultiTurnStreamItem, OutcomeAction, OutcomeEvent,
     };
     use crate::completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, PromptError, Usage,
+        CompletionModel, CompletionRequest, CompletionResponse, PromptError, Usage,
     };
     use crate::streaming::StreamEvent;
     use crate::streaming::StreamingCompletionResponse;
@@ -2663,7 +2663,7 @@ mod span_safety_net {
         async fn completion(
             &self,
             request: CompletionRequest,
-        ) -> Result<CompletionResponse, CompletionError> {
+        ) -> Result<CompletionResponse, ProviderError> {
             let span = CompletionSpanBuilder::new(
                 "fixture-provider",
                 "fixture-model",
@@ -2676,7 +2676,7 @@ mod span_safety_net {
         async fn stream(
             &self,
             request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse, CompletionError> {
+        ) -> Result<StreamingCompletionResponse, ProviderError> {
             let span = CompletionSpanBuilder::new(
                 "fixture-provider",
                 "fixture-model",
@@ -6091,7 +6091,7 @@ impl CompletionModel for PausingCompletionModel {
     async fn completion(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError> {
+    ) -> Result<crate::completion::CompletionResponse, rig_core::error::ProviderError> {
         self.inspect_and_pause(&request).await;
         self.inner.completion(request).await
     }
@@ -6099,8 +6099,7 @@ impl CompletionModel for PausingCompletionModel {
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
-    {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, rig_core::error::ProviderError> {
         self.inspect_and_pause(&request).await;
         self.inner.stream(request).await
     }
@@ -7759,7 +7758,7 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
         assert!(
             matches!(
                 &err,
-                PromptError::CompletionError(CompletionError::RequestError(_))
+                PromptError::CompletionError(ProviderError::Request(_))
             ),
             "{case}: expected a local completion request error, got {err:?}"
         );
@@ -7826,10 +7825,7 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
     let err = collisions.pop().expect("one collision error was asserted");
 
     assert!(
-        matches!(
-            &err,
-            StreamingError::Completion(CompletionError::RequestError(_))
-        ),
+        matches!(&err, StreamingError::Completion(ProviderError::Request(_))),
         "expected a local streaming completion request error, got {err:?}"
     );
     assert_eq!(
@@ -7930,7 +7926,7 @@ async fn retrieved_output_tool_collision_fails_before_provider_request() {
 
     assert!(matches!(
         &err,
-        PromptError::CompletionError(CompletionError::RequestError(_))
+        PromptError::CompletionError(ProviderError::Request(_))
     ));
     assert_eq!(
         probe.request_count(),

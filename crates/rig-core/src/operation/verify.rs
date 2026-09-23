@@ -7,7 +7,6 @@
 //! ```
 
 use super::{One, Take};
-use crate::client::VerifyError;
 use crate::wire::{Decoder, Operation, Output, Sink, WireEvent, WireFrame};
 
 /// Checks credentials using response status. HTTP 401/403 indicate invalid
@@ -19,7 +18,6 @@ impl Operation for Verify {
     type Request = ();
     type Event = ();
     type Response = ();
-    type Error = VerifyError;
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = Take<Self>;

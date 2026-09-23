@@ -15,27 +15,25 @@
 
 use super::{Bound, call, stream};
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
+    CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
 use crate::embeddings::{
-    EmbeddingError, EmbeddingModel, EmbeddingResponse, ImageEmbeddingModel, ImageEmbeddingResponse,
+    EmbeddingModel, EmbeddingResponse, ImageEmbeddingModel, ImageEmbeddingResponse,
 };
+use crate::error::ProviderError;
 use crate::http_client::HttpClientExt;
-use crate::model::{ModelList, ModelListingError};
+use crate::model::ModelList;
 use crate::observe::AdapterContext;
 use crate::operation::{
     Completion, Embedding, ImageEmbedding, ModelListing, Rerank, RerankRequest, Transcription,
     Verify,
 };
 use crate::providers::gemini::cached_content::{
-    CacheExpiry, CachedContent, CachedContentError, CachedContentRequest, CachedContents,
-    NewCachedContent,
+    CacheExpiry, CachedContent, CachedContentRequest, CachedContents, NewCachedContent, on_handle,
 };
-use crate::rerank::{RerankError, RerankModel, RerankResponse};
+use crate::rerank::{RerankModel, RerankResponse};
 use crate::streaming::StreamingCompletionResponse;
-use crate::transcription::{
-    TranscriptionError, TranscriptionModel, TranscriptionRequest, TranscriptionResponse,
-};
+use crate::transcription::{TranscriptionModel, TranscriptionRequest, TranscriptionResponse};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::Wire;
 
@@ -54,14 +52,14 @@ where
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         call(&self.wire, &self.http, request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         self.stream_with_context(request, None).await
     }
 
@@ -69,7 +67,7 @@ where
         &self,
         request: CompletionRequest,
         context: Option<AdapterContext>,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         call(&self.wire, &self.http, request, context).await
     }
 
@@ -77,7 +75,7 @@ where
         &self,
         request: CompletionRequest,
         context: Option<AdapterContext>,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let provider = self.wire.name().to_owned();
         let frames = stream(&self.wire, &self.http, request, context)?;
         Ok(StreamingCompletionResponse::stream(
@@ -107,7 +105,7 @@ where
     async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         let texts: Vec<String> = texts.into_iter().collect();
         let response = call(&self.wire, &self.http, texts, None).await?;
         // Reject vectors whose width violates the model's declared dimensions.
@@ -138,7 +136,7 @@ where
     async fn embed_images_response(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> Result<ImageEmbeddingResponse, EmbeddingError> {
+    ) -> Result<ImageEmbeddingResponse, ProviderError> {
         let images: Vec<Vec<u8>> = images.into_iter().collect();
         let response = call(&self.wire, &self.http, images, None).await?;
         // Image vectors must also honor the declared dimensions.
@@ -161,7 +159,7 @@ where
     async fn transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<TranscriptionResponse, TranscriptionError> {
+    ) -> Result<TranscriptionResponse, ProviderError> {
         call(&self.wire, &self.http, request, None).await
     }
 }
@@ -179,7 +177,7 @@ where
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> Result<RerankResponse, RerankError> {
+    ) -> Result<RerankResponse, ProviderError> {
         let request = RerankRequest {
             query: query.to_owned(),
             documents,
@@ -197,10 +195,7 @@ where
     async fn image_generation(
         &self,
         request: crate::image_generation::ImageGenerationRequest,
-    ) -> Result<
-        crate::image_generation::ImageGenerationResponse,
-        crate::image_generation::ImageGenerationError,
-    > {
+    ) -> Result<crate::image_generation::ImageGenerationResponse, crate::error::ProviderError> {
         call(&self.wire, &self.http, request, None).await
     }
 }
@@ -214,10 +209,7 @@ where
     async fn audio_generation(
         &self,
         request: crate::audio_generation::AudioGenerationRequest,
-    ) -> Result<
-        crate::audio_generation::AudioGenerationResponse,
-        crate::audio_generation::AudioGenerationError,
-    > {
+    ) -> Result<crate::audio_generation::AudioGenerationResponse, crate::error::ProviderError> {
         call(&self.wire, &self.http, request, None).await
     }
 }
@@ -227,7 +219,7 @@ where
     W: Wire<Op = ModelListing>,
     H: Socket,
 {
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
+    async fn list_all(&self) -> Result<ModelList, ProviderError> {
         call(&self.wire, &self.http, (), None).await
     }
 }
@@ -238,8 +230,10 @@ where
     H: Socket,
 {
     /// Check that the provider accepts the configured credentials.
-    pub async fn verify(&self) -> Result<(), crate::client::VerifyError> {
-        call(&self.wire.verify(), &self.http, (), None).await
+    pub async fn verify(&self) -> Result<(), ProviderError> {
+        call(&self.wire.verify(), &self.http, (), None)
+            .await
+            .map_err(crate::client::verify::authentication)
     }
 }
 
@@ -408,16 +402,13 @@ where
 }
 
 /// Explicit context-cache operations. Requests targeting an existing handle
-/// map HTTP 403 and 404 to [`CachedContentError::Expired`].
+/// map HTTP 403 and 404 to [`ProviderError::CacheExpired`].
 impl<H> Bound<CachedContents, H>
 where
     H: Socket,
 {
     /// Creates cached content and returns its handle and storage usage metadata.
-    pub async fn create(
-        &self,
-        request: NewCachedContent,
-    ) -> Result<CachedContent, CachedContentError> {
+    pub async fn create(&self, request: NewCachedContent) -> Result<CachedContent, ProviderError> {
         let request = CachedContentRequest::Create(request);
         call(&self.wire, &self.http, request, None)
             .await?
@@ -425,17 +416,17 @@ where
     }
 
     /// Fetch one cached content by handle.
-    pub async fn get(&self, name: &str) -> Result<CachedContent, CachedContentError> {
+    pub async fn get(&self, name: &str) -> Result<CachedContent, ProviderError> {
         let request = CachedContentRequest::Get(name.to_owned());
         call(&self.wire, &self.http, request, None)
             .await
-            .map_err(|error| error.on_handle(name))?
+            .map_err(|error| on_handle(error, name))?
             .resource()
     }
 
     /// Every cached content this API key can see, following pagination at
     /// the wire's page size.
-    pub async fn list(&self) -> Result<Vec<CachedContent>, CachedContentError> {
+    pub async fn list(&self) -> Result<Vec<CachedContent>, ProviderError> {
         call(&self.wire, &self.http, CachedContentRequest::List, None)
             .await?
             .entries()
@@ -445,7 +436,7 @@ where
     pub async fn list_with_page_size(
         &self,
         page_size: usize,
-    ) -> Result<Vec<CachedContent>, CachedContentError> {
+    ) -> Result<Vec<CachedContent>, ProviderError> {
         let wire = self.wire.clone().with_page_size(page_size);
         call(&wire, &self.http, CachedContentRequest::List, None)
             .await?
@@ -458,26 +449,26 @@ where
         &self,
         name: &str,
         expiry: CacheExpiry,
-    ) -> Result<CachedContent, CachedContentError> {
+    ) -> Result<CachedContent, ProviderError> {
         let request = CachedContentRequest::UpdateExpiry {
             name: name.to_owned(),
             expiry,
         };
         call(&self.wire, &self.http, request, None)
             .await
-            .map_err(|error| error.on_handle(name))?
+            .map_err(|error| on_handle(error, name))?
             .resource()
     }
 
     /// Deletes cached content before its expiry. Callers should also clean up
     /// task-scoped caches on failure to avoid continued storage charges.
     /// Handles other than `cachedContents/<id>` or bare `<id>` return
-    /// [`CachedContentError::Invalid`] before dispatch.
-    pub async fn delete(&self, name: &str) -> Result<(), CachedContentError> {
+    /// [`ProviderError::Request`] before dispatch.
+    pub async fn delete(&self, name: &str) -> Result<(), ProviderError> {
         let request = CachedContentRequest::Delete(name.to_owned());
         call(&self.wire, &self.http, request, None)
             .await
-            .map_err(|error| error.on_handle(name))?;
+            .map_err(|error| on_handle(error, name))?;
         Ok(())
     }
 }

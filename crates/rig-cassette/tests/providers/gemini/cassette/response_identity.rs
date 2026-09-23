@@ -143,7 +143,7 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
-                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
                 "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);
@@ -168,7 +168,7 @@ async fn auth_rejection_keeps_transport_shape() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
                 "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);

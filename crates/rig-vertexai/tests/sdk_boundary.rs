@@ -20,9 +20,8 @@
 mod support;
 
 use google_cloud_aiplatform_v1::client::PredictionService;
-use rig_core::completion::{
-    CompletionError, CompletionModel as _, CompletionRequest, ToolDefinition,
-};
+use rig_core::completion::{CompletionModel as _, CompletionRequest, ToolDefinition};
+use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
 use rig_vertexai::Client;
 use rig_vertexai::client::VertexAiClientError;
@@ -327,7 +326,7 @@ async fn streaming_is_explicitly_unsupported() {
         .err()
         .expect("streaming is not implemented for Vertex AI");
     assert!(
-        matches!(&error, CompletionError::ProviderError(message) if message.contains("Streaming is not supported")),
+        matches!(&error, ProviderError::Provider(message) if message.contains("Streaming is not supported")),
         "unexpected error: {error}"
     );
     assert_eq!(endpoint.request_count(), 0);
@@ -383,7 +382,7 @@ async fn deferred_client_initialization_failure_surfaces_on_first_use() {
             .await
             .expect_err("the SDK client cannot be built");
         assert!(
-            matches!(&error, CompletionError::ProviderError(message)
+            matches!(&error, ProviderError::Provider(message)
                 if message.contains("universe domain")),
             "attempt {attempt}: unexpected error: {error}"
         );

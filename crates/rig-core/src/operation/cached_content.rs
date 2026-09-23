@@ -7,9 +7,8 @@
 //! ```
 
 use super::One;
-use crate::providers::gemini::cached_content::{
-    CachedContentError, CachedContentReply, CachedContentRequest,
-};
+use crate::error::ProviderError;
+use crate::providers::gemini::cached_content::{CachedContentReply, CachedContentRequest};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Creates, reads, lists, updates expiry, or deletes explicit context caches.
@@ -21,7 +20,6 @@ impl Operation for ContextCache {
     type Request = CachedContentRequest;
     type Event = CachedContentReply;
     type Response = CachedContentReply;
-    type Error = CachedContentError;
     type Capabilities = ();
     type Output = One<Self>;
     type Fold = CachedContentFold;
@@ -44,7 +42,7 @@ pub struct CachedContentFold {
 }
 
 impl Fold<ContextCache> for CachedContentFold {
-    fn absorb(&mut self, page: CachedContentReply) -> Result<(), CachedContentError> {
+    fn absorb(&mut self, page: CachedContentReply) -> Result<(), ProviderError> {
         match (&mut self.reply, page) {
             (CachedContentReply::Page(held), CachedContentReply::Page(page)) => {
                 held.cached_contents.extend(page.cached_contents);
@@ -57,7 +55,7 @@ impl Fold<ContextCache> for CachedContentFold {
         Ok(())
     }
 
-    fn finish(self, _reply: Reply) -> Result<CachedContentReply, CachedContentError> {
+    fn finish(self, _reply: Reply) -> Result<CachedContentReply, ProviderError> {
         Ok(self.reply)
     }
 }

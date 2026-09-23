@@ -10,87 +10,12 @@
 //! # }
 //! ```
 
+use crate::error::ProviderError;
 use crate::{
     completion::{ResponseIdentity, Usage},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
-
-crate::provider_response::provider_error_enum!(
-    EmbeddingError, "embedding" {
-    /// URL construction or parsing failed while preparing a provider request.
-    #[error("UrlError: {0}")]
-    UrlError(#[from] url::ParseError),
-
-    #[cfg(not(target_family = "wasm"))]
-    /// Error processing the document for embedding
-    #[error("DocumentError: {0}")]
-    DocumentError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    #[cfg(target_family = "wasm")]
-    /// Error processing the document for embedding
-    #[error("DocumentError: {0}")]
-    DocumentError(#[source] Box<dyn std::error::Error + 'static>),
-    } {
-    /// The provider does not support an embedding request parameter configured on the model.
-    #[error("{provider} embeddings do not support the `{parameter}` parameter")]
-    UnsupportedParameter {
-        /// Provider whose embedding API rejected the parameter.
-        provider: &'static str,
-        /// Unsupported request parameter.
-        parameter: &'static str,
-    },
-
-    /// A provider request parameter was configured with a value outside the
-    /// provider's supported range.
-    #[error("{provider} embeddings require `{parameter}` {requirement}")]
-    InvalidParameterValue {
-        /// Provider whose embedding API constrains the parameter.
-        provider: &'static str,
-        /// Request parameter with the invalid value.
-        parameter: &'static str,
-        /// Concise description of the accepted values.
-        requirement: &'static str,
-    },
-
-    /// Rig cannot decode the requested provider response encoding.
-    #[error("Rig cannot decode {provider} embedding responses encoded as `{encoding_format}`")]
-    UnsupportedResponseEncoding {
-        /// Provider whose response encoding was requested.
-        provider: &'static str,
-        /// Response encoding that Rig cannot decode.
-        encoding_format: &'static str,
-    },
-
-    /// A provider that guarantees embedding usage omitted it from the response.
-    #[error("{provider} embedding response omitted required usage")]
-    MissingUsage {
-        /// Provider whose response omitted usage.
-        provider: &'static str,
-    },
-
-    /// The provider returned vectors of a width other than the one the caller
-    /// declared through
-    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
-    /// argument.
-    ///
-    /// Raised only when the width was set *explicitly*: a model handle built
-    /// without one reports whatever the provider's own table says and has
-    /// nothing to disagree with.
-    #[error(
-        "{provider} embedding response returned {returned}-dimension vectors, but the model was \
-         created with {requested} dimensions; this provider does not resize embeddings"
-    )]
-    MismatchedDimensions {
-        /// Provider whose response disagreed with the declared width.
-        provider: String,
-        /// Width the caller declared.
-        requested: usize,
-        /// Width the provider actually returned.
-        returned: usize,
-    },
-    }
-);
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
@@ -107,7 +32,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, EmbeddingError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend;
 
     /// Embed multiple text documents in a single request.
     ///
@@ -116,7 +41,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_texts(
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
     {
         async { Ok(self.embed_texts_response(texts).await?.embeddings) }
     }
@@ -125,11 +50,11 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_text(
         &self,
         text: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + WasmCompatSend {
         async {
             let mut embeddings = self.embed_texts(vec![text.to_string()]).await?;
             embeddings.pop().ok_or_else(|| {
-                EmbeddingError::ResponseError(
+                ProviderError::Response(
                     "embedding provider returned an empty response for embed_text".to_string(),
                 )
             })
@@ -141,12 +66,12 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_text_response(
         &self,
         text: &str,
-    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, EmbeddingError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend
     {
         async {
             let response = self.embed_texts_response(vec![text.to_string()]).await?;
             if response.embeddings.is_empty() {
-                return Err(EmbeddingError::ResponseError(
+                return Err(ProviderError::Response(
                     "embedding provider returned an empty response for embed_text_response"
                         .to_string(),
                 ));
@@ -219,7 +144,7 @@ pub trait NormalizeEmbeddingResponse {
         self,
         provider: &str,
         documents: Vec<String>,
-    ) -> Result<EmbeddingResponse, EmbeddingError>;
+    ) -> Result<EmbeddingResponse, ProviderError>;
 }
 
 /// Image embeddings and normalized provider metadata.
@@ -296,13 +221,13 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_images_response(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, EmbeddingError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + WasmCompatSend;
 
     /// Embed a batch of images from their encoded file bytes.
     fn embed_images(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
     {
         async { Ok(self.embed_images_response(images).await?.embeddings) }
     }
@@ -312,11 +237,11 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_image(
         &self,
         bytes: &[u8],
-    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + WasmCompatSend {
         async move {
             let mut embeddings = self.embed_images(vec![bytes.to_owned()]).await?;
             embeddings.pop().ok_or_else(|| {
-                EmbeddingError::ResponseError(
+                ProviderError::Response(
                     "embedding provider returned an empty response for embed_image".to_string(),
                 )
             })

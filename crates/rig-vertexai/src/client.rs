@@ -2,8 +2,8 @@ use crate::completion::CompletionModel;
 use google_cloud_aiplatform_v1 as vertexai;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
-use rig_core::client::VerifyError;
 use rig_core::driver::CompletionProvider;
+use rig_core::error::ProviderError;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
@@ -242,7 +242,7 @@ impl Client {
     }
 
     /// Returns success without making a request or validating credentials.
-    pub async fn verify(&self) -> Result<(), VerifyError> {
+    pub async fn verify(&self) -> Result<(), ProviderError> {
         Ok(())
     }
 

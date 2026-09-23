@@ -16,10 +16,9 @@ use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use futures::Stream;
-use rig_core::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-};
+use rig_core::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig_core::driver::run_wire_stream;
+use rig_core::error::ProviderError;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
 use rig_core::operation::AdapterOutput;
@@ -265,7 +264,7 @@ fn render_prompt_for(
 }
 
 #[cfg(not(target_family = "wasm"))]
-type CandleStreamItem = Result<GenerationEvent, CompletionError>;
+type CandleStreamItem = Result<GenerationEvent, ProviderError>;
 
 #[cfg(not(target_family = "wasm"))]
 struct CandleReceiverStream {
@@ -361,7 +360,7 @@ fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, s
 /// Normalizes typed generation events through the shared completion driver.
 /// No model loading is required; input errors propagate through the stream.
 pub fn stream_from_events(
-    events: impl futures::Stream<Item = Result<GenerationEvent, CompletionError>>
+    events: impl futures::Stream<Item = Result<GenerationEvent, ProviderError>>
     + rig_core::wasm_compat::WasmCompatSend
     + 'static,
 ) -> StreamingCompletionResponse {
@@ -377,14 +376,14 @@ impl CandleModel {
     pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CandleCompletionResponse, CompletionError> {
+    ) -> Result<CandleCompletionResponse, ProviderError> {
         Ok(self.infer_completion(request).await?.response)
     }
 
     async fn infer_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<crate::generation::InferredCompletion, CompletionError> {
+    ) -> Result<crate::generation::InferredCompletion, ProviderError> {
         let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
@@ -404,12 +403,12 @@ impl CandleModel {
             .await
             .map_err(|error| CandleError::BlockingTaskJoin(error.to_string()));
             cancel_on_drop.disarm();
-            result?.map_err(CompletionError::from)
+            result?.map_err(ProviderError::from)
         }
 
         #[cfg(target_family = "wasm")]
         {
-            infer(loaded, &request, &CancellationSignal).map_err(CompletionError::from)
+            infer(loaded, &request, &CancellationSignal).map_err(ProviderError::from)
         }
     }
 
@@ -418,7 +417,7 @@ impl CandleModel {
     async fn open_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingResult, CompletionError> {
+    ) -> Result<StreamingResult, ProviderError> {
         let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
@@ -477,14 +476,14 @@ impl CompletionModel for CandleModel {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         Ok(self.infer_completion(request).await?.into_normalized()?)
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let stream = self.open_stream(request).await?;
 
         Ok(StreamingCompletionResponse::stream(

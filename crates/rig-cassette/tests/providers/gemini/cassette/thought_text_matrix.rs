@@ -1269,16 +1269,13 @@ mod unit {
     }
 
     fn assert_transcription_response_error(
-        result: Result<TranscriptionResponse, rig::transcription::TranscriptionError>,
+        result: Result<TranscriptionResponse, rig::error::ProviderError>,
         context: &str,
     ) {
         match result {
             Ok(response) => panic!("{context}; got transcript {:?}", response.text),
             Err(error) => assert!(
-                matches!(
-                    error,
-                    rig::transcription::TranscriptionError::ResponseError(_)
-                ),
+                matches!(error, rig::error::ProviderError::Response(_)),
                 "{context}: expected a ResponseError, got {error:?}"
             ),
         }

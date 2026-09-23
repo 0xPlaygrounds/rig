@@ -15,8 +15,9 @@ use serde_json::Value;
 
 use rig_agent::agent::AgentBuilder;
 use rig_agent::completion::CompletionModel;
-use rig_core::completion::{CompletionError, CompletionResponse};
+use rig_core::completion::CompletionResponse;
 use rig_core::driver::WireDriver;
+use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
 use rig_core::operation::{Completion, CompletionFold};
 use rig_core::providers::anthropic::wire::Anthropic;
@@ -37,7 +38,7 @@ pub const FOLLOW_UP: &str = "Using the weather you already retrieved, should I p
 
 /// Decode one whole recorded reply through the wire's own decoder and fold,
 /// without I/O: the exact normalization a live call would perform.
-pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, CompletionError>
+pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, ProviderError>
 where
     W: Wire<Op = Completion>,
 {
@@ -49,7 +50,7 @@ where
         fold.absorb(item?)?;
     }
     let raw = serde_json::from_str::<Value>(body)
-        .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+        .map_err(|error| ProviderError::Response(error.to_string()))?;
     fold.finish(Reply {
         provider: wire.name().to_owned(),
         raw,

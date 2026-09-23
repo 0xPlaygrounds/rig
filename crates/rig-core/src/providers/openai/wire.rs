@@ -237,9 +237,9 @@ impl DimensionsField {
 pub enum AcceptedWidths {
     /// The model emits one width and reads no width field, so any value but
     /// its own native width is a request for a parameter the provider does
-    /// not accept there ([`EmbeddingError::UnsupportedParameter`]).
+    /// not accept there ([`ProviderError::UnsupportedParameter`]).
     ///
-    /// [`EmbeddingError::UnsupportedParameter`]: crate::embeddings::EmbeddingError::UnsupportedParameter
+    /// [`ProviderError::UnsupportedParameter`]: crate::error::ProviderError::UnsupportedParameter
     Fixed,
     /// The model truncates to any width in `min..=max`, and anything else is
     /// refused with [`requirement`](Self::Range::requirement).

@@ -16,14 +16,15 @@
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 
+use crate::error::ProviderError;
 use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
 use crate::http_client::{self, HttpClientExt};
 use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
 use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
-    Body, Decoder, Encoded, Error, Event, Fold, Mode, Operation, Reply, Request, Response, Sink,
-    Wire, WireError, WireFrame,
+    Body, Decoder, Encoded, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
+    WireFrame,
 };
 
 mod bound;
@@ -47,7 +48,7 @@ pub use consumers::{
 pub struct WireDriver<Op: Operation, D, F = WireFrame> {
     decoder: D,
     out: Op::Output,
-    ready: Vec<Result<Op::Event, Op::Error>>,
+    ready: Vec<Result<Op::Event, ProviderError>>,
     /// Frames counted for observation's EOF/corruption positions.
     frames: usize,
     observation: Option<AdapterSlot>,
@@ -113,7 +114,7 @@ where
                 if let Some(observation) = &self.observation {
                     observation.corrupt(self.frames);
                 }
-                self.ready.push(Err(Op::Error::json(error)));
+                self.ready.push(Err(ProviderError::Json(error)));
             }
         }
         self.out.check_laws(&mut self.laws);
@@ -125,7 +126,7 @@ where
 
     /// Flushes delivered content before a final transport error.
     /// Does nothing after termination.
-    pub fn fail(&mut self, error: Op::Error) {
+    pub fn fail(&mut self, error: ProviderError) {
         if self.done {
             return;
         }
@@ -157,7 +158,7 @@ where
     }
 
     /// Take the items the pushed frames produced.
-    pub fn drain(&mut self) -> std::vec::Drain<'_, Result<Op::Event, Op::Error>> {
+    pub fn drain(&mut self) -> std::vec::Drain<'_, Result<Op::Event, ProviderError>> {
         self.ready.drain(..)
     }
 
@@ -229,7 +230,7 @@ pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> crate::streaming::S
 where
     D: Decoder<crate::operation::Completion, F> + WasmCompatSend + 'static,
     F: WasmCompatSend + 'static,
-    S: Stream<Item = Result<F, crate::completion::CompletionError>> + WasmCompatSend + 'static,
+    S: Stream<Item = Result<F, ProviderError>> + WasmCompatSend + 'static,
 {
     let mut driver = WireDriver::<crate::operation::Completion, _, F>::new(decoder);
     Box::pin(async_stream::stream! {
@@ -266,16 +267,14 @@ pub enum TriagedFrame<T> {
 
 /// Returns known events or unknown payloads, warning without content for the
 /// latter. Corrupt frames return a JSON error.
-pub fn triage_frame<T>(
-    event: WireEvent<T>,
-) -> Result<TriagedFrame<T>, crate::completion::CompletionError> {
+pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, ProviderError> {
     match event {
         WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
             warn_unmodeled(&event_type, &value);
             Ok(TriagedFrame::Unknown(value))
         }
-        WireEvent::Corrupt(error) => Err(crate::completion::CompletionError::JsonError(error)),
+        WireEvent::Corrupt(error) => Err(ProviderError::Json(error)),
     }
 }
 
@@ -326,7 +325,7 @@ pub async fn call<W, H>(
     http: &H,
     request: Request<W>,
     context: Option<AdapterContext>,
-) -> Result<Response<W>, Error<W>>
+) -> Result<Response<W>, ProviderError>
 where
     W: Wire,
     H: HttpClientExt,
@@ -335,7 +334,7 @@ where
         <W::Op as Operation>::span(wire.name(), wire.model(), wire.telemetry(false), &request);
     let result = call_in(wire, http, request, context, &span).await;
     if let Err(error) = &result {
-        record_request_id(&span, error.report().request_id.as_deref());
+        record_request_id(&span, error.provider_request_id());
     }
     result
 }
@@ -346,7 +345,7 @@ async fn call_in<W, H>(
     request: Request<W>,
     context: Option<AdapterContext>,
     span: &tracing::Span,
-) -> Result<Response<W>, Error<W>>
+) -> Result<Response<W>, ProviderError>
 where
     W: Wire,
     H: HttpClientExt,
@@ -395,14 +394,14 @@ where
             observation.clone(),
         );
         let sent = tracing::Instrument::instrument(
-            send::<W::Op, H>(http, http_request, request_id_header, observation.as_ref()),
+            send(http, http_request, request_id_header, observation.as_ref()),
             span.clone(),
         )
         .await;
         let page_reply = match sent {
             Ok(page_reply) => page_reply,
             Err(error) => {
-                let error = error.with_route(wire.name(), &route);
+                let error = <W::Op as Operation>::with_route(error, wire.name(), &route);
                 // The reply the failure carries is still the provider's:
                 // project its facts before reporting the ending.
                 if let Some(body) = error.provider_response_body() {
@@ -421,11 +420,14 @@ where
         if let Some(rejected) =
             wrong_content_type(&page_reply.headers, framing, relaxed_content_type)
         {
-            let error = <Error<W> as WireError>::transport(rejected)
-                .with_route(wire.name(), &route)
-                .with_provider_status(Some(page_reply.status))
-                .with_provider_request_id(page_reply.provider_request_id.clone())
-                .with_response_headers(Some(page_reply.headers.clone()));
+            let error = <W::Op as Operation>::with_route(
+                ProviderError::from_transport_error(rejected),
+                wire.name(),
+                &route,
+            )
+            .with_provider_status(Some(page_reply.status))
+            .with_provider_request_id(page_reply.provider_request_id.clone())
+            .with_response_headers(Some(page_reply.headers.clone()));
             page.project(&page_reply.body);
             if let Some(observation) = &observation {
                 observation.fail(&error);
@@ -463,8 +465,7 @@ where
             }
         }
         if let Some(error) = failure {
-            let error = error
-                .with_route(wire.name(), &route)
+            let error = <W::Op as Operation>::with_route(error, wire.name(), &route)
                 .with_provider_status(Some(page_reply.status))
                 .with_provider_request_id(page_reply.provider_request_id.clone())
                 .with_response_headers(Some(page_reply.headers.clone()));
@@ -542,7 +543,10 @@ pub fn stream<W, H>(
     http: &H,
     request: Request<W>,
     context: Option<AdapterContext>,
-) -> Result<impl Stream<Item = Result<Event<W>, Error<W>>> + WasmCompatSend + 'static, Error<W>>
+) -> Result<
+    impl Stream<Item = Result<Event<W>, ProviderError>> + WasmCompatSend + 'static,
+    ProviderError,
+>
 where
     W: Wire,
     H: HttpClientExt + Clone + 'static,
@@ -560,7 +564,7 @@ where
     // No streamed operation sends a batch: a batch exists for providers
     // that take one item per request, and those are all unary.
     let [http_request] = <[_; 1]>::try_from(requests).map_err(|requests| {
-        <Error<W> as WireError>::decode(format!(
+        ProviderError::Response(format!(
             "a streamed reply takes exactly one request, not {}",
             requests.len()
         ))
@@ -621,8 +625,7 @@ where
                     .and_then(|headers| request_id_from(headers, request_id_header));
                 record_request_id(&recording, request_id.as_deref());
                 driver.fail(
-                    <Error<W> as WireError>::transport(error)
-                        .with_provider_request_id(request_id),
+                    ProviderError::from_transport_error(error).with_provider_request_id(request_id),
                 );
                 for item in driver.drain() {
                     yield item;
@@ -645,7 +648,7 @@ where
                     if let Some(observation) = &observation {
                         observation.error_boundary(AdapterErrorBoundary::Transport);
                     }
-                    driver.fail(<Error<W> as WireError>::transport(error));
+                    driver.fail(ProviderError::from_transport_error(error));
                     for item in driver.drain() {
                         yield stamped::<W>(item, &request_id, &recording);
                     }
@@ -686,10 +689,10 @@ where
 /// event or a preserved provider error. An id an upstream constructor
 /// already attached is never replaced: it saw the reply that carried it.
 fn stamped<W: Wire>(
-    item: Result<Event<W>, Error<W>>,
+    item: Result<Event<W>, ProviderError>,
     request_id: &Option<String>,
     span: &tracing::Span,
-) -> Result<Event<W>, Error<W>> {
+) -> Result<Event<W>, ProviderError> {
     match item {
         Ok(mut event) => {
             <W::Op as Operation>::stamp_request_id(&mut event, request_id);
@@ -698,7 +701,7 @@ fn stamped<W: Wire>(
         }
         Err(error) => {
             let error = error.with_provider_request_id(request_id.clone());
-            record_request_id(span, error.report().request_id.as_deref());
+            record_request_id(span, error.provider_request_id());
             Err(error)
         }
     }
@@ -731,14 +734,13 @@ struct Sent {
 }
 
 /// Sends a buffered request, preserving non-success response details and IDs.
-async fn send<Op, H>(
+async fn send<H>(
     http: &H,
     request: http::Request<Body>,
     request_id_header: Option<&'static str>,
     observation: Option<&AdapterSlot>,
-) -> Result<Sent, Op::Error>
+) -> Result<Sent, ProviderError>
 where
-    Op: Operation,
     H: HttpClientExt,
 {
     let (parts, body) = request.into_parts();
@@ -767,7 +769,9 @@ where
             let request_id = error
                 .non_success_headers()
                 .and_then(|headers| request_id_from(headers, request_id_header));
-            return Err(Op::Error::transport(error).with_provider_request_id(request_id));
+            return Err(
+                ProviderError::from_transport_error(error).with_provider_request_id(request_id)
+            );
         }
     };
 
@@ -780,11 +784,11 @@ where
         observation.response_with_headers(status, Some(&parts.headers));
     }
     let provider_request_id = request_id_from(&parts.headers, request_id_header);
-    let body = body.await.map_err(Op::Error::transport)?;
+    let body = body.await.map_err(ProviderError::from_transport_error)?;
 
     if !status.is_success() {
         return Err(
-            Op::Error::http_response(status, &String::from_utf8_lossy(&body))
+            ProviderError::from_http_response(status, String::from_utf8_lossy(&body))
                 .with_provider_request_id(provider_request_id)
                 .with_response_headers(Some(parts.headers)),
         );
@@ -859,11 +863,11 @@ fn wrong_content_type(
 }
 
 /// A request whose body is bytes. Multipart replies are never streamed.
-fn byte_request<E: WireError>(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, E> {
+fn byte_request(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, ProviderError> {
     let (parts, body) = request.into_parts();
     match body {
         Body::Bytes(bytes) => Ok(http::Request::from_parts(parts, bytes)),
-        Body::Multipart(_) => Err(E::decode(
+        Body::Multipart(_) => Err(ProviderError::Response(
             "a multipart request cannot open a streamed reply".to_owned(),
         )),
     }

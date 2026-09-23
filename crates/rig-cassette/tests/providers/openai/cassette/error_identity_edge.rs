@@ -3,7 +3,8 @@
 //! handshake, on both APIs where the class differs.
 
 use futures::StreamExt;
-use rig::completion::{CompletionError, CompletionModel};
+use rig::completion::CompletionModel;
+use rig::error::ProviderError;
 use rig::error::{ErrorKind, ErrorReport};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -26,7 +27,7 @@ async fn auth_rejection_carries_identity() {
                 .send()
                 .await
                 .expect_err("a bogus key must be rejected");
-            assert!(matches!(error, CompletionError::ProviderResponse(_)));
+            assert!(matches!(error, ProviderError::ProviderResponse(_)));
             assert_eq!(
                 error
                     .provider_response_status()
@@ -56,7 +57,7 @@ async fn nonexistent_previous_response_reference_carries_identity() {
                 .send()
                 .await
                 .expect_err("a nonexistent previous_response_id must be rejected");
-            assert!(matches!(error, CompletionError::ProviderResponse(_)));
+            assert!(matches!(error, ProviderError::ProviderResponse(_)));
             assert_transport_request_id(error.provider_request_id(), "reference error");
             // The referenced id is scrub-placeholdered in replay; assert on
             // the error *class*, never the literal id.
@@ -85,7 +86,7 @@ async fn chat_completions_validation_error_carries_identity() {
                 .send()
                 .await
                 .expect_err("an impossible temperature must be rejected");
-            assert!(matches!(error, CompletionError::ProviderResponse(_)));
+            assert!(matches!(error, ProviderError::ProviderResponse(_)));
             assert_eq!(
                 error
                     .provider_response_status()
@@ -161,11 +162,11 @@ async fn embeddings_error_preserves_status_and_body() {
 }
 
 /// Family C: the model-listing 401 live — the #2315 review's P1 fix on the
-/// wire: an auth failure classifies as `ApiError` with provider and path
-/// context, not a `RequestError` fallback.
+/// wire: an auth failure keeps the provider's reply with provider and path
+/// context, not a transport-error fallback.
 #[tokio::test]
 async fn model_listing_auth_failure_keeps_api_error_context() {
-    use rig::model::{ModelLister, ModelListingError};
+    use rig::model::ModelLister;
 
     with_openai_cassette_bogus_key(
         "error_identity_edge/model_listing_auth_failure_keeps_api_error_context",
@@ -177,7 +178,7 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(
-                matches!(error, ModelListingError::ApiError { .. }),
+                matches!(error, ProviderError::ProviderResponse(_)),
                 "the review's P1 fix, proven live: {error:?}"
             );
             let message = error.to_string();
@@ -204,7 +205,11 @@ async fn verify_reports_invalid_authentication() {
                 .await
                 .expect_err("a bogus key must fail verification");
             assert!(
-                matches!(error, VerifyError::InvalidAuthentication),
+                matches!(
+                    &error,
+                    ProviderError::InvalidAuthentication(response)
+                        if response.status.map(|status| status.as_u16()) == Some(401)
+                ),
                 "verify's 401 arm is live: {error:?}"
             );
         },

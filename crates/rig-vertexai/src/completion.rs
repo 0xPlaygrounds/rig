@@ -13,8 +13,9 @@ use super::Client;
 use crate::types::completion_request::VertexCompletionRequest;
 pub use crate::types::completion_response::VertexGenerateContentOutput;
 use rig_core::completion::{
-    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
+    CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
+use rig_core::error::ProviderError;
 use rig_core::streaming::StreamingCompletionResponse;
 
 /// `gemini-1.5-pro`
@@ -72,7 +73,7 @@ impl CompletionModel {
     pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<VertexGenerateContentOutput, CompletionError> {
+    ) -> Result<VertexGenerateContentOutput, ProviderError> {
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
@@ -91,7 +92,7 @@ impl CompletionModel {
             .client
             .inner()
             .await
-            .map_err(|error| CompletionError::ProviderError(error.to_string()))?
+            .map_err(|error| ProviderError::Provider(error.to_string()))?
             .generate_content()
             .set_model(&model_path)
             .set_contents(contents);
@@ -126,8 +127,8 @@ impl CompletionModel {
     }
 }
 
-fn streaming_unsupported() -> CompletionError {
-    CompletionError::ProviderError(
+fn streaming_unsupported() -> ProviderError {
+    ProviderError::Provider(
         "Streaming is not supported for Vertex AI in this integration".to_string(),
     )
 }
@@ -136,21 +137,21 @@ impl CompletionModelTrait for CompletionModel {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         self.raw_completion(request).await?.try_into()
     }
 
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         Err(streaming_unsupported())
     }
 }
 
 /// Preserves SDK error display text, HTTP status, RPC code, and retry hints.
 /// Transport errors also use the provider-body representation.
-fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> CompletionError {
+fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> ProviderError {
     let status = error
         .http_status_code()
         .and_then(|code| rig_core::http_client::StatusCode::from_u16(code).ok());
@@ -160,7 +161,7 @@ fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> CompletionError {
         (error.is_transport() || error.is_io() || error.is_timeout() || error.is_connect())
             .then_some(true)
     });
-    CompletionError::from_provider_body(error.to_string())
+    ProviderError::from_provider_body(error.to_string())
         .with_provider_status(status)
         .with_provider_code(code.map(str::to_owned))
         .with_transient(transient)

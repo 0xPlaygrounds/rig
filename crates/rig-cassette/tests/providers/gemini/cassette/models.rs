@@ -1,5 +1,6 @@
 //! Gemini model listing smoke test.
 
+use rig::error::ProviderError;
 use rig::model::ModelLister;
 
 use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key};
@@ -65,13 +66,11 @@ async fn list_models_smoke() {
 /// `!status.is_success()` branch never ran: the reqwest transport reports a
 /// non-2xx *as an error* before returning a response, the same dead-arm shape
 /// rig#2315 fixed for `verify`. Routing through the shared fetch classifies it
-/// as `ApiError` with the context every other lister already produced.
+/// as the provider's reply with the context every other lister already produced.
 ///
 /// Recorded with a deliberately invalid key so the 401 is Gemini's own.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() {
-    use rig::model::ModelListingError;
-
     with_gemini_cassette_bogus_key(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
@@ -81,18 +80,16 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ModelListingError::ApiError {
-                status_code,
-                message,
-            } = &error
-            else {
+            let ProviderError::ProviderResponse(response) = &error else {
                 panic!(
-                    "a rejected listing must classify as ApiError, not a bare transport \
+                    "a rejected listing must keep the provider's reply, not a bare transport \
                      error\nDisplay: {error}\nDebug: {error:#?}"
                 );
             };
+            let status_code = response.status.map(|status| status.as_u16());
+            let message = error.to_string();
 
-            assert_eq!(*status_code, 400, "unexpected status: {error:#?}");
+            assert_eq!(status_code, Some(400), "unexpected status: {error:#?}");
             // `provider=` carries the wire's stable descriptor name — the
             // same token `CompletionResponse::provider` reports and telemetry
             // records. The deleted client layer decorated this message with
@@ -103,7 +100,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
             // credential and `pageSize` ride the query string, which the
             // route never quotes — quoting it would put the API key in every
             // failed-listing diagnostic.
-            for expected in ["provider=gcp.gemini", "path=/v1beta/models", "status=400"] {
+            for expected in ["provider=gcp.gemini", "path=/v1beta/models", "status 400"] {
                 assert!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

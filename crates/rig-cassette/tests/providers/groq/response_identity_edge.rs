@@ -111,7 +111,7 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
                 .await
                 .expect_err("a bogus key must be rejected");
             anyhow::ensure!(
-                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
                 "got {error:?}"
             );
             anyhow::ensure!(

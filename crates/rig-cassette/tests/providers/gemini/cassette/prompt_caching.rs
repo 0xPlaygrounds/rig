@@ -50,6 +50,7 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
+use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 
@@ -646,7 +647,7 @@ async fn changing_the_system_instruction_misses() {
 }
 
 /// A handle that no longer exists must surface as
-/// [`CachedContentError::Expired`], not as a raw status code.
+/// [`ProviderError::CacheExpired`], not as a raw status code.
 ///
 /// This variant exists because it is the one failure a caller is expected to
 /// *handle* rather than propagate: a cache that lapsed mid-run is recreated. It
@@ -658,8 +659,6 @@ async fn changing_the_system_instruction_misses() {
 /// long ago it went, and collapsing both is the point of the variant.
 #[tokio::test]
 async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
-    use rig::providers::gemini::cached_content::CachedContentError;
-
     with_gemini_prompt_caching_cassette(
         "prompt_caching/explicit_cache_expired",
         |client| async move {
@@ -674,13 +673,16 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
                 .get(&cache.name)
                 .await
                 .expect_err("a deleted handle should not resolve");
-            let CachedContentError::Expired { name, message } = &error else {
-                panic!("a handle that is gone should report Expired, not a bare status: {error:?}");
+            let ProviderError::CacheExpired { name, response } = &error else {
+                panic!(
+                    "a handle that is gone should report CacheExpired, not a bare status: {error:?}"
+                );
             };
             assert_eq!(*name, cache.name);
+            let message = &response.body;
             assert!(
                 message.contains("not found") || message.contains("permission"),
-                "Expired should carry the provider's own message; Google's own text conflates \
+                "CacheExpired should carry the provider's own message; Google's own text conflates \
                  \"not found\" and \"permission denied\" here, which is exactly why the \
                  message has to survive: {message}"
             );

@@ -132,7 +132,7 @@ fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
 
         assert!(matches!(
             err,
-            CompletionError::ResponseError(message)
+            ProviderError::Response(message)
                 if message.contains(reason_name)
                     && message.contains(finish_message)
         ));
@@ -1052,7 +1052,7 @@ async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelop
             .collect();
         assert_eq!(errors.len(), 1, "{items:?}");
         assert!(!finished);
-        let unary = crate::error::ErrorReport::from(CompletionError::from_http_response(
+        let unary = crate::error::ErrorReport::from(ProviderError::from_http_response(
             http::StatusCode::from_u16(code).expect("HTTP error status"),
             body.clone(),
         ));

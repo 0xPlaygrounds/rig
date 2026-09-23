@@ -68,20 +68,69 @@ fn test_model_list_into_iter() {
 }
 
 #[test]
-fn test_model_listing_error_display() {
-    let error = ModelListingError::api_error(404, "Not found");
-    assert_eq!(error.to_string(), "API error (status 404): Not found");
+fn a_rejected_listing_names_its_provider_and_path() {
+    let error = with_route(
+        ProviderError::from_http_response(http::StatusCode::NOT_FOUND, "Not found")
+            .with_provider_request_id(Some("req_1".into())),
+        "openai",
+        "/v1/models",
+    );
 
-    let error = ModelListingError::request_error("Connection failed");
-    assert_eq!(error.to_string(), "Request error: Connection failed");
-
-    let error = ModelListingError::parse_error("Invalid JSON");
-    assert_eq!(error.to_string(), "Parse error: Invalid JSON");
-
-    let error = ModelListingError::AuthError {
-        message: "Invalid API key".to_string(),
+    let ProviderError::ProviderResponse(response) = &error else {
+        panic!("a rejected listing keeps the provider's reply: {error:?}");
     };
-    assert_eq!(error.to_string(), "Authentication error: Invalid API key");
+    assert_eq!(response.status, Some(http::StatusCode::NOT_FOUND));
+    assert_eq!(response.body, "Not found");
+    assert_eq!(
+        error.to_string(),
+        "ProviderResponseError: status 404 Not Found: Not found (request id: req_1) \
+         [provider=openai path=/v1/models]"
+    );
+}
+
+#[test]
+fn a_listing_that_did_not_parse_names_its_provider_and_path() {
+    let json = serde_json::from_str::<serde_json::Value>("{").expect_err("malformed");
+    for error in [
+        ProviderError::Json(json),
+        ProviderError::Response("Invalid JSON".to_owned()),
+    ] {
+        let ProviderError::Response(message) = with_route(error, "openai", "/v1/models") else {
+            panic!("a listing decode failure reports as a response error");
+        };
+        assert!(message.starts_with("provider=openai\npath=/v1/models\nparse_error\n"));
+    }
+}
+
+#[test]
+fn a_listing_transport_failure_is_unchanged_by_its_route() {
+    let error = with_route(
+        ProviderError::Http(crate::http_client::Error::StreamEnded),
+        "openai",
+        "/v1/models",
+    );
+    assert!(matches!(
+        error,
+        ProviderError::Http(crate::http_client::Error::StreamEnded)
+    ));
+    assert!(error.is_retryable());
+}
+
+#[test]
+fn a_listing_route_is_a_diagnostic_and_is_not_serialized() {
+    let error = with_route(
+        ProviderError::from_http_response(http::StatusCode::UNAUTHORIZED, "bad key"),
+        "openai",
+        "/v1/models",
+    );
+    let report = error.report();
+    let restored: crate::error::ErrorReport =
+        serde_json::from_str(&serde_json::to_string(&report).expect("serialize"))
+            .expect("deserialize");
+    let response = restored.provider_response.expect("reply is preserved");
+    assert_eq!(response.route, None);
+    assert_eq!(response.status, Some(http::StatusCode::UNAUTHORIZED));
+    assert!(report.message.contains("[provider=openai path=/v1/models]"));
 }
 
 #[test]
@@ -120,26 +169,6 @@ fn test_model_list_serde() {
 }
 
 #[test]
-fn test_model_listing_error_serde() {
-    let error = ModelListingError::api_error(404, "Not found");
-
-    let json = serde_json::to_string(&error).unwrap();
-    assert!(json.contains("ApiError"));
-
-    let deserialized: ModelListingError = serde_json::from_str(&json).unwrap();
-    match deserialized {
-        ModelListingError::ApiError {
-            status_code,
-            message,
-        } => {
-            assert_eq!(status_code, 404);
-            assert_eq!(message, "Not found");
-        }
-        _ => panic!("Expected ApiError"),
-    }
-}
-
-#[test]
 fn test_format_response_body_preview_without_truncation() {
     let preview = format_response_body_preview(br#"{"ok":true}"#);
     assert_eq!(preview, r#"{"ok":true}"#);
@@ -157,22 +186,22 @@ fn test_format_response_body_preview_with_truncation() {
 #[test]
 fn test_parse_error_with_context_includes_parse_error_and_preview() {
     let body = br#"{"models":[{"displayName":"broken"}]}"#;
-    let parse_error = serde_json::from_slice::<serde_json::Value>(b"{")
+    let json_error = serde_json::from_slice::<serde_json::Value>(b"{")
         .expect_err("expected malformed JSON to fail");
-    let error = ModelListingError::parse_error_with_context(
+    let error = parse_error(
         "Gemini",
         "/v1beta/models?pageSize=1000",
-        &parse_error,
+        format_args!("parse_error={json_error}"),
         body,
     );
 
     match error {
-        ModelListingError::ParseError { message } => {
+        ProviderError::Response(message) => {
             assert!(message.contains("provider=Gemini"));
             assert!(message.contains("path=/v1beta/models?pageSize=1000"));
             assert!(message.contains("parse_error=EOF while parsing an object"));
             assert!(message.contains(r#"{"models":[{"displayName":"broken"}]}"#));
         }
-        _ => panic!("Expected ParseError"),
+        _ => panic!("Expected a response error"),
     }
 }

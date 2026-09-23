@@ -11,9 +11,9 @@
 use std::collections::BTreeSet;
 
 use rig_core::completion::{
-    CompletionError, CompletionRequestBuilder, Document, Message, ProviderCapabilities,
-    ToolDefinition,
+    CompletionRequestBuilder, Document, Message, ProviderCapabilities, ToolDefinition,
 };
+use rig_core::error::ProviderError;
 use rig_core::message::ToolChoice;
 
 use super::output::OutputMode;
@@ -34,9 +34,9 @@ pub enum PrepareError {
     InvalidOutputSchema(#[source] serde_json::Error),
 }
 
-impl From<PrepareError> for CompletionError {
+impl From<PrepareError> for ProviderError {
     fn from(error: PrepareError) -> Self {
-        CompletionError::RequestError(error.to_string().into())
+        ProviderError::Request(error.to_string().into())
     }
 }
 

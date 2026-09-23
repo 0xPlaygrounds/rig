@@ -7,10 +7,11 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::CompletionRequest;
 use crate::driver::{HasEmbedding, HasModelListing};
-use crate::embeddings::{Embedding as Vector, EmbeddingError};
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::embeddings::Embedding as Vector;
+use crate::error::ProviderError;
+use crate::model::{Model, ModelList};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
@@ -151,7 +152,7 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(
@@ -163,7 +164,7 @@ impl Wire for Chat {
             .provider
             .request(http::Method::POST, "/api/chat")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| CompletionError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         // Both modes decode the same record shape; streaming needs NDJSON framing.
         Ok(Encoded::new(
             request,
@@ -203,13 +204,13 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
         let body = serde_json::json!({ "model": self.model, "input": texts });
         let request = self
             .provider
             .request(http::Method::POST, "/api/embed")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EmbeddingError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -285,12 +286,12 @@ impl Wire for Models {
         PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         let request = self
             .provider
             .request(http::Method::GET, "/api/tags")
             .body(Body::empty())
-            .map_err(|error| ModelListingError::request_error(error.to_string()))?;
+            .map_err(ProviderError::from)?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
