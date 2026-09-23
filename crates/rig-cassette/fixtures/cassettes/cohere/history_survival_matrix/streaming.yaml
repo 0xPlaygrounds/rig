@@ -15,7 +15,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"85882008-8611-4cbc-9739-5d1eb44a8bc6","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"15cf6fc1-c2dd-4d43-8cf5-ffd2662830dd","type":"message-start"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
@@ -54,12 +54,6 @@ then:
     data: {"delta":{"message":{"tool_plan":","}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" and"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" then"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":" verify"}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
@@ -72,10 +66,37 @@ then:
     data: {"delta":{"message":{"tool_plan":" code"}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":","}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" and"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" report"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" both"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" codes"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" with"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" their"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" verification"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" status"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"}}},"index":0,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"}}},"index":0,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
@@ -99,7 +120,7 @@ then:
     data: {"index":0,"type":"tool-call-end"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}}},"index":1,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}}},"index":1,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":1,"type":"tool-call-delta"}
@@ -123,7 +144,7 @@ then:
     data: {"index":1,"type":"tool-call-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":143,"output_tokens":35},"cached_tokens":1568,"tokens":{"input_tokens":1606,"output_tokens":87}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":143,"output_tokens":42},"cached_tokens":1568,"tokens":{"input_tokens":1606,"output_tokens":94}}},"type":"message-end"}
 
     data: [DONE]
 
@@ -137,7 +158,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"lookup_record_ehq7890rbbjq"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"lookup_record_3zymd03m812k"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -145,7 +166,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"a3d2b083-caf4-44c1-9058-beb1e53a2c28","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"bb46d974-f15a-4f38-b6a0-2b202eac4c7d","type":"message-start"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
@@ -196,7 +217,7 @@ then:
     data: {"delta":{"message":{"tool_plan":" verify"}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" both"}},"type":"tool-plan-delta"}
+    data: {"delta":{"message":{"tool_plan":" these"}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":" codes"}},"type":"tool-plan-delta"}
@@ -205,7 +226,7 @@ then:
     data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"call_REDACTED_3","type":"function"}}},"index":0,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"verify_code_xqgqd8p2d3ja","type":"function"}}},"index":0,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
@@ -250,7 +271,7 @@ then:
     data: {"index":0,"type":"tool-call-end"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"call_REDACTED_4","type":"function"}}},"index":1,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"verify_code_qk29ne3tsw32","type":"function"}}},"index":1,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":1,"type":"tool-call-delta"}
@@ -295,7 +316,7 @@ then:
     data: {"index":1,"type":"tool-call-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":171,"output_tokens":49},"cached_tokens":992,"tokens":{"input_tokens":1782,"output_tokens":101}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":171,"output_tokens":49},"cached_tokens":1568,"tokens":{"input_tokens":1782,"output_tokens":101}}},"type":"message-end"}
 
     data: [DONE]
 
@@ -309,7 +330,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_2"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_4","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_3"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_4"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"lookup_record_ehq7890rbbjq"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"lookup_record_3zymd03m812k"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_xqgqd8p2d3ja","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_qk29ne3tsw32","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_xqgqd8p2d3ja"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"verify_code_qk29ne3tsw32"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -317,16 +338,13 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"2335faee-5041-48e4-8783-ed41a60116a2","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"be16b5e1-3816-408a-8f43-4ce198655d15","type":"message-start"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":"The"}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" "}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":"beta"}},"type":"tool-plan-delta"}
+    data: {"delta":{"message":{"tool_plan":" beta"}},"type":"tool-plan-delta"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":" code"}},"type":"tool-plan-delta"}
@@ -339,12 +357,6 @@ then:
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":","}},"type":"tool-plan-delta"}
-
-    event: citation-start
-    data: {"delta":{"message":{"citations":{"end":33,"sources":[{"id":"verify_code_w5ae7mpsz1j3:0","tool_output":{"content":"the tool failed"},"type":"tool"}],"start":4,"text":"beta code verification failed","type":"PLAN"}}},"index":0,"type":"citation-start"}
-
-    event: citation-end
-    data: {"index":0,"type":"citation-end"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":" so"}},"type":"tool-plan-delta"}
@@ -365,7 +377,7 @@ then:
     data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"call_REDACTED_5","type":"function"}}},"index":0,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"verify_code_07gqhmwx12za","type":"function"}}},"index":0,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
@@ -410,7 +422,7 @@ then:
     data: {"index":0,"type":"tool-call-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":187,"output_tokens":27},"cached_tokens":1920,"tokens":{"input_tokens":1960,"output_tokens":68}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":187,"output_tokens":27},"cached_tokens":992,"tokens":{"input_tokens":1960,"output_tokens":57}}},"type":"message-end"}
 
     data: [DONE]
 
@@ -424,7 +436,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_2"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_4","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_3"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_4"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_5","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_5"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"lookup_record_ehq7890rbbjq"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"lookup_record_3zymd03m812k"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_xqgqd8p2d3ja","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_qk29ne3tsw32","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_xqgqd8p2d3ja"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"verify_code_qk29ne3tsw32"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_07gqhmwx12za","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"verify_code_07gqhmwx12za"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -432,7 +444,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"1ba5f79b-f346-43d8-bcf7-001f62fe5e4f","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"d0f8ab5e-5b7d-4a9a-93b1-a8a4abe47c93","type":"message-start"}
 
     event: content-start
     data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
@@ -474,7 +486,7 @@ then:
     data: {"delta":{"message":{"content":{"text":"1"}}},"index":0,"type":"content-delta"}
 
     event: citation-start
-    data: {"delta":{"message":{"citations":{"end":27,"sources":[{"id":"lookup_record_kba5fzsyetgm:0","tool_output":{"content":"record alpha: code alpha-code-7431"},"type":"tool"}],"start":12,"text":"alpha-code-7431","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
+    data: {"delta":{"message":{"citations":{"end":27,"sources":[{"id":"lookup_record_ehq7890rbbjq:0","tool_output":{"content":"record alpha: code alpha-code-7431"},"type":"tool"}],"start":12,"text":"alpha-code-7431","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
 
     event: citation-end
     data: {"index":0,"type":"citation-end"}
@@ -489,7 +501,7 @@ then:
     data: {"delta":{"message":{"content":{"text":")"}}},"index":0,"type":"content-delta"}
 
     event: citation-start
-    data: {"delta":{"message":{"citations":{"end":38,"sources":[{"id":"verify_code_39t6j5yn8eys:0","tool_output":{"content":"verified alpha-code-7431"},"type":"tool"}],"start":28,"text":"(verified)","type":"TEXT_CONTENT"}}},"index":1,"type":"citation-start"}
+    data: {"delta":{"message":{"citations":{"end":38,"sources":[{"id":"verify_code_xqgqd8p2d3ja:0","tool_output":{"content":"verified alpha-code-7431"},"type":"tool"}],"start":28,"text":"(verified)","type":"TEXT_CONTENT"}}},"index":1,"type":"citation-start"}
 
     event: citation-end
     data: {"index":1,"type":"citation-end"}
@@ -531,7 +543,7 @@ then:
     data: {"delta":{"message":{"content":{"text":"6"}}},"index":0,"type":"content-delta"}
 
     event: citation-start
-    data: {"delta":{"message":{"citations":{"end":64,"sources":[{"id":"lookup_record_6tyhjqhk5te8:0","tool_output":{"content":"record beta: code beta-code-2286"},"type":"tool"}],"start":50,"text":"beta-code-2286","type":"TEXT_CONTENT"}}},"index":2,"type":"citation-start"}
+    data: {"delta":{"message":{"citations":{"end":64,"sources":[{"id":"lookup_record_3zymd03m812k:0","tool_output":{"content":"record beta: code beta-code-2286"},"type":"tool"}],"start":50,"text":"beta-code-2286","type":"TEXT_CONTENT"}}},"index":2,"type":"citation-start"}
 
     event: citation-end
     data: {"index":2,"type":"citation-end"}
@@ -546,7 +558,7 @@ then:
     data: {"delta":{"message":{"content":{"text":")"}}},"index":0,"type":"content-delta"}
 
     event: citation-start
-    data: {"delta":{"message":{"citations":{"end":75,"sources":[{"id":"verify_code_gr3zk05683nv:0","tool_output":{"content":"verified beta-code-2286"},"type":"tool"}],"start":65,"text":"(verified)","type":"TEXT_CONTENT"}}},"index":3,"type":"citation-start"}
+    data: {"delta":{"message":{"citations":{"end":75,"sources":[{"id":"verify_code_07gqhmwx12za:0","tool_output":{"content":"verified beta-code-2286"},"type":"tool"}],"start":65,"text":"(verified)","type":"TEXT_CONTENT"}}},"index":3,"type":"citation-start"}
 
     event: citation-end
     data: {"index":3,"type":"citation-end"}
@@ -555,7 +567,7 @@ then:
     data: {"index":0,"type":"content-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":198,"output_tokens":29},"cached_tokens":992,"tokens":{"input_tokens":2060,"output_tokens":72}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":198,"output_tokens":29},"cached_tokens":1744,"tokens":{"input_tokens":2060,"output_tokens":72}}},"type":"message-end"}
 
     data: [DONE]
 
@@ -569,7 +581,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_2"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_4","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_3"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_4"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_5","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_5"},{"citations":[],"content":[{"text":"Alpha code: alpha-code-7431 (verified)\nBeta code: beta-code-2286 (verified)","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Verify the alpha code once more and confirm whether it is unchanged.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"lookup_record_ehq7890rbbjq"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"lookup_record_3zymd03m812k"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_xqgqd8p2d3ja","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_qk29ne3tsw32","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_xqgqd8p2d3ja"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"verify_code_qk29ne3tsw32"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_07gqhmwx12za","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"verify_code_07gqhmwx12za"},{"citations":[],"content":[{"text":"Alpha code: alpha-code-7431 (verified)\nBeta code: beta-code-2286 (verified)","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Verify the alpha code once more and confirm whether it is unchanged.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -577,10 +589,10 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"0dd5e38a-cda9-4f50-b3c5-864cc66856cb","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"d7240231-881b-40de-a69c-00ce4800cecb","type":"message-start"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"call_REDACTED_6","type":"function"}}},"index":0,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"verify_code"},"id":"verify_code_b6z5kchtq45f","type":"function"}}},"index":0,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
@@ -639,7 +651,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_2"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_4","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_3"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_4"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_5","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_5"},{"citations":[],"content":[{"text":"Alpha code: alpha-code-7431 (verified)\nBeta code: beta-code-2286 (verified)","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Verify the alpha code once more and confirm whether it is unchanged.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_6","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_6"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"lookup_record_ehq7890rbbjq"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"lookup_record_3zymd03m812k"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_xqgqd8p2d3ja","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_qk29ne3tsw32","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_xqgqd8p2d3ja"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"verify_code_qk29ne3tsw32"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_07gqhmwx12za","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"verify_code_07gqhmwx12za"},{"citations":[],"content":[{"text":"Alpha code: alpha-code-7431 (verified)\nBeta code: beta-code-2286 (verified)","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Verify the alpha code once more and confirm whether it is unchanged.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_b6z5kchtq45f","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_b6z5kchtq45f"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -647,7 +659,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"ee2f32e2-3552-4a0e-8a71-136f6f7829af","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"58e6e233-bb91-4472-8dc8-5a716b56d4cb","type":"message-start"}
 
     event: content-start
     data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
@@ -680,7 +692,7 @@ then:
     data: {"index":0,"type":"content-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":252,"output_tokens":8},"cached_tokens":2032,"tokens":{"input_tokens":2210,"output_tokens":11}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":252,"output_tokens":8},"cached_tokens":1920,"tokens":{"input_tokens":2210,"output_tokens":11}}},"type":"message-end"}
 
     data: [DONE]
 
@@ -694,7 +706,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"call_REDACTED_2","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_2"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_3","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_4","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_3"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_4"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"call_REDACTED_5","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_5"},{"citations":[],"content":[{"text":"Alpha code: alpha-code-7431 (verified)\nBeta code: beta-code-2286 (verified)","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Verify the alpha code once more and confirm whether it is unchanged.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"call_REDACTED_6","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_6"},{"citations":[],"content":[{"text":"The alpha code is verified and unchanged.","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Repeat both codes exactly as reported earlier, separated by a comma, and nothing else.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
+  body: '{"documents":[],"max_tokens":2048,"messages":[{"content":"You are a records assistant. Use the tools for every lookup and verification and never guess a code. When a tool reports a transient failure, call it again once. Answer briefly.","role":"system"},{"content":[{"text":"Look up the alpha record and the beta record, verify each returned code, and report both codes with their verification status.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_record"},"id":"lookup_record_ehq7890rbbjq","type":"function"},{"function":{"arguments":"{\"record\":\"beta\"}","name":"lookup_record"},"id":"lookup_record_3zymd03m812k","type":"function"}],"tool_plan":null},{"content":[{"text":"record alpha: code alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"lookup_record_ehq7890rbbjq"},{"content":[{"text":"record beta: code beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"lookup_record_3zymd03m812k"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_xqgqd8p2d3ja","type":"function"},{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_qk29ne3tsw32","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_xqgqd8p2d3ja"},{"content":[{"text":"the tool failed","type":"text"}],"role":"tool","tool_call_id":"verify_code_qk29ne3tsw32"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"beta-code-2286\"}","name":"verify_code"},"id":"verify_code_07gqhmwx12za","type":"function"}],"tool_plan":null},{"content":[{"text":"verified beta-code-2286","type":"text"}],"role":"tool","tool_call_id":"verify_code_07gqhmwx12za"},{"citations":[],"content":[{"text":"Alpha code: alpha-code-7431 (verified)\nBeta code: beta-code-2286 (verified)","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Verify the alpha code once more and confirm whether it is unchanged.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\":\"alpha-code-7431\"}","name":"verify_code"},"id":"verify_code_b6z5kchtq45f","type":"function"}],"tool_plan":null},{"content":[{"text":"verified alpha-code-7431","type":"text"}],"role":"tool","tool_call_id":"verify_code_b6z5kchtq45f"},{"citations":[],"content":[{"text":"The alpha code is verified and unchanged.","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"Repeat both codes exactly as reported earlier, separated by a comma, and nothing else.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Look up a record by name and return its code.","name":"lookup_record","parameters":{"properties":{"record":{"description":"alpha or beta","type":"string"}},"required":["record"],"type":"object"}},"type":"function"},{"function":{"description":"Verify a code returned by lookup_record. May fail transiently; retry once.","name":"verify_code","parameters":{"properties":{"code":{"description":"the code to verify","type":"string"}},"required":["code"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -702,7 +714,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"08204fb6-595d-42b3-b24f-9fc558b4fe6b","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"1d702cb5-397f-437c-abb8-c57f98d1d014","type":"message-start"}
 
     event: content-start
     data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
@@ -735,7 +747,7 @@ then:
     data: {"delta":{"message":{"content":{"text":","}}},"index":0,"type":"content-delta"}
 
     event: content-delta
-    data: {"delta":{"message":{"content":{"text":"beta"}}},"index":0,"type":"content-delta"}
+    data: {"delta":{"message":{"content":{"text":" beta"}}},"index":0,"type":"content-delta"}
 
     event: content-delta
     data: {"delta":{"message":{"content":{"text":"-"}}},"index":0,"type":"content-delta"}
@@ -762,7 +774,7 @@ then:
     data: {"index":0,"type":"content-end"}
 
     event: message-end
-    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":278,"output_tokens":17},"cached_tokens":2112,"tokens":{"input_tokens":2243,"output_tokens":20}}},"type":"message-end"}
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":278,"output_tokens":17},"cached_tokens":1920,"tokens":{"input_tokens":2243,"output_tokens":20}}},"type":"message-end"}
 
     data: [DONE]
 

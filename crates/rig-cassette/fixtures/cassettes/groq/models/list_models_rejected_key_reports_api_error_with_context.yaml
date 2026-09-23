@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_01m36h5pz2epqsnjzd9ybbq7s5
   body: '{"error":{"code":"invalid_api_key","message":"Invalid API Key","type":"invalid_request_error"}}'

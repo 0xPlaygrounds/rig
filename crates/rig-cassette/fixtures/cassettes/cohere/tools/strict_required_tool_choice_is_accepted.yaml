@@ -13,4 +13,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"TOOL_CALL","id":"d5a93922-5f74-461d-88eb-384ea05cbe34","message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":11,\"y\":6}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}],"tool_plan":"I will use one or more of the available tools to find the answer"},"usage":{"billed_units":{"input_tokens":69,"output_tokens":25},"cached_tokens":992,"tokens":{"input_tokens":1494,"output_tokens":39}}}'
+  body: '{"finish_reason":"TOOL_CALL","id":"a37c116c-763f-428a-a71d-bb24cac0f27b","message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":11,\"y\":6}","name":"subtract"},"id":"subtract_drct0z2kwfzm","type":"function"}],"tool_plan":"I will use one or more of the available tools to find the answer"},"usage":{"billed_units":{"input_tokens":69,"output_tokens":25},"cached_tokens":112,"tokens":{"input_tokens":1494,"output_tokens":39}}}'

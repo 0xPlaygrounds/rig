@@ -13,6 +13,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"code":400,"message":"Validation: Temperature must be between 0 and 2, got 100","type":"Bad Request"}'
+  body: '{"error":{"code":null,"message":"Invalid request","param":null,"type":"invalid_request_error"}}'

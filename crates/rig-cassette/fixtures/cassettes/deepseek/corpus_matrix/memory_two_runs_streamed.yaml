@@ -14,11 +14,11 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   body: |+
-    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"5adf7ba5-6ae1-4457-86cd-c3c412da1e5e","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":"ready"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+    data: {"choices":[{"delta":{"content":"ready"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"5adf7ba5-6ae1-4457-86cd-c3c412da1e5e","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":22,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":23}}
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"5adf7ba5-6ae1-4457-86cd-c3c412da1e5e","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":22,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":23}}
 
     data: [DONE]
 
@@ -39,11 +39,11 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   body: |+
-    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"566ea8ea-89a1-42bc-b3f8-0298e4004d2d","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":"again"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+    data: {"choices":[{"delta":{"content":"again"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"566ea8ea-89a1-42bc-b3f8-0298e4004d2d","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":36,"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":37}}
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"566ea8ea-89a1-42bc-b3f8-0298e4004d2d","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":36,"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":37}}
 
     data: [DONE]
 

@@ -13,4 +13,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"Maple trees are known for their distinctive lobed leaves and winged seeds called sam","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":24,"prompt_tokens":24,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":40}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.","role":"assistant"}}],"created":0,"id":"f26bcd20-d38a-4870-87e4-b4b14085365f","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":24,"prompt_tokens":24,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":40}}'

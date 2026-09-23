@@ -13,9 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"y\":3,\"x\":2}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":35,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":317,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":352}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 3}","name":"add"},"id":"chatcmpl-tool-b346e368cd32f490","type":"function"}]}}],"created":0,"id":"resp_46b1b26c-bb72-45a3-9bcb-a27639110e23","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":35,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"prompt_tokens":317,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":352}}'
 ---
 when:
   path: /v1/chat/completions
@@ -26,12 +24,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the provided tool to answer arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 + 3.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"y\":3,\"x\":2}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"5","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-9B","reasoning_effort":"none","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the provided tool to answer arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 + 3.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":3}","name":"add"},"id":"chatcmpl-tool-b346e368cd32f490","type":"function"}]},{"content":"5","role":"tool","tool_call_id":"chatcmpl-tool-b346e368cd32f490"}],"model":"Qwen/Qwen3.5-9B","reasoning_effort":"none","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  - name: x-request-id
-    value: req_REDACTED_2
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"2 + 3 = 5","refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":8,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":370,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":378}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"2 + 3 = 5","refusal":null,"role":"assistant"}}],"created":0,"id":"resp_d069c531-905b-44e3-82d2-7d0e9be3cc2c","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":8,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"prompt_tokens":370,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":378}}'

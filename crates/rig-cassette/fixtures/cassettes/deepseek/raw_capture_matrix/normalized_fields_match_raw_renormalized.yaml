@@ -13,4 +13,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"pong","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":12,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":14}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"pong","role":"assistant"}}],"created":0,"id":"c63a4c9b-8016-4273-a2fa-f6c48b4e2168","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":12,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":14}}'
