@@ -16,13 +16,13 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_REDACTED_1
+    value: req_011CfLccoe9uGkgpsPVD2Zmn
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":679,"output_tokens":22,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLccqL7BL1hUWEhUi3xw","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":679,"output_tokens":22,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"final_result","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01GgNEUDumBo7WZMM6qMidZn","input":{},"name":"final_result","type":"tool_use"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
@@ -31,154 +31,160 @@ then:
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"title\"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"title","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":": \"Se","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\": \"Sea","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"attle R","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ttle Ru","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ust Meetup","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"st Meet","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"\"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"up\"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", \"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", \"cate","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"category","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"gory\": ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"\": \"Technol","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\"Techno","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ogy / Pro","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"logy / ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"gramming\"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"Program","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ming\"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"\"summary\": \"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", \"summ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"A local gath","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ary\": \"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ering for Ru","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"A local","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"st progr","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":" gather","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"amming lan","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ing for","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"guage enthu","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":" Rust p","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"sias","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"rogramm","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ts in Seattl","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ing lan","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"e. Attendees","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"guage e","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":" share proje","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"nthusia","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"cts","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"sts in ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", discuss ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"Seattle","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"best","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":". Atten","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":" p","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"dees sh","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ractices, e","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"are pro","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"xplore new ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"jects, ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"Ru","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"discuss","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"st fea","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":" best p","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"tures, and","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ractice","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":" networ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"s, expl","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"k w","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ore new","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ith ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":" Rust f","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"fellow de","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"eatures","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"velopers ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", and n","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"passionate ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"etwork ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"abo","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"with fe","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ut system","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"llow de","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"s pr","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"veloper","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ogr","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"s passi","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"amming and","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"onate a","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":" memo","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"bout sy","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ry-sa","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"stems p","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"fe s","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"rogramm","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"of","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ing and","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"twar","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":" memory","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"e developmen","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"-safe s","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"t.\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"oftware","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":" develo","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"pment.\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":679,"output_tokens":138}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":679,"output_tokens":138}}
 
     event: message_stop
     data: {"type":"message_stop"}

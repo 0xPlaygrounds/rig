@@ -16,8 +16,8 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_1
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":717,"output_tokens":53,"service_tier":"standard"}}'
+    value: req_011CfLcqitm9RJPrEUn1vM5o
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01SHm3J2MbnmPb8bUBj1ZwbY","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_011CfLcqjNHaMmg2UwHnmuXx","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":717,"output_tokens":53,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -37,5 +37,5 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_2
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_REDACTED_2","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":717,"output_tokens":53,"service_tier":"standard"}}'
+    value: req_011CfLcqmqcsqbnkWLervp8c
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_017HvCSbGVpyeHnn6b198wHg","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_011CfLcqnM8QgibnHUaqJMYF","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":717,"output_tokens":53,"service_tier":"standard"}}'

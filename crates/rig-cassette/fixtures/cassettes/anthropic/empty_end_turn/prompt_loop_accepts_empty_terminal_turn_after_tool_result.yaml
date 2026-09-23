@@ -15,7 +15,9 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"msg":"Deploy finished."},"name":"notify","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":628,"output_tokens":53,"service_tier":"standard"}}'
+  - name: request-id
+    value: req_011CfLcgVf345BEufWzbpYN1
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01Uk2BV1dgdFS61T4wsVJFsN","input":{"msg":"User has finished the deploy."},"name":"notify","type":"tool_use"}],"id":"msg_011CfLcgW94WkQRAjsW6iJ88","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":628,"output_tokens":56,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -28,10 +30,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"I finished the deploy.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"msg":"Deploy finished."},"name":"notify","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"sent: Deploy finished.","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"When the user reports their status, call `notify` with a short summary. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}],"tools":[{"description":"Send a short notification for a user status update.","input_schema":{"properties":{"msg":{"description":"The short notification to send.","type":"string"}},"required":["msg"],"type":"object"},"name":"notify"}]}'
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"I finished the deploy.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_01Uk2BV1dgdFS61T4wsVJFsN","input":{"msg":"User has finished the deploy."},"name":"notify","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"sent: User has finished the deploy.","type":"text"}],"tool_use_id":"toolu_01Uk2BV1dgdFS61T4wsVJFsN","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"When the user reports their status, call `notify` with a short summary. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}],"tools":[{"description":"Send a short notification for a user status update.","input_schema":{"properties":{"msg":{"description":"The short notification to send.","type":"string"}},"required":["msg"],"type":"object"},"name":"notify"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":697,"output_tokens":2,"service_tier":"standard"}}'
+  - name: request-id
+    value: req_011CfLcgcUoB9NRsRKBbUNvS
+  body: '{"container":null,"content":[],"id":"msg_011CfLcgcuqqE3XTFvYYP5DA","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":703,"output_tokens":2,"service_tier":"standard"}}'

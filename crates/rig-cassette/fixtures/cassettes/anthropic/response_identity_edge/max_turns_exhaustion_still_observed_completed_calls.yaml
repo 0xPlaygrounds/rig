@@ -16,5 +16,5 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_1
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":626,"output_tokens":69,"service_tier":"standard"}}'
+    value: req_011CfLcs57xWqFpFawSFJ1Ka
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01JK4eEmBDyJeaWoYdMDM4NZ","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_011CfLcs5aFP31haAq2PV7F5","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":626,"output_tokens":69,"service_tier":"standard"}}'

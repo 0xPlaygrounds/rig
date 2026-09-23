@@ -15,4 +15,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"error":{"message":"tools.0.custom: For ''object'' type, property ''properties'' is not supported","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'
+  - name: request-id
+    value: req_011CfLcxhba83iFuPc7dWGjp
+  body: '{"error":{"message":"tools.0.custom: For ''object'' type, property ''properties'' is not supported","type":"invalid_request_error"},"request_id":"req_011CfLcxhba83iFuPc7dWGjp","type":"error"}'

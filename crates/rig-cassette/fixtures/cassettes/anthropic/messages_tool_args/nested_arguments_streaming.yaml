@@ -15,9 +15,11 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfLck69XcFdYJgWxbqZ1z
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":799,"output_tokens":6,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLck7EXDvGA3XNM7BbWd","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":799,"output_tokens":4,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -26,76 +28,91 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"text":"I'll book this trip right","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"I'll book this","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" away with exactly the values you specified!","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" trip right","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" away with","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" exactly","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the values you specified","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"!","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"plan_trip","type":"tool_use"},"index":1,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_019Yn85HHZq84jj52Ncbn1r8","input":{},"name":"plan_trip","type":"tool_use"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"i","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"itine","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"tinerary\": ","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"rary\": ","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
     data: {"delta":{"partial_json":"{\"city\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":":\"Kyoto\",\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":":\"Kyoto","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"days\":3,\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\",\"days","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"activities","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\":3,\"ac","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"\":[\"temples\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"tivitie","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":",\"tea cere","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"s\":[\"te","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"mon","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"mples\",","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"y\"],\"lodgin","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\"tea ce","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"g\":","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"remony\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"name\":\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"],\"lodg","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"Saku","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ing\":{\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"ra","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"name\":\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":" Inn\",\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"Sakura ","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"rooms\":","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"Inn\",\"r","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"2}}}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ooms\":2","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"}}}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":799,"output_tokens":112}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":799,"output_tokens":112}}
 
     event: message_stop
     data: {"type":"message_stop"}

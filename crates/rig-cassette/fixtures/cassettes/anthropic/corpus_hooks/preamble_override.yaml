@@ -16,5 +16,5 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_1
-  body: '{"content":[{"text":"Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin'' by crashes and villainous exploits!","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":39,"output_tokens":58,"service_tier":"standard"}}'
+    value: req_011CfLcYDCc5Cj5KTwczLjDp
+  body: '{"container":null,"content":[{"text":"Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like a ship with holes — it''ll sink ye with crashes, vulnerabilities, and plunderin'' bugs!","type":"text"}],"id":"msg_011CfLcYDTEuVYZwe4S3a69S","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":39,"output_tokens":57,"service_tier":"standard"}}'

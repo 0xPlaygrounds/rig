@@ -16,5 +16,5 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_1
-  body: '{"error":{"message":"model: claude-nonexistent-model-for-error-edge","type":"not_found_error"},"request_id":"req_REDACTED_1","type":"error"}'
+    value: req_011CfLchGDRbxw5yMjHbqUvT
+  body: '{"error":{"message":"model: claude-nonexistent-model-for-error-edge","type":"not_found_error"},"request_id":"req_011CfLchGDRbxw5yMjHbqUvT","type":"error"}'

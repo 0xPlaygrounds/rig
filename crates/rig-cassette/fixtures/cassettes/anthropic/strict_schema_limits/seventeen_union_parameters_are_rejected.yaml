@@ -15,4 +15,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"error":{"message":"Schemas contains too many parameters with union types (17 parameters with type arrays or anyOf). This causes exponential compilation cost. Reduce the number of nullable or union-typed parameters (limit: 16 parameters with unions).","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'
+  - name: request-id
+    value: req_011CfLcwkKWJUK4XYi6AgPCL
+  body: '{"error":{"message":"Schemas contains too many parameters with union types (17 parameters with type arrays or anyOf). This causes exponential compilation cost. Reduce the number of nullable or union-typed parameters (limit: 16 parameters with unions).","type":"invalid_request_error"},"request_id":"req_011CfLcwkKWJUK4XYi6AgPCL","type":"error"}'

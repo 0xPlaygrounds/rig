@@ -16,5 +16,5 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_1
-  body: '{"error":{"message":"temperature: range: 0..1","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'
+    value: req_011CfLchGmfS8XPHwcqaj4w5
+  body: '{"error":{"message":"temperature: range: 0..1","type":"invalid_request_error"},"request_id":"req_011CfLchGmfS8XPHwcqaj4w5","type":"error"}'

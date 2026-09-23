@@ -15,12 +15,14 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfLcrH5GXbKaaDHoALYTf
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":692,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLcrHa3EgLaJ4pyYzy5b","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":692,"output_tokens":7,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"get_weather","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01BPZARv2C1tQxLXDUnRkhfR","input":{},"name":"get_weather","type":"tool_use"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
@@ -29,19 +31,19 @@ then:
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"locati","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"locat","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"on\": \"Pari","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"ion\": \"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"s\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"Paris\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":692,"output_tokens":38}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":692,"output_tokens":38}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -58,18 +60,20 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"I''m planning a trip to Paris. Use a tool to help me prepare.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"location":"Paris"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"It is 18 degrees Celsius and clear in Paris.","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a travel assistant. Use the available tools to gather information before answering.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City name","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"},{"description":"Get the current time in a timezone.","input_schema":{"properties":{"timezone":{"description":"IANA timezone","type":"string"}},"required":["timezone"],"type":"object"},"name":"get_time"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"I''m planning a trip to Paris. Use a tool to help me prepare.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_01BPZARv2C1tQxLXDUnRkhfR","input":{"location":"Paris"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"It is 18 degrees Celsius and clear in Paris.","type":"text"}],"tool_use_id":"toolu_01BPZARv2C1tQxLXDUnRkhfR","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a travel assistant. Use the available tools to gather information before answering.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City name","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"},{"description":"Get the current time in a timezone.","input_schema":{"properties":{"timezone":{"description":"IANA timezone","type":"string"}},"required":["timezone"],"type":"object"},"name":"get_time"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfLcrMqmEyZDNbGGbvyo9
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":742,"output_tokens":55,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLcrNRVncshyBy4iASjs","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":742,"output_tokens":21,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{},"name":"get_time","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01XQvnZ3Joh5tsGGoCCXq73N","input":{},"name":"get_time","type":"tool_use"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
@@ -78,19 +82,22 @@ then:
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"ti","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"timez","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"mezone\": \"Eu","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"one\": \"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"rope/Paris\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"Europe/","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"Paris\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":742,"output_tokens":55}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":742,"output_tokens":55}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -107,15 +114,17 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"I''m planning a trip to Paris. Use a tool to help me prepare.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"location":"Paris"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"It is 18 degrees Celsius and clear in Paris.","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_2","input":{"timezone":"Europe/Paris"},"name":"get_time","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"12:00","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a travel assistant. Use the available tools to gather information before answering.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City name","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"},{"description":"Get the current time in a timezone.","input_schema":{"properties":{"timezone":{"description":"IANA timezone","type":"string"}},"required":["timezone"],"type":"object"},"name":"get_time"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"I''m planning a trip to Paris. Use a tool to help me prepare.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_01BPZARv2C1tQxLXDUnRkhfR","input":{"location":"Paris"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"It is 18 degrees Celsius and clear in Paris.","type":"text"}],"tool_use_id":"toolu_01BPZARv2C1tQxLXDUnRkhfR","type":"tool_result"}],"role":"user"},{"content":[{"id":"toolu_01XQvnZ3Joh5tsGGoCCXq73N","input":{"timezone":"Europe/Paris"},"name":"get_time","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"12:00","type":"text"}],"tool_use_id":"toolu_01XQvnZ3Joh5tsGGoCCXq73N","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a travel assistant. Use the available tools to gather information before answering.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City name","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"},{"description":"Get the current time in a timezone.","input_schema":{"properties":{"timezone":{"description":"IANA timezone","type":"string"}},"required":["timezone"],"type":"object"},"name":"get_time"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfLcrTY4rsTNpkMq1bXom
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":812,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLcrUMgfGbadp6DaCSn9","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":812,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -127,58 +136,400 @@ then:
     data: {"delta":{"text":"Great","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" news — here's a quick snapshot to help you prepare for your trip to **Paris**","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" news","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" 🗼:\n\n---\n\n### 🌤️ Current Weather","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" —","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"\n- **Condition:** Clear skies\n- **Temperature:** 18°C (64°F)\n- **What to pack:** Light layers","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" here","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" are ideal — a light jacket or sweater for the morning/evening, and comfortable","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"'s a","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" clothes for daytime sightseeing.\n\n---\n\n### 🕛 Current Local","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" quick snapshot","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" Time\n- **Time in Paris:** 12:00 PM (noon)\n- **Timezone:** Central European Time (CET/Europe","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" to","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"/Paris)\n- Useful for planning calls home or scheduling activities!\n\n---\n\n### ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" help you prepare for your trip","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"✈️ Travel Tips for Paris\n1. **Language:** French is the official language — a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" to **","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" simple *\"Bonjour!\"* and *\"Merci!\"* go a long way.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"Paris**!","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"\n2. **Currency:** Euro (€)\n3. **Transport:** The Paris Métro is efficient","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" ","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" and affordable for getting around the city.\n4. **Must-sees:** Eiffel Tower, the Louvre, Notre","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"🗼","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"-Dame Cathedral, Montmartre, and the Seine River.\n5. **Dining:** Lunch (12","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"\n\n---","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"–2 PM) is a great time to enjoy a sit-down meal — many","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"\n\n###","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" restaurants offer affordable *formule* (set menus)","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" ","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" at midday.\n\nWould you like help with anything else for your Paris trip, such as it","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"🕛","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"inerary suggestions or packing tips? 😊","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" Current Local","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Time in Paris","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\nIt","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"'s currently","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **12:00 PM","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" (","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"noon)** in Paris (","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"C","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ET/CEST). Keep","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" this","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" in mind when planning calls","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" home","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" or","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" scheduling","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" arri","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"vals!","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\n---\n\n### ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"🌤","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"️ Current","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Weather\n- **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Condition:** Clear sk","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ies ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"☀️\n- **Temperature:**","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 18°C (64°","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"F)","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\nIt","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"'s a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" lovely","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" day in","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Paris! Here","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" are some","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" p","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"acking","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" tips","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" based","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" on the weather:","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n- **Light","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" layers","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"** are","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ideal","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" —","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"18","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"°C is comfortable","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" but","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" can","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" feel","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" coo","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ler in","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the shade","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" or","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" at","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" night.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n-","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Bring a **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"light jacket","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" or","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" card","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"igan** for evenings.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n- **Sun","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"glasses** are a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" great idea with","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" clear","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" skies.\n-","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Comfortable **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"walking shoes** are a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" must","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" for","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" exploring the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" city!","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\n---\n\n### ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"🗺️ Quick","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Travel Tips for","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Paris\n-","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" The","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"metro","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"** is","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" eas","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"iest way to get around the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" city.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n- Don","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"'t forget to visit","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" iconic","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" spots","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" like the **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Eiffel Tower**, **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Louvre**, and **Notre","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"-Dame**.\n- Most","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" restaurants","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" serve","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" lunch","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" from","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"12","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":":00–","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"2","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":":30","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" PM** and dinner from **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"7:30","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"PM onwards","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\nWould","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" you like more","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" help","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" planning","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" your Paris trip,","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" such as things","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" to do or","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" places to stay","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"?","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"😊","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":812,"output_tokens":339}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":812,"output_tokens":327}}
 
     event: message_stop
     data: {"type":"message_stop"}
