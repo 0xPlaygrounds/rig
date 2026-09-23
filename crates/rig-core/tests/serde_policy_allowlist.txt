@@ -11,7 +11,7 @@
 
 # --- anthropic: content assembly, not frame triage -------------------------
 providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
-providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a CompletionError, no frame is triaged here.
+providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a ProviderError, no frame is triaged here.
 
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
 providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
@@ -54,7 +54,7 @@ providers/openai/wire/chat.rs | serde_json::from_slice::<ObservedPayload>(payloa
 
 # --- openai modality wire: whole replies that have no frames ----------------
 providers/openai/wire/modality.rs | #[serde(untagged)] | `ImagesReplyImage` is the reply-side union of the two forms two dialects put under the `images` key (Hyperbolic `{"image": "<base64>"}`, Venice the bare base64); the image route answers with one whole reply and has no frames, so no inbound frame policy is decided here.
-providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<SpeechReply>(&event) | `SpeechDecoder::interpret` unwraps the JSON envelope Hyperbolic alone wraps its audio in; `classify` already returned the bytes as `Known` because the speech reply is audio rather than JSON, and a decode failure is pushed as an AudioGenerationError rather than skipped.
+providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<SpeechReply>(&event) | `SpeechDecoder::interpret` unwraps the JSON envelope Hyperbolic alone wraps its audio in; `classify` already returned the bytes as `Known` because the speech reply is audio rather than JSON, and a decode failure is pushed as a ProviderError rather than skipped.
 
 # --- openai responses websocket: envelope dispatch, not frame triage -------
 # The websocket carries the SAME Responses events the SSE path carries, and
@@ -64,8 +64,8 @@ providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<S
 # `response.done`. Neither exists on the SSE wire, so neither has a classifier
 # to route to.
 providers/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to decide whether the frame is one of the two websocket-only envelopes; every other frame is handed to classify_responses_frame untouched, so this dispatches rather than triages.
-providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a CompletionError, never skipped.
-providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a CompletionError, never skipped.
+providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a ProviderError, never skipped.
+providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a ProviderError, never skipped.
 providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the `status` field of an already-decoded `response.done` payload to update the session's previous_response_id bookkeeping; it decides no frame's fate.
 providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Converts an already-decoded `response.done` payload into the typed terminal response; `None` falls back to the session's explicit no-terminal-body error rather than skipping anything.
 

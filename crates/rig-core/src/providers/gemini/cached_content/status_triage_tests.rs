@@ -31,7 +31,7 @@ const GONE: &str =
 ///
 /// Before the triage moved from the variant to the status this fell into
 /// the catch-all `Err(error) => Http(error)` arm, so a caller matching
-/// `CacheExpired` to recreate the cache saw an opaque transport error instead.
+/// `Expired` to recreate the cache saw an opaque transport error instead.
 #[tokio::test]
 async fn a_status_error_without_captured_headers_still_reports_expired() {
     let error = caches(MockHttpResponse::error(http::StatusCode::NOT_FOUND, GONE))

@@ -172,8 +172,9 @@ Construct normalized completion responses through their builders so finish
 reasons reconcile with tool output. Preserve unknown terminal reasons in `Other`,
 use the selected descriptor's provider name, and retain the decoded provider
 payload in `raw` for typed inspection without a second request. Preserve error
-bodies through `WireError::http_response` for failed HTTP responses and
-`WireError::provider_body` for error envelopes on successful HTTP responses.
+bodies through `ProviderError::from_http_response` for failed HTTP responses and
+`ProviderError::from_provider_body` for error envelopes on successful HTTP
+responses.
 Credentials require redacted debug output. Provider changes need coverage for
 supported streaming, usage, tool and multimodal content, with examples and facade
 exposure matching the configured capabilities.
@@ -235,7 +236,7 @@ Cache resource paths accept a bare id or a `cachedContents/` handle. Validation
 rejects path separators, query delimiters, fragments, and traversal segments
 rather than escaping them, so lookup, expiry updates, and deletion cannot be
 retargeted by an invalid handle. A 403 or 404 on an existing handle maps to
-`CachedContentError::Expired`, preserving the provider message because 403 can
+`ProviderError::CacheExpired`, preserving the provider's reply because 403 can
 also indicate credential or quota problems. Cache creation does not apply this
 mapping, so authorization failures do not become recreation loops.
 

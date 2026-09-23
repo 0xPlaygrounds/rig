@@ -488,9 +488,9 @@ fn resource_path(name: &str) -> Result<String, ProviderError> {
         return Err(ProviderError::Request(
             format!(
                 "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
-             `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
-             where a `?`, `#` or `/` silently retargets the call at a different resource — and \
-             this is the path that deletes"
+                 `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
+                 where a `?`, `#` or `/` silently retargets the call at a different resource — \
+                 and this is the path that deletes"
             )
             .into(),
         ));
