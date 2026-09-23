@@ -1,5 +1,5 @@
 when:
-  path: /props
+  path: /v1/models
   method: GET
   query_param: []
   header:

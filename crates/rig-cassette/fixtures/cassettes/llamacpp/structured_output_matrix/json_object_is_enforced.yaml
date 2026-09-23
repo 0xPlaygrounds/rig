@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"/no_think Reply with the single word hello and nothing else.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","response_format":{"type":"json_object"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"response\": \"hello\"}","role":"assistant"}}],"created":0,"id":"chatcmpl-ia7BfyW6uRazItiE6KQNnoPb1FCR6Nyj","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10964-b29c606e2","timings":{"cache_n":20,"predicted_ms":139.932,"predicted_n":17,"predicted_per_second":114.3412514649973,"predicted_per_token_ms":8.74575,"prompt_ms":26.079,"prompt_n":1,"prompt_per_second":38.345028567046285,"prompt_per_token_ms":26.079},"usage":{"completion_tokens":17,"prompt_tokens":21,"prompt_tokens_details":{"cached_tokens":20},"total_tokens":38}}'
