@@ -28,8 +28,9 @@
 //! text; cell 5: the healthy tool call, then the tool-result follow-up with
 //! the full five-message history). Each derived cell asserts its fixture
 //! really carries the control byte, so a re-record cannot silently heal it.
-//! Cells 3–5 were derived from an earlier recording of cell 2, so their ids
-//! differ from cell 2's current fixture.
+//! Cells 3–5 were derived from an earlier recording of cell 2, so they still
+//! carry that recording's scrubbed `REDACTED_<n>` ids rather than cell 2's
+//! current ones.
 //!
 //! Anthropic is the provider for this matrix because its wire uses the
 //! `Error` policy on block close; OpenAI-compatible wires use `Drop` /
