@@ -16,8 +16,7 @@ async fn image_generation_smoke() {
     let model = client.image_generation(openai::DALL_E_2);
 
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
+        .image_generation_request(IMAGE_PROMPT)
         .width(1024)
         .height(1024)
         .send()
@@ -37,8 +36,7 @@ async fn gpt_image_2_image_generation_smoke() {
     let model = client.image_generation(openai::GPT_IMAGE_2);
 
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
+        .image_generation_request(IMAGE_PROMPT)
         .width(1024)
         .height(1024)
         .send()

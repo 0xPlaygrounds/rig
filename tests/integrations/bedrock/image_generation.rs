@@ -12,8 +12,7 @@ use super::{
 async fn image_generation_smoke() {
     let model = client().image_generation(BEDROCK_IMAGE_MODEL);
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
+        .image_generation_request(IMAGE_PROMPT)
         .width(512)
         .height(512)
         .send()

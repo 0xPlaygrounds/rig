@@ -16,7 +16,7 @@ use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use rig_core::{
     message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::WasmCompatSend,
 };
@@ -346,13 +346,9 @@ impl CompletionModel {
             &request_model,
             self.prompt_caching,
         );
-        let span = CompletionSpanBuilder::new(
-            "aws_bedrock",
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
+        let span = SpanBuilder::new("aws_bedrock", &request_model, GenAiOperation::ChatStreaming)
+            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+            .build();
 
         let mut converse_builder = self
             .client

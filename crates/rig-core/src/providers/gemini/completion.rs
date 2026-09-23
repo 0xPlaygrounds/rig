@@ -40,7 +40,7 @@ use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::telemetry::CompletionOperation;
+use crate::telemetry::GenAiOperation;
 use crate::wire::{Body, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part,
@@ -97,11 +97,11 @@ impl Wire for GenerateContent {
     }
 
     /// Select the telemetry operation for unary or streamed completion.
-    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+    fn telemetry(&self, streaming: bool) -> GenAiOperation {
         if streaming {
-            CompletionOperation::ChatStreaming
+            GenAiOperation::ChatStreaming
         } else {
-            CompletionOperation::GenerateContent
+            GenAiOperation::GenerateContent
         }
     }
 

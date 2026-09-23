@@ -23,7 +23,7 @@ use rig_core::completion::{self, CompletionRequest};
 use rig_core::error::ProviderError;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::ProviderResponseExt;
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use tracing::Instrument;
 
 // Profile identifiers with a us. prefix route inference within the US region
@@ -194,13 +194,12 @@ impl CompletionModel {
     ) -> Result<AwsConverseOutput, ProviderError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
 
-        let span =
-            CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
-                .system_instructions(
-                    completion_request.system_instructions(),
-                    completion_request.record_telemetry_content,
-                )
-                .build();
+        let span = SpanBuilder::new("aws_bedrock", &request_model, GenAiOperation::Chat)
+            .system_instructions(
+                completion_request.system_instructions(),
+                completion_request.record_telemetry_content,
+            )
+            .build();
 
         let request = AwsCompletionRequest::for_model(
             completion_request,
@@ -243,8 +242,11 @@ impl CompletionModel {
             let aws_output = AwsConverseOutput(response);
 
             let span = tracing::Span::current();
-            span.record_response_metadata(&aws_output);
-            span.record_token_usage(&aws_output.usage().unwrap_or_default());
+            span.record_response(
+                aws_output.response_id(),
+                aws_output.response_model_name(),
+                &aws_output.usage().unwrap_or_default(),
+            );
 
             Ok(aws_output)
         }

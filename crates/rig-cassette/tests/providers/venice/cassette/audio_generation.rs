@@ -19,9 +19,7 @@ async fn audio_generation_smoke() {
         |client| async move {
             let model = client.audio_generation(venice::TTS_KOKORO);
             let response = model
-                .audio_generation_request()
-                .text("Rig speaks.")
-                .voice("af_sky")
+                .audio_generation_request("Rig speaks.", "af_sky")
                 .speed(1.0)
                 .additional_params(serde_json::json!({ "response_format": "mp3" }))
                 .send()

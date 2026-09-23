@@ -847,14 +847,8 @@ impl<M> CompletionRequestBuilder<M> {
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,
     ) -> Self {
-        let Some(additional_params) = additional_params.into() else {
-            self.additional_params = None;
-            return self;
-        };
-        self.additional_params = Some(match self.additional_params.take() {
-            Some(params) => json_utils::merge(params, additional_params),
-            None => additional_params,
-        });
+        self.additional_params =
+            json_utils::merge_params(self.additional_params.take(), additional_params.into());
         self
     }
 

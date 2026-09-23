@@ -17,8 +17,9 @@ async fn image_generation_smoke() {
         |client| async move {
             let model = client.image_generation(venice::VENICE_SD35);
             let response = model
-                .image_generation_request()
-                .prompt("A lighthouse on a rocky cliff at sunrise, clean illustrative style.")
+                .image_generation_request(
+                    "A lighthouse on a rocky cliff at sunrise, clean illustrative style.",
+                )
                 .width(256)
                 .height(256)
                 .additional_params(serde_json::json!({

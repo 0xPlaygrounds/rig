@@ -29,7 +29,7 @@ use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAI, OpenAiDecoder, OpenAiWire, Quirks,
     ResponsesQuirks, Route,
 };
-use crate::telemetry::CompletionOperation;
+use crate::telemetry::GenAiOperation;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -350,7 +350,7 @@ impl Wire for CopilotWire {
         self.wire.capabilities()
     }
 
-    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+    fn telemetry(&self, streaming: bool) -> GenAiOperation {
         self.wire.telemetry(streaming)
     }
 }

@@ -81,9 +81,7 @@ async fn default_body_returns_mp3() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .send()
                 .await
                 .expect("speech synthesis should succeed");
@@ -102,9 +100,7 @@ async fn response_format_wav_changes_the_container() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "response_format": "wav" }))
                 .send()
                 .await
@@ -128,9 +124,7 @@ async fn response_format_flac_changes_the_container() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "response_format": "flac" }))
                 .send()
                 .await
@@ -153,9 +147,7 @@ async fn instructions_reach_the_tts_model() {
             let response = client
                 .openai
                 .audio_generation("gpt-4o-mini-tts")
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
                 .send()
                 .await
@@ -181,9 +173,7 @@ async fn completions_client_shares_the_fixed_body() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "response_format": "wav" }))
                 .send()
                 .await
@@ -204,9 +194,7 @@ async fn additional_params_can_override_voice() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!({ "voice": "nova" }))
                 .send()
                 .await
@@ -227,9 +215,7 @@ async fn non_object_additional_params_are_a_no_op() {
             let response = client
                 .openai
                 .audio_generation(openai::TTS_1)
-                .audio_generation_request()
-                .text(TEXT)
-                .voice(VOICE)
+                .audio_generation_request(TEXT, VOICE)
                 .additional_params(json!("not-an-object"))
                 .send()
                 .await

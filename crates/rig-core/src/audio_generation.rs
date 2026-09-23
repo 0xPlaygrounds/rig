@@ -4,15 +4,14 @@
 //! use rig_core::audio_generation::{AudioGenerationModel, AudioGenerationRequestBuilder};
 //!
 //! # async fn example(model: impl AudioGenerationModel, voice: &str) -> Result<(), Box<dyn std::error::Error>> {
-//! let response = AudioGenerationRequestBuilder::new(model)
-//!     .text("Hello").voice(voice).send().await?;
+//! let response = AudioGenerationRequestBuilder::new(model, "Hello", voice)
+//!     .send().await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -89,11 +88,16 @@ pub trait AudioGenerationModel: WasmCompatSend + WasmCompatSync {
         request: AudioGenerationRequest,
     ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend;
 
-    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing>
+    /// Creates a request builder to speak `text` in `voice`.
+    fn audio_generation_request(
+        &self,
+        text: impl Into<String>,
+        voice: impl Into<String>,
+    ) -> AudioGenerationRequestBuilder<Self>
     where
         Self: Sized + Clone,
     {
-        AudioGenerationRequestBuilder::new(self.clone())
+        AudioGenerationRequestBuilder::new(self.clone(), text, voice)
     }
 }
 
@@ -117,103 +121,54 @@ pub struct AudioGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-pub struct AudioGenerationRequestBuilder<M, T = Missing, V = Missing>
-where
-    M: AudioGenerationModel,
-{
+/// Builds a speech request for a text and voice. The speed defaults to 1.0.
+pub struct AudioGenerationRequestBuilder<M> {
     model: M,
-    text: T,
-    voice: V,
-    speed: f32,
-    additional_params: Option<Value>,
+    request: AudioGenerationRequest,
 }
 
-impl<M> AudioGenerationRequestBuilder<M, Missing, Missing>
-where
-    M: AudioGenerationModel,
-{
-    pub fn new(model: M) -> Self {
+impl<M> AudioGenerationRequestBuilder<M> {
+    /// A request to speak `text` in `voice`.
+    pub fn new(model: M, text: impl Into<String>, voice: impl Into<String>) -> Self {
         Self {
             model,
-            text: Missing,
-            voice: Missing,
-            speed: 1.0,
-            additional_params: None,
-        }
-    }
-}
-
-impl<M, T, V> AudioGenerationRequestBuilder<M, T, V>
-where
-    M: AudioGenerationModel,
-{
-    /// Sets the text for the audio generation request
-    pub fn text(self, text: &str) -> AudioGenerationRequestBuilder<M, Provided<String>, V> {
-        AudioGenerationRequestBuilder {
-            model: self.model,
-            text: Provided(text.to_string()),
-            voice: self.voice,
-            speed: self.speed,
-            additional_params: self.additional_params,
-        }
-    }
-
-    /// The voice of the generated audio
-    pub fn voice(self, voice: &str) -> AudioGenerationRequestBuilder<M, T, Provided<String>> {
-        AudioGenerationRequestBuilder {
-            model: self.model,
-            text: self.text,
-            voice: Provided(voice.to_string()),
-            speed: self.speed,
-            additional_params: self.additional_params,
-        }
-    }
-
-    /// The speed of the generated audio
-    pub fn speed(mut self, speed: f32) -> Self {
-        self.speed = speed;
-        self
-    }
-
-    /// Replaces provider-specific request parameters.
-    pub fn additional_params(mut self, params: Value) -> Self {
-        self.additional_params = Some(params);
-        self
-    }
-}
-
-impl<M> AudioGenerationRequestBuilder<M, Provided<String>, Provided<String>>
-where
-    M: AudioGenerationModel,
-{
-    pub fn build(self) -> AudioGenerationRequest {
-        self.into_parts().1
-    }
-
-    fn into_parts(self) -> (M, AudioGenerationRequest) {
-        let Self {
-            model,
-            text,
-            voice,
-            speed,
-            additional_params,
-        } = self;
-        (
-            model,
-            AudioGenerationRequest {
-                text: text.0,
-                voice: voice.0,
-                speed,
-                additional_params,
+            request: AudioGenerationRequest {
+                text: text.into(),
+                voice: voice.into(),
+                speed: 1.0,
+                additional_params: None,
             },
-        )
+        }
     }
 
-    pub async fn send(self) -> Result<AudioGenerationResponse, ProviderError> {
-        let (model, request) = self.into_parts();
-        model.audio_generation(request).await
+    /// The speed of the generated audio.
+    pub fn speed(mut self, speed: f32) -> Self {
+        self.request.speed = speed;
+        self
+    }
+
+    /// Merges provider-specific parameters over earlier ones, key by key for
+    /// JSON objects; `None` clears existing parameters.
+    pub fn additional_params(mut self, params: impl Into<Option<Value>>) -> Self {
+        self.request.additional_params =
+            crate::json_utils::merge_params(self.request.additional_params.take(), params.into());
+        self
+    }
+
+    /// Builds the audio generation request.
+    pub fn build(self) -> AudioGenerationRequest {
+        self.request
     }
 }
 
+impl<M: AudioGenerationModel> AudioGenerationRequestBuilder<M> {
+    /// Sends the request to the model and returns the generated audio.
+    pub async fn send(self) -> Result<AudioGenerationResponse, ProviderError> {
+        self.model.audio_generation(self.request).await
+    }
+}
+
+#[cfg(test)]
+mod builder_tests;
 #[cfg(test)]
 mod provider_response_tests;

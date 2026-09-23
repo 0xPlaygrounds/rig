@@ -17,8 +17,7 @@ async fn image_generation_smoke() {
     let model = provider.image_generation(hyperbolic::SDXL_TURBO);
 
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
+        .image_generation_request(IMAGE_PROMPT)
         .width(1024)
         .height(1024)
         .send()

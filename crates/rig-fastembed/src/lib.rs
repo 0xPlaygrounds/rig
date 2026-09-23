@@ -192,10 +192,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality(
+        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
             "fastembed",
             &format!("{:?}", self.model),
-            rig_core::telemetry::ModalityOperation::Embeddings,
             async {
                 let Some(embedder) = &self.embedder else {
                     let message = self.init_error.as_ref().map_or_else(

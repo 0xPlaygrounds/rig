@@ -16,7 +16,7 @@ use crate::streaming::{
     Absorbed, BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, FoldStep, MintKind,
     StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd, UnknownPayload,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply, Sink};
 
 /// Generating an assistant turn, unary or streamed.
@@ -33,7 +33,7 @@ impl Operation for Completion {
     type Capabilities = crate::completion::ProviderCapabilities;
     type Output = AdapterOutput;
     type Fold = CompletionFold;
-    type Telemetry = CompletionOperation;
+    type Telemetry = GenAiOperation;
 
     const NAME: &'static str = "completion";
 
@@ -43,9 +43,9 @@ impl Operation for Completion {
 
     fn telemetry(streaming: bool) -> Self::Telemetry {
         if streaming {
-            CompletionOperation::ChatStreaming
+            GenAiOperation::ChatStreaming
         } else {
-            CompletionOperation::Chat
+            GenAiOperation::Chat
         }
     }
 
@@ -82,7 +82,8 @@ impl Operation for Completion {
         // The request's override is the model actually sent (every wire
         // honours it on encode), so it is the one the span names.
         let model = request.model.as_deref().or(model).unwrap_or_default();
-        CompletionSpanBuilder::new(provider, model, telemetry)
+        debug_assert!(telemetry.is_completion());
+        SpanBuilder::new(provider, model, telemetry)
             .system_instructions(
                 request.system_instructions(),
                 request.record_telemetry_content,
@@ -90,42 +91,29 @@ impl Operation for Completion {
             .build()
     }
 
+    // Both prefer the response identity, falling back to the message identity.
     fn record(span: &tracing::Span, response: &Self::Response) {
-        if span.is_disabled() {
-            return;
-        }
-        // Prefer response identity, falling back to message identity.
-        if let Some(id) = response
-            .response_id
-            .as_deref()
-            .or(response.message_id.as_deref())
-        {
-            span.record("gen_ai.response.id", id);
-        }
-        if let Some(model) = response.model.as_deref() {
-            span.record("gen_ai.response.model", model);
-        }
-        span.record_token_usage(&response.usage);
+        span.record_response(
+            response
+                .response_id
+                .as_deref()
+                .or(response.message_id.as_deref()),
+            response.model.as_deref(),
+            &response.usage,
+        );
     }
 
     fn record_event(span: &tracing::Span, event: &Self::Event) {
-        let StreamEvent::Final(terminal) = event else {
-            return;
-        };
-        if span.is_disabled() {
-            return;
+        if let StreamEvent::Final(terminal) = event {
+            span.record_response(
+                terminal
+                    .response_id
+                    .as_deref()
+                    .or(terminal.message_id.as_deref()),
+                terminal.model.as_deref(),
+                &terminal.usage,
+            );
         }
-        if let Some(id) = terminal
-            .response_id
-            .as_deref()
-            .or(terminal.message_id.as_deref())
-        {
-            span.record("gen_ai.response.id", id);
-        }
-        if let Some(model) = terminal.model.as_deref() {
-            span.record("gen_ai.response.model", model);
-        }
-        span.record_token_usage(&terminal.usage);
     }
 }
 

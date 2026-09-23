@@ -21,9 +21,7 @@ async fn audio_generation_smoke() {
     let model = client.audio_generation(xai::TTS_1);
 
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("eve")
+        .audio_generation_request(AUDIO_TEXT, "eve")
         .additional_params(json!({
             "language": "en",
         }))

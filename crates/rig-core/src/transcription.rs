@@ -4,8 +4,7 @@
 //! use rig_core::transcription::{TranscriptionModel, TranscriptionRequestBuilder};
 //!
 //! # async fn example(model: impl TranscriptionModel) -> Result<(), Box<dyn std::error::Error>> {
-//! let response = TranscriptionRequestBuilder::new(model)
-//!     .load_file("audio.wav")?
+//! let response = TranscriptionRequestBuilder::from_file(model, "audio.wav")?
 //!     .send().await?;
 //! # let _ = response;
 //! # Ok(())
@@ -14,7 +13,6 @@
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
 use crate::json_utils;
-use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -94,12 +92,12 @@ pub trait TranscriptionModel: WasmCompatSend + WasmCompatSync {
         request: TranscriptionRequest,
     ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend;
 
-    /// Creates a request builder without audio data.
-    fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing>
+    /// Creates a request builder over `data`.
+    fn transcription_request(&self, data: Vec<u8>) -> TranscriptionRequestBuilder<Self>
     where
         Self: Sized + Clone,
     {
-        TranscriptionRequestBuilder::new(self.clone())
+        TranscriptionRequestBuilder::new(self.clone(), data)
     }
 }
 
@@ -132,161 +130,91 @@ pub struct TranscriptionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Builds a transcription request after audio data is supplied.
-/// The model is moved into the builder and consumed when sending; building
-/// without sending drops it. Data presence is tracked by type, not validated
-/// for audio format or nonemptiness.
-pub struct TranscriptionRequestBuilder<M, D> {
+/// The filename a request carries until the caller or its file names it.
+const DEFAULT_FILENAME: &str = "file";
+
+/// Builds a transcription request over the supplied audio. The model is moved
+/// into the builder and consumed by [`Self::send`]. The audio is not validated
+/// for format or nonemptiness.
+pub struct TranscriptionRequestBuilder<M> {
     model: M,
-    data: D,
-    filename: Option<String>,
-    language: Option<String>,
-    prompt: Option<String>,
-    temperature: Option<f64>,
-    additional_params: Option<serde_json::Value>,
+    request: TranscriptionRequest,
 }
 
-impl<M> TranscriptionRequestBuilder<M, Missing>
-where
-    M: TranscriptionModel,
-{
-    pub fn new(model: M) -> Self {
-        TranscriptionRequestBuilder {
+impl<M> TranscriptionRequestBuilder<M> {
+    /// A request over `data`, named `"file"` until [`Self::filename`] names it.
+    pub fn new(model: M, data: Vec<u8>) -> Self {
+        Self {
             model,
-            data: Missing,
-            filename: None,
-            language: None,
-            prompt: None,
-            temperature: None,
-            additional_params: None,
-        }
-    }
-}
-
-impl<M, D> TranscriptionRequestBuilder<M, D>
-where
-    M: TranscriptionModel,
-{
-    pub fn filename(mut self, filename: Option<String>) -> Self {
-        self.filename = filename;
-        self
-    }
-
-    /// Supplies audio bytes and enables building or sending the request.
-    pub fn data(self, data: Vec<u8>) -> TranscriptionRequestBuilder<M, Provided<Vec<u8>>> {
-        TranscriptionRequestBuilder {
-            model: self.model,
-            data: Provided(data),
-            filename: self.filename,
-            language: self.language,
-            prompt: self.prompt,
-            temperature: self.temperature,
-            additional_params: self.additional_params,
-        }
-    }
-
-    /// Reads a file synchronously, returning I/O errors unchanged. Uses its base
-    /// filename when available and enables building or sending the request.
-    pub fn load_file<P>(
-        self,
-        path: P,
-    ) -> io::Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>>
-    where
-        P: AsRef<Path>,
-    {
-        let path = path.as_ref();
-        let data = fs::read(path)?;
-
-        let filename = path.file_name().map(|n| n.to_string_lossy().into_owned());
-
-        Ok(TranscriptionRequestBuilder {
-            model: self.model,
-            data: Provided(data),
-            filename: filename.or(self.filename),
-            language: self.language,
-            prompt: self.prompt,
-            temperature: self.temperature,
-            additional_params: self.additional_params,
-        })
-    }
-
-    /// Sets the output language for the transcription request
-    pub fn language(mut self, language: String) -> Self {
-        self.language = Some(language);
-        self
-    }
-
-    /// Sets the prompt to be sent in the transcription request
-    pub fn prompt(mut self, prompt: String) -> Self {
-        self.prompt = Some(prompt);
-        self
-    }
-
-    /// Set the temperature to be sent in the transcription request
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Merges provider-specific parameters with existing parameters.
-    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
-        match self.additional_params {
-            Some(params) => {
-                self.additional_params = Some(json_utils::merge(params, additional_params));
-            }
-            None => {
-                self.additional_params = Some(additional_params);
-            }
-        }
-        self
-    }
-
-    /// Replaces provider-specific parameters, or clears them with `None`.
-    pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
-        self.additional_params = additional_params;
-        self
-    }
-}
-
-/// Request construction and dispatch after audio data has been supplied.
-impl<M> TranscriptionRequestBuilder<M, Provided<Vec<u8>>>
-where
-    M: TranscriptionModel,
-{
-    /// Builds the transcription request
-    pub fn build(self) -> TranscriptionRequest {
-        self.into_parts().1
-    }
-
-    fn into_parts(self) -> (M, TranscriptionRequest) {
-        let Self {
-            model,
-            data,
-            filename,
-            language,
-            prompt,
-            temperature,
-            additional_params,
-        } = self;
-        (
-            model,
-            TranscriptionRequest {
-                data: data.0,
-                filename: filename.unwrap_or_else(|| "file".to_string()),
-                language,
-                prompt,
-                temperature,
-                additional_params,
+            request: TranscriptionRequest {
+                data,
+                filename: DEFAULT_FILENAME.to_owned(),
+                language: None,
+                prompt: None,
+                temperature: None,
+                additional_params: None,
             },
-        )
+        }
     }
 
-    /// Sends the transcription request to the transcription model provider and returns the transcription response
-    pub async fn send(self) -> Result<TranscriptionResponse, ProviderError> {
-        let (model, request) = self.into_parts();
-        model.transcription(request).await
+    /// A request over the file at `path`, named after its base name. Reads the
+    /// file synchronously and returns I/O errors unchanged.
+    pub fn from_file(model: M, path: impl AsRef<Path>) -> io::Result<Self> {
+        let path = path.as_ref();
+        let filename = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        Ok(Self::new(model, fs::read(path)?).filename(filename))
+    }
+
+    /// Names the audio file; `None` restores the default name.
+    pub fn filename(mut self, filename: impl Into<Option<String>>) -> Self {
+        self.request.filename = filename
+            .into()
+            .unwrap_or_else(|| DEFAULT_FILENAME.to_owned());
+        self
+    }
+
+    /// Sets the output language.
+    pub fn language(mut self, language: String) -> Self {
+        self.request.language = Some(language);
+        self
+    }
+
+    /// Sets the prompt sent with the audio.
+    pub fn prompt(mut self, prompt: String) -> Self {
+        self.request.prompt = Some(prompt);
+        self
+    }
+
+    /// Sets the sampling temperature.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.request.temperature = Some(temperature);
+        self
+    }
+
+    /// Merges provider-specific parameters over earlier ones, key by key for
+    /// JSON objects; `None` clears existing parameters.
+    pub fn additional_params(mut self, params: impl Into<Option<serde_json::Value>>) -> Self {
+        self.request.additional_params =
+            json_utils::merge_params(self.request.additional_params.take(), params.into());
+        self
+    }
+
+    /// Builds the transcription request.
+    pub fn build(self) -> TranscriptionRequest {
+        self.request
     }
 }
 
+impl<M: TranscriptionModel> TranscriptionRequestBuilder<M> {
+    /// Sends the request to the model and returns its transcription.
+    pub async fn send(self) -> Result<TranscriptionResponse, ProviderError> {
+        self.model.transcription(self.request).await
+    }
+}
+
+#[cfg(test)]
+mod builder_tests;
 #[cfg(test)]
 mod provider_response_tests;

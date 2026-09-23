@@ -10,7 +10,7 @@
 use super::{One, Take};
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
-use crate::telemetry::{ModalityOperation, ModalityResponseTelemetry, SpanCombinator};
+use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply};
 
 /// Embedding batch limit, resolved dimensions, and optional caller-declared width.
@@ -107,7 +107,7 @@ macro_rules! modality_operation {
             type Capabilities = $capabilities;
             type Output = One<Self>;
             type Fold = $fold;
-            type Telemetry = ModalityOperation;
+            type Telemetry = GenAiOperation;
 
             const NAME: &'static str = $name;
 
@@ -121,7 +121,7 @@ macro_rules! modality_operation {
             }
 
             fn telemetry(_streaming: bool) -> Self::Telemetry {
-                ModalityOperation::$telemetry
+                GenAiOperation::$telemetry
             }
 
             fn stamp_reply(response: &mut Self::Response, reply: Reply) {
@@ -139,25 +139,16 @@ macro_rules! modality_operation {
                 telemetry: Self::Telemetry,
                 _request: &Self::Request,
             ) -> tracing::Span {
-                crate::telemetry::ModalitySpanBuilder::new(
-                    provider,
-                    model.unwrap_or_default(),
-                    telemetry,
-                )
-                .build()
+                debug_assert!(!telemetry.is_completion());
+                SpanBuilder::new(provider, model.unwrap_or_default(), telemetry).build()
             }
 
             fn record(span: &tracing::Span, response: &Self::Response) {
-                if span.is_disabled() {
-                    return;
-                }
-                span.record_token_usage(response.telemetry_usage());
-                if let Some(id) = response.telemetry_response_id() {
-                    span.record("gen_ai.response.id", id);
-                }
-                if let Some(model) = response.telemetry_model() {
-                    span.record("gen_ai.response.model", model);
-                }
+                span.record_response(
+                    response.response_id.as_deref(),
+                    response.model.as_deref(),
+                    &response.usage,
+                );
             }
         }
     };

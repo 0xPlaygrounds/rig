@@ -16,9 +16,7 @@ async fn audio_generation_smoke() {
     let model = provider.audio_generation("EN");
 
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("EN-US")
+        .audio_generation_request(AUDIO_TEXT, "EN-US")
         .send()
         .await
         .expect("audio generation should succeed");
