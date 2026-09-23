@@ -75,21 +75,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust be a sturdy language that stops memory leaks from sinkin' yer ship!"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EoQLCoELAWkUfRNzsmOdqh5k3SdkBwNgxzfKsbGrEpKERBHxf8cP5oQSMfZpVdrQrwztryZR/3+W5hSh+ZeWqECPjOfqMYpPhHs30Frd28msR1qjEtKWmZKaasM890YVxhyljBmqbLtuY3ZhuBJs/2GVg9WuU4im29em9tanYMxJYUAYjDJOUHb69QIue5DzkKQPlw/qJKprM9lO7LYWnglYxewnVopFvEwpuuoiwqJCUfEYNrZRCL+VVihTbX9E7XMoc8D7Tb5eNWPZd09vwdhHg4u8xG7chgR5pm/O+2hG3cag6Nk4dbE4mfd5P+Ab6ukMUbvSz+ZuPjNR9P/u+499piXUDXOIIyx8IcPApFOussbEU11PUPcabDfsH+v5sqnPh9zGIVckrds0tugdpD/g2sNLlhRzKhIqp+fIohNxWpd/3aRDD46mYQrQUKcrYiQPIgX0Ek2B1o71S88gnPJcadoe6+fpk6A9gIU5pS3nFznSELpk8xvV60CiqvT1YC3hYhiB1+j1LBvhgD9TAWvfE6c3VIgu/bxpgPbUlnK4AH9Qx9gJHgkB+pogwMS1OthtAKM3ukmF2L+HDPIzNsOQ+ktMLGBcbHSextqxgAoKHzSaV+/VerY5mvWTocv5BWFruZfJwkjP4pNsD5gZ0oaTGdFAFclGSmK1J9I82wJ8oTWiIheD8iHJGhrl71Csdl5QqLmn/D7oWOxfZFtTX1DjMpcpvpjPE9wJOe5QStsDvj+Lyz3B6CJvXaC23z0UdXjfBBbhXlKj645ywI6jZFOJ5q+HLayRL1oReGTr32DkKmS2Tay1MFZ0FM28z5js0TEUaCJlAtFP/dblQvVjnKCajVHQgymUQExHXuS0CVThygezH6MIBvQXlLnlKBTjQtrfjvCP4syd/6Hg7kWopZ3dUIN0UOuis2TWUBLUpiOl2f10R1lbNvGWPGpxosIyeByLerba30DQMYxbuxQGzyCDTZfv0ClI/v/QoDwATh0XY2BTTaFbPKBFibCmdXD4VaT+JPsjCIS2sZojyulYJE5zjdBbXhjeA0byIVsYVEMXZcKC7S+7sXT2G1J8yNOmsb2BxvRWTWIJYrr7PbJBaDTlzjX8NIMOAhj0gcHlchS3ZjwG+pcuwkUn9TdLq057dv52T0z9B1pxK2XABXPy9GTWvfc9un1wYhYClI1i1fES4OqU2vTjUPZF2HHX77LwZ8x3h89YWSZKclOeDSIfJ1qgQWQj2zwPNTZsXlwotn4FknYNiEOZyA8dGL8XRMB8uxkYhtuLZHyyJdDi7+0zOzcIjl7oIVxh//J45w5YaNzxtySQdJjAml8Lm866ycZ+hI3fu59VRc9a3/6+egjylSQt1ESwYgMNaIc/jt+Wzdv/YKtnJNujTX/kIfKMQZfjBvj6MdgZtuKncjQVG+Yj25wfJoaokw06CwbeQKJdr3N6BVzqpcllqK2fccR4ze09tnFhNjgndG6obyJXm3qFP5LhYXvt7tytsc9b/It0OV72+65u01GLbrBSo1XfkYu3C5+RUGI/OM5ExeAYlBshwqDPqvp9hJ6pVTR6RJLSzeGfAeZ7q/7LuBQyr8N19sfw3PowPtIsdZnDgYsaqg8lnVE7nl92t5PE2NQL32BuTydrSnaM8mrDrWG1RXcv1HSJT1an/vsVCya6ntc6Enw9tpkmnlABe4PCttNG6/4qANo/IURhA1SOVmwTdVkN7RKuY15SY7vNhfUWMv0trhnVomAl9Vvmz3rnH+7kss5zSCUtf9/6nhRQan2nd61dffccvhTArh84p+VYkOPabZPJuG08TwYbIcytxdA7PLe+5fn/GlcXuU3goOMtkBPfmPobP0xy8pchJ3GejYtrqt4Vc4GlaRdJKyg="
-                  }
+              "text": "Rust be a sturdy language that stops memory leaks from sinkin' yer ship!",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EoQLCoELAWkUfRNzsmOdqh5k3SdkBwNgxzfKsbGrEpKERBHxf8cP5oQSMfZpVdrQrwztryZR/3+W5hSh+ZeWqECPjOfqMYpPhHs30Frd28msR1qjEtKWmZKaasM890YVxhyljBmqbLtuY3ZhuBJs/2GVg9WuU4im29em9tanYMxJYUAYjDJOUHb69QIue5DzkKQPlw/qJKprM9lO7LYWnglYxewnVopFvEwpuuoiwqJCUfEYNrZRCL+VVihTbX9E7XMoc8D7Tb5eNWPZd09vwdhHg4u8xG7chgR5pm/O+2hG3cag6Nk4dbE4mfd5P+Ab6ukMUbvSz+ZuPjNR9P/u+499piXUDXOIIyx8IcPApFOussbEU11PUPcabDfsH+v5sqnPh9zGIVckrds0tugdpD/g2sNLlhRzKhIqp+fIohNxWpd/3aRDD46mYQrQUKcrYiQPIgX0Ek2B1o71S88gnPJcadoe6+fpk6A9gIU5pS3nFznSELpk8xvV60CiqvT1YC3hYhiB1+j1LBvhgD9TAWvfE6c3VIgu/bxpgPbUlnK4AH9Qx9gJHgkB+pogwMS1OthtAKM3ukmF2L+HDPIzNsOQ+ktMLGBcbHSextqxgAoKHzSaV+/VerY5mvWTocv5BWFruZfJwkjP4pNsD5gZ0oaTGdFAFclGSmK1J9I82wJ8oTWiIheD8iHJGhrl71Csdl5QqLmn/D7oWOxfZFtTX1DjMpcpvpjPE9wJOe5QStsDvj+Lyz3B6CJvXaC23z0UdXjfBBbhXlKj645ywI6jZFOJ5q+HLayRL1oReGTr32DkKmS2Tay1MFZ0FM28z5js0TEUaCJlAtFP/dblQvVjnKCajVHQgymUQExHXuS0CVThygezH6MIBvQXlLnlKBTjQtrfjvCP4syd/6Hg7kWopZ3dUIN0UOuis2TWUBLUpiOl2f10R1lbNvGWPGpxosIyeByLerba30DQMYxbuxQGzyCDTZfv0ClI/v/QoDwATh0XY2BTTaFbPKBFibCmdXD4VaT+JPsjCIS2sZojyulYJE5zjdBbXhjeA0byIVsYVEMXZcKC7S+7sXT2G1J8yNOmsb2BxvRWTWIJYrr7PbJBaDTlzjX8NIMOAhj0gcHlchS3ZjwG+pcuwkUn9TdLq057dv52T0z9B1pxK2XABXPy9GTWvfc9un1wYhYClI1i1fES4OqU2vTjUPZF2HHX77LwZ8x3h89YWSZKclOeDSIfJ1qgQWQj2zwPNTZsXlwotn4FknYNiEOZyA8dGL8XRMB8uxkYhtuLZHyyJdDi7+0zOzcIjl7oIVxh//J45w5YaNzxtySQdJjAml8Lm866ycZ+hI3fu59VRc9a3/6+egjylSQt1ESwYgMNaIc/jt+Wzdv/YKtnJNujTX/kIfKMQZfjBvj6MdgZtuKncjQVG+Yj25wfJoaokw06CwbeQKJdr3N6BVzqpcllqK2fccR4ze09tnFhNjgndG6obyJXm3qFP5LhYXvt7tytsc9b/It0OV72+65u01GLbrBSo1XfkYu3C5+RUGI/OM5ExeAYlBshwqDPqvp9hJ6pVTR6RJLSzeGfAeZ7q/7LuBQyr8N19sfw3PowPtIsdZnDgYsaqg8lnVE7nl92t5PE2NQL32BuTydrSnaM8mrDrWG1RXcv1HSJT1an/vsVCya6ntc6Enw9tpkmnlABe4PCttNG6/4qANo/IURhA1SOVmwTdVkN7RKuY15SY7vNhfUWMv0trhnVomAl9Vvmz3rnH+7kss5zSCUtf9/6nhRQan2nd61dffccvhTArh84p+VYkOPabZPJuG08TwYbIcytxdA7PLe+5fn/GlcXuU3goOMtkBPfmPobP0xy8pchJ3GejYtrqt4Vc4GlaRdJKyg="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

@@ -85,13 +85,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_068ef937bf63528d006ab3969eb6e487d0830c7d18a7975c5a",
+          "response_id": "resp_068ef937bf63528d006ab3969e554487d0a200987c435786ed",
+          "provider_request_id": "req_19f2b547d4f34417a6a9ee95d4ce6351",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -100,7 +101,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_068ef937bf63528d006ab3969e554487d0a200987c435786ed",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -119,7 +120,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_068ef937bf63528d006ab3969eb6e487d0830c7d18a7975c5a",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"

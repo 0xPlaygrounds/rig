@@ -30,35 +30,35 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 14,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 15,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 23,
+        "batch": 21,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
+        "batch": 22,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 26,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -358,11 +358,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                  "content": "Running the production-readiness scenario."
                 }
               ],
               "provider": "xai"
@@ -371,11 +371,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
               },
               "function": {
                 "name": "ping_empty",
@@ -386,15 +386,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 745,
-            "output_tokens": 301,
-            "total_tokens": 1046,
-            "cached_input_tokens": 704,
-            "reasoning_tokens": 296
+            "input_tokens": 743,
+            "output_tokens": 322,
+            "total_tokens": 1065,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 316
           },
           "message_id": null,
-          "response_id": "req_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
+          "provider_request_id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -404,23 +404,23 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_1",
+            "id": "936fb76b-48d3-98ee-8fc6-f704799c1f86",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_1",
+                "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1",
+                    "text": "Running the production-readiness scenario.",
                     "type": "summary_text"
                   }
                 ],
@@ -428,8 +428,8 @@
               },
               {
                 "arguments": "{}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                "id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0",
                 "name": "ping_empty",
                 "status": "completed",
                 "type": "function_call"
@@ -569,21 +569,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 745,
-                "output_tokens": 301
+                "input_tokens": 743,
+                "output_tokens": 325
               },
-              "cost_in_usd_ticks": 9445500,
-              "input_tokens": 745,
+              "cost_in_usd_ticks": 15321500,
+              "input_tokens": 743,
               "input_tokens_details": {
-                "cached_tokens": 704
+                "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 301,
+              "output_tokens": 322,
               "output_tokens_details": {
-                "reasoning_tokens": 296
+                "reasoning_tokens": 316
               },
-              "total_tokens": 1046
+              "total_tokens": 1065
             },
             "user": null
           }
@@ -644,11 +644,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -657,11 +657,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -679,11 +679,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -815,11 +815,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_2",
+              "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                  "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                 }
               ],
               "provider": "xai"
@@ -828,11 +828,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -860,15 +860,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 759,
-            "output_tokens": 377,
-            "total_tokens": 1136,
-            "cached_input_tokens": 704,
-            "reasoning_tokens": 299
+            "input_tokens": 757,
+            "output_tokens": 433,
+            "total_tokens": 1190,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 360
           },
           "message_id": null,
-          "response_id": "req_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
+          "provider_request_id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -878,23 +878,23 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_2",
+            "id": "3da86732-1504-9e36-be1e-bfc0a90061e5",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_2",
+                "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti...",
+                    "text": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo.",
                     "type": "summary_text"
                   }
                 ],
@@ -902,8 +902,8 @@
               },
               {
                 "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
-                "call_id": "call_REDACTED_2",
-                "id": "fc_REDACTED_2",
+                "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                "id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0",
                 "name": "inspect_manifest",
                 "status": "completed",
                 "type": "function_call"
@@ -1043,21 +1043,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 759,
-                "output_tokens": 377
+                "input_tokens": 757,
+                "output_tokens": 436
               },
-              "cost_in_usd_ticks": 11520500,
-              "input_tokens": 759,
+              "cost_in_usd_ticks": 18271500,
+              "input_tokens": 757,
               "input_tokens_details": {
-                "cached_tokens": 704
+                "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 377,
+              "output_tokens": 433,
               "output_tokens_details": {
-                "reasoning_tokens": 299
+                "reasoning_tokens": 360
               },
-              "total_tokens": 1136
+              "total_tokens": 1190
             },
             "user": null
           }
@@ -1118,11 +1118,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -1131,11 +1131,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1153,11 +1153,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1175,11 +1175,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_2",
+                  "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                      "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                     }
                   ],
                   "provider": "xai"
@@ -1188,11 +1188,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1227,11 +1227,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1362,25 +1362,14 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "id": "rs_REDACTED_3",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
-                }
-              ],
-              "provider": "xai"
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
               },
               "function": {
                 "name": "join_labels",
@@ -1399,15 +1388,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 843,
-            "output_tokens": 84,
-            "total_tokens": 927,
-            "cached_input_tokens": 832,
-            "reasoning_tokens": 54
+            "input_tokens": 841,
+            "output_tokens": 55,
+            "total_tokens": 896,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 25
           },
           "message_id": null,
-          "response_id": "req_REDACTED_3",
-          "provider_request_id": "req_REDACTED_3",
+          "response_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
+          "provider_request_id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -1417,32 +1406,21 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_3",
+            "id": "419fcec5-5803-98f0-a5a9-d7ca2c92ac5e",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_3",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                "call_id": "call_REDACTED_3",
-                "id": "fc_REDACTED_3",
+                "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                "id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0",
                 "name": "join_labels",
                 "status": "completed",
                 "type": "function_call"
@@ -1582,21 +1560,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 843,
-                "output_tokens": 84
+                "input_tokens": 841,
+                "output_tokens": 58
               },
-              "cost_in_usd_ticks": 3901500,
-              "input_tokens": 843,
+              "cost_in_usd_ticks": 9871500,
+              "input_tokens": 841,
               "input_tokens_details": {
-                "cached_tokens": 832
+                "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 84,
+              "output_tokens": 55,
               "output_tokens_details": {
-                "reasoning_tokens": 54
+                "reasoning_tokens": 25
               },
-              "total_tokens": 927
+              "total_tokens": 896
             },
             "user": null
           }
@@ -1657,11 +1635,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -1670,11 +1648,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1692,11 +1670,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1714,11 +1692,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_2",
+                  "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                      "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                     }
                   ],
                   "provider": "xai"
@@ -1727,11 +1705,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1766,11 +1744,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1787,25 +1765,14 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_REDACTED_3",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1831,11 +1798,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1967,11 +1934,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_4",
+              "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                  "content": "Running the production-readiness scenario."
                 }
               ],
               "provider": "xai"
@@ -1980,11 +1947,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
               },
               "provider": {
-                "call_id": "call_REDACTED_4",
-                "item_id": "fc_REDACTED_4"
+                "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
               },
               "function": {
                 "name": "escape_echo",
@@ -1997,15 +1964,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 892,
-            "output_tokens": 82,
-            "total_tokens": 974,
-            "cached_input_tokens": 832,
-            "reasoning_tokens": 54
+            "input_tokens": 890,
+            "output_tokens": 283,
+            "total_tokens": 1173,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 256
           },
           "message_id": null,
-          "response_id": "req_REDACTED_4",
-          "provider_request_id": "req_REDACTED_4",
+          "response_id": "8868afed-f733-9ee3-8085-20c58409643c",
+          "provider_request_id": "8868afed-f733-9ee3-8085-20c58409643c",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -2015,23 +1982,23 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_4",
+            "id": "8868afed-f733-9ee3-8085-20c58409643c",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_4",
+                "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n",
+                    "text": "Running the production-readiness scenario.",
                     "type": "summary_text"
                   }
                 ],
@@ -2039,8 +2006,8 @@
               },
               {
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                "call_id": "call_REDACTED_4",
-                "id": "fc_REDACTED_4",
+                "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                "id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0",
                 "name": "escape_echo",
                 "status": "completed",
                 "type": "function_call"
@@ -2180,21 +2147,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 892,
-                "output_tokens": 82
+                "input_tokens": 890,
+                "output_tokens": 286
               },
-              "cost_in_usd_ticks": 4464000,
-              "input_tokens": 892,
+              "cost_in_usd_ticks": 16184000,
+              "input_tokens": 890,
               "input_tokens_details": {
-                "cached_tokens": 832
+                "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 82,
+              "output_tokens": 283,
               "output_tokens_details": {
-                "reasoning_tokens": 54
+                "reasoning_tokens": 256
               },
-              "total_tokens": 974
+              "total_tokens": 1173
             },
             "user": null
           }
@@ -2255,11 +2222,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_936fb76b-48d3-98ee-8fc6-f704799c1f86",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -2268,11 +2235,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2290,11 +2257,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-d68ee46c-30da-4dd4-9538-a9b194f0eecd-0",
+                    "item_id": "fc_936fb76b-48d3-98ee-8fc6-f704799c1f86_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2312,11 +2279,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_2",
+                  "id": "rs_3da86732-1504-9e36-be1e-bfc0a90061e5",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
+                      "content": "The production-readiness scenario requires calling exactly one tool at a time in the specified order.\n\nThe first tool call returned EMPTY-OK. The remaining three tools are next: inspect_manifest, join_labels, and escape_echo."
                     }
                   ],
                   "provider": "xai"
@@ -2325,11 +2292,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2364,11 +2331,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-145f2ad6-315c-4bf8-b96a-47ac313b636f-1",
+                    "item_id": "fc_3da86732-1504-9e36-be1e-bfc0a90061e5_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2385,25 +2352,14 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_REDACTED_3",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2429,11 +2385,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call-1c05ca51-6b67-4de1-b13a-136744fa7635-2",
+                    "item_id": "fc_419fcec5-5803-98f0-a5a9-d7ca2c92ac5e_0"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2451,11 +2407,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_4",
+                  "id": "rs_8868afed-f733-9ee3-8085-20c58409643c",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -2464,11 +2420,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4",
-                    "item_id": "fc_REDACTED_4"
+                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                    "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2488,11 +2444,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4",
-                    "item_id": "fc_REDACTED_4"
+                    "call_id": "call-c1f677f5-0589-4de1-9776-4b9def1ca322-3",
+                    "item_id": "fc_8868afed-f733-9ee3-8085-20c58409643c_0"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -2623,31 +2579,20 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "id": "rs_REDACTED_5",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "The tools have all been called in the exact order specified, and each returned the expected OK messages.\n"
-                }
-              ],
-              "provider": "xai"
-            },
-            {
               "type": "text",
-              "text": "Production scenario complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
+              "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK."
             }
           ],
           "usage": {
-            "input_tokens": 946,
-            "output_tokens": 69,
-            "total_tokens": 1015,
-            "cached_input_tokens": 896,
-            "reasoning_tokens": 49
+            "input_tokens": 944,
+            "output_tokens": 156,
+            "total_tokens": 1100,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 133
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "req_REDACTED_5",
-          "provider_request_id": "req_REDACTED_5",
+          "message_id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+          "response_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
+          "provider_request_id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
@@ -2657,38 +2602,27 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_5",
+            "id": "85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_5",
-                "status": "completed",
-                "summary": [
-                  {
-                    "text": "The tools have all been called in the exact order specified, and each returned the expected OK messages.\n",
-                    "type": "summary_text"
-                  }
-                ],
-                "type": "reasoning"
-              },
-              {
                 "content": [
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "Production scenario complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+                    "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_85fc2958-a34d-9c5c-95f1-fcc77ea68cb6",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -2828,21 +2762,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 946,
-                "output_tokens": 69
+                "input_tokens": 944,
+                "output_tokens": 163
               },
-              "cost_in_usd_ticks": 4142000,
-              "input_tokens": 946,
+              "cost_in_usd_ticks": 13684000,
+              "input_tokens": 944,
               "input_tokens_details": {
-                "cached_tokens": 896
+                "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 69,
+              "output_tokens": 156,
               "output_tokens_details": {
-                "reasoning_tokens": 49
+                "reasoning_tokens": 133
               },
-              "total_tokens": 1015
+              "total_tokens": 1100
             },
             "user": null
           }

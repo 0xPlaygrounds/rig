@@ -145,10 +145,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
               },
               "function": {
                 "name": "lookup",
@@ -164,10 +164,10 @@
             "input_tokens": 329,
             "output_tokens": 42,
             "total_tokens": 371,
-            "cached_input_tokens": 0
+            "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -186,7 +186,7 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639",
                       "index": 0,
                       "type": "function"
                     }
@@ -195,17 +195,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 42,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 329,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 201,
               "prompt_tokens": 329,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 128
               },
               "total_tokens": 371
             }
@@ -288,7 +288,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -305,7 +305,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -355,10 +355,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
                   },
                   "function": {
                     "name": "lookup",
@@ -378,10 +378,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
                   },
                   "name": "lookup",
                   "content": [
@@ -441,7 +441,7 @@
             "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -458,7 +458,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
+            "id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

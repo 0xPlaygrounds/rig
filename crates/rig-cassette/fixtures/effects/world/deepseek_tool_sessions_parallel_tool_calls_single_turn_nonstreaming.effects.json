@@ -23,7 +23,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -149,13 +149,17 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "I'll call both tools now."
+            },
+            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_4Nrk8k2poBDQknVlNBhM9073"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_4Nrk8k2poBDQknVlNBhM9073"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -168,10 +172,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_01_0nr52jGLg3wOaTlHvdFh4935"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_01_0nr52jGLg3wOaTlHvdFh4935"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -182,16 +186,16 @@
             }
           ],
           "usage": {
-            "input_tokens": 404,
-            "output_tokens": 48,
-            "total_tokens": 452,
+            "input_tokens": 395,
+            "output_tokens": 46,
+            "total_tokens": 441,
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "3b93a38b-9d73-4fc1-9b52-9ba85ce4710d",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -199,7 +203,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "",
+                  "content": "I'll call both tools now.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -207,7 +211,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_4Nrk8k2poBDQknVlNBhM9073",
                       "index": 0,
                       "type": "function"
                     },
@@ -216,7 +220,7 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_REDACTED_2",
+                      "id": "call_01_0nr52jGLg3wOaTlHvdFh4935",
                       "index": 1,
                       "type": "function"
                     }
@@ -225,19 +229,19 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
-            "model": "deepseek-v4-flash",
+            "id": "3b93a38b-9d73-4fc1-9b52-9ba85ce4710d",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 48,
+              "completion_tokens": 46,
               "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 404,
-              "prompt_tokens": 404,
+              "prompt_cache_miss_tokens": 395,
+              "prompt_tokens": 395,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 452
+              "total_tokens": 441
             }
           }
         }
@@ -321,13 +325,17 @@
               "id": null,
               "content": [
                 {
+                  "type": "text",
+                  "text": "I'll call both tools now."
+                },
+                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_4Nrk8k2poBDQknVlNBhM9073"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_4Nrk8k2poBDQknVlNBhM9073"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -340,10 +348,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_0nr52jGLg3wOaTlHvdFh4935"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_0nr52jGLg3wOaTlHvdFh4935"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -361,10 +369,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_4Nrk8k2poBDQknVlNBhM9073"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_4Nrk8k2poBDQknVlNBhM9073"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -378,10 +386,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_0nr52jGLg3wOaTlHvdFh4935"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_0nr52jGLg3wOaTlHvdFh4935"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -434,20 +442,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is **crimson-harbor** and the orchard label is **silver-orchard**."
+              "text": "The harbor label returned crimson-harbor and the orchard label returned silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 482,
-            "output_tokens": 23,
-            "total_tokens": 505,
-            "cached_input_tokens": 384
+            "input_tokens": 471,
+            "output_tokens": 17,
+            "total_tokens": 488,
+            "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "6df79f76-15ed-43ef-b041-d9d44ad1f655",
           "finish_reason": "stop",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -455,25 +463,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "The harbor label is **crimson-harbor** and the orchard label is **silver-orchard**.",
+                  "content": "The harbor label returned crimson-harbor and the orchard label returned silver-orchard.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
-            "model": "deepseek-v4-flash",
+            "id": "6df79f76-15ed-43ef-b041-d9d44ad1f655",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 23,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 98,
-              "prompt_tokens": 482,
+              "completion_tokens": 17,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 215,
+              "prompt_tokens": 471,
               "prompt_tokens_details": {
-                "cached_tokens": 384
+                "cached_tokens": 256
               },
-              "total_tokens": 505
+              "total_tokens": 488
             }
           }
         }

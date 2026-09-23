@@ -2,14 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 5,
         "id": 0,
         "kind": {
@@ -46,19 +38,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 6
         }
       },
       {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -131,7 +115,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
             }
           ],
           "usage": {
@@ -141,7 +125,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "094dc69a-1292-4304-952d-562cd10b5b17",
           "finish_reason": "length",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -157,7 +141,7 @@
               "prompt_cache_miss_tokens": 24
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "094dc69a-1292-4304-952d-562cd10b5b17",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -276,7 +260,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " winged"
+            "text": " vibrant"
           }
         },
         {
@@ -284,7 +268,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " seeds"
+            "text": " autumn"
           }
         },
         {
@@ -292,7 +276,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " called"
+            "text": " colors"
           }
         },
         {
@@ -300,7 +284,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " sam"
+            "text": "."
           }
         },
         {
@@ -313,7 +297,7 @@
           },
           "finish_reason": "length",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "094dc69a-1292-4304-952d-562cd10b5b17",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
@@ -328,7 +312,7 @@
               "prompt_cache_miss_tokens": 24
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "094dc69a-1292-4304-952d-562cd10b5b17",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

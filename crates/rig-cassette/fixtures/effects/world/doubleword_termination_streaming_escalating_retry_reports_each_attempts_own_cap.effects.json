@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -38,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -54,15 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -74,18 +66,18 @@
         }
       },
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 13,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 16,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -93,7 +85,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -101,7 +93,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -109,7 +101,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -125,7 +117,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -149,7 +141,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -165,7 +157,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -173,7 +165,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -181,7 +173,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -253,7 +245,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -261,7 +253,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -269,7 +261,15 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -281,7 +281,15 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 43,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -364,10 +372,11 @@
             "output_tokens": 16,
             "total_tokens": 52,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
           "finish_reason": "length",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -377,7 +386,8 @@
               "completion_tokens": 16,
               "total_tokens": 52,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -391,11 +401,12 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
             }
           }
         }
@@ -543,11 +554,12 @@
             "output_tokens": 16,
             "total_tokens": 52,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "length",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
           "raw": {
@@ -556,7 +568,8 @@
               "completion_tokens": 16,
               "total_tokens": 52,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -570,11 +583,12 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
             }
           }
         }
@@ -622,28 +636,30 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They produce sweet sap that is harvested to create the popular syrup enjoyed around the world."
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
             }
           ],
           "usage": {
             "input_tokens": 36,
-            "output_tokens": 44,
-            "total_tokens": 80,
+            "output_tokens": 49,
+            "total_tokens": 85,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "usage": {
               "prompt_tokens": 36,
-              "completion_tokens": 44,
-              "total_tokens": 80,
+              "completion_tokens": 49,
+              "total_tokens": 85,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -657,11 +673,12 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
             }
           }
         }
@@ -895,7 +912,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " produce"
+            "text": " are"
           }
         },
         {
@@ -903,7 +920,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " sweet"
+            "text": " also"
           }
         },
         {
@@ -911,7 +928,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " sap"
+            "text": " a"
           }
         },
         {
@@ -919,7 +936,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " that"
+            "text": " primary"
           }
         },
         {
@@ -927,7 +944,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " is"
+            "text": " source"
           }
         },
         {
@@ -935,7 +952,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " harvested"
+            "text": " of"
           }
         },
         {
@@ -943,31 +960,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " to"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " create"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " popular"
+            "text": " maple"
           }
         },
         {
@@ -983,7 +976,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " enjoyed"
+            "text": ","
           }
         },
         {
@@ -991,7 +984,39 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " around"
+            "text": " which"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " produced"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " tapping"
           }
         },
         {
@@ -1007,7 +1032,39 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " world"
+            "text": " trees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " boiling"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " their"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " sap"
           }
         },
         {
@@ -1022,23 +1079,25 @@
           "event": "final",
           "usage": {
             "input_tokens": 36,
-            "output_tokens": 44,
-            "total_tokens": 80,
+            "output_tokens": 49,
+            "total_tokens": 85,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "usage": {
               "prompt_tokens": 36,
-              "completion_tokens": 44,
-              "total_tokens": 80,
+              "completion_tokens": 49,
+              "total_tokens": 85,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -1052,11 +1111,12 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
             }
           }
         }

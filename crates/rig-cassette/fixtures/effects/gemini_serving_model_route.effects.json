@@ -333,21 +333,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EnEKbwFpFH0TCUyM838tw8Fw5Yg9539dXMgiNwRuMSlu5OrxpBaQJDvvjRs5iXvNCCJsceqq9zo8MSxWIGDOaLIqANPo2hvQ1+/kP1KBQQ/bhoxK0MT8xmEzJ15ECY85ayDEX3hnboT0M+ETjINgQAYEfQ=="
-                  }
+              "text": "42",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EnEKbwFpFH0TCUyM838tw8Fw5Yg9539dXMgiNwRuMSlu5OrxpBaQJDvvjRs5iXvNCCJsceqq9zo8MSxWIGDOaLIqANPo2hvQ1+/kP1KBQQ/bhoxK0MT8xmEzJ15ECY85ayDEX3hnboT0M+ETjINgQAYEfQ=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

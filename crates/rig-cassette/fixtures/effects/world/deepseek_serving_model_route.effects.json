@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -152,10 +152,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_ArX55J0FCpSENrqC4elL9059"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_ArX55J0FCpSENrqC4elL9059"
               },
               "function": {
                 "name": "add",
@@ -175,7 +175,7 @@
             "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "2665693e-57af-4fd3-bebb-d7055fe4b363",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -194,7 +194,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_ArX55J0FCpSENrqC4elL9059",
                       "index": 0,
                       "type": "function"
                     }
@@ -203,7 +203,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "2665693e-57af-4fd3-bebb-d7055fe4b363",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -277,10 +277,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_ArX55J0FCpSENrqC4elL9059"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_ArX55J0FCpSENrqC4elL9059"
                   },
                   "function": {
                     "name": "add",
@@ -301,10 +301,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_ArX55J0FCpSENrqC4elL9059"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_ArX55J0FCpSENrqC4elL9059"
                   },
                   "name": "add",
                   "content": [
@@ -362,11 +362,11 @@
             "input_tokens": 427,
             "output_tokens": 2,
             "total_tokens": 429,
-            "cached_input_tokens": 0,
+            "cached_input_tokens": 256,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "a8899f05-dd49-4cf3-9f40-93ee5966c137",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -384,7 +384,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "a8899f05-dd49-4cf3-9f40-93ee5966c137",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -393,11 +393,11 @@
               "completion_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 427,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 171,
               "prompt_tokens": 427,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 256
               },
               "total_tokens": 429
             }

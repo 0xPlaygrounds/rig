@@ -77,18 +77,13 @@
               "text": "The dominant non-background color is red."
             },
             {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
-                  }
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
@@ -143,24 +138,35 @@
         },
         {
           "event": "block_end",
-          "id": "minted:reasoning:0",
+          "id": "minted:text:0",
           "end": {
-            "close": "reasoning",
-            "signature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg==",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "",
-                  "signature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
-                }
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:1",
+          "delta": {
+            "delta": "text_meta",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
               }
-            ]
+            }
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:1",
+          "end": {
+            "close": "text"
           }
         },
         {

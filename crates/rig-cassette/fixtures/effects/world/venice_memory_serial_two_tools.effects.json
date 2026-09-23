@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 1,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -33,7 +33,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -41,48 +41,24 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 20,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -90,7 +66,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -98,7 +74,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -114,7 +90,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -122,7 +98,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -138,7 +114,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +134,7 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 32,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -169,11 +145,43 @@
         "batch": 33,
         "id": 4,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 35,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 38,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -325,10 +333,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "LNCjx0YGN"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "LNCjx0YGN"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -341,10 +349,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "aPOfRAcFN"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "aPOfRAcFN"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -360,7 +368,7 @@
             "total_tokens": 1170
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-Rf92vwJvbZBgSKdTkK9bwNKQ",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -371,7 +379,7 @@
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-Rf92vwJvbZBgSKdTkK9bwNKQ",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -388,7 +396,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:LNCjx0YGN",
           "delta": {
             "delta": "tool_name",
             "name": "lookup_harbor_label"
@@ -396,7 +404,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:LNCjx0YGN",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -404,7 +412,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_2",
+          "id": "wire:aPOfRAcFN",
           "delta": {
             "delta": "tool_name",
             "name": "lookup_orchard_label"
@@ -412,7 +420,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_2",
+          "id": "wire:aPOfRAcFN",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -420,20 +428,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:LNCjx0YGN",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "LNCjx0YGN",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "LNCjx0YGN"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "LNCjx0YGN"
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -445,20 +453,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_2",
+          "id": "wire:aPOfRAcFN",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_2",
+            "tool_id": "aPOfRAcFN",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_2"
+              "id": "aPOfRAcFN"
             },
             "provider": {
-              "call_id": "call_REDACTED_2"
+              "call_id": "aPOfRAcFN"
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -477,7 +485,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-Rf92vwJvbZBgSKdTkK9bwNKQ",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -487,7 +495,7 @@
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-Rf92vwJvbZBgSKdTkK9bwNKQ",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -583,10 +591,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "LNCjx0YGN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "LNCjx0YGN"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -599,10 +607,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "aPOfRAcFN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "aPOfRAcFN"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -620,10 +628,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "LNCjx0YGN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "LNCjx0YGN"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -637,10 +645,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "aPOfRAcFN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "aPOfRAcFN"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -688,27 +696,27 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1212,
-            "output_tokens": 20,
-            "total_tokens": 1232
+            "input_tokens": 1214,
+            "output_tokens": 15,
+            "total_tokens": 1229
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RTzj6V8Fz1jMhRgWj7l5t2e9",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1212,
-              "completion_tokens": 20,
-              "total_tokens": 1232
+              "prompt_tokens": 1214,
+              "completion_tokens": 15,
+              "total_tokens": 1229
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RTzj6V8Fz1jMhRgWj7l5t2e9",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -716,7 +724,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.000118625
+                "usd": 0.00011756249999999999
               }
             }
           }
@@ -743,7 +751,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " harbor"
+            "text": " current"
           }
         },
         {
@@ -751,7 +759,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " label"
+            "text": " signals"
           }
         },
         {
@@ -759,7 +767,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " is"
+            "text": " are"
           }
         },
         {
@@ -815,46 +823,6 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " orch"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "ard"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
             "text": " silver"
           }
         },
@@ -885,23 +853,23 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 1212,
-            "output_tokens": 20,
-            "total_tokens": 1232
+            "input_tokens": 1214,
+            "output_tokens": 15,
+            "total_tokens": 1229
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RTzj6V8Fz1jMhRgWj7l5t2e9",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1212,
-              "completion_tokens": 20,
-              "total_tokens": 1232
+              "prompt_tokens": 1214,
+              "completion_tokens": 15,
+              "total_tokens": 1229
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RTzj6V8Fz1jMhRgWj7l5t2e9",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -909,7 +877,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.000118625
+                "usd": 0.00011756249999999999
               }
             }
           }
@@ -944,10 +912,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "LNCjx0YGN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "LNCjx0YGN"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -960,10 +928,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "aPOfRAcFN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "aPOfRAcFN"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -981,10 +949,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "LNCjx0YGN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "LNCjx0YGN"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -998,10 +966,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "aPOfRAcFN"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "aPOfRAcFN"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -1019,7 +987,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+                  "text": "The current signals are crimson-harbor and silver-orchard."
                 }
               ]
             }

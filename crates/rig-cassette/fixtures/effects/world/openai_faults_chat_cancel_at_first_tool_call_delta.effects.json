@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 10
+          "items": 8
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -149,10 +149,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
               },
               "function": {
                 "name": "add",
@@ -173,7 +173,7 @@
             "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-ERDBhPe9mMDNIbQewk3mnq6SeFvKh",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -190,11 +190,11 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDBhPe9mMDNIbQewk3mnq6SeFvKh",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_12",
+              "obfuscation": "Wqf",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -205,7 +205,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -213,7 +213,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -221,7 +221,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -229,7 +229,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -237,7 +237,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "17"
@@ -245,7 +245,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ",\""
@@ -253,7 +253,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -261,7 +261,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -269,7 +269,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "25"
@@ -277,7 +277,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -285,20 +285,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
             },
             "function": {
               "name": "add",
@@ -322,7 +322,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-ERDBhPe9mMDNIbQewk3mnq6SeFvKh",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
@@ -338,11 +338,11 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDBhPe9mMDNIbQewk3mnq6SeFvKh",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_12",
+              "obfuscation": "Wqf",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null

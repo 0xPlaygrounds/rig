@@ -121,7 +121,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:N2xPMZSYl",
           "delta": {
             "delta": "tool_name",
             "name": "write_note"

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -91,26 +91,26 @@
           "choice": [
             {
               "type": "text",
-              "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking all or part of the Sun's light. This alignment causes the Moon to temporarily obscure the Sun from view, turning day into a brief twilight or darkness for those in the path of the Moon's shadow."
+              "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
             }
           ],
           "usage": {
             "input_tokens": 26,
-            "output_tokens": 65,
-            "total_tokens": 173,
-            "reasoning_tokens": 82
+            "output_tokens": 47,
+            "total_tokens": 102,
+            "reasoning_tokens": 29
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 26,
-              "candidatesTokenCount": 65,
-              "totalTokenCount": 173,
-              "thoughtsTokenCount": 82,
+              "candidatesTokenCount": 47,
+              "totalTokenCount": 102,
+              "thoughtsTokenCount": 29,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -120,7 +120,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
           }
         }
       },
@@ -137,7 +137,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking all or part of the Sun's light"
+            "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This"
           }
         },
         {
@@ -145,28 +145,28 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": ". This alignment causes the Moon to temporarily obscure the Sun from view, turning day into a brief twilight or darkness for those in the path of the Moon's shadow."
+            "text": " alignment causes the Moon to obscure the Sun from an Earthly perspective."
           }
         },
         {
           "event": "final",
           "usage": {
             "input_tokens": 26,
-            "output_tokens": 65,
-            "total_tokens": 173,
-            "reasoning_tokens": 82
+            "output_tokens": 47,
+            "total_tokens": 102,
+            "reasoning_tokens": 29
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "pHizaqGHG8zzz7IP5ci3qQI",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 26,
-              "candidatesTokenCount": 65,
-              "totalTokenCount": 173,
-              "thoughtsTokenCount": 82,
+              "candidatesTokenCount": 47,
+              "totalTokenCount": 102,
+              "thoughtsTokenCount": 29,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -176,7 +176,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "pHizaqGHG8zzz7IP5ci3qQI"
           }
         }
       ],

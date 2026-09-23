@@ -2,15 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,32 +10,56 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 5
         }
       },
       {
-        "batch": 8,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 14,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 15,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -51,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -83,7 +99,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -91,7 +107,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -99,7 +115,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -107,7 +123,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -115,7 +131,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -127,31 +143,7 @@
         }
       },
       {
-        "batch": 27,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
+        "batch": 26,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -275,10 +267,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "Q4w53jZxf"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "Q4w53jZxf"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -291,10 +283,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "J5as1PsS8"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "J5as1PsS8"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -310,7 +302,7 @@
             "total_tokens": 1170
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RqPW5vmuWXuXi4okJb143449",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -321,7 +313,7 @@
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RqPW5vmuWXuXi4okJb143449",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -417,10 +409,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "Q4w53jZxf"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "Q4w53jZxf"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -433,10 +425,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "J5as1PsS8"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "J5as1PsS8"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -454,10 +446,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "Q4w53jZxf"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "Q4w53jZxf"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -471,10 +463,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "J5as1PsS8"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "J5as1PsS8"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -526,23 +518,23 @@
             }
           ],
           "usage": {
-            "input_tokens": 1212,
+            "input_tokens": 1218,
             "output_tokens": 20,
-            "total_tokens": 1232
+            "total_tokens": 1238
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RdZnGxz8aPdpd6gpGP4Wiekg",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1212,
+              "prompt_tokens": 1218,
               "completion_tokens": 20,
-              "total_tokens": 1232
+              "total_tokens": 1238
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RdZnGxz8aPdpd6gpGP4Wiekg",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -550,7 +542,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.000118625
+                "usd": 0.0001191875
               }
             }
           }

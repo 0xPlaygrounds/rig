@@ -112,10 +112,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "a1XLn6pcM"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "a1XLn6pcM"
               },
               "function": {
                 "name": "add",
@@ -134,7 +134,7 @@
             "total_tokens": 1111
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-Rv8FZQM2WSTHv6j0Z009a390",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -145,7 +145,7 @@
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-Rv8FZQM2WSTHv6j0Z009a390",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -162,7 +162,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:a1XLn6pcM",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -170,7 +170,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:a1XLn6pcM",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"x\": 17, \"y\": 25}"
@@ -178,20 +178,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:a1XLn6pcM",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "a1XLn6pcM",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "a1XLn6pcM"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "a1XLn6pcM"
             },
             "function": {
               "name": "add",
@@ -213,7 +213,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-Rv8FZQM2WSTHv6j0Z009a390",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -223,7 +223,7 @@
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-Rv8FZQM2WSTHv6j0Z009a390",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -292,10 +292,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "a1XLn6pcM"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "a1XLn6pcM"
                   },
                   "function": {
                     "name": "add",
@@ -316,10 +316,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "a1XLn6pcM"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "a1XLn6pcM"
                   },
                   "name": "add",
                   "content": [
@@ -374,23 +374,23 @@
             }
           ],
           "usage": {
-            "input_tokens": 1133,
+            "input_tokens": 1131,
             "output_tokens": 3,
-            "total_tokens": 1136
+            "total_tokens": 1134
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RSLz6EEvG80ckME3EcDkixZK",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1133,
+              "prompt_tokens": 1131,
               "completion_tokens": 3,
-              "total_tokens": 1136
+              "total_tokens": 1134
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RSLz6EEvG80ckME3EcDkixZK",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -398,7 +398,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00010696875000000001
+                "usd": 0.00010678125000000001
               }
             }
           }
@@ -431,23 +431,23 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 1133,
+            "input_tokens": 1131,
             "output_tokens": 3,
-            "total_tokens": 1136
+            "total_tokens": 1134
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RSLz6EEvG80ckME3EcDkixZK",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1133,
+              "prompt_tokens": 1131,
               "completion_tokens": 3,
-              "total_tokens": 1136
+              "total_tokens": 1134
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RSLz6EEvG80ckME3EcDkixZK",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -455,7 +455,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00010696875000000001
+                "usd": 0.00010678125000000001
               }
             }
           }

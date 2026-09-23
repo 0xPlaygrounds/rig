@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -82,18 +90,13 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
-                  }
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
@@ -128,25 +131,29 @@
       },
       "events": [
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "signature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "",
-                  "signature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
-                }
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text_meta",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
               }
-            ]
+            }
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
           }
         },
         {

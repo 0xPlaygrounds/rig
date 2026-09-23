@@ -81,11 +81,11 @@
           "usage": {
             "input_tokens": 24,
             "output_tokens": 3,
-            "total_tokens": 52,
-            "reasoning_tokens": 25
+            "total_tokens": 53,
+            "reasoning_tokens": 26
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "pXizaozIJY-mqtsPzOOGwQU",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -105,7 +105,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "pXizaozIJY-mqtsPzOOGwQU",
             "usageMetadata": {
               "candidatesTokenCount": 3,
               "promptTokenCount": 24,
@@ -116,8 +116,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 25,
-              "totalTokenCount": 52
+              "thoughtsTokenCount": 26,
+              "totalTokenCount": 53
             }
           }
         }

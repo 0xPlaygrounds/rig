@@ -66,21 +66,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"category\": \"Technology\", \"summary\": \"A local gathering for Rust developers in Seattle to discuss systems programming and network.\", \"title\": \"Seattle Rust Meetup\"}"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EuIICt8IAWkUfRO0jx0bOjVxQUkqwoojfVCMmZognhRvVWI26jCLMQTjRkCLSUMsCW2NIrFp0zNGBpHd4g75gWo5acNvDnRzGsamNFZdmSeXhJQ5h1ju8USEvHrBIlCuQli4Q0/1AHe6QWorCIkqAtPjvaVBHmYwT7mH5pEXgX4H6HuWeMIod23Ag7wyIEWH+ICkUzYYiI+ddUSu3a6mNSQnJS+WJ7WWJPAMTOpdmkttG9MijAj8NTxDmoq7SmqyVMxqD3XnKewkRpPPYPZBfGIJTaZtZsOWQeMJ4hsI+0QYXYAUXeOiUuxQ0BkXo1MIXKI/5BdyNRUevNWP8FXK978+98j0XN/071TgmN8RXwvZBh6tGa/ws6caBnGLMUHgqfw3BiNBXgiIgP2B1B8/b6AucQi9q/fxEXYGUijy6HUAMfp5pwOanBGRSasqKU9HIkGK2m6A9hCwRJmtFFqSm1Xm6wAi7zlhWWP2WOaXvCxcsCUPzN/+XOJVi2cSbWsOdl6Ro2O2LDiRsFe6F7d/NBQQAjd+wEztJ6QL04TdSELQpwXN4wdqbf5ikOxHzlqzvhKcVk0DT3v8DLz6AEUe+fdlhytjqfRYfFo+RMv261Q/hrDptuZMQOeh5iVaEMT8EsTJGhns5ChFPpT5DGGsZyxyu6kLIPTQDrB95Ey5/JEbVrfLwBJQSd9BZn502Ee95pHaemPYZQ4GKU0bxlXkJ8APK3pfOIPa8dVzvpbaCUNrGlgHbM0yAkHFf7qoqiRoE4sbWymUPKT3q4sGzD4i1J8wQeASfvWSYsoeOGrgg3k7aHQPs6oVblIO/R5AXbbmOUkgiDZHdclNhAjhBq9OBhBWvmWU6A0GQ0JhNAC88NiOONruaFw+TWKt+1ubHkiU+6wu8QxUCvG7nsc26Y+3BaINz9G5mx/S7TS8Vvz2zH6y+ktSnjX4VbJwuaPeXU7SycxsvnJjDF1zetDRB4A0fvVzRRHbH4YMBApKW6kvGZjviM5uQyi4jBEcoz/lCKh4T5ZSf6I39PD8bAVyWYmKPnaH9+oBAHjvFGWDWzeyiVnmZDO1msl07GlcI+iCADJCBBc1A5A/I0pu60WHGTfGwFrYphV9RSz16+Nx1QJV5YXksQ8jeprtSCFQ/1oztofJ2/u2Ryg4awulw3PC1zMGpYtDg1vq73bl45wPL3PLDNQaOzPGbFYbnL+mbCbZ38POieSXNf4mAxYHslsNNmUyxb7u4xRdcY7vpGYWfQPFfbixssvOc0yRXBsM8rY2a4oZSO3Ws2E+DicGvHBAWCjx93ucf3mBLGfPYuaI/U0LBQT25XsH84FXsHHy/VOkHRtaXPfhTih1V3GHQ4lQrc15fegblBFfCeil783mTW23G9xE5LTWXf+cDxrESu6rB4QXjQqHGsZe3KHGAlBdPtd8jPTRAOs4j9ooaAzjrvbOQZfZs2R2QGSECe9BElfpiG9GlPqwqipYdMPQwihbWK5ll3r25JXS"
-                  }
+              "text": "{\"category\": \"Technology\", \"summary\": \"A local gathering for Rust developers in Seattle to discuss systems programming and network.\", \"title\": \"Seattle Rust Meetup\"}",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EuIICt8IAWkUfRO0jx0bOjVxQUkqwoojfVCMmZognhRvVWI26jCLMQTjRkCLSUMsCW2NIrFp0zNGBpHd4g75gWo5acNvDnRzGsamNFZdmSeXhJQ5h1ju8USEvHrBIlCuQli4Q0/1AHe6QWorCIkqAtPjvaVBHmYwT7mH5pEXgX4H6HuWeMIod23Ag7wyIEWH+ICkUzYYiI+ddUSu3a6mNSQnJS+WJ7WWJPAMTOpdmkttG9MijAj8NTxDmoq7SmqyVMxqD3XnKewkRpPPYPZBfGIJTaZtZsOWQeMJ4hsI+0QYXYAUXeOiUuxQ0BkXo1MIXKI/5BdyNRUevNWP8FXK978+98j0XN/071TgmN8RXwvZBh6tGa/ws6caBnGLMUHgqfw3BiNBXgiIgP2B1B8/b6AucQi9q/fxEXYGUijy6HUAMfp5pwOanBGRSasqKU9HIkGK2m6A9hCwRJmtFFqSm1Xm6wAi7zlhWWP2WOaXvCxcsCUPzN/+XOJVi2cSbWsOdl6Ro2O2LDiRsFe6F7d/NBQQAjd+wEztJ6QL04TdSELQpwXN4wdqbf5ikOxHzlqzvhKcVk0DT3v8DLz6AEUe+fdlhytjqfRYfFo+RMv261Q/hrDptuZMQOeh5iVaEMT8EsTJGhns5ChFPpT5DGGsZyxyu6kLIPTQDrB95Ey5/JEbVrfLwBJQSd9BZn502Ee95pHaemPYZQ4GKU0bxlXkJ8APK3pfOIPa8dVzvpbaCUNrGlgHbM0yAkHFf7qoqiRoE4sbWymUPKT3q4sGzD4i1J8wQeASfvWSYsoeOGrgg3k7aHQPs6oVblIO/R5AXbbmOUkgiDZHdclNhAjhBq9OBhBWvmWU6A0GQ0JhNAC88NiOONruaFw+TWKt+1ubHkiU+6wu8QxUCvG7nsc26Y+3BaINz9G5mx/S7TS8Vvz2zH6y+ktSnjX4VbJwuaPeXU7SycxsvnJjDF1zetDRB4A0fvVzRRHbH4YMBApKW6kvGZjviM5uQyi4jBEcoz/lCKh4T5ZSf6I39PD8bAVyWYmKPnaH9+oBAHjvFGWDWzeyiVnmZDO1msl07GlcI+iCADJCBBc1A5A/I0pu60WHGTfGwFrYphV9RSz16+Nx1QJV5YXksQ8jeprtSCFQ/1oztofJ2/u2Ryg4awulw3PC1zMGpYtDg1vq73bl45wPL3PLDNQaOzPGbFYbnL+mbCbZ38POieSXNf4mAxYHslsNNmUyxb7u4xRdcY7vpGYWfQPFfbixssvOc0yRXBsM8rY2a4oZSO3Ws2E+DicGvHBAWCjx93ucf3mBLGfPYuaI/U0LBQT25XsH84FXsHHy/VOkHRtaXPfhTih1V3GHQ4lQrc15fegblBFfCeil783mTW23G9xE5LTWXf+cDxrESu6rB4QXjQqHGsZe3KHGAlBdPtd8jPTRAOs4j9ooaAzjrvbOQZfZs2R2QGSECe9BElfpiG9GlPqwqipYdMPQwihbWK5ll3r25JXS"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

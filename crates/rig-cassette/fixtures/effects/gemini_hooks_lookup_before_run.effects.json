@@ -345,21 +345,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "Eq0BCqoBAWkUfRN9PFQh3UWe/jDQjNkErwBM/QTqMKMIY2PyKEd/ynlL+S/ztKVIPGPoFHEDAdcj/fV0tF7I5jPThD1CU86GuefpPSIXDs1RLTvgpaht0cBAORWgAUaPkSBSoAJ6cnsTYVJbu8Mk4ryRYtSwQBPUcKCpVwhHzHug9soSx/CCFF36lUI1D3DsSsSekJme73Szj6Z6Ivr3dZPVzJ+p8vxEF4f4ZI2ws9I="
-                  }
+              "text": "42",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Eq0BCqoBAWkUfRN9PFQh3UWe/jDQjNkErwBM/QTqMKMIY2PyKEd/ynlL+S/ztKVIPGPoFHEDAdcj/fV0tF7I5jPThD1CU86GuefpPSIXDs1RLTvgpaht0cBAORWgAUaPkSBSoAJ6cnsTYVJbu8Mk4ryRYtSwQBPUcKCpVwhHzHug9soSx/CCFF36lUI1D3DsSsSekJme73Szj6Z6Ivr3dZPVzJ+p8vxEF4f4ZI2ws9I="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

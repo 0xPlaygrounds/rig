@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -106,7 +106,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The user is introducing themselves with their name and job. I need to extract the following information:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this structured data.\n"
+                    "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n"
                   }
                 }
               ],
@@ -116,10 +116,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "chatcmpl-tool-b75d96f17fafb479"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "chatcmpl-tool-b75d96f17fafb479"
               },
               "function": {
                 "name": "submit",
@@ -134,15 +134,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 428,
-            "output_tokens": 89,
-            "total_tokens": 517,
+            "input_tokens": 424,
+            "output_tokens": 156,
+            "total_tokens": 580,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 59
+            "reasoning_tokens": 99
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_d4da397d-b4ce-46a4-9168-2e3ca5d47a59",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -152,12 +152,12 @@
                 "finish_reason": "tool_calls",
                 "index": 0,
                 "message": {
-                  "reasoning": "The user is introducing themselves with their name and job. I need to extract the following information:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this structured data.\n",
+                  "reasoning_content": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "The user is introducing themselves with their name and job. I need to extract the following information:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this structured data.\n",
+                      "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -169,7 +169,7 @@
                         "arguments": "{\"first_name\": \"Ada\", \"job\": \"mathematician\", \"last_name\": \"Lovelace\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "chatcmpl-tool-b75d96f17fafb479",
                       "type": "function"
                     }
                   ]
@@ -177,7 +177,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_d4da397d-b4ce-46a4-9168-2e3ca5d47a59",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
             "usage": {
@@ -188,20 +188,20 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 89,
+              "completion_tokens": 156,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 59
+                "reasoning_tokens": 99
               },
-              "prompt_tokens": 428,
+              "prompt_tokens": 424,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cache_write_tokens": 0,
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 517
+              "total_tokens": 580
             }
           }
         }

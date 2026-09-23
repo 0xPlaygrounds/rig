@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "jjlH8oTn1"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "jjlH8oTn1"
               },
               "function": {
                 "name": "add",
@@ -143,7 +143,7 @@
             "total_tokens": 1111
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RSWIpjqSvJAgbBQaQPrTHYto",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -164,7 +164,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "jjlH8oTn1",
                       "type": "function"
                     }
                   ]
@@ -176,7 +176,7 @@
               "usd": 0.00010696875
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-RSWIpjqSvJAgbBQaQPrTHYto",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -232,10 +232,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "jjlH8oTn1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "jjlH8oTn1"
                   },
                   "function": {
                     "name": "add",
@@ -256,10 +256,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "jjlH8oTn1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "jjlH8oTn1"
                   },
                   "name": "add",
                   "content": [
@@ -310,16 +310,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm unable to assist with that specific request as the add tool is not available. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start by adding the two numbers together: 17 + 25.\n2. Break it down if it helps: 10 + 25 = 35, then add the remaining 7 to get 42.\n\nSo, 17 + 25 equals 42."
+              "text": "I'm unable to perform the addition as requested."
             }
           ],
           "usage": {
-            "input_tokens": 1135,
-            "output_tokens": 113,
-            "total_tokens": 1248
+            "input_tokens": 1137,
+            "output_tokens": 11,
+            "total_tokens": 1148
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RIMFG1xSvC0NXitxFhjSlp3P",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -330,7 +330,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "I'm unable to assist with that specific request as the add tool is not available. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start by adding the two numbers together: 17 + 25.\n2. Break it down if it helps: 10 + 25 = 35, then add the remaining 7 to get 42.\n\nSo, 17 + 25 equals 42.",
+                  "content": "I'm unable to perform the addition as requested.",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -340,17 +340,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00013465625
+              "usd": 0.00010934375
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-RIMFG1xSvC0NXitxFhjSlp3P",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 113,
-              "prompt_tokens": 1135,
-              "total_tokens": 1248
+              "completion_tokens": 11,
+              "prompt_tokens": 1137,
+              "total_tokens": 1148
             },
             "venice_parameters": {
               "disable_thinking": false,

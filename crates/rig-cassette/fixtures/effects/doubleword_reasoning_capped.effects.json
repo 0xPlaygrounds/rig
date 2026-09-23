@@ -88,10 +88,10 @@
             "total_tokens": 58,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 16
+            "reasoning_tokens": 15
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_d29bda03-c489-4c62-95e5-6ee0b9b8e1c2",
           "finish_reason": "length",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -116,7 +116,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_d29bda03-c489-4c62-95e5-6ee0b9b8e1c2",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -131,7 +131,7 @@
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 16
+                "reasoning_tokens": 15
               },
               "prompt_tokens": 42,
               "prompt_tokens_details": {

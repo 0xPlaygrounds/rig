@@ -110,10 +110,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_oxPuKrws4HbZt0NArT6NwaZB"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_oxPuKrws4HbZt0NArT6NwaZB"
               },
               "function": {
                 "name": "lookup",
@@ -127,14 +127,14 @@
           ],
           "usage": {
             "input_tokens": 181,
-            "output_tokens": 28,
-            "total_tokens": 209,
+            "output_tokens": 156,
+            "total_tokens": 337,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDBMm4faMgzELtzojRhjGEVuSFBm",
+          "provider_request_id": "req_443abd1c887247c6ae877ee8ac89a394",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -154,7 +154,7 @@
                         "arguments": "{\"q\":\"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_oxPuKrws4HbZt0NArT6NwaZB",
                       "type": "function"
                     }
                   ]
@@ -162,17 +162,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDBMm4faMgzELtzojRhjGEVuSFBm",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 28,
+              "completion_tokens": 156,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 0,
+                "reasoning_tokens": 128,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 181,
@@ -180,7 +180,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 209
+              "total_tokens": 337
             }
           }
         }
@@ -260,8 +260,8 @@
             "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "chatcmpl-ERDBO53TG1YkST2Y9k19MoCuK7oXb",
+          "provider_request_id": "req_f96656d400f84f85a72af90c5dd3494f",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -279,7 +279,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-ERDBO53TG1YkST2Y9k19MoCuK7oXb",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -334,10 +334,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_oxPuKrws4HbZt0NArT6NwaZB"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_oxPuKrws4HbZt0NArT6NwaZB"
                   },
                   "function": {
                     "name": "lookup",
@@ -357,10 +357,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_oxPuKrws4HbZt0NArT6NwaZB"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_oxPuKrws4HbZt0NArT6NwaZB"
                   },
                   "name": "lookup",
                   "content": [
@@ -421,8 +421,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
-          "provider_request_id": "req_REDACTED_3",
+          "response_id": "chatcmpl-ERDBQjetQGdBYFsdGG4omovnLSlkM",
+          "provider_request_id": "req_ed1a5c5519b444b8928b5dd080f3e2b8",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -440,7 +440,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
+            "id": "chatcmpl-ERDBQjetQGdBYFsdGG4omovnLSlkM",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",

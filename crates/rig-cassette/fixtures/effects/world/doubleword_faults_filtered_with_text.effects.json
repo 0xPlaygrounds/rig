@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -97,7 +97,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
           "finish_reason": "content_filter",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -122,7 +122,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "content_filter",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -287,7 +287,7 @@
           },
           "finish_reason": "content_filter",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
@@ -311,7 +311,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "content_filter",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

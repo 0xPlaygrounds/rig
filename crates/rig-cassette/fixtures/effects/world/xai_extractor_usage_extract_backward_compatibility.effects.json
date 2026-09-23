@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,11 +108,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_450dbb4a-9b53-9e2f-9125-25bc9be25852",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The task is to extract structured data from the provided text: \"John Doe is a 30 year old software engineer.\"\n"
+                  "content": "Extracting structured data from the text about John Doe."
                 }
               ],
               "provider": "xai"
@@ -121,11 +121,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0",
+                "item_id": "fc_450dbb4a-9b53-9e2f-9125-25bc9be25852_0"
               },
               "function": {
                 "name": "submit",
@@ -141,14 +141,14 @@
           ],
           "usage": {
             "input_tokens": 408,
-            "output_tokens": 179,
-            "total_tokens": 587,
+            "output_tokens": 212,
+            "total_tokens": 620,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 176
+            "reasoning_tokens": 193
           },
           "message_id": null,
-          "response_id": "req_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "450dbb4a-9b53-9e2f-9125-25bc9be25852",
+          "provider_request_id": "450dbb4a-9b53-9e2f-9125-25bc9be25852",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -158,23 +158,23 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_1",
+            "id": "450dbb4a-9b53-9e2f-9125-25bc9be25852",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_1",
+                "id": "rs_450dbb4a-9b53-9e2f-9125-25bc9be25852",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "The task is to extract structured data from the provided text: \"John Doe is a 30 year old software engineer.\"\n",
+                    "text": "Extracting structured data from the text about John Doe.",
                     "type": "summary_text"
                   }
                 ],
@@ -182,8 +182,8 @@
               },
               {
                 "arguments": "{\"name\":\"John Doe\",\"age\":30,\"profession\":\"software engineer\"}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0",
+                "id": "fc_450dbb4a-9b53-9e2f-9125-25bc9be25852_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -250,20 +250,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 408,
-                "output_tokens": 179
+                "output_tokens": 216
               },
-              "cost_in_usd_ticks": 7559000,
+              "cost_in_usd_ticks": 8384000,
               "input_tokens": 408,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 179,
+              "output_tokens": 212,
               "output_tokens_details": {
-                "reasoning_tokens": 176
+                "reasoning_tokens": 193
               },
-              "total_tokens": 587
+              "total_tokens": 620
             },
             "user": null
           }

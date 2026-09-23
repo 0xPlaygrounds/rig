@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -90,7 +90,7 @@
             "total_tokens": 24
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "p3izasubA7CnmtkP7pWVYQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -110,7 +110,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "p3izasubA7CnmtkP7pWVYQ",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 22,

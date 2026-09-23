@@ -106,7 +106,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The user is introducing themselves as Ada Lovelace, a mathematician. This appears to be a simple introduction. I should respond appropriately and I have a submit function available that requires first_name, last_name, and job fields.\n\nThis seems like they want me to extract and submit their information using the submit function.\n\nLet me extract:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this information.\n"
+                    "text": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n"
                   }
                 }
               ],
@@ -116,10 +116,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "chatcmpl-tool-9ead3cc0c2dad76d"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "chatcmpl-tool-9ead3cc0c2dad76d"
               },
               "function": {
                 "name": "submit",
@@ -135,12 +135,13 @@
           ],
           "usage": {
             "input_tokens": 1348,
-            "output_tokens": 141,
-            "total_tokens": 1489,
-            "cached_input_tokens": 0
+            "output_tokens": 117,
+            "total_tokens": 1465,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 60
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "qwen3-5-9b",
@@ -155,7 +156,7 @@
                   "audio": null,
                   "content": "",
                   "function_call": null,
-                  "reasoning_content": "The user is introducing themselves as Ada Lovelace, a mathematician. This appears to be a simple introduction. I should respond appropriately and I have a submit function available that requires first_name, last_name, and job fields.\n\nThis seems like they want me to extract and submit their information using the submit function.\n\nLet me extract:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this information.\n",
+                  "reasoning_content": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n",
                   "refusal": null,
                   "role": "assistant",
                   "tool_calls": [
@@ -164,34 +165,41 @@
                         "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
                         "name": "submit"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "chatcmpl-tool-9ead3cc0c2dad76d",
                       "type": "function"
                     }
                   ]
                 },
+                "routed_experts": null,
                 "stop_reason": null,
                 "token_ids": null
               }
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00015595
+              "usd": 0.00015235
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "ec_transfer_params": null,
+            "id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3",
             "kv_transfer_params": null,
+            "metrics": null,
             "model": "qwen3-5-9b",
             "object": "chat.completion",
             "prompt_logprobs": null,
+            "prompt_text": null,
             "prompt_token_ids": null,
             "service_tier": null,
             "usage": {
-              "completion_tokens": 141,
+              "completion_tokens": 117,
+              "completion_tokens_details": {
+                "reasoning_tokens": 60
+              },
               "prompt_tokens": 1348,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 1489
+              "total_tokens": 1465
             },
             "venice_parameters": {
               "disable_thinking": false,

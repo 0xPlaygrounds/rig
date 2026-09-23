@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -92,10 +92,11 @@
             "output_tokens": 16,
             "total_tokens": 52,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_de3a5f98-a09c-430a-9ead-f43b27ce1252",
           "finish_reason": "length",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -112,9 +113,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_de3a5f98-a09c-430a-9ead-f43b27ce1252",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
+            "system_fingerprint": "vllm-0.23.0-ed3ef83f",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -125,11 +127,16 @@
               "cache_read_input_tokens": 0,
               "completion_tokens": 16,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "prompt_tokens": 36,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
               },
               "total_tokens": 52
             }
@@ -179,18 +186,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They produce sweet sap that is harvested to create the popular syrup enjoyed around the world."
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
             }
           ],
           "usage": {
             "input_tokens": 36,
-            "output_tokens": 44,
-            "total_tokens": 80,
+            "output_tokens": 49,
+            "total_tokens": 85,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_d9d633ea-6172-4135-a12b-9dcaacb2f834",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -200,16 +208,17 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They produce sweet sap that is harvested to create the popular syrup enjoyed around the world.",
+                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_d9d633ea-6172-4135-a12b-9dcaacb2f834",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
+            "system_fingerprint": "vllm-0.23.0-ed3ef83f",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -218,15 +227,20 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 44,
+              "completion_tokens": 49,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "prompt_tokens": 36,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
               },
-              "total_tokens": 80
+              "total_tokens": 85
             }
           }
         }

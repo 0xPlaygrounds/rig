@@ -93,19 +93,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle Rustaceans: talks, lightning demos, and open help for beginners and projects. Typically first Tuesday, 6:30–8:30 PM at a downtown venue. Free; RSVP recommended.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup — Monthly Gathering\",\"category\":\"Programming / Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 7:00–9:00 PM) at Capitol Hill Community Center. Agenda: lightning talks, beginner Rust workshop, open help desk, and networking. Free; bring a laptop. RSVP: seattlerust.org/events\"}"
             }
           ],
           "usage": {
             "input_tokens": 71,
-            "output_tokens": 393,
-            "total_tokens": 464,
+            "output_tokens": 472,
+            "total_tokens": 543,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 320
+            "reasoning_tokens": 384
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCRZ3Mi5j7HNPUKiOUI0IaF2Wv9",
+          "provider_request_id": "req_450618de022e4ee98e6442e85e612265",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -116,24 +116,24 @@
                 "index": 0,
                 "message": {
                   "annotations": [],
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle Rustaceans: talks, lightning demos, and open help for beginners and projects. Typically first Tuesday, 6:30–8:30 PM at a downtown venue. Free; RSVP recommended.\"}",
+                  "content": "{\"title\":\"Seattle Rust Meetup — Monthly Gathering\",\"category\":\"Programming / Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 7:00–9:00 PM) at Capitol Hill Community Center. Agenda: lightning talks, beginner Rust workshop, open help desk, and networking. Free; bring a laptop. RSVP: seattlerust.org/events\"}",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDCRZ3Mi5j7HNPUKiOUI0IaF2Wv9",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 393,
+              "completion_tokens": 472,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 320,
+                "reasoning_tokens": 384,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 71,
@@ -141,7 +141,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 464
+              "total_tokens": 543
             }
           }
         }

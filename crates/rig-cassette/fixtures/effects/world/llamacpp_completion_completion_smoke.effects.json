@@ -82,10 +82,10 @@
             "input_tokens": 40,
             "output_tokens": 46,
             "total_tokens": 86,
-            "cached_input_tokens": 39
+            "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-SlTjgsdaIFYIROAGBbVh0Nd0azL2SyXa",
           "finish_reason": "stop",
           "provider": "llamacpp",
           "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -101,26 +101,26 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-SlTjgsdaIFYIROAGBbVh0Nd0azL2SyXa",
             "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "object": "chat.completion",
-            "system_fingerprint": "b10499-6d05498",
+            "system_fingerprint": "b10964-b29c606e2",
             "timings": {
-              "cache_n": 39,
-              "predicted_ms": 242.489,
+              "cache_n": 0,
+              "predicted_ms": 254.504,
               "predicted_n": 46,
-              "predicted_per_second": 185.57542816375175,
-              "predicted_per_token_ms": 5.388644444444444,
-              "prompt_ms": 22.044,
-              "prompt_n": 1,
-              "prompt_per_second": 45.36381781890764,
-              "prompt_per_token_ms": 22.044
+              "predicted_per_second": 176.81450979159462,
+              "predicted_per_token_ms": 5.6556444444444445,
+              "prompt_ms": 84.787,
+              "prompt_n": 40,
+              "prompt_per_second": 471.7704365055963,
+              "prompt_per_token_ms": 2.119675
             },
             "usage": {
               "completion_tokens": 46,
               "prompt_tokens": 40,
               "prompt_tokens_details": {
-                "cached_tokens": 39
+                "cached_tokens": 0
               },
               "total_tokens": 86
             }

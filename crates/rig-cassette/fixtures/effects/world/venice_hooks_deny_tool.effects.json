@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -132,10 +132,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "hjJ5UpAWn"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "hjJ5UpAWn"
               },
               "function": {
                 "name": "add",
@@ -154,7 +154,7 @@
             "total_tokens": 1111
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RbQDySJs2OVaK8vrsc4DiIJc",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -175,7 +175,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "hjJ5UpAWn",
                       "type": "function"
                     }
                   ]
@@ -187,7 +187,7 @@
               "usd": 0.00010696875
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-RbQDySJs2OVaK8vrsc4DiIJc",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -244,10 +244,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "hjJ5UpAWn"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "hjJ5UpAWn"
                   },
                   "function": {
                     "name": "add",
@@ -268,10 +268,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "hjJ5UpAWn"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "hjJ5UpAWn"
                   },
                   "name": "add",
                   "content": [
@@ -322,16 +322,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm unable to assist with that specific request at the moment, as the necessary tool is not available. However, I can guide you through the process if you'd like! Would you prefer that?"
+              "text": "I'm unable to perform the addition as the add tool is currently unavailable."
             }
           ],
           "usage": {
-            "input_tokens": 1135,
-            "output_tokens": 41,
-            "total_tokens": 1176
+            "input_tokens": 1137,
+            "output_tokens": 16,
+            "total_tokens": 1153
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RRWbOY0VvSl0l4n2DaDuriSU",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -342,7 +342,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "I'm unable to assist with that specific request at the moment, as the necessary tool is not available. However, I can guide you through the process if you'd like! Would you prefer that?",
+                  "content": "I'm unable to perform the addition as the add tool is currently unavailable.",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -352,17 +352,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00011665625
+              "usd": 0.00011059375
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-RRWbOY0VvSl0l4n2DaDuriSU",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 41,
-              "prompt_tokens": 1135,
-              "total_tokens": 1176
+              "completion_tokens": 16,
+              "prompt_tokens": 1137,
+              "total_tokens": 1153
             },
             "venice_parameters": {
               "disable_thinking": false,

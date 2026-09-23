@@ -78,8 +78,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n",
-                    "signature": "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"
+                    "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
                   }
                 }
               ],
@@ -88,6 +87,15 @@
             {
               "type": "text",
               "text": "Rust is a systems programming language designed for high performance and safety, using a unique ownership system to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
+            },
+            {
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "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"
+                }
+              }
             }
           ],
           "usage": {
@@ -177,24 +185,35 @@
         },
         {
           "event": "block_end",
-          "id": "minted:reasoning:0",
+          "id": "minted:text:0",
           "end": {
-            "close": "reasoning",
-            "signature": "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",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n",
-                  "signature": "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"
-                }
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:1",
+          "delta": {
+            "delta": "text_meta",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "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"
               }
-            ]
+            }
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:1",
+          "end": {
+            "close": "text"
           }
         },
         {

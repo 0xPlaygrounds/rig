@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,15 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,36 +26,28 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 18,
         "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 15,
-        "id": 2,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 16,
-        "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 22,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 23,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 28,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -55,7 +55,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 30,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,7 +63,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 30,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -185,10 +185,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "8BxQ4Yb0L"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "8BxQ4Yb0L"
               },
               "function": {
                 "name": "lookup",
@@ -206,7 +206,7 @@
             "total_tokens": 1099
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -217,7 +217,7 @@
               "total_tokens": 1099
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -234,7 +234,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:8BxQ4Yb0L",
           "delta": {
             "delta": "tool_name",
             "name": "lookup"
@@ -242,7 +242,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:8BxQ4Yb0L",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"q\": \"What is the capital of France?\"}"
@@ -250,20 +250,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:8BxQ4Yb0L",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "8BxQ4Yb0L",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "8BxQ4Yb0L"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "8BxQ4Yb0L"
             },
             "function": {
               "name": "lookup",
@@ -284,7 +284,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -294,7 +294,7 @@
               "total_tokens": 1099
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -383,7 +383,7 @@
             "total_tokens": 972
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -407,7 +407,7 @@
               "usd": 0.00009143749999999999
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-RP91VL6VS6Ie7dJNCseKpDbs",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -465,10 +465,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "8BxQ4Yb0L"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "8BxQ4Yb0L"
                   },
                   "function": {
                     "name": "lookup",
@@ -488,10 +488,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "8BxQ4Yb0L"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "8BxQ4Yb0L"
                   },
                   "name": "lookup",
                   "content": [
@@ -550,7 +550,7 @@
             "total_tokens": 1124
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -561,7 +561,7 @@
               "total_tokens": 1124
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_3",
+            "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -600,7 +600,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -610,7 +610,7 @@
               "total_tokens": 1124
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_3",
+            "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,

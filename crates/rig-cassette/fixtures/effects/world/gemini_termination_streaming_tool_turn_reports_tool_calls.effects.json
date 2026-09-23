@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -189,7 +189,7 @@
             "total_tokens": 90
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "qXizapSGDcywqtsP2bT52Ag",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -208,7 +208,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "qXizapSGDcywqtsP2bT52Ag"
           }
         }
       },
@@ -258,7 +258,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "qXizapSGDcywqtsP2bT52Ag",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -276,7 +276,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "qXizapSGDcywqtsP2bT52Ag"
           }
         }
       ],
@@ -424,7 +424,7 @@
             "total_tokens": 114
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "qXizauG5KuujqtsPx4aGuQ8",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -442,7 +442,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "qXizauG5KuujqtsPx4aGuQ8"
           }
         }
       },
@@ -479,7 +479,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "qXizauG5KuujqtsPx4aGuQ8",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -496,7 +496,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "qXizauG5KuujqtsPx4aGuQ8"
           }
         }
       ],

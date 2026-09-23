@@ -155,7 +155,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "We need answer. Need use add tool. Then reply just number. Let's call."
+                    "text": "We need answer user asks use add tool to add 17 and 25, then reply with just number. Need call tool."
                   }
                 }
               ],
@@ -165,10 +165,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
               },
               "function": {
                 "name": "add",
@@ -183,13 +183,13 @@
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 71,
-            "total_tokens": 432,
+            "output_tokens": 79,
+            "total_tokens": 440,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 18
+            "reasoning_tokens": 26
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "077b087b-99dd-42bb-9346-ec79b3839b31",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -201,7 +201,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need answer. Need use add tool. Then reply just number. Let's call.",
+                  "reasoning_content": "We need answer user asks use add tool to add 17 and 25, then reply with just number. Need call tool.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -209,7 +209,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_NtN5I3xPqFjeezHrbNEd9030",
                       "index": 0,
                       "type": "function"
                     }
@@ -218,14 +218,14 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "077b087b-99dd-42bb-9346-ec79b3839b31",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 71,
+              "completion_tokens": 79,
               "completion_tokens_details": {
-                "reasoning_tokens": 18
+                "reasoning_tokens": 26
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233,
@@ -233,7 +233,7 @@
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "total_tokens": 432
+              "total_tokens": 440
             }
           }
         }
@@ -298,7 +298,7 @@
                     {
                       "type": "text",
                       "content": {
-                        "text": "We need answer. Need use add tool. Then reply just number. Let's call."
+                        "text": "We need answer user asks use add tool to add 17 and 25, then reply with just number. Need call tool."
                       }
                     }
                   ],
@@ -308,10 +308,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
                   },
                   "function": {
                     "name": "add",
@@ -332,10 +332,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_NtN5I3xPqFjeezHrbNEd9030"
                   },
                   "name": "add",
                   "content": [
@@ -396,7 +396,7 @@
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "19db11f0-dcdd-41b7-b9c4-286d935ed9ce",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -413,7 +413,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "19db11f0-dcdd-41b7-b9c4-286d935ed9ce",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

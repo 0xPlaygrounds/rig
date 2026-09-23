@@ -75,23 +75,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A gathering for Rust enthusiasts in Seattle to discuss projects and network.\"}"
             }
           ],
           "usage": {
             "input_tokens": 97,
-            "output_tokens": 27,
-            "total_tokens": 124,
+            "output_tokens": 28,
+            "total_tokens": 125,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_040722326228b5b1006ab3968cae7c87d091a3c94dcf6bf95d",
+          "response_id": "resp_040722326228b5b1006ab3968c168887d090b38f8d36ff2328",
+          "provider_request_id": "req_ab0972d6cb58461aa9ebcf99f84b4b47",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -100,7 +101,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_040722326228b5b1006ab3968c168887d090b38f8d36ff2328",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Do not include any prose, explanation, or markdown code fences.\n{\"properties\":{\"category\":{\"type\":\"string\"},\"summary\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"title\",\"category\",\"summary\"],\"type\":\"object\"}",
             "max_output_tokens": null,
@@ -115,11 +116,11 @@
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}",
+                    "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A gathering for Rust enthusiasts in Seattle to discuss projects and network.\"}",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_040722326228b5b1006ab3968cae7c87d091a3c94dcf6bf95d",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -175,11 +176,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 27,
+              "output_tokens": 28,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 124
+              "total_tokens": 125
             },
             "user": null
           }

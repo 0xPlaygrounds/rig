@@ -103,7 +103,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -119,7 +119,7 @@
               "prompt_cache_miss_tokens": 22
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -155,7 +155,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
@@ -170,7 +170,7 @@
               "prompt_cache_miss_tokens": 22
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "5adf7ba5-6ae1-4457-86cd-c3c412da1e5e",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -327,7 +327,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "566ea8ea-89a1-42bc-b3f8-0298e4004d2d",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -343,7 +343,7 @@
               "prompt_cache_miss_tokens": 36
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "566ea8ea-89a1-42bc-b3f8-0298e4004d2d",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -379,7 +379,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "566ea8ea-89a1-42bc-b3f8-0298e4004d2d",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
@@ -394,7 +394,7 @@
               "prompt_cache_miss_tokens": 36
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "566ea8ea-89a1-42bc-b3f8-0298e4004d2d",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

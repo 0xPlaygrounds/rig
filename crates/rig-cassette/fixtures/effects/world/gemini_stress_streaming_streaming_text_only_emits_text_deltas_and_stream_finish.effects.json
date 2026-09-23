@@ -2,15 +2,23 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 7,
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -83,25 +91,25 @@
           "choice": [
             {
               "type": "text",
-              "text": "The color of a clear daytime sky is blue."
+              "text": "The sky is blue."
             }
           ],
           "usage": {
             "input_tokens": 28,
-            "output_tokens": 10,
-            "total_tokens": 64,
+            "output_tokens": 5,
+            "total_tokens": 59,
             "reasoning_tokens": 26
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "pnizasvyNpusqtsPsf3xkAY",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 28,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 64,
+              "candidatesTokenCount": 5,
+              "totalTokenCount": 59,
               "thoughtsTokenCount": 26,
               "promptTokensDetails": [
                 {
@@ -112,7 +120,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "pnizasvyNpusqtsPsf3xkAY"
           }
         }
       },
@@ -129,27 +137,27 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "The color of a clear daytime sky is blue."
+            "text": "The sky is blue."
           }
         },
         {
           "event": "final",
           "usage": {
             "input_tokens": 28,
-            "output_tokens": 10,
-            "total_tokens": 64,
+            "output_tokens": 5,
+            "total_tokens": 59,
             "reasoning_tokens": 26
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "pnizasvyNpusqtsPsf3xkAY",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
               "promptTokenCount": 28,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 64,
+              "candidatesTokenCount": 5,
+              "totalTokenCount": 59,
               "thoughtsTokenCount": 26,
               "promptTokensDetails": [
                 {
@@ -160,7 +168,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "pnizasvyNpusqtsPsf3xkAY"
           }
         }
       ],

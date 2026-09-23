@@ -730,21 +730,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The final number is 21."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CocBAWkUfROoaE2yqw/V1midsvTF3bqFudHuSYCf7qVYlqHT6jbS5IBZtNiqc/X1+G8vcqDZDsWY8VSWke8453nd2MnPFVR6AFgYdCxojBtotdeeKZJB+QY9J3htxD+JpBKm9ZF6b1+lCsoctqmdn5/hzv6Nj5acp4PTedtLn2XZH/Ob8bFJ3Jwf"
-                  }
+              "text": "The final number is 21.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CocBAWkUfROoaE2yqw/V1midsvTF3bqFudHuSYCf7qVYlqHT6jbS5IBZtNiqc/X1+G8vcqDZDsWY8VSWke8453nd2MnPFVR6AFgYdCxojBtotdeeKZJB+QY9J3htxD+JpBKm9ZF6b1+lCsoctqmdn5/hzv6Nj5acp4PTedtLn2XZH/Ob8bFJ3Jwf"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

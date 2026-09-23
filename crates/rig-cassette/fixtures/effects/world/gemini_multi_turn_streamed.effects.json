@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 15,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 21,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 21,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 22,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
+        "batch": 28,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,21 +76,21 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 28,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 29,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 34,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,7 +98,7 @@
         }
       },
       {
-        "batch": 29,
+        "batch": 34,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -230,7 +230,7 @@
             "total_tokens": 156
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "nnizatmcBYHUz7IPh6yT4QU",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -249,7 +249,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_1"
+            "response_id": "nnizatmcBYHUz7IPh6yT4QU"
           }
         }
       },
@@ -297,7 +297,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "nnizatmcBYHUz7IPh6yT4QU",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -315,7 +315,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_1"
+            "response_id": "nnizatmcBYHUz7IPh6yT4QU"
           }
         }
       ],
@@ -470,7 +470,7 @@
             "total_tokens": 210
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "nnizarv4HNjQz7IPh4SA0Ac",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -489,7 +489,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_2"
+            "response_id": "nnizarv4HNjQz7IPh4SA0Ac"
           }
         }
       },
@@ -537,7 +537,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "nnizarv4HNjQz7IPh4SA0Ac",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -555,7 +555,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_2"
+            "response_id": "nnizarv4HNjQz7IPh4SA0Ac"
           }
         }
       ],
@@ -754,7 +754,7 @@
             "total_tokens": 264
           },
           "message_id": null,
-          "response_id": "id_REDACTED_3",
+          "response_id": "nnizariKM4_Xz7IPt4-28QE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -773,7 +773,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_3"
+            "response_id": "nnizariKM4_Xz7IPt4-28QE"
           }
         }
       },
@@ -821,7 +821,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_3",
+          "response_id": "nnizariKM4_Xz7IPt4-28QE",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -839,7 +839,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_3"
+            "response_id": "nnizariKM4_Xz7IPt4-28QE"
           }
         }
       ],
@@ -1082,7 +1082,7 @@
             "total_tokens": 318
           },
           "message_id": null,
-          "response_id": "id_REDACTED_4",
+          "response_id": "n3izas-eCqOez7IPveCJ8QQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -1101,7 +1101,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_4"
+            "response_id": "n3izas-eCqOez7IPveCJ8QQ"
           }
         }
       },
@@ -1149,7 +1149,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_4",
+          "response_id": "n3izas-eCqOez7IPveCJ8QQ",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -1167,7 +1167,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_4"
+            "response_id": "n3izas-eCqOez7IPveCJ8QQ"
           }
         }
       ],
@@ -1443,7 +1443,7 @@
             "total_tokens": 351
           },
           "message_id": null,
-          "response_id": "id_REDACTED_5",
+          "response_id": "n3izapeoI7rVz7IPgKTO0Qc",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -1461,7 +1461,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_5"
+            "response_id": "n3izapeoI7rVz7IPgKTO0Qc"
           }
         }
       },
@@ -1490,7 +1490,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_5",
+          "response_id": "n3izapeoI7rVz7IPgKTO0Qc",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -1507,7 +1507,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_5"
+            "response_id": "n3izapeoI7rVz7IPgKTO0Qc"
           }
         }
       ],

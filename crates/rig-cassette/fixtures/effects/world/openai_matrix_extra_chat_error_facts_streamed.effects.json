@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -24,16 +24,16 @@
           "error": {
             "kind": "provider_response",
             "retryable": false,
-            "message": "ProviderResponseError: status 404 Not Found: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}} (request id: req_REDACTED_1)",
+            "message": "ProviderResponseError: status 404 Not Found: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}} (request id: req_57c2d423e3f5467780cde9d79804d96a)",
             "code": "model_not_found",
             "http_status": 404,
             "refusal": false,
             "source_chain": [],
-            "request_id": "req_REDACTED_1",
+            "request_id": "req_57c2d423e3f5467780cde9d79804d96a",
             "provider_response": {
               "status": 404,
               "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
-              "provider_request_id": "req_REDACTED_1"
+              "provider_request_id": "req_57c2d423e3f5467780cde9d79804d96a"
             }
           }
         }
@@ -99,16 +99,16 @@
         "Err": {
           "kind": "provider_response",
           "retryable": false,
-          "message": "ProviderResponseError: status 404 Not Found: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}} (request id: req_REDACTED_1)",
+          "message": "ProviderResponseError: status 404 Not Found: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}} (request id: req_57c2d423e3f5467780cde9d79804d96a)",
           "code": "model_not_found",
           "http_status": 404,
           "refusal": false,
           "source_chain": [],
-          "request_id": "req_REDACTED_1",
+          "request_id": "req_57c2d423e3f5467780cde9d79804d96a",
           "provider_response": {
             "status": 404,
             "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
-            "provider_request_id": "req_REDACTED_1"
+            "provider_request_id": "req_57c2d423e3f5467780cde9d79804d96a"
           }
         }
       },

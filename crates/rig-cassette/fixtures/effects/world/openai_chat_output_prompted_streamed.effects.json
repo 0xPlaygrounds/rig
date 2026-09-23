@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -86,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -134,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -182,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -198,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -222,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -238,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -246,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -262,7 +262,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -274,7 +282,31 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 41,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -347,40 +379,40 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Meetup\",\"summary\":\"Monthly Seattle Rust meetup for developers of all levels — lightning talks, project demos, and networking; bring code, questions, and laptop.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
             }
           ],
           "usage": {
             "input_tokens": 96,
-            "output_tokens": 243,
-            "total_tokens": 339,
+            "output_tokens": 305,
+            "total_tokens": 401,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 192
+            "reasoning_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+          "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 96,
-              "completion_tokens": 243,
-              "total_tokens": 339,
+              "completion_tokens": 305,
+              "total_tokens": 401,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 192
+                "reasoning_tokens": 256
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_38",
+              "obfuscation": "GD",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -473,7 +505,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "Meet"
+            "text": "Tech"
           }
         },
         {
@@ -481,7 +513,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "up"
+            "text": " Meetup"
           }
         },
         {
@@ -521,23 +553,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " Seattle"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " meetup"
+            "text": " gathering"
           }
         },
         {
@@ -553,6 +569,14 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
             "text": " developers"
           }
         },
@@ -561,7 +585,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " of"
+            "text": " in"
           }
         },
         {
@@ -569,7 +593,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " all"
+            "text": " Seattle"
           }
         },
         {
@@ -577,23 +601,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " levels"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " —"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " lightning"
+            "text": " featuring"
           }
         },
         {
@@ -617,7 +625,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " project"
+            "text": " lightning"
           }
         },
         {
@@ -626,6 +634,46 @@
           "delta": {
             "delta": "text",
             "text": " demos"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " hands"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " coding"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " sessions"
           }
         },
         {
@@ -665,7 +713,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " bring"
+            "text": " all"
           }
         },
         {
@@ -673,7 +721,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " code"
+            "text": " levels"
           }
         },
         {
@@ -681,39 +729,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " questions"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " laptop"
+            "text": " welcome"
           }
         },
         {
@@ -736,35 +752,35 @@
           "event": "final",
           "usage": {
             "input_tokens": 96,
-            "output_tokens": 243,
-            "total_tokens": 339,
+            "output_tokens": 305,
+            "total_tokens": 401,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 192
+            "reasoning_tokens": 256
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
+          "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 96,
-              "completion_tokens": 243,
-              "total_tokens": 339,
+              "completion_tokens": 305,
+              "total_tokens": 401,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 192
+                "reasoning_tokens": 256
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_38",
+              "obfuscation": "GD",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null

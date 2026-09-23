@@ -164,11 +164,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
               },
               "function": {
                 "name": "subtract",
@@ -189,8 +189,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
+          "provider_request_id": "req_86e2b3d19c0e4103b70c474cdbf6328b",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -212,7 +212,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "resp_REDACTED_1",
+            "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -220,14 +220,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_name",
             "name": "subtract"
@@ -235,7 +235,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -243,7 +243,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -251,7 +251,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -259,7 +259,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "2"
@@ -267,7 +267,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ",\""
@@ -275,7 +275,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -283,7 +283,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -291,7 +291,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "5"
@@ -299,7 +299,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -307,27 +307,27 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_REDACTED_1",
+            "tool_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
             "name": "subtract",
             "arguments": {
               "x": 2,
               "y": 5
             },
-            "call_id": "call_REDACTED_1",
+            "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
             },
             "provider": {
-              "call_id": "call_REDACTED_1",
-              "item_id": "fc_REDACTED_1"
+              "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+              "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
             },
             "function": {
               "name": "subtract",
@@ -351,8 +351,8 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
+          "provider_request_id": "req_86e2b3d19c0e4103b70c474cdbf6328b",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -373,7 +373,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "resp_REDACTED_1",
+            "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -433,11 +433,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                    "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
                   },
                   "function": {
                     "name": "subtract",
@@ -458,11 +458,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                    "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
                   },
                   "name": "subtract",
                   "content": [
@@ -544,9 +544,9 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+          "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
+          "provider_request_id": "req_3d19b4030b74421d8625892d31d8160c",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -568,8 +568,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_2",
+            "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+            "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -577,14 +577,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "The"
@@ -592,7 +592,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " result"
@@ -600,7 +600,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " of"
@@ -608,7 +608,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " \\("
@@ -616,7 +616,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "2"
@@ -624,7 +624,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " -"
@@ -632,7 +632,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " "
@@ -640,7 +640,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "5"
@@ -648,7 +648,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "\\"
@@ -656,7 +656,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": ")"
@@ -664,7 +664,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " is"
@@ -672,7 +672,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": " \\"
@@ -680,7 +680,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "(-"
@@ -688,7 +688,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "3"
@@ -696,7 +696,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": "\\"
@@ -704,7 +704,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "delta": {
             "delta": "text",
             "text": ")."
@@ -712,7 +712,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
           "kind": {
             "kind": "message"
           }
@@ -727,9 +727,9 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+          "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
+          "provider_request_id": "req_3d19b4030b74421d8625892d31d8160c",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -750,8 +750,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_2",
+            "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+            "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
             "model": "gpt-4o-2024-08-06"
           }
         }

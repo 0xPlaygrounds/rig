@@ -120,10 +120,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_z3aaZiVzFCFnUDA1IkVD9979"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_z3aaZiVzFCFnUDA1IkVD9979"
               },
               "function": {
                 "name": "add",
@@ -143,7 +143,7 @@
             "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "a606b163-4a2b-409a-a5d8-6fd429480e81",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -162,7 +162,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_z3aaZiVzFCFnUDA1IkVD9979",
                       "index": 0,
                       "type": "function"
                     }
@@ -171,7 +171,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "a606b163-4a2b-409a-a5d8-6fd429480e81",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

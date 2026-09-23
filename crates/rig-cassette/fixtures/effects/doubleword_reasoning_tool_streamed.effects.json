@@ -122,7 +122,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number (the result). I need to call the add function with x=17 and y=25."
+                    "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
                   }
                 }
               ],
@@ -132,10 +132,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_ea77dbfa169343d99fcf1c60"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_ea77dbfa169343d99fcf1c60"
               },
               "function": {
                 "name": "add",
@@ -150,28 +150,28 @@
           ],
           "usage": {
             "input_tokens": 344,
-            "output_tokens": 88,
-            "total_tokens": 432,
+            "output_tokens": 84,
+            "total_tokens": 428,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 47
+            "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 344,
-              "completion_tokens": 88,
-              "total_tokens": 432,
+              "completion_tokens": 84,
+              "total_tokens": 428,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 47
+                "reasoning_tokens": 37
               },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -182,7 +182,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -212,7 +212,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " user wants me to"
+            "text": " user"
           }
         },
         {
@@ -220,7 +220,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " add 17"
+            "text": " wants"
           }
         },
         {
@@ -228,7 +228,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and 25"
+            "text": " me"
           }
         },
         {
@@ -236,7 +236,103 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " using the add tool"
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "7"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "5"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " using"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " tool"
           }
         },
         {
@@ -252,7 +348,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and then reply with"
+            "text": " and"
           }
         },
         {
@@ -260,7 +356,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " just the number ("
+            "text": " then"
           }
         },
         {
@@ -268,7 +364,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "the result). I"
+            "text": " reply"
           }
         },
         {
@@ -276,7 +372,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " need to call the"
+            "text": " with"
           }
         },
         {
@@ -284,7 +380,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " add function with x"
+            "text": " just"
           }
         },
         {
@@ -292,7 +388,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "=17 and"
+            "text": " the"
           }
         },
         {
@@ -300,7 +396,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " y=25"
+            "text": " number"
           }
         },
         {
@@ -309,6 +405,158 @@
           "delta": {
             "delta": "reasoning",
             "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " need"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " function"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " x"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "="
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "7"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " y"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "="
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "5"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
           }
         },
         {
@@ -321,7 +569,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_ea77dbfa169343d99fcf1c60",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -329,60 +577,28 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_ea77dbfa169343d99fcf1c60",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "{\"x\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "17"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"y\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "25"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
+            "arguments": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_ea77dbfa169343d99fcf1c60",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_ea77dbfa169343d99fcf1c60",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_ea77dbfa169343d99fcf1c60"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_ea77dbfa169343d99fcf1c60"
             },
             "function": {
               "name": "add",
@@ -399,28 +615,28 @@
           "event": "final",
           "usage": {
             "input_tokens": 344,
-            "output_tokens": 88,
-            "total_tokens": 432,
+            "output_tokens": 84,
+            "total_tokens": 428,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 47
+            "reasoning_tokens": 37
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 344,
-              "completion_tokens": 88,
-              "total_tokens": 432,
+              "completion_tokens": 84,
+              "total_tokens": 428,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 47
+                "reasoning_tokens": 37
               },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -431,7 +647,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -498,7 +714,7 @@
                     {
                       "type": "text",
                       "content": {
-                        "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number (the result). I need to call the add function with x=17 and y=25."
+                        "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
                       }
                     }
                   ],
@@ -508,10 +724,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_ea77dbfa169343d99fcf1c60"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_ea77dbfa169343d99fcf1c60"
                   },
                   "function": {
                     "name": "add",
@@ -532,10 +748,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_ea77dbfa169343d99fcf1c60"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_ea77dbfa169343d99fcf1c60"
                   },
                   "name": "add",
                   "content": [
@@ -593,7 +809,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output \"42\" without any additional text."
+                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
                   }
                 }
               ],
@@ -605,29 +821,29 @@
             }
           ],
           "usage": {
-            "input_tokens": 448,
-            "output_tokens": 53,
-            "total_tokens": 501,
+            "input_tokens": 445,
+            "output_tokens": 48,
+            "total_tokens": 493,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 46
+            "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 448,
-              "completion_tokens": 53,
-              "total_tokens": 501,
+              "prompt_tokens": 445,
+              "completion_tokens": 48,
+              "total_tokens": 493,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 46
+                "reasoning_tokens": 37
               },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -638,7 +854,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -668,7 +884,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " add tool returned "
+            "text": " add"
           }
         },
         {
@@ -676,7 +892,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "42, which"
+            "text": " tool"
           }
         },
         {
@@ -684,7 +900,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " is the correct"
+            "text": " returned"
           }
         },
         {
@@ -692,7 +908,95 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " sum of 1"
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " which"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " correct"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sum"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
           }
         },
         {
@@ -708,7 +1012,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and 25"
+            "text": " and"
           }
         },
         {
@@ -716,7 +1020,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ". The user asked"
+            "text": " "
           }
         },
         {
@@ -724,7 +1028,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " me to reply with"
+            "text": "2"
           }
         },
         {
@@ -732,7 +1036,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " just the number,"
+            "text": "5"
           }
         },
         {
@@ -740,7 +1044,135 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " so I should output"
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " user"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " asked"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " me"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " reply"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " just"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " number"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " so"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " should"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " respond"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
           }
         },
         {
@@ -756,7 +1188,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "42\" without"
+            "text": "4"
           }
         },
         {
@@ -764,7 +1196,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " any additional text"
+            "text": "2"
           }
         },
         {
@@ -772,7 +1204,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "."
+            "text": "\"."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
           }
         },
         {
@@ -795,35 +1235,43 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "42"
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "2"
           }
         },
         {
           "event": "final",
           "usage": {
-            "input_tokens": 448,
-            "output_tokens": 53,
-            "total_tokens": 501,
+            "input_tokens": 445,
+            "output_tokens": 48,
+            "total_tokens": 493,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 46
+            "reasoning_tokens": 37
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 448,
-              "completion_tokens": 53,
-              "total_tokens": 501,
+              "prompt_tokens": 445,
+              "completion_tokens": 48,
+              "total_tokens": 493,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 46
+                "reasoning_tokens": 37
               },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -834,7 +1282,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

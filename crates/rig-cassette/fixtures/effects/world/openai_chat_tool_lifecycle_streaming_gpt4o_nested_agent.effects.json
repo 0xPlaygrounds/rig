@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -19,6 +19,14 @@
       },
       {
         "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -46,7 +54,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -54,59 +70,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
         "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -170,14 +138,62 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 38,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -330,10 +346,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_TECOyioASt9BQxP1WvwgbCYW"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_TECOyioASt9BQxP1WvwgbCYW"
               },
               "function": {
                 "name": "record_payload",
@@ -361,8 +377,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
+          "provider_request_id": "req_03654d5d0dab4f9ca2c7f7cee73925e1",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
@@ -379,14 +395,14 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
             "model": "gpt-4o-mini-2024-07-18",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_18",
+              "obfuscation": "HiTMzPUDu",
               "object": "chat.completion.chunk",
               "service_tier": "default",
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_1e58d0ce9b"
             }
           }
         }
@@ -394,7 +410,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_name",
             "name": "record_payload"
@@ -402,7 +418,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -410,7 +426,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "label"
@@ -418,7 +434,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -426,7 +442,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "c"
@@ -434,7 +450,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "afé"
@@ -442,7 +458,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " 東京"
@@ -450,7 +466,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\",\""
@@ -458,7 +474,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "values"
@@ -466,7 +482,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":["
@@ -474,7 +490,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "3"
@@ -482,7 +498,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -490,7 +506,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "5"
@@ -498,7 +514,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -506,7 +522,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "8"
@@ -514,7 +530,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "],\""
@@ -522,7 +538,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "meta"
@@ -530,7 +546,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":{\""
@@ -538,7 +554,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "active"
@@ -546,7 +562,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -554,7 +570,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "true"
@@ -562,7 +578,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}}"
@@ -570,20 +586,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_TECOyioASt9BQxP1WvwgbCYW",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_TECOyioASt9BQxP1WvwgbCYW"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_TECOyioASt9BQxP1WvwgbCYW"
             },
             "function": {
               "name": "record_payload",
@@ -614,8 +630,8 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
+          "provider_request_id": "req_03654d5d0dab4f9ca2c7f7cee73925e1",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
           "raw": {
@@ -631,14 +647,14 @@
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
             "model": "gpt-4o-mini-2024-07-18",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_18",
+              "obfuscation": "HiTMzPUDu",
               "object": "chat.completion.chunk",
               "service_tier": "default",
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_1e58d0ce9b"
             }
           }
         }

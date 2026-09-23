@@ -2,28 +2,28 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -154,11 +154,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_KOnvmdHwq79UAH4OB8qchYbL"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_KOnvmdHwq79UAH4OB8qchYbL",
+                "item_id": "fc_051e0403c537b955006ab3966af30c87d0a12efa93d4ef308c"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -173,11 +173,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_JrFbemxOWXKgoG0N9JpRELnT"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_JrFbemxOWXKgoG0N9JpRELnT",
+                "item_id": "fc_051e0403c537b955006ab3966af31c87d08fddb9550f60b89f"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -192,11 +192,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_eG5SQZnP6iDa6Fvg680R8mNZ"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call_eG5SQZnP6iDa6Fvg680R8mNZ",
+                "item_id": "fc_051e0403c537b955006ab3966af32887d085724ead18d49117"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -216,12 +216,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_051e0403c537b955006ab3966a2bc887d0be9cae02bc8f6fdb",
+          "provider_request_id": "req_bf9dec7b325f4b0b835b34775bd5b95f",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -230,7 +231,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_051e0403c537b955006ab3966a2bc887d0be9cae02bc8f6fdb",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
@@ -242,24 +243,24 @@
             "output": [
               {
                 "arguments": "{\"slot\":0}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_KOnvmdHwq79UAH4OB8qchYbL",
+                "id": "fc_051e0403c537b955006ab3966af30c87d0a12efa93d4ef308c",
                 "name": "checkpoint_batch",
                 "status": "completed",
                 "type": "function_call"
               },
               {
                 "arguments": "{\"slot\":1}",
-                "call_id": "call_REDACTED_2",
-                "id": "fc_REDACTED_2",
+                "call_id": "call_JrFbemxOWXKgoG0N9JpRELnT",
+                "id": "fc_051e0403c537b955006ab3966af31c87d08fddb9550f60b89f",
                 "name": "checkpoint_batch",
                 "status": "completed",
                 "type": "function_call"
               },
               {
                 "arguments": "{\"slot\":2}",
-                "call_id": "call_REDACTED_3",
-                "id": "fc_REDACTED_3",
+                "call_id": "call_eG5SQZnP6iDa6Fvg680R8mNZ",
+                "id": "fc_051e0403c537b955006ab3966af32887d085724ead18d49117",
                 "name": "checkpoint_batch",
                 "status": "completed",
                 "type": "function_call"
@@ -327,7 +328,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -465,11 +466,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_KOnvmdHwq79UAH4OB8qchYbL"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_KOnvmdHwq79UAH4OB8qchYbL",
+                    "item_id": "fc_051e0403c537b955006ab3966af30c87d0a12efa93d4ef308c"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -484,11 +485,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_JrFbemxOWXKgoG0N9JpRELnT"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_JrFbemxOWXKgoG0N9JpRELnT",
+                    "item_id": "fc_051e0403c537b955006ab3966af31c87d08fddb9550f60b89f"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -503,11 +504,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_eG5SQZnP6iDa6Fvg680R8mNZ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call_eG5SQZnP6iDa6Fvg680R8mNZ",
+                    "item_id": "fc_051e0403c537b955006ab3966af32887d085724ead18d49117"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -527,11 +528,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_KOnvmdHwq79UAH4OB8qchYbL"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_KOnvmdHwq79UAH4OB8qchYbL",
+                    "item_id": "fc_051e0403c537b955006ab3966af30c87d0a12efa93d4ef308c"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -545,11 +546,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_JrFbemxOWXKgoG0N9JpRELnT"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_JrFbemxOWXKgoG0N9JpRELnT",
+                    "item_id": "fc_051e0403c537b955006ab3966af31c87d08fddb9550f60b89f"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -563,11 +564,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_eG5SQZnP6iDa6Fvg680R8mNZ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3",
-                    "item_id": "fc_REDACTED_3"
+                    "call_id": "call_eG5SQZnP6iDa6Fvg680R8mNZ",
+                    "item_id": "fc_051e0403c537b955006ab3966af32887d085724ead18d49117"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -628,13 +629,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_051e0403c537b955006ab3966bb4b487d099bdb53f528c791c",
+          "response_id": "resp_051e0403c537b955006ab3966b543887d0a9c6c228eeb6b068",
+          "provider_request_id": "req_ed39a76e926f4d81911aaff2bf88de9c",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -643,7 +645,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_051e0403c537b955006ab3966b543887d0a9c6c228eeb6b068",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
@@ -662,7 +664,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_051e0403c537b955006ab3966bb4b487d099bdb53f528c791c",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -730,7 +732,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

@@ -202,7 +202,7 @@
             "input_tokens": 349,
             "output_tokens": 284,
             "total_tokens": 633,
-            "cached_input_tokens": 332
+            "cached_input_tokens": 79
           },
           "rig_ecs::agent::UsesModel": 0,
           "rig_ecs::bus::effect::Scope": "parity/run#0"
@@ -241,10 +241,10 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_1"
+                  "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_1"
+                  "call_id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
                 },
                 "function": {
                   "name": "submit",
@@ -294,10 +294,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst"
                   },
                   "function": {
                     "name": "submit",
@@ -315,10 +315,10 @@
                 "input_tokens": 349,
                 "output_tokens": 284,
                 "total_tokens": 633,
-                "cached_input_tokens": 332
+                "cached_input_tokens": 79
               },
               "message_id": null,
-              "response_id": "chatcmpl-REDACTED_1",
+              "response_id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX",
               "finish_reason": "tool_calls",
               "provider": "llamacpp",
               "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -337,7 +337,7 @@
                             "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
                             "name": "submit"
                           },
-                          "id": "call_REDACTED_1",
+                          "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
                           "type": "function"
                         }
                       ]
@@ -345,26 +345,26 @@
                   }
                 ],
                 "created": 0,
-                "id": "chatcmpl-REDACTED_1",
+                "id": "chatcmpl-X459CqyV3eBCKmxel7cPnnix1H0wYIqX",
                 "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
                 "object": "chat.completion",
-                "system_fingerprint": "b10499-6d05498",
+                "system_fingerprint": "b10964-b29c606e2",
                 "timings": {
-                  "cache_n": 332,
-                  "predicted_ms": 2355.726,
+                  "cache_n": 79,
+                  "predicted_ms": 2452.547,
                   "predicted_n": 284,
-                  "predicted_per_second": 120.13281680467082,
-                  "predicted_per_token_ms": 8.324120141342757,
-                  "prompt_ms": 32.813,
-                  "prompt_n": 17,
-                  "prompt_per_second": 518.0873434309572,
-                  "prompt_per_token_ms": 1.9301764705882354
+                  "predicted_per_second": 115.39024532455444,
+                  "predicted_per_token_ms": 8.666243816254417,
+                  "prompt_ms": 160.122,
+                  "prompt_n": 270,
+                  "prompt_per_second": 1686.2142616255103,
+                  "prompt_per_token_ms": 0.5930444444444445
                 },
                 "usage": {
                   "completion_tokens": 284,
                   "prompt_tokens": 349,
                   "prompt_tokens_details": {
-                    "cached_tokens": 332
+                    "cached_tokens": 79
                   },
                   "total_tokens": 633
                 }

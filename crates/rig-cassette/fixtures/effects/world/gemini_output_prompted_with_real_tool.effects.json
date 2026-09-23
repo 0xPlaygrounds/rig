@@ -344,21 +344,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"category\":\"Technology\",\"summary\":\"The sum is 42.\",\"title\":\"Seattle Rust Meetup\"}"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EqkDCqYDAWkUfRMJKdb1/GvZxRSVQx5qnpAzl6SAlZPSDC3sQEZCJ81l7jDyliEbZfGa9BrliBABq8gI8kLQxEJ9IgxsLFTx3dAZW7kIsJ8u73cVFWo9n59dnLD6hASoD3OCAPcypmuZQw7O5jeQKxFhwir3J7GIWJs0KurmzdN0qj9MOZNhMxu2jmmHZaZbDPfrdZ+7h0x8SYwsEl7XxQGHGL1vZr4BZpn9SrK3gUapUJfUA/ytz9+Kh2Ip3fbOisoxkeFU+5qX+2cEQoTvhV8jbNuVGuMIalaej5Yyaolxif13j5PgPqQdyZyq6oy++mWtpSlgCJBsMh44Z43FmIOWl2RBuD3g7p8mfRyxAw7BXQU9Sg+NcjuuV+Bz+nnieqY8uI6iAzHjWiFfKGMqOUOtkv/JQxbH53Ci60Gc9BwMDks8B6O2n+KyYyPo1PMrmflxdLHaeTQ8ydtUwqlDp4HruAZa0yRlu1hRhtzBo6gcoFvsYoFzvxykOPql1SLG5mQ0POovjnT/Go9TXVF8jtV8Ofq073dmwh9iVDOo16/iwucuFlH+PdpwDpM="
-                  }
+              "text": "{\"category\":\"Technology\",\"summary\":\"The sum is 42.\",\"title\":\"Seattle Rust Meetup\"}",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EqkDCqYDAWkUfRMJKdb1/GvZxRSVQx5qnpAzl6SAlZPSDC3sQEZCJ81l7jDyliEbZfGa9BrliBABq8gI8kLQxEJ9IgxsLFTx3dAZW7kIsJ8u73cVFWo9n59dnLD6hASoD3OCAPcypmuZQw7O5jeQKxFhwir3J7GIWJs0KurmzdN0qj9MOZNhMxu2jmmHZaZbDPfrdZ+7h0x8SYwsEl7XxQGHGL1vZr4BZpn9SrK3gUapUJfUA/ytz9+Kh2Ip3fbOisoxkeFU+5qX+2cEQoTvhV8jbNuVGuMIalaej5Yyaolxif13j5PgPqQdyZyq6oy++mWtpSlgCJBsMh44Z43FmIOWl2RBuD3g7p8mfRyxAw7BXQU9Sg+NcjuuV+Bz+nnieqY8uI6iAzHjWiFfKGMqOUOtkv/JQxbH53Ci60Gc9BwMDks8B6O2n+KyYyPo1PMrmflxdLHaeTQ8ydtUwqlDp4HruAZa0yRlu1hRhtzBo6gcoFvsYoFzvxykOPql1SLG5mQ0POovjnT/Go9TXVF8jtV8Ofq073dmwh9iVDOo16/iwucuFlH+PdpwDpM="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

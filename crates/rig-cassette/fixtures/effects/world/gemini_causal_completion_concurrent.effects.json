@@ -278,21 +278,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EqsCCqgCAWkUfRO8IOnxljxGoJgaqEXX+PtDLDt9HcVcQHBJMLfhekSUsMO2EuRkdG+yBRFZvCiZTxDfSr+wjgEz6JXELQCobUleTu447Qt5vFmKmM2avaJkao5x+PqyiZED+Xa+gr+C/2DQ63AoC/HHDWPkC9V+P8DJlnaaDRqSUN77FNKb3ZGaPIe8xP4fRKSw9soSnOSE73exIb5WVypxDHBXCM5L67pa8fwRu8PQabxtqoHqNHsIySW+RFa3Rdf63pe3YV7Y+oRQniElOO/RoUTJfn45LXiZTvwCzPcjwY9QmtS4sLYihbjn0W4AWbJy6IiflLRs73kcerYbkXYL/epCzea3Bt6g8Hd1dZ3PWGIqNahwWR2nCmRNPozF1LH6gY6ei4BTq6YayYk="
-                  }
+              "text": "Paris",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EqsCCqgCAWkUfRO8IOnxljxGoJgaqEXX+PtDLDt9HcVcQHBJMLfhekSUsMO2EuRkdG+yBRFZvCiZTxDfSr+wjgEz6JXELQCobUleTu447Qt5vFmKmM2avaJkao5x+PqyiZED+Xa+gr+C/2DQ63AoC/HHDWPkC9V+P8DJlnaaDRqSUN77FNKb3ZGaPIe8xP4fRKSw9soSnOSE73exIb5WVypxDHBXCM5L67pa8fwRu8PQabxtqoHqNHsIySW+RFa3Rdf63pe3YV7Y+oRQniElOO/RoUTJfn45LXiZTvwCzPcjwY9QmtS4sLYihbjn0W4AWbJy6IiflLRs73kcerYbkXYL/epCzea3Bt6g8Hd1dZ3PWGIqNahwWR2nCmRNPozF1LH6gY6ei4BTq6YayYk="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

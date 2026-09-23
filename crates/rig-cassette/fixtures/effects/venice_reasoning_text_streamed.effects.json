@@ -75,7 +75,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to enforce memory safety at compile time without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed for high performance and concurrency that guarantees memory safety at compile time through its unique ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes and severe security vulnerabilities.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly for maximum clarity and impact within the constraint:\n   \"Rust is a systems programming language that guarantees memory safety at compile time through its ownership model, eliminating the need for a garbage collector while maintaining high performance. Memory safety matters because it prevents dangerous bugs like buffer overflows and data races, which are common causes of software crashes and critical security vulnerabilities.\"\n   - Count: 2 sentences.\n   - Covers both parts accurately.\n   - Meets all constraints.\n\n   Ready. Output matches the refined version.✅\n   Note: I will ensure it strictly follows the \"one or two sentences\" rule. The draft is exactly two. All good. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\"\n   The draft is exactly two sentences. It directly answers both parts. No extra fluff. Complies with all rules. No URLs, no system prompt mentions, direct answer. Language matches prompt (English). All good. \n   Output matches response. \n   Proceeds. \n   [Output Generation] -> \"Rust is a systems programming language that guarantees memory safety at compile time through its ownership and borrowing model, eliminating the need for a garbage collector while maintaining high performance. Memory safety matters because it prevents dangerous bugs like buffer overflows and data races, which are common causes of software crashes and critical security vulnerabilities.\" (2 sentences) -> Perfect. \n   Output matches.✅\n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches.\n   All constraints met. Proceeds. \n   [Output Generation] (matches the refined version) -> *Proceeds*. \n   *(Note: I'll make sure the output is exactly as refined.)*\n   \"Rust is a systems programming language that guarantees memory safety at compile time through its ownership and borrowing model, eliminating the need for a garbage collector while maintaining high performance. Memory safety matters because it prevents dangerous bugs like buffer overflows and data races, which are common causes of software crashes and critical security vulnerabilities.\" -> Exactly 2 sentences. Covers both points. Concise. Meets all rules. Done. \n   [Output Generation] -> *Proceeds*. \n   *(Self-Correction/Note during generation prep)*: I should ensure it's strictly one or two sentences. The draft is two. Perfect. No extra text. Direct answer. All good. \n   Output matches response.✅\n   [Final Output Generation] -> *Proceeds*. \n   *(Done.)*\n"
+                    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n"
                   }
                 }
               ],
@@ -83,27 +83,27 @@
             },
             {
               "type": "text",
-              "text": "\n\nRust is a systems programming language that guarantees memory safety at compile time through its ownership and borrowing model, eliminating the need for a garbage collector while maintaining high performance. Memory safety matters because it prevents dangerous bugs like buffer overflows and data races, which are common causes of software crashes and critical security vulnerabilities."
+              "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code."
             }
           ],
           "usage": {
             "input_tokens": 1006,
-            "output_tokens": 977,
-            "total_tokens": 1983
+            "output_tokens": 938,
+            "total_tokens": 1944
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
               "prompt_tokens": 1006,
-              "completion_tokens": 977,
-              "total_tokens": 1983
+              "completion_tokens": 938,
+              "total_tokens": 1944
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -111,7 +111,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.0038721999999999997
+                "usd": 0.0037357
               }
             }
           }
@@ -298,7 +298,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ":** Explain"
+            "text": ":**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Explain"
           }
         },
         {
@@ -394,63 +402,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " -"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " **"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Constraint"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ":**"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " One"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " or"
+            "text": "\n   - **Constraint:** One or"
           }
         },
         {
@@ -962,7 +914,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " enforce"
+            "text": " guarantee"
           }
         },
         {
@@ -979,30 +931,6 @@
           "delta": {
             "delta": "reasoning",
             "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " at"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " compile"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " time"
           }
         },
         {
@@ -1666,7 +1594,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " a"
+            "text": " a systems programming language designed to deliver high performance"
           }
         },
         {
@@ -1674,7 +1602,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " systems"
+            "text": " and concurrency"
           }
         },
         {
@@ -1682,7 +1610,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " programming"
+            "text": " while"
           }
         },
         {
@@ -1690,7 +1618,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " language"
+            "text": " guarantee"
           }
         },
         {
@@ -1698,63 +1626,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " designed"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " for"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " high"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " performance"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " concurrency"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " that"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " guarantees"
+            "text": "ing"
           }
         },
         {
@@ -1778,30 +1650,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " at"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " compile"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " time"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": " through"
           }
         },
@@ -1818,15 +1666,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " unique"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ownership"
+            "text": " innovative ownership"
           }
         },
         {
@@ -2034,55 +1874,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matters"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "):**"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " safety"
+            "text": " safety matters):**\n   Memory safety"
           }
         },
         {
@@ -2258,15 +2050,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " severe"
+            "text": ","
           }
         },
         {
@@ -2283,6 +2067,70 @@
           "delta": {
             "delta": "reasoning",
             "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " unpredictable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " behavior"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " low"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-level"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " code"
           }
         },
         {
@@ -2714,6 +2562,78 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " -"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Matches"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "/rules"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "?"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Yes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
             "text": "\n\n"
           }
         },
@@ -2898,7 +2818,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " for"
+            "text": " to"
           }
         },
         {
@@ -2906,7 +2826,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " maximum"
+            "text": " ensure"
           }
         },
         {
@@ -2914,7 +2834,23 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " clarity"
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " well"
           }
         },
         {
@@ -2930,7 +2866,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " impact"
+            "text": " strictly"
           }
         },
         {
@@ -2938,7 +2874,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " within"
+            "text": " meets"
           }
         },
         {
@@ -2962,7 +2898,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ":"
+            "text": "."
           }
         },
         {
@@ -3082,7 +3018,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " at"
+            "text": " and"
           }
         },
         {
@@ -3090,7 +3026,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " compile"
+            "text": " high"
           }
         },
         {
@@ -3098,7 +3034,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " time"
+            "text": " performance"
           }
         },
         {
@@ -3115,6 +3051,14 @@
           "delta": {
             "delta": "reasoning",
             "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " unique"
           }
         },
         {
@@ -3202,38 +3146,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " while"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " maintaining"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " high"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " performance"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": "."
           }
         },
@@ -3290,7 +3202,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " dangerous"
+            "text": " critical"
           }
         },
         {
@@ -3426,15 +3338,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " critical"
+            "text": ","
           }
         },
         {
@@ -3451,6 +3355,38 @@
           "delta": {
             "delta": "reasoning",
             "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " unpredictable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " behavior"
           }
         },
         {
@@ -3482,7 +3418,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " -"
+            "text": " This"
           }
         },
         {
@@ -3490,7 +3426,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Count"
+            "text": " is"
           }
         },
         {
@@ -3498,7 +3434,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ":"
+            "text": " exactly"
           }
         },
         {
@@ -3506,15 +3442,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "2"
+            "text": " two"
           }
         },
         {
@@ -3538,30 +3466,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " -"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": " Covers"
           }
         },
@@ -3578,7 +3482,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " parts"
+            "text": " parts clearly. Meets all constraints"
           }
         },
         {
@@ -3586,23 +3490,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " accurately"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n"
+            "text": ".\n\n"
           }
         },
         {
@@ -3618,7 +3506,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " -"
+            "text": " Final"
           }
         },
         {
@@ -3626,7 +3514,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Me"
+            "text": " check"
           }
         },
         {
@@ -3634,7 +3522,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "ets"
+            "text": " against"
           }
         },
         {
@@ -3642,7 +3530,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " all"
+            "text": " rules"
           }
         },
         {
@@ -3650,7 +3538,95 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " constraints"
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " No"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " URLs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " direct"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " answer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matches"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " prompt"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " concise"
           }
         },
         {
@@ -3659,22 +3635,6 @@
           "delta": {
             "delta": "reasoning",
             "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
           }
         },
         {
@@ -3691,6 +3651,30 @@
           "delta": {
             "delta": "reasoning",
             "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "✅"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
           }
         },
         {
@@ -3731,238 +3715,6 @@
           "delta": {
             "delta": "reasoning",
             "text": " version"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "✅"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Note"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " I"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " will"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ensure"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " it"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " strictly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " follows"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "one"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " two"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " sentences"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " rule"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " draft"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " exactly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " two"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " All"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " good"
           }
         },
         {
@@ -4131,6 +3883,702 @@
           "delta": {
             "delta": "reasoning",
             "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "R"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " guarantees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " high"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " through"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " unique"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ownership"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " model"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ", eliminating"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " need"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " collector"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " data"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " races"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " which"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " are"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " causes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " software"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " unpredictable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " behavior"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ".\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ->"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Exactly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sentences"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Covers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " both"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " points"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Me"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ets"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " constraints"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " All"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " good"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   Output"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matches"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ["
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Done"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ".]"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \n"
           }
         },
         {
@@ -4314,119 +4762,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " explain"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " what"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " programming"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " language"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " why"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matters"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ".\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
+            "text": "\"."
           }
         },
         {
@@ -4474,7 +4810,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " sentences"
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Good"
           }
         },
         {
@@ -4490,7 +4834,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " It"
+            "text": "\n"
           }
         },
         {
@@ -4498,7 +4842,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " directly"
+            "text": "  "
           }
         },
         {
@@ -4506,7 +4850,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " answers"
+            "text": " Check"
           }
         },
         {
@@ -4514,7 +4858,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " both"
+            "text": " content"
           }
         },
         {
@@ -4522,7 +4866,55 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " parts"
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " definition"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " +"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " importance"
           }
         },
         {
@@ -4531,6 +4923,38 @@
           "delta": {
             "delta": "reasoning",
             "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Good"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
           }
         },
         {
@@ -4578,7 +5002,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Com"
+            "text": " Direct"
           }
         },
         {
@@ -4586,7 +5010,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "plies"
+            "text": "."
           }
         },
         {
@@ -4594,7 +5018,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " with"
+            "text": " Matches"
           }
         },
         {
@@ -4626,7 +5050,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " No"
+            "text": "\n"
           }
         },
         {
@@ -4634,7 +5058,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " URLs"
+            "text": "   Proceed. \n   Output"
           }
         },
         {
@@ -4642,223 +5066,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " no"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " system"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " prompt"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " mentions"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " direct"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " answer"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Language"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matches"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " prompt"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ("
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "English"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ")."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " All"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " good"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Output"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matches"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " response"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Proceed"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "s"
+            "text": " generation"
           }
         },
         {
@@ -4906,14 +5114,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Generation"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": "]"
           }
         },
@@ -4922,31 +5122,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "R"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "ust"
+            "text": " Rust"
           }
         },
         {
@@ -5026,7 +5202,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " at"
+            "text": " and"
           }
         },
         {
@@ -5034,7 +5210,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " compile"
+            "text": " high"
           }
         },
         {
@@ -5042,7 +5218,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " time"
+            "text": " performance"
           }
         },
         {
@@ -5066,23 +5242,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
+            "text": " unique"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
             "text": " ownership"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " borrowing"
           }
         },
         {
@@ -5162,38 +5330,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " while"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " maintaining"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " high"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " performance"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": "."
           }
         },
@@ -5250,7 +5386,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " dangerous"
+            "text": " critical"
           }
         },
         {
@@ -5386,15 +5522,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " critical"
+            "text": ","
           }
         },
         {
@@ -5418,7 +5546,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": ".\""
+            "text": ","
           }
         },
         {
@@ -5426,7 +5554,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " ("
+            "text": " and"
           }
         },
         {
@@ -5434,7 +5562,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "2"
+            "text": " unpredictable"
           }
         },
         {
@@ -5442,71 +5570,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " sentences"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ")"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Perfect"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Output"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matches"
+            "text": " behavior"
           }
         },
         {
@@ -5531,6 +5595,86 @@
           "delta": {
             "delta": "reasoning",
             "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " All"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " steps"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " verified"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Output"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matches"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " response"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \n"
           }
         },
         {
@@ -5698,7 +5842,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " is"
+            "text": " is and why memory safety matters.\" -> Matches"
           }
         },
         {
@@ -5706,63 +5850,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " why"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matters"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ".\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Matches"
+            "text": " perfectly"
           }
         },
         {
@@ -5778,7 +5866,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "\n"
+            "text": " \n"
           }
         },
         {
@@ -5787,38 +5875,6 @@
           "delta": {
             "delta": "reasoning",
             "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " All"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " constraints"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " met"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
           }
         },
         {
@@ -5946,182 +6002,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " *"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Proceed"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "s"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "*."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " *("
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Note"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " I"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "'ll"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " make"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " sure"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " output"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " exactly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " as"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " refined"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ")*"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": "\n"
           }
         },
@@ -6234,7 +6114,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " at"
+            "text": " and"
           }
         },
         {
@@ -6242,7 +6122,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " compile"
+            "text": " high"
           }
         },
         {
@@ -6250,7 +6130,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " time"
+            "text": " performance"
           }
         },
         {
@@ -6274,23 +6154,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
+            "text": " unique"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
             "text": " ownership"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " borrowing"
           }
         },
         {
@@ -6370,38 +6242,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " while"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " maintaining"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " high"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " performance"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": "."
           }
         },
@@ -6458,7 +6298,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " dangerous"
+            "text": " critical"
           }
         },
         {
@@ -6506,7 +6346,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and"
+            "text": " and data races, which are common"
           }
         },
         {
@@ -6514,39 +6354,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " data"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " races, which are common"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " causes"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " software"
+            "text": " causes of software"
           }
         },
         {
@@ -6562,15 +6370,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " critical"
+            "text": ","
           }
         },
         {
@@ -6594,6 +6394,38 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " unpredictable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " behavior"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
             "text": ".\""
           }
         },
@@ -6603,14 +6435,6 @@
           "delta": {
             "delta": "reasoning",
             "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Exactly"
           }
         },
         {
@@ -6666,7 +6490,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " points"
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Direct"
           }
         },
         {
@@ -6682,7 +6514,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Conc"
+            "text": " Com"
           }
         },
         {
@@ -6690,47 +6522,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "ise"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Me"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "ets"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " all"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " rules"
+            "text": "plies"
           }
         },
         {
@@ -6739,6 +6531,30 @@
           "delta": {
             "delta": "reasoning",
             "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "✅"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
           }
         },
         {
@@ -6810,15 +6626,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " *"
+            "text": " ("
           }
         },
         {
@@ -6842,543 +6650,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "*."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " *("
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Self"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "-C"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "rection"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "/"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Note"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " during"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " generation"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " prep"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ")*"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " I"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " should"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ensure"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " it"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "'s"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " strictly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " one"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " two"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " sentences"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " draft"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " two"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Perfect"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " No"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " extra"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " text"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Direct"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " answer"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " All"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " good"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Output"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " matches"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " response"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "✅"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ["
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Final"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Output"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Generation"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "]"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " *"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Proceed"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "s"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "*."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "  "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " *("
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Done"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": ")*"
+            "text": ")"
           }
         },
         {
@@ -7497,7 +6769,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " at"
+            "text": " and"
           }
         },
         {
@@ -7505,7 +6777,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " compile"
+            "text": " high"
           }
         },
         {
@@ -7513,7 +6785,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " time"
+            "text": " performance"
           }
         },
         {
@@ -7530,6 +6802,14 @@
           "delta": {
             "delta": "text",
             "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " unique"
           }
         },
         {
@@ -7633,38 +6913,6 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " while"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " maintaining"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " high"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " performance"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
             "text": "."
           }
         },
@@ -7721,7 +6969,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " dangerous"
+            "text": " critical"
           }
         },
         {
@@ -7761,47 +7009,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "flows"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " data"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " races"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " which"
+            "text": "flows and data races, which"
           }
         },
         {
@@ -7817,7 +7025,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " common"
+            "text": " frequent"
           }
         },
         {
@@ -7857,15 +7065,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " critical"
+            "text": ","
           }
         },
         {
@@ -7889,6 +7089,70 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " unpredictable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " behavior"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " low"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-level"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " code"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
             "text": "."
           }
         },
@@ -7896,22 +7160,22 @@
           "event": "final",
           "usage": {
             "input_tokens": 1006,
-            "output_tokens": 977,
-            "total_tokens": 1983
+            "output_tokens": 938,
+            "total_tokens": 1944
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
               "prompt_tokens": 1006,
-              "completion_tokens": 977,
-              "total_tokens": 1983
+              "completion_tokens": 938,
+              "total_tokens": 1944
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -7919,7 +7183,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.0038721999999999997
+                "usd": 0.0037357
               }
             }
           }

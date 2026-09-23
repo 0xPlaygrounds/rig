@@ -2,22 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
@@ -30,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -54,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -70,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -82,7 +66,71 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -155,7 +203,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which ranges from bright"
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from"
             }
           ],
           "usage": {
@@ -164,7 +212,7 @@
             "total_tokens": 994
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
           "finish_reason": "length",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -175,7 +223,7 @@
               "total_tokens": 994
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -306,7 +354,15 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " ranges"
+            "text": " can"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " range"
           }
         },
         {
@@ -318,14 +374,6 @@
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " bright"
-          }
-        },
-        {
           "event": "final",
           "usage": {
             "input_tokens": 978,
@@ -334,7 +382,7 @@
           },
           "finish_reason": "length",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -344,7 +392,7 @@
               "total_tokens": 994
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,

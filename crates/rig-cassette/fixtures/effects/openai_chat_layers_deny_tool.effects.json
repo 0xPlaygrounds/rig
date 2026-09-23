@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_0tSxt5lnoWAGX1azFa5REmDl"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_0tSxt5lnoWAGX1azFa5REmDl"
               },
               "function": {
                 "name": "add",
@@ -145,8 +145,8 @@
             "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDBw6QODq36pxQ5xwm6w8E67ss8R",
+          "provider_request_id": "req_2d7f2b15bd3942bc91c7eb24655347e2",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -166,7 +166,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_0tSxt5lnoWAGX1azFa5REmDl",
                       "type": "function"
                     }
                   ]
@@ -174,7 +174,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDBw6QODq36pxQ5xwm6w8E67ss8R",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -228,10 +228,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_0tSxt5lnoWAGX1azFa5REmDl"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_0tSxt5lnoWAGX1azFa5REmDl"
                   },
                   "function": {
                     "name": "add",
@@ -252,10 +252,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_0tSxt5lnoWAGX1azFa5REmDl"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_0tSxt5lnoWAGX1azFa5REmDl"
                   },
                   "name": "add",
                   "content": [
@@ -311,14 +311,14 @@
           ],
           "usage": {
             "input_tokens": 221,
-            "output_tokens": 330,
-            "total_tokens": 551,
+            "output_tokens": 394,
+            "total_tokens": 615,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 320
+            "reasoning_tokens": 384
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "chatcmpl-ERDByJHbqrBEiZUcVu7Zukt4hY388",
+          "provider_request_id": "req_3e5a766576654dfebdbdb1f1638b1892",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -336,17 +336,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-ERDByJHbqrBEiZUcVu7Zukt4hY388",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 330,
+              "completion_tokens": 394,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 320,
+                "reasoning_tokens": 384,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 221,
@@ -354,7 +354,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 551
+              "total_tokens": 615
             }
           }
         }

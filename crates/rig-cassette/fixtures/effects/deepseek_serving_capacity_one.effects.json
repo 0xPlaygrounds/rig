@@ -114,17 +114,13 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "I'll call both tools now."
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_Q0lUwANI1OV0qcuG2h8f4882"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_Q0lUwANI1OV0qcuG2h8f4882"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -137,10 +133,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_01_o9N8IJvB5eNveqSC92W32630"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_01_o9N8IJvB5eNveqSC92W32630"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -152,20 +148,20 @@
           ],
           "usage": {
             "input_tokens": 395,
-            "output_tokens": 46,
-            "total_tokens": 441,
+            "output_tokens": 40,
+            "total_tokens": 435,
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "690ea48d-7b12-4721-b44d-4ff5afa31cdd",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 395,
-              "completion_tokens": 46,
-              "total_tokens": 441,
+              "completion_tokens": 40,
+              "total_tokens": 435,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
@@ -173,7 +169,7 @@
               "prompt_cache_miss_tokens": 139
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "690ea48d-7b12-4721-b44d-4ff5afa31cdd",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -259,17 +255,13 @@
               "id": null,
               "content": [
                 {
-                  "type": "text",
-                  "text": "I'll call both tools now."
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_Q0lUwANI1OV0qcuG2h8f4882"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_Q0lUwANI1OV0qcuG2h8f4882"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -282,10 +274,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_o9N8IJvB5eNveqSC92W32630"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_o9N8IJvB5eNveqSC92W32630"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -303,10 +295,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_Q0lUwANI1OV0qcuG2h8f4882"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_Q0lUwANI1OV0qcuG2h8f4882"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -320,10 +312,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_o9N8IJvB5eNveqSC92W32630"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_o9N8IJvB5eNveqSC92W32630"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -371,33 +363,33 @@
           "choice": [
             {
               "type": "text",
-              "text": "The two labels are `crimson-harbor` and `silver-orchard`."
+              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 471,
-            "output_tokens": 19,
-            "total_tokens": 490,
+            "input_tokens": 465,
+            "output_tokens": 17,
+            "total_tokens": 482,
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "3670a9af-dbba-4787-ac12-0a63ab84e664",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 471,
-              "completion_tokens": 19,
-              "total_tokens": 490,
+              "prompt_tokens": 465,
+              "completion_tokens": 17,
+              "total_tokens": 482,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 215
+              "prompt_cache_miss_tokens": 209
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "3670a9af-dbba-4787-ac12-0a63ab84e664",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

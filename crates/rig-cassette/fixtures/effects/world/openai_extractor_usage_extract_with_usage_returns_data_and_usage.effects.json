@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -110,11 +110,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_UpJlT7yJUKE7BNoxMgOJjRbq"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_UpJlT7yJUKE7BNoxMgOJjRbq",
+                "item_id": "fc_08e3eb1cea9d4034006ab3969c609087d0b8843c17dbe02026"
               },
               "function": {
                 "name": "submit",
@@ -129,18 +129,20 @@
             }
           ],
           "usage": {
-            "input_tokens": 170,
+            "input_tokens": 171,
             "output_tokens": 16,
-            "total_tokens": 186,
+            "total_tokens": 187,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_08e3eb1cea9d4034006ab3969ac4c887d0bb4393c95e34224b",
+          "provider_request_id": "req_3249710128fd447694f1966bcca7145a",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -149,7 +151,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_08e3eb1cea9d4034006ab3969ac4c887d0bb4393c95e34224b",
             "incomplete_details": null,
             "instructions": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.",
             "max_output_tokens": null,
@@ -161,8 +163,8 @@
             "output": [
               {
                 "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_UpJlT7yJUKE7BNoxMgOJjRbq",
+                "id": "fc_08e3eb1cea9d4034006ab3969c609087d0b8843c17dbe02026",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -212,9 +214,9 @@
               {
                 "description": "Submit the structured data you extracted from the provided text.",
                 "name": "submit",
+                "output_schema": null,
                 "parameters": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "additionalProperties": false,
                   "properties": {
                     "age": {
                       "format": "uint8",
@@ -238,15 +240,10 @@
                       ]
                     }
                   },
-                  "required": [
-                    "name",
-                    "age",
-                    "profession"
-                  ],
                   "title": "Person",
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -254,15 +251,16 @@
             "top_p": 1.0,
             "truncation": "disabled",
             "usage": {
-              "input_tokens": 170,
+              "input_tokens": 171,
               "input_tokens_details": {
+                "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
               "output_tokens": 16,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 186
+              "total_tokens": 187
             },
             "user": null
           }

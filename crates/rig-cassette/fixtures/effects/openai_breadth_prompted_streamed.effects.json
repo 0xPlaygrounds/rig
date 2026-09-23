@@ -66,19 +66,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A gathering for Rust enthusiasts in Seattle to discuss projects and network.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join local Rust enthusiasts for networking and discussions on Rust programming.\"}"
             }
           ],
           "usage": {
             "input_tokens": 97,
-            "output_tokens": 28,
-            "total_tokens": 125,
+            "output_tokens": 27,
+            "total_tokens": 124,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+          "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+          "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -88,11 +88,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 28,
+              "output_tokens": 27,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 125
+              "total_tokens": 124
             },
             "reasoning_metadata": {
               "context": null,
@@ -100,8 +100,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+            "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -109,14 +109,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "{\""
@@ -124,7 +124,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "title"
@@ -132,7 +132,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "\":\""
@@ -140,7 +140,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "Seattle"
@@ -148,7 +148,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": " Rust"
@@ -156,7 +156,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": " Meetup"
@@ -164,7 +164,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "\",\""
@@ -172,7 +172,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "category"
@@ -180,7 +180,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "\":\""
@@ -188,7 +188,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "Technology"
@@ -196,7 +196,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "\",\""
@@ -204,7 +204,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "summary"
@@ -212,7 +212,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "\":\""
@@ -220,31 +220,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
-            "text": "A"
+            "text": "Join"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
-            "text": " gathering"
+            "text": " local"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " for"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": " Rust"
@@ -252,7 +244,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": " enthusiasts"
@@ -260,47 +252,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
-            "text": " in"
+            "text": " for"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
-            "text": " Seattle"
+            "text": " networking"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " to"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " discuss"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " projects"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": " and"
@@ -308,15 +276,39 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
-            "text": " network"
+            "text": " discussions"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+          "delta": {
+            "delta": "text",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": ".\""
@@ -324,7 +316,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "delta": {
             "delta": "text",
             "text": "}"
@@ -332,7 +324,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
           "kind": {
             "kind": "message"
           }
@@ -341,15 +333,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 97,
-            "output_tokens": 28,
-            "total_tokens": 125,
+            "output_tokens": 27,
+            "total_tokens": 124,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+          "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
+          "provider_request_id": "req_e2d2a525378f453cbaf7fe55dfbbfafd",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -358,11 +350,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 28,
+              "output_tokens": 27,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 125
+              "total_tokens": 124
             },
             "reasoning_metadata": {
               "context": null,
@@ -370,8 +362,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_051be6577c9430e6006ab395f3263087d0b879d750427b36bf",
+            "response_id": "resp_051be6577c9430e6006ab395f289cc87d0be6be0726fac40ff",
             "model": "gpt-4o-2024-08-06"
           }
         }

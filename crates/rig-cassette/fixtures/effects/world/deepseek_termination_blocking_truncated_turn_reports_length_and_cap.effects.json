@@ -75,7 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
             }
           ],
           "usage": {
@@ -85,7 +85,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "f26bcd20-d38a-4870-87e4-b4b14085365f",
           "finish_reason": "length",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -96,13 +96,13 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam",
+                  "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "f26bcd20-d38a-4870-87e4-b4b14085365f",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

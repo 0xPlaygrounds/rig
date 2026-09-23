@@ -155,11 +155,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
               },
               "function": {
                 "name": "add",
@@ -180,12 +180,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0a65494bcf9aa481006ab395f00b8887d0aa3982bce2ca0684",
+          "provider_request_id": "req_c24b8064b2f245fca792542c1c4d2612",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -194,7 +195,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0a65494bcf9aa481006ab395f00b8887d0aa3982bce2ca0684",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
@@ -206,8 +207,8 @@
             "output": [
               {
                 "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                "id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228",
                 "name": "add",
                 "status": "completed",
                 "type": "function_call"
@@ -259,7 +260,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -276,7 +276,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -378,11 +378,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                    "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
                   },
                   "function": {
                     "name": "add",
@@ -403,11 +403,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_m8F6xXO6Gqb3j4UDnp3SGZ89",
+                    "item_id": "fc_0a65494bcf9aa481006ab395f0a34487d0a8aedd6e2f213228"
                   },
                   "name": "add",
                   "content": [
@@ -468,13 +468,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_0a65494bcf9aa481006ab395f1d96c87d09bfd6c79b04254d3",
+          "response_id": "resp_0a65494bcf9aa481006ab395f1339c87d0ac9860d9a8ceb82b",
+          "provider_request_id": "req_6e8ee67a79de4e7da250bd3b55614381",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -483,7 +484,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_0a65494bcf9aa481006ab395f1339c87d0ac9860d9a8ceb82b",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
@@ -502,7 +503,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_0a65494bcf9aa481006ab395f1d96c87d09bfd6c79b04254d3",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -554,7 +555,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -571,7 +571,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

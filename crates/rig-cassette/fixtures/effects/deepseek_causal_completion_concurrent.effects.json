@@ -110,10 +110,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
               },
               "function": {
                 "name": "lookup",
@@ -132,7 +132,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "23aeaed7-f4d6-42b4-90fd-a19798a8c67e",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -151,7 +151,7 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_oQqcbNIZKYPiEHGJDEzF9385",
                       "index": 0,
                       "type": "function"
                     }
@@ -160,7 +160,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "23aeaed7-f4d6-42b4-90fd-a19798a8c67e",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -251,7 +251,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "b96efa3f-ae7b-46b9-93cc-decfd1bcc92c",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -268,7 +268,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "b96efa3f-ae7b-46b9-93cc-decfd1bcc92c",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -317,10 +317,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
                   },
                   "function": {
                     "name": "lookup",
@@ -340,10 +340,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
                   },
                   "name": "lookup",
                   "content": [
@@ -403,7 +403,7 @@
             "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "81d3ea8c-314d-410f-a25a-3f75bd788292",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -420,7 +420,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
+            "id": "81d3ea8c-314d-410f-a25a-3f75bd788292",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

@@ -675,21 +675,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "12"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CloBaRR9E4pmWz9d3fT4g4y648yVS7+XtIdqepKNEgDMET01H8Y1Xfe1442r/ydlCjyO+dkCAthXMcQ+Cf4sEvvO44gyiZhgRp8Hr69Z3qG4/CMgeYHAHMeFVok="
-                  }
+              "text": "12",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CloBaRR9E4pmWz9d3fT4g4y648yVS7+XtIdqepKNEgDMET01H8Y1Xfe1442r/ydlCjyO+dkCAthXMcQ+Cf4sEvvO44gyiZhgRp8Hr69Z3qG4/CMgeYHAHMeFVok="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

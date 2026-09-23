@@ -119,10 +119,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_8173d28c99de4bb4824e0bdd"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_8173d28c99de4bb4824e0bdd"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -135,10 +135,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_3"
+                "id": "call_130cbe86cd144efeb90ebf8f"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_3"
+                "call_id": "call_130cbe86cd144efeb90ebf8f"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -157,7 +157,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146068-f7vbtdVBp0ZcKCpQstNj",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -182,7 +182,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146068-f7vbtdVBp0ZcKCpQstNj",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -270,10 +270,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_8173d28c99de4bb4824e0bdd"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_8173d28c99de4bb4824e0bdd"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -286,10 +286,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_130cbe86cd144efeb90ebf8f"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_130cbe86cd144efeb90ebf8f"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -307,10 +307,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_8173d28c99de4bb4824e0bdd"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_8173d28c99de4bb4824e0bdd"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -324,10 +324,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_130cbe86cd144efeb90ebf8f"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_130cbe86cd144efeb90ebf8f"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -389,7 +389,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "gen-1790146069-p8bOiIQmYFXT2cnd6vTJ",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -414,7 +414,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_4",
+            "response_id": "gen-1790146069-p8bOiIQmYFXT2cnd6vTJ",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

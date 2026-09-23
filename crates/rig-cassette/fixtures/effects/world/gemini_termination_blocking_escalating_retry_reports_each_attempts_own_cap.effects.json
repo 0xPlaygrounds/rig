@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -88,7 +88,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were"
+              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
             }
           ],
           "usage": {
@@ -97,7 +97,7 @@
             "total_tokens": 46
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "p3izatO-GbjiqtsPytTWQA",
           "finish_reason": "length",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -107,7 +107,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were"
+                      "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
                     }
                   ],
                   "role": "model"
@@ -117,7 +117,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "p3izatO-GbjiqtsPytTWQA",
             "usageMetadata": {
               "candidatesTokenCount": 24,
               "promptTokenCount": 22,
@@ -189,7 +189,7 @@
             "total_tokens": 68
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "p3izaob7Ooi-qtsPpfaNwQQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -209,7 +209,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_2",
+            "responseId": "p3izaob7Ooi-qtsPpfaNwQQ",
             "usageMetadata": {
               "candidatesTokenCount": 46,
               "promptTokenCount": 22,

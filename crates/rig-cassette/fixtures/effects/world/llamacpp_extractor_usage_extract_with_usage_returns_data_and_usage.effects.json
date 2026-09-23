@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "eqs7nhCXbzzCYIQxuMbuzLHiYVpebVYE"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "eqs7nhCXbzzCYIQxuMbuzLHiYVpebVYE"
               },
               "function": {
                 "name": "submit",
@@ -145,7 +145,7 @@
             "cached_input_tokens": 332
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-PFBpwcOesZkR5Z4feuGCdUwjyi0UiVXU",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
           "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -164,7 +164,7 @@
                         "arguments": "{\"name\": \"Jane Smith\", \"age\": 45, \"profession\": \"data scientist\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "eqs7nhCXbzzCYIQxuMbuzLHiYVpebVYE",
                       "type": "function"
                     }
                   ]
@@ -172,20 +172,20 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-PFBpwcOesZkR5Z4feuGCdUwjyi0UiVXU",
             "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "object": "chat.completion",
-            "system_fingerprint": "b10499-6d05498",
+            "system_fingerprint": "b10964-b29c606e2",
             "timings": {
               "cache_n": 332,
-              "predicted_ms": 2034.901,
+              "predicted_ms": 2058.365,
               "predicted_n": 239,
-              "predicted_per_second": 116.95900685094755,
-              "predicted_per_token_ms": 8.550004201680673,
-              "prompt_ms": 35.219,
+              "predicted_per_second": 115.625751506657,
+              "predicted_per_token_ms": 8.64859243697479,
+              "prompt_ms": 34.124,
               "prompt_n": 17,
-              "prompt_per_second": 482.6940003975127,
-              "prompt_per_token_ms": 2.071705882352941
+              "prompt_per_second": 498.18309694056967,
+              "prompt_per_token_ms": 2.007294117647059
             },
             "usage": {
               "completion_tokens": 239,

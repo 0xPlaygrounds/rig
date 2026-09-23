@@ -6,31 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 14
         }
       }
     ],
@@ -255,7 +231,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_UT5eA5ZdA3XggHCk8jE91324",
           "delta": {
             "delta": "tool_name",
             "name": "write_note"

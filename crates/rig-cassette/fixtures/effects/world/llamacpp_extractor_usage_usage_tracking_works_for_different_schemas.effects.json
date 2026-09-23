@@ -134,10 +134,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
               },
               "function": {
                 "name": "submit",
@@ -158,7 +158,7 @@
             "cached_input_tokens": 332
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
           "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -177,7 +177,7 @@
                         "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g",
                       "type": "function"
                     }
                   ]
@@ -185,20 +185,20 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM",
             "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "object": "chat.completion",
-            "system_fingerprint": "b10499-6d05498",
+            "system_fingerprint": "b10964-b29c606e2",
             "timings": {
               "cache_n": 332,
-              "predicted_ms": 1916.999,
+              "predicted_ms": 1870.215,
               "predicted_n": 221,
-              "predicted_per_second": 114.76270983970258,
-              "predicted_per_token_ms": 8.713631818181819,
-              "prompt_ms": 33.73,
+              "predicted_per_second": 117.63353411238815,
+              "predicted_per_token_ms": 8.500977272727273,
+              "prompt_ms": 32.424,
               "prompt_n": 15,
-              "prompt_per_second": 444.70797509635344,
-              "prompt_per_token_ms": 2.2486666666666664
+              "prompt_per_second": 462.620281273131,
+              "prompt_per_token_ms": 2.1616
             },
             "usage": {
               "completion_tokens": 221,
@@ -299,10 +299,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns"
               },
               "function": {
                 "name": "submit",
@@ -324,7 +324,7 @@
             "cached_input_tokens": 325
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-6RqvLx1P4enciq5xPKS3diTB1ABQhdnV",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
           "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -343,7 +343,7 @@
                         "arguments": "{\"street\": \"456 Oak Avenue\", \"city\": \"Cambridge\", \"state\": \"MA\", \"zip_code\": \"02139\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_2",
+                      "id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns",
                       "type": "function"
                     }
                   ]
@@ -351,20 +351,20 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-6RqvLx1P4enciq5xPKS3diTB1ABQhdnV",
             "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "object": "chat.completion",
-            "system_fingerprint": "b10499-6d05498",
+            "system_fingerprint": "b10964-b29c606e2",
             "timings": {
               "cache_n": 325,
-              "predicted_ms": 1616.717,
+              "predicted_ms": 1690.351,
               "predicted_n": 189,
-              "predicted_per_second": 116.28503937300096,
-              "predicted_per_token_ms": 8.599558510638298,
-              "prompt_ms": 33.67,
+              "predicted_per_second": 111.21950411482585,
+              "predicted_per_token_ms": 8.991228723404255,
+              "prompt_ms": 34.717,
               "prompt_n": 20,
-              "prompt_per_second": 594.000594000594,
-              "prompt_per_token_ms": 1.6835
+              "prompt_per_second": 576.0866434311721,
+              "prompt_per_token_ms": 1.73585
             },
             "usage": {
               "completion_tokens": 189,

@@ -77,7 +77,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "We need answer in one or two sentences. Explain what Rust is and why memory"
+                    "text": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
                   }
                 }
               ],
@@ -92,7 +92,7 @@
             "reasoning_tokens": 16
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "d313630b-a376-4f20-be7e-76e1e3e7221b",
           "finish_reason": "length",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -104,13 +104,13 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need answer in one or two sentences. Explain what Rust is and why memory",
+                  "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "d313630b-a376-4f20-be7e-76e1e3e7221b",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

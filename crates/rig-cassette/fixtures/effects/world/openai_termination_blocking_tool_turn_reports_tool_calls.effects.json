@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -140,10 +140,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_knpveKB7kGhWznXpDnXtzY9V"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_knpveKB7kGhWznXpDnXtzY9V"
               },
               "function": {
                 "name": "add",
@@ -164,8 +164,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDE2i4Z59AsjA6RMaMEEu64D5s9g",
+          "provider_request_id": "req_b8e316e844c3471c958b04f02b411cb6",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
@@ -186,7 +186,7 @@
                         "arguments": "{\"x\":2,\"y\":3}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_knpveKB7kGhWznXpDnXtzY9V",
                       "type": "function"
                     }
                   ]
@@ -194,11 +194,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDE2i4Z59AsjA6RMaMEEu64D5s9g",
             "model": "gpt-4o-mini-2024-07-18",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_6a65994342",
             "usage": {
               "completion_tokens": 17,
               "completion_tokens_details": {
@@ -274,10 +274,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_knpveKB7kGhWznXpDnXtzY9V"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_knpveKB7kGhWznXpDnXtzY9V"
                   },
                   "function": {
                     "name": "add",
@@ -298,10 +298,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_knpveKB7kGhWznXpDnXtzY9V"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_knpveKB7kGhWznXpDnXtzY9V"
                   },
                   "name": "add",
                   "content": [
@@ -363,8 +363,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "chatcmpl-ERDE3I0dt2WszpRaikM8iYwM2Hq5O",
+          "provider_request_id": "req_f4c2cedffcd44220ae937cfc1fdd3106",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
@@ -383,11 +383,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-ERDE3I0dt2WszpRaikM8iYwM2Hq5O",
             "model": "gpt-4o-mini-2024-07-18",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_6a65994342",
             "usage": {
               "completion_tokens": 18,
               "completion_tokens_details": {

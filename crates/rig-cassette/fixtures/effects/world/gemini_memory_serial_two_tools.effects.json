@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,44 +17,36 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 10,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 9,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 14,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -62,22 +54,22 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 15,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 19,
+        "batch": 15,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 16,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -580,18 +572,13 @@
               "text": "The markers are crimson-harbor and silver-orchard."
             },
             {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
-                  }
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
@@ -642,24 +629,35 @@
         },
         {
           "event": "block_end",
-          "id": "minted:reasoning:0",
+          "id": "minted:text:0",
           "end": {
-            "close": "reasoning",
-            "signature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "",
-                  "signature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
-                }
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:1",
+          "delta": {
+            "delta": "text_meta",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
               }
-            ]
+            }
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:1",
+          "end": {
+            "close": "text"
           }
         },
         {
@@ -797,22 +795,17 @@
               "id": null,
               "content": [
                 {
-                  "type": "reasoning",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "",
-                        "signature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
-                      }
-                    }
-                  ],
-                  "provider": "gcp.gemini"
+                  "type": "text",
+                  "text": "The markers are crimson-harbor and silver-orchard."
                 },
                 {
                   "type": "text",
-                  "text": "The markers are crimson-harbor and silver-orchard."
+                  "text": "",
+                  "additional_params": {
+                    "gemini": {
+                      "thoughtSignature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
+                    }
+                  }
                 }
               ]
             }

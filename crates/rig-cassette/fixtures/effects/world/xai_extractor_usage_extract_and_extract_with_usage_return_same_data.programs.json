@@ -203,11 +203,11 @@
           "rig_ecs::agent::Settled": {},
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
-            "input_tokens": 432,
-            "output_tokens": 262,
-            "total_tokens": 694,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 238
+            "input_tokens": 408,
+            "output_tokens": 177,
+            "total_tokens": 585,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 157
           },
           "rig_ecs::agent::UsesModel": 0,
           "rig_ecs::bus::effect::Scope": "parity/run#0"
@@ -230,25 +230,14 @@
           "rig_ecs::agent::Outputs": {
             "content": [
               {
-                "type": "reasoning",
-                "id": "rs_REDACTED_1",
-                "content": [
-                  {
-                    "type": "summary",
-                    "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
-                  }
-                ],
-                "provider": "xai"
-              },
-              {
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_1"
+                  "id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_1",
-                  "item_id": "fc_REDACTED_1"
+                  "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                  "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
                 },
                 "function": {
                   "name": "submit",
@@ -282,25 +271,14 @@
               "outcome": "completion",
               "choice": [
                 {
-                  "type": "reasoning",
-                  "id": "rs_REDACTED_1",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
-                    }
-                  ],
-                  "provider": "xai"
-                },
-                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                    "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
                   },
                   "function": {
                     "name": "submit",
@@ -315,15 +293,15 @@
                 }
               ],
               "usage": {
-                "input_tokens": 432,
-                "output_tokens": 262,
-                "total_tokens": 694,
-                "cached_input_tokens": 384,
-                "reasoning_tokens": 238
+                "input_tokens": 408,
+                "output_tokens": 177,
+                "total_tokens": 585,
+                "cached_input_tokens": 192,
+                "reasoning_tokens": 157
               },
               "message_id": null,
-              "response_id": "req_REDACTED_1",
-              "provider_request_id": "req_REDACTED_1",
+              "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+              "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
               "finish_reason": "tool_calls",
               "provider": "xai",
               "model": "grok-4.3",
@@ -333,32 +311,21 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "req_REDACTED_1",
+                "id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
                 "incomplete_details": null,
                 "instructions": null,
                 "max_output_tokens": null,
                 "max_tool_calls": null,
                 "metadata": {
-                  "system_fingerprint": "fp_REDACTED_1"
+                  "system_fingerprint": "fp_eb3c003fc66c14ed"
                 },
                 "model": "grok-4.3",
                 "object": "response",
                 "output": [
                   {
-                    "id": "rs_REDACTED_1",
-                    "status": "completed",
-                    "summary": [
-                      {
-                        "text": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n",
-                        "type": "summary_text"
-                      }
-                    ],
-                    "type": "reasoning"
-                  },
-                  {
                     "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
-                    "call_id": "call_REDACTED_1",
-                    "id": "fc_REDACTED_1",
+                    "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                    "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
                     "name": "submit",
                     "status": "completed",
                     "type": "function_call"
@@ -424,21 +391,21 @@
                 "truncation": "disabled",
                 "usage": {
                   "context_details": {
-                    "input_tokens": 432,
-                    "output_tokens": 262
+                    "input_tokens": 408,
+                    "output_tokens": 181
                   },
-                  "cost_in_usd_ticks": 7918000,
-                  "input_tokens": 432,
+                  "cost_in_usd_ticks": 7509000,
+                  "input_tokens": 408,
                   "input_tokens_details": {
-                    "cached_tokens": 384
+                    "cached_tokens": 192
                   },
                   "num_server_side_tools_used": 0,
                   "num_sources_used": 0,
-                  "output_tokens": 262,
+                  "output_tokens": 177,
                   "output_tokens_details": {
-                    "reasoning_tokens": 238
+                    "reasoning_tokens": 157
                   },
-                  "total_tokens": 694
+                  "total_tokens": 585
                 },
                 "user": null
               }
@@ -453,21 +420,6 @@
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::MessageId": null
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 7,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Reasoning": {
-              "id": "rs_REDACTED_1",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
-                }
-              ],
-              "provider": "xai"
-            }
-          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,
@@ -496,12 +448,12 @@
           "rig_ecs::bus::effect::Scope": "parity/run#1"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 10,
+          "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 11,
+          "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "Bob Johnson is a 55 year old retired teacher."

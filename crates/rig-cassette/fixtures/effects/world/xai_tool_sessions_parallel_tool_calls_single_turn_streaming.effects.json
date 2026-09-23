@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 52
+          "items": 2
         }
       },
       {
@@ -14,56 +14,104 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 11,
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 22,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 23,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 32,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 58
+          "items": 2
         }
       },
       {
-        "batch": 17,
+        "batch": 33,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 19,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
+        "batch": 34,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -71,7 +119,103 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 37,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 39,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 41,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -195,11 +339,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The instruction is: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short senten..."
+                  "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                 }
               ],
               "provider": "xai"
@@ -208,11 +352,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
+                "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -225,11 +369,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
+                "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -240,36 +384,36 @@
             }
           ],
           "usage": {
-            "input_tokens": 399,
-            "output_tokens": 236,
-            "total_tokens": 635,
+            "input_tokens": 398,
+            "output_tokens": 275,
+            "total_tokens": 673,
             "cached_input_tokens": 384,
-            "reasoning_tokens": 221
+            "reasoning_tokens": 259
           },
           "message_id": null,
-          "response_id": "req_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+          "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
             "usage": {
-              "input_tokens": 399,
+              "input_tokens": 398,
               "input_tokens_details": {
                 "cached_tokens": 384
               },
-              "output_tokens": 236,
+              "output_tokens": 275,
               "output_tokens_details": {
-                "reasoning_tokens": 221
+                "reasoning_tokens": 259
               },
-              "total_tokens": 635
+              "total_tokens": 673
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "req_REDACTED_1",
+            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
             "model": "grok-4.3"
           }
         }
@@ -277,359 +421,55 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "kind": {
             "kind": "reasoning",
-            "provider_id": "rs_REDACTED_1"
+            "provider_id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "delta": {
             "delta": "reasoning",
-            "text": "The"
+            "text": "I will call `lookup_harbor_label`"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "delta": {
             "delta": "reasoning",
-            "text": " instruction"
+            "text": " and `lookup_orchard_label`"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "delta": {
             "delta": "reasoning",
-            "text": " is"
+            "text": " exactly once each before"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "delta": {
             "delta": "reasoning",
-            "text": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Call"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " `"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "lookup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_h"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "ar"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "bor"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "`"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " `"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "lookup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "chard"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "`"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " exactly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " once"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " each"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " before"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " answering"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " After"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " both"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " tool"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " results"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " are"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " available"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " stop"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " calling"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " tools"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " respond"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " one"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " short"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_1",
-          "delta": {
-            "delta": "reasoning",
-            "text": " senten..."
+            "text": " answering."
           }
         },
         {
           "event": "block_end",
-          "id": "wire:rs_REDACTED_1",
+          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "end": {
             "close": "reasoning",
             "reasoning": {
-              "id": "rs_REDACTED_1",
+              "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The instruction is: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short senten..."
+                  "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                 }
               ]
             },
@@ -637,25 +477,25 @@
           },
           "block": {
             "type": "reasoning",
-            "id": "rs_REDACTED_1",
+            "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
             "content": [
               {
                 "type": "summary",
-                "content": "The instruction is: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short senten..."
+                "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
               }
             ]
           }
         },
         {
           "event": "block_start",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
           "delta": {
             "delta": "tool_name",
             "name": "lookup_harbor_label"
@@ -663,7 +503,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -671,24 +511,24 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_REDACTED_1",
+            "tool_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
             "name": "lookup_harbor_label",
             "arguments": {},
-            "call_id": "call_REDACTED_1",
+            "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0"
             },
             "provider": {
-              "call_id": "call_REDACTED_1",
-              "item_id": "fc_REDACTED_1"
+              "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
+              "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0"
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -700,14 +540,14 @@
         },
         {
           "event": "block_start",
-          "id": "wire:fc_REDACTED_2",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_2",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
           "delta": {
             "delta": "tool_name",
             "name": "lookup_orchard_label"
@@ -715,7 +555,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_2",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -723,24 +563,24 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_REDACTED_2",
+          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_REDACTED_2",
+            "tool_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
             "name": "lookup_orchard_label",
             "arguments": {},
-            "call_id": "call_REDACTED_2",
+            "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_2"
+              "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1"
             },
             "provider": {
-              "call_id": "call_REDACTED_2",
-              "item_id": "fc_REDACTED_2"
+              "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
+              "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1"
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -753,36 +593,36 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 399,
-            "output_tokens": 236,
-            "total_tokens": 635,
+            "input_tokens": 398,
+            "output_tokens": 275,
+            "total_tokens": 673,
             "cached_input_tokens": 384,
-            "reasoning_tokens": 221
+            "reasoning_tokens": 259
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "req_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+          "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
             "usage": {
-              "input_tokens": 399,
+              "input_tokens": 398,
               "input_tokens_details": {
                 "cached_tokens": 384
               },
-              "output_tokens": 236,
+              "output_tokens": 275,
               "output_tokens_details": {
-                "reasoning_tokens": 221
+                "reasoning_tokens": 259
               },
-              "total_tokens": 635
+              "total_tokens": 673
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "req_REDACTED_1",
+            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
             "model": "grok-4.3"
           }
         }
@@ -867,11 +707,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_REDACTED_1",
+                  "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The instruction is: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short senten..."
+                      "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                     }
                   ],
                   "provider": "xai"
@@ -880,11 +720,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
+                    "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -897,11 +737,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
+                    "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -919,11 +759,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
+                    "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -937,11 +777,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
+                    "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -991,42 +831,42 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_2",
+              "id": "rs_fe602993-cc54-916d-8917-e2d32b577a49",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The user says: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence th..."
+                  "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                 }
               ],
               "provider": "xai"
             },
             {
               "type": "text",
-              "text": "The tool outputs are crimson-harbor and silver-orchard."
+              "text": "The outputs are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 433,
-            "output_tokens": 251,
+            "input_tokens": 432,
+            "output_tokens": 252,
             "total_tokens": 684,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 238
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 240
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "req_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+          "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+          "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
             "usage": {
-              "input_tokens": 433,
+              "input_tokens": 432,
               "input_tokens_details": {
-                "cached_tokens": 384
+                "cached_tokens": 192
               },
-              "output_tokens": 251,
+              "output_tokens": 252,
               "output_tokens_details": {
-                "reasoning_tokens": 238
+                "reasoning_tokens": 240
               },
               "total_tokens": 684
             },
@@ -1035,8 +875,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "req_REDACTED_2",
+            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
             "model": "grok-4.3"
           }
         }
@@ -1044,367 +884,55 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:rs_REDACTED_2",
+          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
           "kind": {
             "kind": "reasoning",
-            "provider_id": "rs_REDACTED_2"
+            "provider_id": "rs_fe602993-cc54-916d-8917-e2d32b577a49"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
+          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "reasoning",
-            "text": "The"
+            "text": "I will call `lookup_harbor_label`"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
+          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "reasoning",
-            "text": " user"
+            "text": " and `lookup_orchard_label`"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
+          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "reasoning",
-            "text": " says"
+            "text": " exactly once each before"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
+          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "reasoning",
-            "text": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "Call"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " `"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "lookup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_h"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "ar"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "bor"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "`"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " `"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "lookup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "chard"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "`"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " exactly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " once"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " each"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " before"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " answering"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " After"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " both"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " tool"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " results"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " are"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " available"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " stop"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " calling"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " tools"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " respond"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " one"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " short"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " sentence"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_REDACTED_2",
-          "delta": {
-            "delta": "reasoning",
-            "text": " th..."
+            "text": " answering."
           }
         },
         {
           "event": "block_end",
-          "id": "wire:rs_REDACTED_2",
+          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
           "end": {
             "close": "reasoning",
             "reasoning": {
-              "id": "rs_REDACTED_2",
+              "id": "rs_fe602993-cc54-916d-8917-e2d32b577a49",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The user says: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence th..."
+                  "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                 }
               ]
             },
@@ -1412,25 +940,25 @@
           },
           "block": {
             "type": "reasoning",
-            "id": "rs_REDACTED_2",
+            "id": "rs_fe602993-cc54-916d-8917-e2d32b577a49",
             "content": [
               {
                 "type": "summary",
-                "content": "The user says: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence th..."
+                "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
               }
             ]
           }
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "The"
@@ -1438,15 +966,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " tool"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": " outputs"
@@ -1454,7 +974,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": " are"
@@ -1462,7 +982,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": " crimson"
@@ -1470,7 +990,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "-har"
@@ -1478,7 +998,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "bor"
@@ -1486,7 +1006,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": " and"
@@ -1494,7 +1014,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": " silver"
@@ -1502,7 +1022,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "-"
@@ -1510,7 +1030,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "orch"
@@ -1518,7 +1038,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "ard"
@@ -1526,7 +1046,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "delta": {
             "delta": "text",
             "text": "."
@@ -1534,7 +1054,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
           "kind": {
             "kind": "message"
           }
@@ -1542,27 +1062,27 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 433,
-            "output_tokens": 251,
+            "input_tokens": 432,
+            "output_tokens": 252,
             "total_tokens": 684,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 238
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 240
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "req_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+          "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
+          "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
             "usage": {
-              "input_tokens": 433,
+              "input_tokens": 432,
               "input_tokens_details": {
-                "cached_tokens": 384
+                "cached_tokens": 192
               },
-              "output_tokens": 251,
+              "output_tokens": 252,
               "output_tokens_details": {
-                "reasoning_tokens": 238
+                "reasoning_tokens": 240
               },
               "total_tokens": 684
             },
@@ -1571,8 +1091,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "req_REDACTED_2",
+            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
             "model": "grok-4.3"
           }
         }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -102,16 +102,16 @@
           "outcome": "completion",
           "choice": [],
           "usage": {
-            "input_tokens": 355,
+            "input_tokens": 346,
             "output_tokens": 16,
-            "total_tokens": 371,
-            "cached_input_tokens": 256
+            "total_tokens": 362,
+            "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "65406f57-f586-4852-a5cf-49952e6cbebc",
           "finish_reason": "length",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -127,7 +127,7 @@
                         "arguments": "",
                         "name": "file_report"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_nnqw1McgLwfS7HiJr8t63543",
                       "index": 0,
                       "type": "function"
                     }
@@ -136,19 +136,19 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
-            "model": "deepseek-v4-flash",
+            "id": "65406f57-f586-4852-a5cf-49952e6cbebc",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "a26a7955944dc5c60445bff77fac9c8e",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 16,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 99,
-              "prompt_tokens": 355,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 346,
+              "prompt_tokens": 346,
               "prompt_tokens_details": {
-                "cached_tokens": 256
+                "cached_tokens": 0
               },
-              "total_tokens": 371
+              "total_tokens": 362
             }
           }
         }

@@ -114,13 +114,17 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "I'll call both tools now."
+            },
+            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -133,10 +137,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -148,20 +152,20 @@
           ],
           "usage": {
             "input_tokens": 395,
-            "output_tokens": 40,
-            "total_tokens": 435,
+            "output_tokens": 46,
+            "total_tokens": 441,
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "6d675ef0-fa78-431a-b01f-9f2c7881af61",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 395,
-              "completion_tokens": 40,
-              "total_tokens": 435,
+              "completion_tokens": 46,
+              "total_tokens": 441,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
@@ -169,7 +173,7 @@
               "prompt_cache_miss_tokens": 139
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "6d675ef0-fa78-431a-b01f-9f2c7881af61",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -181,8 +185,71 @@
       },
       "events": [
         {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "'ll"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " both"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " tools"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " now"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_00_FLCMiJUEWAjDnpCExHh69376",
           "delta": {
             "delta": "tool_name",
             "name": "lookup_harbor_label"
@@ -190,7 +257,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_FLCMiJUEWAjDnpCExHh69376",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -198,7 +265,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_2",
+          "id": "wire:call_01_DkVQBpjN6ltxZvYN9DQ92244",
           "delta": {
             "delta": "tool_name",
             "name": "lookup_orchard_label"
@@ -206,7 +273,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_2",
+          "id": "wire:call_01_DkVQBpjN6ltxZvYN9DQ92244",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -214,20 +281,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_FLCMiJUEWAjDnpCExHh69376",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_00_FLCMiJUEWAjDnpCExHh69376",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
             },
             "function": {
               "name": "lookup_harbor_label",
@@ -239,20 +306,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_2",
+          "id": "wire:call_01_DkVQBpjN6ltxZvYN9DQ92244",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_2",
+            "tool_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_2"
+              "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
             },
             "provider": {
-              "call_id": "call_REDACTED_2"
+              "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
             },
             "function": {
               "name": "lookup_orchard_label",
@@ -266,20 +333,20 @@
           "event": "final",
           "usage": {
             "input_tokens": 395,
-            "output_tokens": 40,
-            "total_tokens": 435,
+            "output_tokens": 46,
+            "total_tokens": 441,
             "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "6d675ef0-fa78-431a-b01f-9f2c7881af61",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 395,
-              "completion_tokens": 40,
-              "total_tokens": 435,
+              "completion_tokens": 46,
+              "total_tokens": 441,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
@@ -287,7 +354,7 @@
               "prompt_cache_miss_tokens": 139
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "6d675ef0-fa78-431a-b01f-9f2c7881af61",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -373,13 +440,17 @@
               "id": null,
               "content": [
                 {
+                  "type": "text",
+                  "text": "I'll call both tools now."
+                },
+                {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -392,10 +463,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -413,10 +484,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_FLCMiJUEWAjDnpCExHh69376"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_FLCMiJUEWAjDnpCExHh69376"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -430,10 +501,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_DkVQBpjN6ltxZvYN9DQ92244"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -481,33 +552,33 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
             }
           ],
           "usage": {
-            "input_tokens": 465,
-            "output_tokens": 17,
-            "total_tokens": 482,
+            "input_tokens": 471,
+            "output_tokens": 23,
+            "total_tokens": 494,
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "b658f0f2-f9ce-4325-9f00-40f0d2b5d03c",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 465,
-              "completion_tokens": 17,
-              "total_tokens": 482,
+              "prompt_tokens": 471,
+              "completion_tokens": 23,
+              "total_tokens": 494,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 209
+              "prompt_cache_miss_tokens": 215
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "b658f0f2-f9ce-4325-9f00-40f0d2b5d03c",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -554,7 +625,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " is"
+            "text": " returned"
           }
         },
         {
@@ -562,7 +633,31 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " crimson"
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "c"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "rim"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "son"
           }
         },
         {
@@ -587,6 +682,14 @@
           "delta": {
             "delta": "text",
             "text": "or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "\""
           }
         },
         {
@@ -626,7 +729,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " is"
+            "text": " returned"
           }
         },
         {
@@ -634,7 +737,23 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " silver"
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "sil"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "ver"
           }
         },
         {
@@ -658,35 +777,35 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "."
+            "text": "\"."
           }
         },
         {
           "event": "final",
           "usage": {
-            "input_tokens": 465,
-            "output_tokens": 17,
-            "total_tokens": 482,
+            "input_tokens": 471,
+            "output_tokens": 23,
+            "total_tokens": 494,
             "cached_input_tokens": 256
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "b658f0f2-f9ce-4325-9f00-40f0d2b5d03c",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 465,
-              "completion_tokens": 17,
-              "total_tokens": 482,
+              "prompt_tokens": 471,
+              "completion_tokens": 23,
+              "total_tokens": 494,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 209
+              "prompt_cache_miss_tokens": 215
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "b658f0f2-f9ce-4325-9f00-40f0d2b5d03c",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

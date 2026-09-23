@@ -103,13 +103,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "message_id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
+          "response_id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
+          "provider_request_id": "req_45d8e4e342154bcc94b0eaa3e5794043",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -118,7 +119,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -137,7 +138,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -225,7 +226,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
               "content": [
                 {
                   "type": "text",
@@ -270,7 +271,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
               "content": [
                 {
                   "type": "text",
@@ -306,7 +307,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
               "content": [
                 {
                   "type": "text",
@@ -350,13 +351,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_07847561cacc1464006ab395f362c087d08f31a313e40f5b58",
+          "response_id": "resp_07847561cacc1464006ab395f1a4a487d0ba746478ea05cc80",
+          "provider_request_id": "req_23e7d5f3c8c54fdc8b0329c42b42aa49",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -365,7 +367,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_07847561cacc1464006ab395f1a4a487d0ba746478ea05cc80",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -384,7 +386,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_2",
+                "id": "msg_07847561cacc1464006ab395f362c087d08f31a313e40f5b58",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -472,7 +474,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_07847561cacc1464006ab395f362c087d08f31a313e40f5b58",
               "content": [
                 {
                   "type": "text",

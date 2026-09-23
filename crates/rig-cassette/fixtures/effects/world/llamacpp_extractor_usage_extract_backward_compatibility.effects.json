@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "a7umh3wyb9oNBwSs8FLN8EePGVSAECBX"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "a7umh3wyb9oNBwSs8FLN8EePGVSAECBX"
               },
               "function": {
                 "name": "submit",
@@ -145,7 +145,7 @@
             "cached_input_tokens": 332
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-S3Fu9HncpQc2qt4oSTb5YWMCCXvfGXTp",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
           "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -164,7 +164,7 @@
                         "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "a7umh3wyb9oNBwSs8FLN8EePGVSAECBX",
                       "type": "function"
                     }
                   ]
@@ -172,20 +172,20 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-S3Fu9HncpQc2qt4oSTb5YWMCCXvfGXTp",
             "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "object": "chat.completion",
-            "system_fingerprint": "b10499-6d05498",
+            "system_fingerprint": "b10964-b29c606e2",
             "timings": {
               "cache_n": 332,
-              "predicted_ms": 1878.073,
+              "predicted_ms": 1861.982,
               "predicted_n": 220,
-              "predicted_per_second": 116.608885810083,
-              "predicted_per_token_ms": 8.575675799086758,
-              "prompt_ms": 26.994,
+              "predicted_per_second": 117.61660424214627,
+              "predicted_per_token_ms": 8.502200913242008,
+              "prompt_ms": 36.466,
               "prompt_n": 17,
-              "prompt_per_second": 629.7695784248352,
-              "prompt_per_token_ms": 1.5878823529411765
+              "prompt_per_second": 466.1876816760818,
+              "prompt_per_token_ms": 2.145058823529412
             },
             "usage": {
               "completion_tokens": 220,

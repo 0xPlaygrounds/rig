@@ -205,11 +205,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_qs75fS5zPWzf2c7TybsLPRS7"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_qs75fS5zPWzf2c7TybsLPRS7",
+                "item_id": "fc_0227bb1490e82fd3006ab39682a4b087d09b17054a0e7ad721"
               },
               "function": {
                 "name": "list_files",
@@ -227,12 +227,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0227bb1490e82fd3006ab396823ab487d0bff2a89c89bd2389",
+          "provider_request_id": "req_6ddff0305c4d40e785c42595f5d04437",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -241,7 +242,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0227bb1490e82fd3006ab396823ab487d0bff2a89c89bd2389",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
@@ -253,8 +254,8 @@
             "output": [
               {
                 "arguments": "{}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_qs75fS5zPWzf2c7TybsLPRS7",
+                "id": "fc_0227bb1490e82fd3006ab39682a4b087d09b17054a0e7ad721",
                 "name": "list_files",
                 "status": "completed",
                 "type": "function_call"
@@ -308,10 +309,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -331,7 +331,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -356,7 +356,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -366,10 +366,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -447,11 +446,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_qs75fS5zPWzf2c7TybsLPRS7"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_qs75fS5zPWzf2c7TybsLPRS7",
+                    "item_id": "fc_0227bb1490e82fd3006ab39682a4b087d09b17054a0e7ad721"
                   },
                   "function": {
                     "name": "list_files",
@@ -469,11 +468,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_qs75fS5zPWzf2c7TybsLPRS7"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_qs75fS5zPWzf2c7TybsLPRS7",
+                    "item_id": "fc_0227bb1490e82fd3006ab39682a4b087d09b17054a0e7ad721"
                   },
                   "name": "list_files",
                   "content": [
@@ -562,11 +561,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_Se0lpXTam7cEO4KR8A3WIpKC"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_Se0lpXTam7cEO4KR8A3WIpKC",
+                "item_id": "fc_0227bb1490e82fd3006ab396837da887d0889fbdf621d4ea05"
               },
               "function": {
                 "name": "read_file",
@@ -586,12 +585,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "resp_0227bb1490e82fd3006ab39683101087d083af414ebc902f94",
+          "provider_request_id": "req_c5f6aea4ae744d2186a79753a3ab9835",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -600,7 +600,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_0227bb1490e82fd3006ab39683101087d083af414ebc902f94",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
@@ -612,8 +612,8 @@
             "output": [
               {
                 "arguments": "{\"path\":\"README.md\"}",
-                "call_id": "call_REDACTED_2",
-                "id": "fc_REDACTED_2",
+                "call_id": "call_Se0lpXTam7cEO4KR8A3WIpKC",
+                "id": "fc_0227bb1490e82fd3006ab396837da887d0889fbdf621d4ea05",
                 "name": "read_file",
                 "status": "completed",
                 "type": "function_call"
@@ -667,10 +667,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -690,7 +689,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -715,7 +714,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -725,10 +724,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -806,11 +804,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_qs75fS5zPWzf2c7TybsLPRS7"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_qs75fS5zPWzf2c7TybsLPRS7",
+                    "item_id": "fc_0227bb1490e82fd3006ab39682a4b087d09b17054a0e7ad721"
                   },
                   "function": {
                     "name": "list_files",
@@ -828,11 +826,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_qs75fS5zPWzf2c7TybsLPRS7"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_qs75fS5zPWzf2c7TybsLPRS7",
+                    "item_id": "fc_0227bb1490e82fd3006ab39682a4b087d09b17054a0e7ad721"
                   },
                   "name": "list_files",
                   "content": [
@@ -852,11 +850,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_Se0lpXTam7cEO4KR8A3WIpKC"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_Se0lpXTam7cEO4KR8A3WIpKC",
+                    "item_id": "fc_0227bb1490e82fd3006ab396837da887d0889fbdf621d4ea05"
                   },
                   "function": {
                     "name": "read_file",
@@ -876,11 +874,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_Se0lpXTam7cEO4KR8A3WIpKC"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_Se0lpXTam7cEO4KR8A3WIpKC",
+                    "item_id": "fc_0227bb1490e82fd3006ab396837da887d0889fbdf621d4ea05"
                   },
                   "name": "read_file",
                   "content": [
@@ -969,11 +967,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_8qEptztwK0CLHFITscVxd8O7"
               },
               "provider": {
-                "call_id": "call_REDACTED_3",
-                "item_id": "fc_REDACTED_3"
+                "call_id": "call_8qEptztwK0CLHFITscVxd8O7",
+                "item_id": "fc_0227bb1490e82fd3006ab39684618887d09a0efbd8ed8ce0da"
               },
               "function": {
                 "name": "read_file",
@@ -993,12 +991,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_3",
-          "provider_request_id": "req_REDACTED_3",
+          "response_id": "resp_0227bb1490e82fd3006ab39683fa7c87d091c9802a86c44660",
+          "provider_request_id": "req_c7064285dff7492f828fdd75c2797c60",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -1007,7 +1006,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_3",
+            "id": "resp_0227bb1490e82fd3006ab39683fa7c87d091c9802a86c44660",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
@@ -1019,8 +1018,8 @@
             "output": [
               {
                 "arguments": "{\"path\":\"tests/basic.rs\"}",
-                "call_id": "call_REDACTED_3",
-                "id": "fc_REDACTED_3",
+                "call_id": "call_8qEptztwK0CLHFITscVxd8O7",
+                "id": "fc_0227bb1490e82fd3006ab39684618887d09a0efbd8ed8ce0da",
                 "name": "read_file",
                 "status": "completed",
                 "type": "function_call"
@@ -1074,10 +1073,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -1097,7 +1095,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -1122,7 +1120,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -1132,10 +1130,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

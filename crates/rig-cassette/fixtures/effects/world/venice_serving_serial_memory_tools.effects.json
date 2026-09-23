@@ -9,28 +9,28 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -182,10 +182,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "VYt6Etj8d"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "VYt6Etj8d"
               },
               "function": {
                 "name": "add",
@@ -204,7 +204,7 @@
             "total_tokens": 1111
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RlKKa7wazBUM7TK8fOZBfvah",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -225,7 +225,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "VYt6Etj8d",
                       "type": "function"
                     }
                   ]
@@ -237,7 +237,7 @@
               "usd": 0.00010696875
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-RlKKa7wazBUM7TK8fOZBfvah",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -319,10 +319,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "VYt6Etj8d"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "VYt6Etj8d"
                   },
                   "function": {
                     "name": "add",
@@ -343,10 +343,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "VYt6Etj8d"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "VYt6Etj8d"
                   },
                   "name": "add",
                   "content": [
@@ -406,7 +406,7 @@
             "total_tokens": 1136
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RRE8MqKv7j8NMkH1vvlXv4TT",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -430,7 +430,7 @@
               "usd": 0.00010696875000000001
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-RRE8MqKv7j8NMkH1vvlXv4TT",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -484,10 +484,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "VYt6Etj8d"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "VYt6Etj8d"
                   },
                   "function": {
                     "name": "add",
@@ -508,10 +508,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "VYt6Etj8d"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "VYt6Etj8d"
                   },
                   "name": "add",
                   "content": [

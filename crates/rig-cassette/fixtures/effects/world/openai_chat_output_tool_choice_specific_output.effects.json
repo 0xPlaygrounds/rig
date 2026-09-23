@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -107,17 +107,17 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_WrSxGNmyHGwN3740degKUBAg"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_WrSxGNmyHGwN3740degKUBAg"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
                   "category": "Tech Meetup",
-                  "summary": "Monthly Seattle Rust meetup (3rd Wednesday, 6:30–8:30 PM). Venue: central Seattle (venue announced per event). Format: 2–3 lightning talks, one 30–45 min technical talk, open Q&A and networking. Audience: Rust developers and learners of all levels. Organizer: Seattle Rust (contact: organizers@seattlerust.org). RSVP: https://www.meetup.com/seattle-rust. Cost: free. Tags: Rust, systems, WebAssembly, embedded, beginners."
+                  "summary": "recurrence: Monthly (1st Tuesday); time: 18:00–20:30 PDT; location: Impact Hub Seattle (Capitol Hill), 220 12th Ave S, Seattle, WA; description: Community meetup for Rust developers—lightning talks, a main deep-dive talk/workshop, and networking; agenda: 18:00 doors/networking; 18:30 welcome; 18:40 lightning talks (3×10m); 19:20 main talk/workshop (45m); 20:05 Q&A & networking; organizer: Seattle Rust Community (organizer@seattlerust.org); RSVP: https://www.meetup.com/seattle-rust; cost: Free (donations welcome); capacity: ~80; accessibility: wheelchair accessible; notes: bring laptop; community talk slots available—contact organizer to propose a talk."
                 }
               },
               "signature": null,
@@ -126,14 +126,14 @@
           ],
           "usage": {
             "input_tokens": 224,
-            "output_tokens": 1870,
-            "total_tokens": 2094,
+            "output_tokens": 1685,
+            "total_tokens": 1909,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 1728
+            "reasoning_tokens": 1472
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCKDhp8fBlXDKUJ9qw6thQSeUxF",
+          "provider_request_id": "req_f359eaff7be943bdbf3d7c606b1fb488",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -150,10 +150,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 6:30–8:30 PM). Venue: central Seattle (venue announced per event). Format: 2–3 lightning talks, one 30–45 min technical talk, open Q&A and networking. Audience: Rust developers and learners of all levels. Organizer: Seattle Rust (contact: organizers@seattlerust.org). RSVP: https://www.meetup.com/seattle-rust. Cost: free. Tags: Rust, systems, WebAssembly, embedded, beginners.\"}",
+                        "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"recurrence: Monthly (1st Tuesday); time: 18:00–20:30 PDT; location: Impact Hub Seattle (Capitol Hill), 220 12th Ave S, Seattle, WA; description: Community meetup for Rust developers—lightning talks, a main deep-dive talk/workshop, and networking; agenda: 18:00 doors/networking; 18:30 welcome; 18:40 lightning talks (3×10m); 19:20 main talk/workshop (45m); 20:05 Q&A & networking; organizer: Seattle Rust Community (organizer@seattlerust.org); RSVP: https://www.meetup.com/seattle-rust; cost: Free (donations welcome); capacity: ~80; accessibility: wheelchair accessible; notes: bring laptop; community talk slots available—contact organizer to propose a talk.\"}",
                         "name": "final_result"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_WrSxGNmyHGwN3740degKUBAg",
                       "type": "function"
                     }
                   ]
@@ -161,17 +161,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDCKDhp8fBlXDKUJ9qw6thQSeUxF",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 1870,
+              "completion_tokens": 1685,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 1728,
+                "reasoning_tokens": 1472,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 224,
@@ -179,7 +179,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 2094
+              "total_tokens": 1909
             }
           }
         }

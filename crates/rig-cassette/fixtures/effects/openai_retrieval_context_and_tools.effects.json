@@ -160,7 +160,7 @@
           "retrieved": "ids",
           "results": [
             [
-              0.49076605775338566,
+              0.49073098410600086,
               "subtract"
             ]
           ]
@@ -233,11 +233,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
               },
               "function": {
                 "name": "subtract",
@@ -258,12 +258,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_5",
+          "response_id": "resp_056d9046a86e73f7006ab3968ee11c87d0ad76d1cead65d7cf",
+          "provider_request_id": "req_b3691c6b90484f7490c6a454442a44f6",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -272,7 +273,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_056d9046a86e73f7006ab3968ee11c87d0ad76d1cead65d7cf",
             "incomplete_details": null,
             "instructions": "You are a calculator. You must use the provided tools for every arithmetic operation.",
             "max_output_tokens": null,
@@ -284,8 +285,8 @@
             "output": [
               {
                 "arguments": "{\"x\":50,\"y\":8}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                "id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c",
                 "name": "subtract",
                 "status": "completed",
                 "type": "function_call"
@@ -337,7 +338,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "type": "integer"
@@ -352,7 +352,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -454,7 +454,7 @@
           "retrieved": "ids",
           "results": [
             [
-              0.49075332615594885,
+              0.49073098410600086,
               "subtract"
             ]
           ]
@@ -491,11 +491,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                    "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
                   },
                   "function": {
                     "name": "subtract",
@@ -516,11 +516,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                    "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
                   },
                   "name": "subtract",
                   "content": [
@@ -584,13 +584,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_8",
+          "message_id": "msg_056d9046a86e73f7006ab39691f4f487d08eab521259e26e0b",
+          "response_id": "resp_056d9046a86e73f7006ab39691451087d091089d3e6070f49d",
+          "provider_request_id": "req_e6c2c24f66b54747a58e27b5ef066e7c",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -599,7 +600,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_056d9046a86e73f7006ab39691451087d091089d3e6070f49d",
             "incomplete_details": null,
             "instructions": "You are a calculator. You must use the provided tools for every arithmetic operation.",
             "max_output_tokens": null,
@@ -618,7 +619,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_056d9046a86e73f7006ab39691f4f487d08eab521259e26e0b",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -670,7 +671,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "type": "integer"
@@ -685,7 +685,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

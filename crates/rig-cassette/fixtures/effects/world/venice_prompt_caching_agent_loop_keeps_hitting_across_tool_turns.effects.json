@@ -2,28 +2,28 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 9,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -150,10 +150,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "chatcmpl-tool-a9818439d95dcc14"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "chatcmpl-tool-a9818439d95dcc14"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -168,10 +168,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_2"
+                "id": "chatcmpl-tool-b8c6dc5573232886"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_2"
+                "call_id": "chatcmpl-tool-b8c6dc5573232886"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -187,10 +187,11 @@
             "input_tokens": 5619,
             "output_tokens": 126,
             "total_tokens": 5745,
-            "cached_input_tokens": 0
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 67
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "qwen3-5-9b",
@@ -214,7 +215,7 @@
                         "arguments": "{\"topic\": \"prefix\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "chatcmpl-tool-a9818439d95dcc14",
                       "type": "function"
                     },
                     {
@@ -222,11 +223,12 @@
                         "arguments": "{\"topic\": \"breakpoint\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "chatcmpl-REDACTED_2",
+                      "id": "chatcmpl-tool-b8c6dc5573232886",
                       "type": "function"
                     }
                   ]
                 },
+                "routed_experts": null,
                 "stop_reason": null,
                 "token_ids": null
               }
@@ -236,15 +238,21 @@
               "usd": 0.0005808
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
+            "ec_transfer_params": null,
+            "id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
             "kv_transfer_params": null,
+            "metrics": null,
             "model": "qwen3-5-9b",
             "object": "chat.completion",
             "prompt_logprobs": null,
+            "prompt_text": null,
             "prompt_token_ids": null,
             "service_tier": null,
             "usage": {
               "completion_tokens": 126,
+              "completion_tokens_details": {
+                "reasoning_tokens": 67
+              },
               "prompt_tokens": 5619,
               "prompt_tokens_details": {
                 "cached_tokens": 0
@@ -362,10 +370,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "chatcmpl-tool-a9818439d95dcc14"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "chatcmpl-tool-a9818439d95dcc14"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -380,10 +388,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_2"
+                    "id": "chatcmpl-tool-b8c6dc5573232886"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_2"
+                    "call_id": "chatcmpl-tool-b8c6dc5573232886"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -403,10 +411,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "chatcmpl-tool-a9818439d95dcc14"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "chatcmpl-tool-a9818439d95dcc14"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -420,10 +428,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_2"
+                    "id": "chatcmpl-tool-b8c6dc5573232886"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_2"
+                    "call_id": "chatcmpl-tool-b8c6dc5573232886"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -474,21 +482,26 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "cache probe ready"
+                    "text": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n"
                   }
                 }
               ],
               "provider": "venice"
+            },
+            {
+              "type": "text",
+              "text": "\n\ncache probe ready"
             }
           ],
           "usage": {
-            "input_tokens": 5728,
-            "output_tokens": 4,
-            "total_tokens": 5732,
-            "cached_input_tokens": 5280
+            "input_tokens": 5795,
+            "output_tokens": 28,
+            "total_tokens": 5823,
+            "cached_input_tokens": 5280,
+            "reasoning_tokens": 22
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "qwen3-5-9b",
@@ -501,37 +514,43 @@
                 "message": {
                   "annotations": null,
                   "audio": null,
-                  "content": "",
+                  "content": "\n\ncache probe ready",
                   "function_call": null,
-                  "reasoning_content": "cache probe ready",
+                  "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
                   "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": []
+                  "role": "assistant"
                 },
+                "routed_experts": null,
                 "stop_reason": null,
                 "token_ids": null
               }
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.0005734000000000001
+              "usd": 0.0005837
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_4",
+            "ec_transfer_params": null,
+            "id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
             "kv_transfer_params": null,
+            "metrics": null,
             "model": "qwen3-5-9b",
             "object": "chat.completion",
             "prompt_logprobs": null,
+            "prompt_text": null,
             "prompt_token_ids": null,
             "service_tier": null,
             "usage": {
               "cache_read_input_tokens": 5280,
-              "completion_tokens": 4,
-              "prompt_tokens": 5728,
+              "completion_tokens": 28,
+              "completion_tokens_details": {
+                "reasoning_tokens": 22
+              },
+              "prompt_tokens": 5795,
               "prompt_tokens_details": {
                 "cached_tokens": 5280
               },
-              "total_tokens": 5732
+              "total_tokens": 5823
             },
             "venice_parameters": {
               "disable_thinking": false,

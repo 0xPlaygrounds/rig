@@ -106,7 +106,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Let me extract the structured data from the text provided.\n\nFirst name: Ada\nLast name: Lovelace\nJob: mathematician\n\nLet me submit this."
+                    "text": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace."
                   }
                 }
               ],
@@ -116,10 +116,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381"
               },
               "function": {
                 "name": "submit",
@@ -134,17 +134,17 @@
             }
           ],
           "usage": {
-            "input_tokens": 426,
-            "output_tokens": 113,
-            "total_tokens": 539,
+            "input_tokens": 441,
+            "output_tokens": 105,
+            "total_tokens": 546,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 32
+            "reasoning_tokens": 30
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "c555e587-01bd-4b21-b545-020000c68065",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -153,7 +153,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "Let me extract the structured data from the text provided.\n\nFirst name: Ada\nLast name: Lovelace\nJob: mathematician\n\nLet me submit this.",
+                  "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -161,7 +161,7 @@
                         "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
                       "index": 0,
                       "type": "function"
                     }
@@ -170,22 +170,22 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
-            "model": "deepseek-v4-flash",
+            "id": "c555e587-01bd-4b21-b545-020000c68065",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 113,
+              "completion_tokens": 105,
               "completion_tokens_details": {
-                "reasoning_tokens": 32
+                "reasoning_tokens": 30
               },
               "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 426,
-              "prompt_tokens": 426,
+              "prompt_cache_miss_tokens": 441,
+              "prompt_tokens": 441,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 539
+              "total_tokens": 546
             }
           }
         }

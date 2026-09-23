@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 1,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 8
+          "items": 11
         }
       },
       {
@@ -147,7 +139,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -155,7 +147,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -163,7 +155,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -171,7 +163,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -179,7 +171,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "17"
@@ -187,7 +179,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ",\""
@@ -195,7 +187,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -203,7 +195,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -211,7 +203,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "25"
@@ -219,7 +211,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -227,20 +219,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_MSWAJxTAnOcMqVUm9wUjMHMi",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_MSWAJxTAnOcMqVUm9wUjMHMi"
             },
             "function": {
               "name": "add",

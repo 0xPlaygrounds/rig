@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,37 +10,85 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 8,
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 26,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 2
         }
       },
       {
-        "batch": 15,
+        "batch": 27,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 30,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -160,10 +208,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "lF1k4i4gW"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "lF1k4i4gW"
               },
               "function": {
                 "name": "add",
@@ -182,7 +230,7 @@
             "total_tokens": 1104
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -193,7 +241,7 @@
               "total_tokens": 1104
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -210,7 +258,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:lF1k4i4gW",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -218,7 +266,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:lF1k4i4gW",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"x\": 17, \"y\": 25}"
@@ -226,20 +274,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:lF1k4i4gW",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "lF1k4i4gW",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "lF1k4i4gW"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "lF1k4i4gW"
             },
             "function": {
               "name": "add",
@@ -261,7 +309,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -271,7 +319,7 @@
               "total_tokens": 1104
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -350,10 +398,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "lF1k4i4gW"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "lF1k4i4gW"
                   },
                   "function": {
                     "name": "add",
@@ -374,10 +422,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "lF1k4i4gW"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "lF1k4i4gW"
                   },
                   "name": "add",
                   "content": [
@@ -430,23 +478,23 @@
             }
           ],
           "usage": {
-            "input_tokens": 1125,
+            "input_tokens": 1131,
             "output_tokens": 6,
-            "total_tokens": 1131
+            "total_tokens": 1137
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1125,
+              "prompt_tokens": 1131,
               "completion_tokens": 6,
-              "total_tokens": 1131
+              "total_tokens": 1137
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -454,7 +502,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00010696875
+                "usd": 0.00010753125
               }
             }
           }
@@ -511,23 +559,23 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 1125,
+            "input_tokens": 1131,
             "output_tokens": 6,
-            "total_tokens": 1131
+            "total_tokens": 1137
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1125,
+              "prompt_tokens": 1131,
               "completion_tokens": 6,
-              "total_tokens": 1131
+              "total_tokens": 1137
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -535,7 +583,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00010696875
+                "usd": 0.00010753125
               }
             }
           }

@@ -294,21 +294,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EuIBCt8BAWkUfRPjFy+3FDPdfH5FarUb4b3nohbJcoJ+ELo54SKO2A33v2oo9xSyrbXn5SwTeqvySYZRoY1V2N1hzKpIoxrF7CIn7q0rBbrM1YOqw+vTH42jvn3zb03e7MOutViBFe18zygUBldg8HtXepJF61qlE5xfwN3R9hthyzyExz4qjKzKXQ6zO+kmuxXgblV2k84LADE34lUoWEylGFOMa52l0UkL/l2ZW/Et+d2NR5dfT9b+6u4v2w8Ldsim7yZAr7DF27sO0OXz0zxYMhL8j/S0Mawedq9vuKgjkdtsUw=="
-                  }
+              "text": "42",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EuIBCt8BAWkUfRPjFy+3FDPdfH5FarUb4b3nohbJcoJ+ELo54SKO2A33v2oo9xSyrbXn5SwTeqvySYZRoY1V2N1hzKpIoxrF7CIn7q0rBbrM1YOqw+vTH42jvn3zb03e7MOutViBFe18zygUBldg8HtXepJF61qlE5xfwN3R9hthyzyExz4qjKzKXQ6zO+kmuxXgblV2k84LADE34lUoWEylGFOMa52l0UkL/l2ZW/Et+d2NR5dfT9b+6u4v2w8Ldsim7yZAr7DF27sO0OXz0zxYMhL8j/S0Mawedq9vuKgjkdtsUw=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

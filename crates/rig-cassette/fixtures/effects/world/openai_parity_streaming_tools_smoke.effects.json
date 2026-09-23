@@ -2,23 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 14,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +18,23 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -60,7 +68,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -69,14 +77,6 @@
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 35,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -92,11 +92,19 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 38,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -120,7 +128,71 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 42,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -291,11 +363,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
               },
               "function": {
                 "name": "subtract",
@@ -316,7 +388,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_0dd460aaf73c6856006ab3969fef6887d08a4072501dc0eda1",
+          "provider_request_id": "req_33b2c18697874bc6b52e57048ee51a5a",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -338,7 +411,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "resp_REDACTED_1",
+            "response_id": "resp_0dd460aaf73c6856006ab3969fef6887d08a4072501dc0eda1",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -346,14 +419,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_name",
             "name": "subtract"
@@ -361,7 +434,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -369,7 +442,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -377,7 +450,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -385,7 +458,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "2"
@@ -393,7 +466,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ",\""
@@ -401,7 +474,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -409,7 +482,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -417,7 +490,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "5"
@@ -425,7 +498,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -433,27 +506,27 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_REDACTED_1",
+            "tool_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
             "name": "subtract",
             "arguments": {
               "x": 2,
               "y": 5
             },
-            "call_id": "call_REDACTED_1",
+            "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
             },
             "provider": {
-              "call_id": "call_REDACTED_1",
-              "item_id": "fc_REDACTED_1"
+              "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+              "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
             },
             "function": {
               "name": "subtract",
@@ -477,7 +550,8 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_0dd460aaf73c6856006ab3969fef6887d08a4072501dc0eda1",
+          "provider_request_id": "req_33b2c18697874bc6b52e57048ee51a5a",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -498,7 +572,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "resp_REDACTED_1",
+            "response_id": "resp_0dd460aaf73c6856006ab3969fef6887d08a4072501dc0eda1",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -560,11 +634,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                    "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
                   },
                   "function": {
                     "name": "subtract",
@@ -585,11 +659,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                    "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
                   },
                   "name": "subtract",
                   "content": [
@@ -661,18 +735,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "\\(2 - 5 = -3\\)"
+              "text": "The result of \\(2 - 5\\) is \\(-3\\)."
             }
           ],
           "usage": {
             "input_tokens": 147,
-            "output_tokens": 12,
-            "total_tokens": 159,
+            "output_tokens": 18,
+            "total_tokens": 165,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
+          "message_id": "msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "response_id": "resp_0dd460aaf73c6856006ab396a0e27487d09b5939704a0b2ad8",
+          "provider_request_id": "req_b3b88bf1ca224f93a96099f9dd07cece",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -682,11 +757,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 12,
+              "output_tokens": 18,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 159
+              "total_tokens": 165
             },
             "reasoning_metadata": {
               "context": null,
@@ -694,8 +769,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_2",
+            "message_id": "msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+            "response_id": "resp_0dd460aaf73c6856006ab396a0e27487d09b5939704a0b2ad8",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -703,22 +778,46 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
-            "text": "\\("
+            "text": "The"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": " result"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": " \\("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
             "text": "2"
@@ -726,7 +825,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
             "text": " -"
@@ -734,7 +833,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
             "text": " "
@@ -742,7 +841,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
             "text": "5"
@@ -750,31 +849,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " ="
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " -"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": "3"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
             "text": "\\"
@@ -782,15 +857,63 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "delta": {
             "delta": "text",
             "text": ")"
           }
         },
         {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": " \\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": "(-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": "3"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": "\\"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "delta": {
+            "delta": "text",
+            "text": ")."
+          }
+        },
+        {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
           "kind": {
             "kind": "message"
           }
@@ -799,14 +922,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 147,
-            "output_tokens": 12,
-            "total_tokens": 159,
+            "output_tokens": 18,
+            "total_tokens": 165,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
+          "message_id": "msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+          "response_id": "resp_0dd460aaf73c6856006ab396a0e27487d09b5939704a0b2ad8",
+          "provider_request_id": "req_b3b88bf1ca224f93a96099f9dd07cece",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -815,11 +939,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 12,
+              "output_tokens": 18,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 159
+              "total_tokens": 165
             },
             "reasoning_metadata": {
               "context": null,
@@ -827,8 +951,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_2",
+            "message_id": "msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+            "response_id": "resp_0dd460aaf73c6856006ab396a0e27487d09b5939704a0b2ad8",
             "model": "gpt-4o-2024-08-06"
           }
         }

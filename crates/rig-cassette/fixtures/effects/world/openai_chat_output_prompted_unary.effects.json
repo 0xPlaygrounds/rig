@@ -75,19 +75,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup: two short talks, lightning demos, open Q&A, and networking. When: 3rd Thursday, 6:30–8:30 PM. Where: Impact Hub Seattle (50 University St) — hybrid (Zoom). RSVP: meetup.com/RustSeattle; all skill levels welcome.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"tech meetup\",\"summary\":\"Monthly Rust meetup in Seattle for talks, lightning demos, and networking. Beginners welcome — bring a laptop; typically 6:30–8:30pm at a local community space. RSVP on the Seattle Rust Meetup page.\"}"
             }
           ],
           "usage": {
             "input_tokens": 96,
-            "output_tokens": 536,
-            "total_tokens": 632,
+            "output_tokens": 327,
+            "total_tokens": 423,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 448
+            "reasoning_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCFO1f0ekfgGHmEqqTcctKzIOby",
+          "provider_request_id": "req_7eb8963b034b45878877a3a1a976e0be",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -98,24 +98,24 @@
                 "index": 0,
                 "message": {
                   "annotations": [],
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup: two short talks, lightning demos, open Q&A, and networking. When: 3rd Thursday, 6:30–8:30 PM. Where: Impact Hub Seattle (50 University St) — hybrid (Zoom). RSVP: meetup.com/RustSeattle; all skill levels welcome.\"}",
+                  "content": "{\"title\":\"Seattle Rust Meetup — Monthly\",\"category\":\"tech meetup\",\"summary\":\"Monthly Rust meetup in Seattle for talks, lightning demos, and networking. Beginners welcome — bring a laptop; typically 6:30–8:30pm at a local community space. RSVP on the Seattle Rust Meetup page.\"}",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDCFO1f0ekfgGHmEqqTcctKzIOby",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 536,
+              "completion_tokens": 327,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 448,
+                "reasoning_tokens": 256,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 96,
@@ -123,7 +123,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 632
+              "total_tokens": 423
             }
           }
         }

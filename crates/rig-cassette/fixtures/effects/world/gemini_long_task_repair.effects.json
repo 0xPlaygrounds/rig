@@ -37,42 +37,42 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 17,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 21,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
+        "batch": 22,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 26,
         "id": 10,
         "kind": {
           "delivery": "outcome"
@@ -93,49 +93,49 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 33,
         "id": 13,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 35,
+        "batch": 36,
         "id": 14,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 38,
         "id": 15,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 40,
+        "batch": 41,
         "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 43,
         "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 45,
+        "batch": 46,
         "id": 18,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 46,
+        "batch": 47,
         "id": 19,
         "kind": {
           "delivery": "outcome"
@@ -149,21 +149,21 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 52,
         "id": 21,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 54,
+        "batch": 55,
         "id": 22,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 56,
         "id": 23,
         "kind": {
           "delivery": "outcome"
@@ -177,133 +177,133 @@
         }
       },
       {
-        "batch": 60,
+        "batch": 61,
         "id": 25,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 63,
+        "batch": 64,
         "id": 26,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 64,
+        "batch": 66,
         "id": 27,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 67,
+        "batch": 69,
         "id": 28,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 69,
+        "batch": 70,
         "id": 29,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 72,
+        "batch": 73,
         "id": 30,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 73,
+        "batch": 74,
         "id": 31,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 76,
+        "batch": 77,
         "id": 32,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 77,
+        "batch": 79,
         "id": 33,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 81,
+        "batch": 83,
         "id": 34,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 82,
+        "batch": 84,
         "id": 35,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 85,
+        "batch": 87,
         "id": 36,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 86,
+        "batch": 88,
         "id": 37,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 90,
+        "batch": 92,
         "id": 38,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 91,
+        "batch": 93,
         "id": 39,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 95,
+        "batch": 96,
         "id": 40,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 96,
+        "batch": 97,
         "id": 41,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 99,
+        "batch": 101,
         "id": 42,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 101,
+        "batch": 102,
         "id": 43,
         "kind": {
           "delivery": "outcome"
@@ -18428,21 +18428,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "done"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EsoBCscBAWkUfRMBWYur2i92TKUbO+IiUXYq3EkbpxoB3jndITaydNBaVSTWfDbzICQERDdwkaIEZUSX1lHNHw2Jtj2nmKNFX8l9ECC1yvrThqKNAIaR12Q61mYnOQPSwEJIEFfccNludvgj0Y+oYqd4TTjoUq9Ry6uPFZZZHM8deQ7INRjsHtpQwemVb8C81r6VrbqH6iEInXstHP8gdoKOuYfKDz1ZHCQR1HxMd464nSyhYznKmVZK8xSyKiGm6hvPgQUeMAGj5c6utg=="
-                  }
+              "text": "done",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EsoBCscBAWkUfRMBWYur2i92TKUbO+IiUXYq3EkbpxoB3jndITaydNBaVSTWfDbzICQERDdwkaIEZUSX1lHNHw2Jtj2nmKNFX8l9ECC1yvrThqKNAIaR12Q61mYnOQPSwEJIEFfccNludvgj0Y+oYqd4TTjoUq9Ry6uPFZZZHM8deQ7INRjsHtpQwemVb8C81r6VrbqH6iEInXstHP8gdoKOuYfKDz1ZHCQR1HxMd464nSyhYznKmVZK8xSyKiGm6hvPgQUeMAGj5c6utg=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

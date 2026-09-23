@@ -84,17 +84,17 @@
           "choice": [
             {
               "type": "text",
-              "text": "The passphrase is OMEGA-7."
+              "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
             }
           ],
           "usage": {
             "input_tokens": 41,
-            "output_tokens": 8,
-            "total_tokens": 79,
-            "reasoning_tokens": 30
+            "output_tokens": 17,
+            "total_tokens": 82,
+            "reasoning_tokens": 24
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "pnizavmDAtqgz7IPzKaO-QE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -104,7 +104,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The passphrase is OMEGA-7."
+                      "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
                     }
                   ],
                   "role": "model"
@@ -114,9 +114,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "pnizavmDAtqgz7IPzKaO-QE",
             "usageMetadata": {
-              "candidatesTokenCount": 8,
+              "candidatesTokenCount": 17,
               "promptTokenCount": 41,
               "promptTokensDetails": [
                 {
@@ -125,8 +125,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 30,
-              "totalTokenCount": 79
+              "thoughtsTokenCount": 24,
+              "totalTokenCount": 82
             }
           }
         }

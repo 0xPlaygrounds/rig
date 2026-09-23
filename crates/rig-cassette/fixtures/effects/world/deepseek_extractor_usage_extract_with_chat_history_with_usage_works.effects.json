@@ -125,24 +125,20 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Let me extract the structured data from the provided text.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip Code: 62701"
+                    "text": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
                   }
                 }
               ],
               "provider": "deepseek"
             },
             {
-              "type": "text",
-              "text": "Let me extract the address information from your text."
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_RxiGOALqiQeYFOmWght70756"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_RxiGOALqiQeYFOmWght70756"
               },
               "function": {
                 "name": "submit",
@@ -158,17 +154,17 @@
             }
           ],
           "usage": {
-            "input_tokens": 443,
-            "output_tokens": 137,
-            "total_tokens": 580,
-            "cached_input_tokens": 256,
-            "reasoning_tokens": 32
+            "input_tokens": 458,
+            "output_tokens": 132,
+            "total_tokens": 590,
+            "cached_input_tokens": 128,
+            "reasoning_tokens": 42
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -176,8 +172,8 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "Let me extract the address information from your text.",
-                  "reasoning_content": "Let me extract the structured data from the provided text.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip Code: 62701",
+                  "content": "",
+                  "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -185,7 +181,7 @@
                         "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_RxiGOALqiQeYFOmWght70756",
                       "index": 0,
                       "type": "function"
                     }
@@ -194,22 +190,22 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
-            "model": "deepseek-v4-flash",
+            "id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 137,
+              "completion_tokens": 132,
               "completion_tokens_details": {
-                "reasoning_tokens": 32
+                "reasoning_tokens": 42
               },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 187,
-              "prompt_tokens": 443,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 330,
+              "prompt_tokens": 458,
               "prompt_tokens_details": {
-                "cached_tokens": 256
+                "cached_tokens": 128
               },
-              "total_tokens": 580
+              "total_tokens": 590
             }
           }
         }

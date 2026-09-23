@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -107,10 +107,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
               },
               "function": {
                 "name": "final_result",
@@ -131,7 +131,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -150,7 +150,7 @@
                         "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Local Tech Meetup\", \"summary\": \"A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network.\"}",
                         "name": "final_result"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_wf07vfvKnM3cr9STe6yJ8155",
                       "index": 0,
                       "type": "function"
                     }
@@ -159,7 +159,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
