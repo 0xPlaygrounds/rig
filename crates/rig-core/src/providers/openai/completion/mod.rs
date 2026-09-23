@@ -146,7 +146,7 @@ pub enum Message {
     },
     // Gemini-backed OpenAI-compatible gateways (e.g. OpenRouter) can answer
     // with `role: "model"`; accept it on deserialization.
-    #[serde(alias = "model")]
+    #[serde(alias = "model", deserialize_with = "deserialize_assistant_fields")]
     Assistant {
         #[serde(
             default,
@@ -157,13 +157,9 @@ pub enum Message {
         content: Vec<AssistantContent>,
         // OpenAI-compatible providers expose hidden reasoning on this non-standard
         // field, and some require it to be echoed back on assistant tool-call turns.
-        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect); the
-        // `reasoning` alias accepts OpenRouter responses.
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            rename = "reasoning_content",
-            alias = "reasoning"
-        )]
+        // Serialized as `reasoning_content` (llama.cpp/DeepSeek dialect). Decoding
+        // also accepts OpenRouter's `reasoning`; see `deserialize_assistant_fields`.
+        #[serde(skip_serializing_if = "Option::is_none", rename = "reasoning_content")]
         reasoning: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
@@ -186,6 +182,56 @@ pub enum Message {
         tool_call_id: String,
         content: ToolResultContentValue,
     },
+}
+
+/// Decode shape of [`Message::Assistant`].
+///
+/// `reasoning_content` and `reasoning` are separate fields rather than a serde
+/// alias: gateways that relay one upstream dialect into the other send both
+/// keys in one message, and an alias makes that a duplicate-field error that
+/// rejects the whole response.
+#[derive(Deserialize)]
+struct AssistantFields {
+    #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+    content: Vec<AssistantContent>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
+    refusal: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    tool_calls: Vec<ToolCall>,
+    #[serde(default)]
+    reasoning_details: Vec<ReasoningDetails>,
+}
+
+type AssistantFieldTuple = (
+    Vec<AssistantContent>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<ToolCall>,
+    Vec<ReasoningDetails>,
+);
+
+/// Decode [`Message::Assistant`], preferring `reasoning_content` over
+/// `reasoning` when both are present, as the streaming delta does.
+fn deserialize_assistant_fields<'de, D>(deserializer: D) -> Result<AssistantFieldTuple, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let fields = AssistantFields::deserialize(deserializer)?;
+    Ok((
+        fields.content,
+        fields.reasoning_content.or(fields.reasoning),
+        fields.refusal,
+        fields.name,
+        fields.tool_calls,
+        fields.reasoning_details,
+    ))
 }
 
 impl Message {
