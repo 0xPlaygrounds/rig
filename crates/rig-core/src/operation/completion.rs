@@ -503,6 +503,15 @@ impl AdapterOutput {
         }));
     }
 
+    /// Close the active text block, if any: the next text opens a new one.
+    /// For wires whose part boundaries matter, such as a signed part that
+    /// must return on its own.
+    pub fn end_active_text(&mut self) {
+        if let Some(id) = self.active_text.clone() {
+            self.text_end(id);
+        }
+    }
+
     fn active_text_id(&mut self) -> BlockId {
         if let Some(id) = &self.active_text {
             return id.clone();

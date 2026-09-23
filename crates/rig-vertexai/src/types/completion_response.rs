@@ -19,6 +19,11 @@ pub struct VertexGenerateContentOutput(pub vertexai::model::GenerateContentRespo
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
 
+/// The text-block `AdditionalParams` key holding Vertex AI extras for that
+/// text, today the `thoughtSignature` Vertex put on the answer part. Only the
+/// Vertex codec reads it, so the signature returns only to Vertex.
+pub const VERTEX_TEXT_EXTRAS_KEY: &str = "vertexai";
+
 /// Map Vertex AI's `finishReason` onto rig's normalized vocabulary.
 ///
 /// Unmapped values are carried verbatim in their wire SCREAMING_SNAKE spelling
@@ -90,7 +95,16 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                         Reasoning::new_with_signature(text, signature).with_provider(PROVIDER_NAME),
                     ));
                 } else {
-                    assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
+                    // A signature on answer text returns on that text part.
+                    assistant_contents.push(AssistantContent::Text(Text {
+                        text: text.clone(),
+                        additional_params: signature.clone().and_then(|signature| {
+                            rig_core::providers::gemini::text_signature_extras(
+                                VERTEX_TEXT_EXTRAS_KEY,
+                                signature,
+                            )
+                        }),
+                    }));
                 }
             } else if let Some(inline_data) = part.inline_data() {
                 if signature.is_some() {

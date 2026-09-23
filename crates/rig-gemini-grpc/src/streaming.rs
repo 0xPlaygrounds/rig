@@ -78,9 +78,24 @@ impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for Grp
             }
 
             if let Some(content) = candidate.content.as_ref() {
+                // Parts within one response are distinct parts; text chunks
+                // across stream responses continue one part. A signed part
+                // keeps its signature on it and ends there.
+                let mut previous_text = false;
                 for part in &content.parts {
+                    let text =
+                        !part.thought && matches!(part.data, Some(proto::part::Data::Text(_)));
+                    let signed = text && !part.thought_signature.is_empty();
+                    let empty = matches!(&part.data, Some(proto::part::Data::Text(text)) if text.is_empty());
+                    if text && (previous_text || (signed && empty)) {
+                        out.end_active_text();
+                    }
+                    previous_text = text;
                     let parts = self.interpret_part(part);
                     self.reasoning.emit_chunk(parts, out);
+                    if signed {
+                        out.end_active_text();
+                    }
                 }
             }
         }
@@ -117,11 +132,15 @@ impl GrpcAdapter {
                 reasoning_signature: encode_signature(&part.thought_signature),
                 ..ChunkParts::default()
             },
-            // Non-thought text may carry the preceding reasoning signature;
-            // lifecycle derivation attaches it before closing the boundary.
+            // A signature on answer text returns on that text part.
             Some(proto::part::Data::Text(text)) => ChunkParts {
-                reasoning_signature: encode_signature(&part.thought_signature),
                 text: Some(text.clone()),
+                text_meta: encode_signature(&part.thought_signature).and_then(|signature| {
+                    rig_core::providers::gemini::text_signature_extras(
+                        rig_core::providers::gemini::GEMINI_TEXT_EXTRAS_KEY,
+                        signature,
+                    )
+                }),
                 ..ChunkParts::default()
             },
             Some(proto::part::Data::FunctionCall(function_call)) => {

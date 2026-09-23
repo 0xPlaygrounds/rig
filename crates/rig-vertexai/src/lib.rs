@@ -27,3 +27,4 @@ pub mod completion;
 pub(crate) mod types;
 
 pub use client::{Client, ClientBuilder};
+pub use types::completion_response::VERTEX_TEXT_EXTRAS_KEY;

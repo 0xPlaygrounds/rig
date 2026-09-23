@@ -98,8 +98,25 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                 let parts: Result<Vec<vertexai::model::Part>, _> = content
                     .into_iter()
                     .map(|assistant_content| match assistant_content {
-                        AssistantContent::Text(Text { text, .. }) => {
-                            Ok(vertexai::model::Part::new().set_text(text))
+                        AssistantContent::Text(text) => {
+                            let signature = rig_core::providers::gemini::text_signature_at(
+                                &text,
+                                crate::types::completion_response::VERTEX_TEXT_EXTRAS_KEY,
+                            )
+                            .map(str::to_owned);
+                            let mut part = vertexai::model::Part::new().set_text(text.text);
+                            // A signed answer part returns with its signature.
+                            if let Some(signature) = signature {
+                                match BASE64.decode(signature.as_bytes()) {
+                                    Ok(bytes) => part = part.set_thought_signature(bytes),
+                                    Err(err) => tracing::warn!(
+                                        %err,
+                                        "Failed to base64-decode text thought_signature; \
+                                         dropping it for this turn"
+                                    ),
+                                }
+                            }
+                            Ok(part)
                         }
                         AssistantContent::Image(image) => vertex_assistant_image_part(image),
                         AssistantContent::ToolCall(tool_call) => {
