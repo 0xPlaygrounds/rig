@@ -262,3 +262,5 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests;

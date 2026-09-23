@@ -3273,6 +3273,8 @@ mod explicit_destination_tests;
 #[cfg(test)]
 mod paths;
 #[cfg(test)]
+mod recording_guard_tests;
+#[cfg(test)]
 mod replay_session_tests;
 
 #[cfg(test)]

@@ -472,3 +472,5 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
+#[cfg(test)]
+mod tests;

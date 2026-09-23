@@ -50,7 +50,9 @@ use serde_json::Value;
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion};
-use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
+use crate::support::{
+    Observed, assert_matches_recorded_document, assert_wire_value_matches, normalized_without_raw,
+};
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a normalized response
@@ -125,21 +127,8 @@ async fn raw_is_the_reply_document() {
     // The document, key for key: whatever mistral.rs sent — including the
     // `usage` throughput fields no shared type models — is what a caller
     // reads off `raw`.
-    for key in body
-        .as_object()
-        .expect("the recorded reply is a JSON object")
-        .keys()
-        .filter(|key| key.as_str() != "id" && key.as_str() != "created")
-    {
-        assert_eq!(
-            raw.get(key),
-            body.get(key),
-            "raw should carry the provider's `{key}` unchanged"
-        );
-    }
-    for field in ["created", "id"] {
-        assert_wire_value_matches(raw, &body, field);
-    }
+    assert_matches_recorded_document(raw, &body, &["id"], "raw is the provider's document");
+    assert_wire_value_matches(raw, &body, "id");
 }
 
 // ---------------------------------------------------------------------------

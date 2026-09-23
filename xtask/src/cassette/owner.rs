@@ -309,3 +309,5 @@ impl<'ast> Visit<'ast> for Finder<'_> {
     }
 }
 
+#[cfg(test)]
+mod tests;

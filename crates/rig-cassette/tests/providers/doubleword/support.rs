@@ -57,6 +57,8 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
         DOUBLEWORD_BASE_URL,
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let client = OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
         .with_base_url(cassette.base_url())
         .bound()

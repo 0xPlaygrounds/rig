@@ -349,3 +349,5 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
     }
 }
 
+#[cfg(test)]
+mod tests;

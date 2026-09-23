@@ -490,3 +490,5 @@ fn append_row(path: &Path, columns: &[&str]) -> Result<(), String> {
     writeln!(file, "{}", line.join("\t")).map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
+mod tests;

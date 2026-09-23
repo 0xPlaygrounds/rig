@@ -336,6 +336,8 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
 {
     let (cassette, client) =
         llamacpp_cassette_on(spec, &upstream("LLAMACPP_API_KEY_UPSTREAM", 8089)).await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

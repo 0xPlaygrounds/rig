@@ -248,3 +248,5 @@ impl ErrorFields {
     }
 }
 
+#[cfg(test)]
+mod tests;

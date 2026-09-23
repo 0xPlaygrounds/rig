@@ -428,6 +428,8 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
         "https://api.openai.com/v1",
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let openai = OpenAiCassette::new(
         "sk-invalid-websocket-edge-matrix-key",
         cassette.base_url(),
@@ -453,6 +455,8 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
         "https://api.openai.com/v1",
     )
     .await;
+    // The rejected credential is this wrapper's subject.
+    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let openai = OpenAiCassette::new("sk-invalid-edge-matrix-key", cassette.base_url(), bundled());
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
