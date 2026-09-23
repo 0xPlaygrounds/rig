@@ -139,6 +139,7 @@ macro_rules! modality_operation {
                 telemetry: Self::Telemetry,
                 _request: &Self::Request,
             ) -> tracing::Span {
+                debug_assert!(!telemetry.is_completion());
                 SpanBuilder::new(provider, model.unwrap_or_default(), telemetry).build()
             }
 

@@ -86,7 +86,8 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
 }
 
 /// Applies a request builder's `additional_params` call: `None` clears, and a
-/// value merges over the parameters earlier calls set.
+/// value merges over the parameters earlier calls set. Merging combines JSON
+/// objects key by key; earlier parameters that are not an object are kept.
 pub(crate) fn merge_params(
     existing: Option<serde_json::Value>,
     params: Option<serde_json::Value>,

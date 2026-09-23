@@ -193,7 +193,8 @@ impl<M> TranscriptionRequestBuilder<M> {
         self
     }
 
-    /// Merges provider-specific parameters; `None` clears existing parameters.
+    /// Merges provider-specific parameters over earlier ones, key by key for
+    /// JSON objects; `None` clears existing parameters.
     pub fn additional_params(mut self, params: impl Into<Option<serde_json::Value>>) -> Self {
         self.request.additional_params =
             json_utils::merge_params(self.request.additional_params.take(), params.into());

@@ -20,6 +20,13 @@ fn builds_the_requests_the_typestate_builder_built() {
         .speed(1.5)
         .build();
     assert_eq!(request.speed, 1.5);
+    let request = AudioGenerationRequestBuilder::new((), "hi", "alloy")
+        .additional_params(json!({"response_format": "wav"}))
+        .build();
+    assert_eq!(
+        request.additional_params,
+        Some(json!({"response_format": "wav"}))
+    );
 }
 
 /// Repeated calls merge and `None` clears, matching the completion and

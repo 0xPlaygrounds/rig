@@ -153,7 +153,8 @@ impl<M> ImageGenerationRequestBuilder<M> {
         self
     }
 
-    /// Merges provider-specific parameters; `None` clears existing parameters.
+    /// Merges provider-specific parameters over earlier ones, key by key for
+    /// JSON objects; `None` clears existing parameters.
     pub fn additional_params(mut self, params: impl Into<Option<Value>>) -> Self {
         self.request.additional_params =
             crate::json_utils::merge_params(self.request.additional_params.take(), params.into());

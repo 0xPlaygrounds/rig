@@ -17,9 +17,8 @@ fn fields(request: TranscriptionRequest) -> Value {
 /// inputs, captured before it was removed.
 #[test]
 fn builds_the_requests_the_typestate_builder_built() {
-    let dir = std::env::temp_dir().join(format!("rig-transcription-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
-    let path = dir.join("clip.wav");
+    let dir = assert_fs::TempDir::new().expect("temp dir");
+    let path = dir.path().join("clip.wav");
     std::fs::write(&path, [9u8, 8, 7]).expect("fixture");
 
     let cases = [
@@ -65,7 +64,6 @@ fn builds_the_requests_the_typestate_builder_built() {
     for (request, expected) in cases {
         assert_eq!(fields(request), expected);
     }
-    std::fs::remove_dir_all(dir).ok();
 }
 
 #[test]

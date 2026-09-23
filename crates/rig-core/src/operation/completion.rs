@@ -82,6 +82,7 @@ impl Operation for Completion {
         // The request's override is the model actually sent (every wire
         // honours it on encode), so it is the one the span names.
         let model = request.model.as_deref().or(model).unwrap_or_default();
+        debug_assert!(telemetry.is_completion());
         SpanBuilder::new(provider, model, telemetry)
             .system_instructions(
                 request.system_instructions(),

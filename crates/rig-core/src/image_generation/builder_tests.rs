@@ -21,6 +21,10 @@ fn builds_the_requests_the_typestate_builder_built() {
         .height(512)
         .build();
     assert_eq!((request.width, request.height), (1024, 512));
+    let request = ImageGenerationRequestBuilder::new((), "lake")
+        .additional_params(json!({"quality": "low"}))
+        .build();
+    assert_eq!(request.additional_params, Some(json!({"quality": "low"})));
 }
 
 /// Repeated calls merge and `None` clears, matching the completion and

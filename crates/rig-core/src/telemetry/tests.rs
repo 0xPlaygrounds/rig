@@ -938,6 +938,37 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
 /// parent are both reported. A global flag would report whichever ran first
 /// and stay silent about the other — and every other test in this module
 /// passes under that behaviour, so this is the only one that pins it.
+/// A modality span never takes part in completion-parent adoption, so a
+/// near-miss parent draws no warning from it and is not enriched.
+#[test]
+fn modality_span_under_a_near_miss_parent_neither_warns_nor_adopts() {
+    let warnings = CapturedWarnings::default();
+    let subscriber = Registry::default().with(WarningCaptureLayer {
+        warnings: warnings.clone(),
+    });
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+    reset_near_miss_warnings();
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::callsite::rebuild_interest_cache();
+        let near_miss = tracing::info_span!(
+            target: "third_party_runtime",
+            "chat",
+            rig.completion_parent = true,
+            gen_ai.operation.name = tracing::field::Empty,
+        );
+        let _guard = near_miss.enter();
+        let span =
+            SpanBuilder::new("openai", "text-embedding-3", GenAiOperation::Embeddings).build();
+        assert_ne!(span.id(), near_miss.id(), "a modality span is always fresh");
+    });
+
+    let captured = warnings.take();
+    assert!(
+        captured.is_empty(),
+        "no adoption warning expected: {captured:?}"
+    );
+}
+
 #[test]
 fn distinct_near_miss_callsites_each_warn() {
     let warnings = CapturedWarnings::default();

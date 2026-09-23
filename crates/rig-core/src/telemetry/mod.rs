@@ -120,7 +120,7 @@ impl GenAiOperation {
         }
     }
 
-    fn is_completion(self) -> bool {
+    pub(crate) fn is_completion(self) -> bool {
         matches!(
             self,
             Self::Chat
@@ -365,6 +365,7 @@ pub async fn instrument_modality<Op, E>(
 where
     Op: crate::wire::Operation<Telemetry = GenAiOperation>,
 {
+    debug_assert!(!Op::telemetry(false).is_completion());
     let span = SpanBuilder::new(provider, request_model, Op::telemetry(false)).build();
     let result = tracing::Instrument::instrument(call, span.clone()).await;
     if let Ok(response) = &result {
