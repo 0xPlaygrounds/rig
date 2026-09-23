@@ -1,0 +1,164 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha and report its code.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"thinking":{"budget_tokens":1024,"display":"omitted","type":"enabled"},"tool_choice":{"type":"auto"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfKCXRGojoqbND44FA5FS
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfKCXRiM9G3sf4Lp8Fj8e","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":605,"output_tokens":6,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"EuMCCpIBCBIYAipAnnHrUr2dvq1fDizEFcq/JQVH4om2lcvWn2Vz5bUoPhxyS+U4HZrMt0WKCkLS9TVczBGUW/CKMjN8tncmF49yujIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgBi+rL1QYSDNJdQfxFClBtPj/7VxoMMFXGoNKU9q7mIEyNIjCyOBgdHy1XQy9XDSjQp58WzJfYFFsYJqf6caWyjlfKXPqAycuAbmBop+SXMRnDKpgqfgyX5V6cpC6hLnZslhts7iU9t9/G8zDZlavGutF3VYi5CmDIDDKmJFz/h71skySkP6SXEG5u+olMt4iPjS7pfNJ4Rmlt13vk4lHZhJdNZ+hgj4HLsRGYOibu/YHKMKMl291epM1PkFtW73MwGK5Ii40UnmKS3gSAtKBcsXnZnxgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Sure","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"!","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Since","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" I","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" have everything","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" I need —","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the record name is","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\"","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"alpha\"** —","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" I'll go","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ahead and call","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" `","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"lookup_code` right","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" now","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":".","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01JL87UukY5ZXRVYTtMFr7Qo","input":{},"name":"lookup_code","type":"tool_use"},"index":2,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"recor","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"d\": \"al","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"pha\"}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":2,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":605,"output_tokens":120,"output_tokens_details":{"thinking_tokens":30}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha and report its code.","type":"text"}],"role":"user"},{"content":[{"signature":"EuMCCpIBCBIYAipAnnHrUr2dvq1fDizEFcq/JQVH4om2lcvWn2Vz5bUoPhxyS+U4HZrMt0WKCkLS9TVczBGUW/CKMjN8tncmF49yujIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgBi+rL1QYSDNJdQfxFClBtPj/7VxoMMFXGoNKU9q7mIEyNIjCyOBgdHy1XQy9XDSjQp58WzJfYFFsYJqf6caWyjlfKXPqAycuAbmBop+SXMRnDKpgqfgyX5V6cpC6hLnZslhts7iU9t9/G8zDZlavGutF3VYi5CmDIDDKmJFz/h71skySkP6SXEG5u+olMt4iPjS7pfNJ4Rmlt13vk4lHZhJdNZ+hgj4HLsRGYOibu/YHKMKMl291epM1PkFtW73MwGK5Ii40UnmKS3gSAtKBcsXnZnxgB","thinking":"","type":"thinking"},{"text":"Sure! Since I have everything I need — the record name is **\"alpha\"** — I''ll go ahead and call `lookup_code` right now.","type":"text"},{"id":"toolu_01JL87UukY5ZXRVYTtMFr7Qo","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record alpha: code amber-5521","type":"text"}],"tool_use_id":"toolu_01JL87UukY5ZXRVYTtMFr7Qo","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"thinking":{"budget_tokens":1024,"display":"omitted","type":"enabled"},"tool_choice":{"type":"auto"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfKCXcm7dZapm4C251Emv
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfKCXd1kiCZWWEKosUt6R","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":745,"output_tokens":6,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"The code for record **alpha","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"** is:","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **amber-5521**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":745,"output_tokens":18,"output_tokens_details":{"thinking_tokens":0}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

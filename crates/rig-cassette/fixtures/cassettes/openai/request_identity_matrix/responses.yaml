@@ -1,0 +1,89 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with exactly: identity probe","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":64,"model":"gpt-4.1-nano","store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_585c4674a11448ad94c59b14369e83dd
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_01a63bee46068a26016ab2f9d48b3c87d0945d35d8bc1cc070","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-nano-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"identity probe","type":"output_text"}],"id":"msg_01a63bee46068a26016ab2f9d5a19087d08dc6427d91e8aab8","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":13,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":3,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":16},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with exactly: stream identity probe","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":64,"model":"gpt-4.1-nano","store":false,"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_da6453d52b3747eb801ba76a3934db6b
+  body: |+
+    event: response.created
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_05568786ab601f87016ab2f9d5d9b487d0b9f907e561b38c1c","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-nano-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_05568786ab601f87016ab2f9d5d9b487d0b9f907e561b38c1c","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-nano-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"stream","item_id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","logprobs":[],"obfuscation":"cJhqk7zs7Y","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" identity","item_id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","logprobs":[],"obfuscation":"s8bdB7d","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" probe","item_id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","logprobs":[],"obfuscation":"nuObq8ZGCk","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","logprobs":[],"output_index":0,"sequence_number":7,"text":"stream identity probe","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"},"sequence_number":8,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"access_programs":null,"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_05568786ab601f87016ab2f9d5d9b487d0b9f907e561b38c1c","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-nano-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_05568786ab601f87016ab2f9d7770c87d08fd299100db7fec4","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":14,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":4,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":18},"user":null},"sequence_number":10,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with exactly: rejected","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":64,"model":"gpt-no-such-model","store":false}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_de6e0cf5af5145499341a83b13b63b69
+  body: '{"error":{"code":"model_not_found","message":"The model `gpt-no-such-model` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

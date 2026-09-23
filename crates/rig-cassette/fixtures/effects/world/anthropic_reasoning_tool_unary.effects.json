@@ -1,0 +1,445 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 6,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 9,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "golden/run#0": {
+        "required": {
+          "golden/model:default": "completion",
+          "golden/tool:add#0": "tool"
+        },
+        "policy": 8587714872303787262
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "enabled",
+              "budget_tokens": 1024
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+                    "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB"
+                  }
+                }
+              ],
+              "provider": "anthropic"
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+              },
+              "provider": {
+                "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 662,
+            "output_tokens": 122,
+            "total_tokens": 784,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 51
+          },
+          "message_id": "msg_011CfKLH5qJuErfdA3VUKWGF",
+          "response_id": null,
+          "provider_request_id": "req_011CfKLH4vyxqajAvWf5w93u",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "container": null,
+            "content": [
+              {
+                "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB",
+                "thinking": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+                "type": "thinking"
+              },
+              {
+                "caller": {
+                  "type": "direct"
+                },
+                "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6",
+                "input": {
+                  "x": 17,
+                  "y": 25
+                },
+                "name": "add",
+                "type": "tool_use"
+              }
+            ],
+            "id": "msg_011CfKLH5qJuErfdA3VUKWGF",
+            "model": "claude-haiku-4-5-20251001",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "tool_use",
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 662,
+              "output_tokens": 122,
+              "output_tokens_details": {
+                "thinking_tokens": 51
+              },
+              "service_tier": "standard"
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_011CfKLH5qJuErfdA3VUKWGF",
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
+                        "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB"
+                      }
+                    }
+                  ],
+                  "provider": "anthropic"
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                  },
+                  "provider": {
+                    "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                  },
+                  "provider": {
+                    "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "enabled",
+              "budget_tokens": 1024
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 797,
+            "output_tokens": 4,
+            "total_tokens": 801,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_011CfKLHBPwBJ1CoLRJesyvy",
+          "response_id": null,
+          "provider_request_id": "req_011CfKLHAz7pb8YcePpxSJk7",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "42",
+                "type": "text"
+              }
+            ],
+            "id": "msg_011CfKLHBPwBJ1CoLRJesyvy",
+            "model": "claude-haiku-4-5-20251001",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 797,
+              "output_tokens": 4,
+              "output_tokens_details": {
+                "thinking_tokens": 0
+              },
+              "service_tier": "standard"
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    }
+  ]
+}

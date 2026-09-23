@@ -240,7 +240,8 @@
                     "type": "summary",
                     "content": "The task is to extract structured data from the provided text: \"Alice is a 25 year old developer.\"\n"
                   }
-                ]
+                ],
+                "provider": "xai"
               },
               {
                 "type": "toolcall",
@@ -291,7 +292,8 @@
                       "type": "summary",
                       "content": "The task is to extract structured data from the provided text: \"Alice is a 25 year old developer.\"\n"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -465,7 +467,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text: \"Alice is a 25 year old developer.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             }
           }
         },

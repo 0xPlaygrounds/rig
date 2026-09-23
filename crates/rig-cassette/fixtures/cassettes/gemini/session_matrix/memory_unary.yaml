@@ -1,0 +1,56 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Use tools when asked. Answer briefly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s what''s running through my code-brain right now.\n\n**My Execution Plan**\n\nAlright, so the user wants me to do something fairly straightforward: they''re asking me to find a harbor label. The key seems to be this `lookup_harbor_label` function. They''re telling me explicitly to *call* that function, and then, based on whatever that function spits back as a result, I''m supposed to report that label. Simple enough. It sounds like a basic lookup – the function probably retrieves the harbor label from some sort of internal data store or API based on some kind of pre-configured value, and I just need to get the output. The fact that the function takes *no* arguments is even easier – I don''t need to construct any query parameters or gather any input. So, first thing''s first, I call the function, get the label, and then report it.\n","thought":true},{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thoughtSignature":"Co8CAWkUfRNOD2g9UbzxKY+z2eAEEA5uo3OEcGGkaSDHpjppuA4muVCoUNUwP2VUaJIZuEiCX2YSk0D400zUdUMdc0lg8CVWGFc9I/jyIHQIS0JjbGe/TftgNKtXUqtVEL5CbFTtZXk+8EF0D1qB3k+z4Grl5qKCEmIjYQsfi4dtrkIrqdQYJt03YX7lQZpALQTe5yZusGd+Zydn5Yimq9a7HvOSWlhvwCZfAtOQ89zSunqHqG90nkKwRTt8kS7xPpQNjd20cjm67YgrtoSb4I/x2gx6aBPm1WkKGPD/IzltRQ8c5TfL97qQw9oNUyzGIizZmJpt2ep4S0EXQi/0spUJIGG9J7j/y/LJaRpHVC9Ygw=="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"GvOyaufkENm1qtsP3v7xoAg","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":59,"promptTokensDetails":[{"modality":"TEXT","tokenCount":59}],"serviceTier":"standard","thoughtsTokenCount":55,"totalTokenCount":127}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","thought":false}],"role":"user"},{"parts":[{"text":"Okay, here''s what''s running through my code-brain right now.\n\n**My Execution Plan**\n\nAlright, so the user wants me to do something fairly straightforward: they''re asking me to find a harbor label. The key seems to be this `lookup_harbor_label` function. They''re telling me explicitly to *call* that function, and then, based on whatever that function spits back as a result, I''m supposed to report that label. Simple enough. It sounds like a basic lookup – the function probably retrieves the harbor label from some sort of internal data store or API based on some kind of pre-configured value, and I just need to get the output. The fact that the function takes *no* arguments is even easier – I don''t need to construct any query parameters or gather any input. So, first thing''s first, I call the function, get the label, and then report it.\n","thought":true},{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"Co8CAWkUfRNOD2g9UbzxKY+z2eAEEA5uo3OEcGGkaSDHpjppuA4muVCoUNUwP2VUaJIZuEiCX2YSk0D400zUdUMdc0lg8CVWGFc9I/jyIHQIS0JjbGe/TftgNKtXUqtVEL5CbFTtZXk+8EF0D1qB3k+z4Grl5qKCEmIjYQsfi4dtrkIrqdQYJt03YX7lQZpALQTe5yZusGd+Zydn5Yimq9a7HvOSWlhvwCZfAtOQ89zSunqHqG90nkKwRTt8kS7xPpQNjd20cjm67YgrtoSb4I/x2gx6aBPm1WkKGPD/IzltRQ8c5TfL97qQw9oNUyzGIizZmJpt2ep4S0EXQi/0spUJIGG9J7j/y/LJaRpHVC9Ygw=="}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Use tools when asked. Answer briefly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The harbor label is \"crimson-harbor\"."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"HPOyaqbqEs3FqtsP1_rZiAo","usageMetadata":{"candidatesTokenCount":11,"promptTokenCount":291,"promptTokensDetails":[{"modality":"TEXT","tokenCount":291}],"serviceTier":"standard","totalTokenCount":302}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","thought":false}],"role":"user"},{"parts":[{"text":"Okay, here''s what''s running through my code-brain right now.\n\n**My Execution Plan**\n\nAlright, so the user wants me to do something fairly straightforward: they''re asking me to find a harbor label. The key seems to be this `lookup_harbor_label` function. They''re telling me explicitly to *call* that function, and then, based on whatever that function spits back as a result, I''m supposed to report that label. Simple enough. It sounds like a basic lookup – the function probably retrieves the harbor label from some sort of internal data store or API based on some kind of pre-configured value, and I just need to get the output. The fact that the function takes *no* arguments is even easier – I don''t need to construct any query parameters or gather any input. So, first thing''s first, I call the function, get the label, and then report it.\n","thought":true},{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"Co8CAWkUfRNOD2g9UbzxKY+z2eAEEA5uo3OEcGGkaSDHpjppuA4muVCoUNUwP2VUaJIZuEiCX2YSk0D400zUdUMdc0lg8CVWGFc9I/jyIHQIS0JjbGe/TftgNKtXUqtVEL5CbFTtZXk+8EF0D1qB3k+z4Grl5qKCEmIjYQsfi4dtrkIrqdQYJt03YX7lQZpALQTe5yZusGd+Zydn5Yimq9a7HvOSWlhvwCZfAtOQ89zSunqHqG90nkKwRTt8kS7xPpQNjd20cjm67YgrtoSb4I/x2gx6aBPm1WkKGPD/IzltRQ8c5TfL97qQw9oNUyzGIizZmJpt2ep4S0EXQi/0spUJIGG9J7j/y/LJaRpHVC9Ygw=="}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"},{"parts":[{"text":"The harbor label is \"crimson-harbor\".","thought":false}],"role":"model"},{"parts":[{"text":"What label did the tool return? Reply with just the label.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Use tools when asked. Answer briefly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s my understanding of the situation, tailored for a fellow expert:\n\n**Understanding the Label Retrieval**\n\nAlright, so the user is after that critical label the tool spat out. Let me reconstruct what happened. Right, I remember now, in the previous interaction, we ran that `lookup_harbor_label()` function. The output from that was pretty straightforward – it came back in a dictionary format: `{\"lookup_harbor_label_response\": {\"result\": \"crimson-harbor\"}}`. So, the actual label we''re dealing with is clear as day: \"crimson-harbor\". Now, that''s what the user needs.\n","thought":true},{"text":"crimson-harbor","thoughtSignature":"CpsCAWkUfRPxjdBzlrAyK3sNkxA365qVdaB0q0wMNrz86L835Nw5C64/Xd34yaUA19m2+wYRNOiJsNKyVIFZwaOpsM7E+VPri48gZ8xM0vFJrRDEUJK+BQnv8iJHgutla/WVlhxgmtJq3eK/0TyXVUDVDmEjaPxOjeVso5fKL80URbPhr2LFDOPrPAuvEhlsLnXdCBouhtQpCZyGQmwIfv+srT3jLOCtzEYKUxPI7+5wOIKX3ZfW1HlvyGs82BZUCqKMXxh2g8vjuecjQ1+kr51LGPKGcfzVUdUxXmB1G9rtGjQItjXw9ROV11hAH/hmgZImwQ0Bh3b605M4XPM2xhY3+rmWBoT9uiduguiVt5KVtyp+nyzmuoKC3nUHxA=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"HPOyasCjLrCnmtkPw6nd6Qo","usageMetadata":{"candidatesTokenCount":4,"promptTokenCount":317,"promptTokensDetails":[{"modality":"TEXT","tokenCount":317}],"serviceTier":"standard","thoughtsTokenCount":67,"totalTokenCount":388}}'

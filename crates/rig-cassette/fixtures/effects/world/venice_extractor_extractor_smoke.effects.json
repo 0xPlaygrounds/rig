@@ -109,7 +109,8 @@
                     "text": "The user is introducing themselves as Ada Lovelace, a mathematician. This appears to be a simple introduction. I should respond appropriately and I have a submit function available that requires first_name, last_name, and job fields.\n\nThis seems like they want me to extract and submit their information using the submit function.\n\nLet me extract:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this information.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "venice"
             },
             {
               "type": "toolcall",

@@ -227,7 +227,8 @@
                       "signature": "EuACCt0CAWkUfRMuCeMXLvDpe7oClo8jeibRHbmaLeJmdy8vTO2bigQ+aUr7xlKyuXsXF7M+LTWy9Qg983zkMmoecfLguzGmvp1G6pNmrJPTAPOvoZEcmGLr0l5+XESUOTLuOXtkOf+c73hDgnA1LwVsN3c70sQ3k6R0oyogYEZJpF/4m9FEMorL3/NFOev4S31cKwxtNO6vvJtCxonaI2kznfNBFyCSSvll3BYdnOUlTOFHh5hcAJJNUtvU9FAHgoH9QHWqn5TgsfWGYIMlWNpUFl0RmLRJ50Y4S5FEiZTUd3S//675vdTha9rh7KKkAwlAh0Td8ekloogdC19yDcEcwooOutS3zzfO4V69V4b7TFKtgQ75XZpPMIosiVYhd18WctztGfJDXC0H6W9cDUjXlRoaEcBy29nIxUsDYqcoFG8ZzvieXSBlEceiyBZAa3oxmyPmSwj5vvOyh/8ZPFSvww=="
                     }
                   }
-                ]
+                ],
+                "provider": "gcp.gemini"
               },
               {
                 "type": "text",
@@ -268,7 +269,8 @@
                         "signature": "EuACCt0CAWkUfRMuCeMXLvDpe7oClo8jeibRHbmaLeJmdy8vTO2bigQ+aUr7xlKyuXsXF7M+LTWy9Qg983zkMmoecfLguzGmvp1G6pNmrJPTAPOvoZEcmGLr0l5+XESUOTLuOXtkOf+c73hDgnA1LwVsN3c70sQ3k6R0oyogYEZJpF/4m9FEMorL3/NFOev4S31cKwxtNO6vvJtCxonaI2kznfNBFyCSSvll3BYdnOUlTOFHh5hcAJJNUtvU9FAHgoH9QHWqn5TgsfWGYIMlWNpUFl0RmLRJ50Y4S5FEiZTUd3S//675vdTha9rh7KKkAwlAh0Td8ekloogdC19yDcEcwooOutS3zzfO4V69V4b7TFKtgQ75XZpPMIosiVYhd18WctztGfJDXC0H6W9cDUjXlRoaEcBy29nIxUsDYqcoFG8ZzvieXSBlEceiyBZAa3oxmyPmSwj5vvOyh/8ZPFSvww=="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ],
               "usage": {
@@ -396,7 +398,8 @@
                           "signature": "EuACCt0CAWkUfRMuCeMXLvDpe7oClo8jeibRHbmaLeJmdy8vTO2bigQ+aUr7xlKyuXsXF7M+LTWy9Qg983zkMmoecfLguzGmvp1G6pNmrJPTAPOvoZEcmGLr0l5+XESUOTLuOXtkOf+c73hDgnA1LwVsN3c70sQ3k6R0oyogYEZJpF/4m9FEMorL3/NFOev4S31cKwxtNO6vvJtCxonaI2kznfNBFyCSSvll3BYdnOUlTOFHh5hcAJJNUtvU9FAHgoH9QHWqn5TgsfWGYIMlWNpUFl0RmLRJ50Y4S5FEiZTUd3S//675vdTha9rh7KKkAwlAh0Td8ekloogdC19yDcEcwooOutS3zzfO4V69V4b7TFKtgQ75XZpPMIosiVYhd18WctztGfJDXC0H6W9cDUjXlRoaEcBy29nIxUsDYqcoFG8ZzvieXSBlEceiyBZAa3oxmyPmSwj5vvOyh/8ZPFSvww=="
                         }
                       }
-                    ]
+                    ],
+                    "provider": "gcp.gemini"
                   }
                 ],
                 "usage": {
@@ -450,7 +453,8 @@
                     "signature": "EuACCt0CAWkUfRMuCeMXLvDpe7oClo8jeibRHbmaLeJmdy8vTO2bigQ+aUr7xlKyuXsXF7M+LTWy9Qg983zkMmoecfLguzGmvp1G6pNmrJPTAPOvoZEcmGLr0l5+XESUOTLuOXtkOf+c73hDgnA1LwVsN3c70sQ3k6R0oyogYEZJpF/4m9FEMorL3/NFOev4S31cKwxtNO6vvJtCxonaI2kznfNBFyCSSvll3BYdnOUlTOFHh5hcAJJNUtvU9FAHgoH9QHWqn5TgsfWGYIMlWNpUFl0RmLRJ50Y4S5FEiZTUd3S//675vdTha9rh7KKkAwlAh0Td8ekloogdC19yDcEcwooOutS3zzfO4V69V4b7TFKtgQ75XZpPMIosiVYhd18WctztGfJDXC0H6W9cDUjXlRoaEcBy29nIxUsDYqcoFG8ZzvieXSBlEceiyBZAa3oxmyPmSwj5vvOyh/8ZPFSvww=="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           }
         },

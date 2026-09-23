@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -89,7 +89,8 @@
                     "signature": "EvgBCpIBCBIYAipAY78D4X+PS3OZZM7+5ZcLVI5JT2y9mIB6GcLGkxbNs7IMYkL5zDwXgmHv6zd9vppbRBBCIebLvk4gWfnU0Lmk5jIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgBj+3K1QYSDJcextPELg8gae7LnhoMuyAsC9lXGLBy1pbTIjCOTPW3FK1Oz8Q/NoSHUXOP3XyzuHb4EOeZwu4C7O8swIGAYVZiNJJaoBarVZwVhYQqE8C49jkGoKLs5RQYRdE4Z8V10UsYAQ=="
                   }
                 }
-              ]
+              ],
+              "provider": "anthropic"
             },
             {
               "type": "text",

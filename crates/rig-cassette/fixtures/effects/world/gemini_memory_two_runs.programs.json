@@ -231,7 +231,8 @@
                       "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                     }
                   }
-                ]
+                ],
+                "provider": "gcp.gemini"
               }
             ],
             "message_id": null,
@@ -268,7 +269,8 @@
                         "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ],
               "usage": {
@@ -347,7 +349,8 @@
                     "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           }
         },

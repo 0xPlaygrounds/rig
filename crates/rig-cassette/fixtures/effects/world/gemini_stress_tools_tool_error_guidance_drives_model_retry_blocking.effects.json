@@ -2,35 +2,35 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -579,7 +579,8 @@
                     "signature": "CsADAWkUfRMxQjro2QvBJKtlAB86QXu6IIfn9K3V5u6dNyI4r68PIu5vcwXaQvm9luFCZtlTtUbizraxCI3z6YKgNXUSMv2X20SGoHPt9MUAYU5SI4O4alyRDKa+/f+9WWInrj4hPO2LInfH1n1RSLQRuN770N9u9fO2zrpLTRKZZniTKZ068vsPNwGsg0xXvbyqMRmN9YyVnmBG3+np0wtEN6GzB2I+oGrCKkeCloS2lI0eMRNtCNojVQAEgBmrcU24FQ2EGNPycgF3eHe2Jo9v6Kj1jClC07HzCyMnFiIg/zn78Rv2Ok6Eq1NnAg3EAJ5gUkkXPgFVeAI+bvG+SDLsAIah4DUAoEeXfSgn4HkFQxDX3uVHmEUmo3bZLplogCf/pKvYtRctiTlrpwRbSd/zjJH4L0u8qMM2CGkgCwPKAWqKZyRhSUa2rpGbcaKXzW1GEWgRvg0qWdrVeKycIlQHhAz9f2VwSnoVbPbubBpvqviPoXsY/eo67i+jkfKL6t7PPdmIrsX0NGYD7/sVNwHtUT+VZReFkVdSJG83vZoB9TYCXY0pu1OK0Kzyt/6rNGjFSYTPVVl0MCrjHSPt89ER5A=="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

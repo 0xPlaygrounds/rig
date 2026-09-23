@@ -80,7 +80,8 @@
                     "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB2erK1QYSDOON8M7cL1JVJuairhoMihATg8gKm7Q7eS6FIjAEYMTOQM4O2IdmytsDdJXLMDDcVtbU1oGd8ioJS4nWxCuPM7RvGH51gRCjA5InrTEqE2yMuc9hzwRAS7tNQZVOxZ/jT14YAQ=="
                   }
                 }
-              ]
+              ],
+              "provider": "anthropic"
             },
             {
               "type": "text",

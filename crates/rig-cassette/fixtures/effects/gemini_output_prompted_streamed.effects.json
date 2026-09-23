@@ -79,7 +79,8 @@
                     "signature": "EpIKCo8KAWkUfRMULC12V7AUuQTIG39WLL52PEzhak7qvopuB5E85H8Zk0+kwlN5f5VyEc6RzILHirOJfhvwG5jvOzLiPzFH0VTxCtp+X7XZZUvcuP1nVL+zuHipyMafE95UECf9tTsOmiRvw/dDduOaPSfxRTP4pqjCx3HzieGkRyBLQBAAFYqHZVymEyVkTCIvS40ijNq/S0bhiZpo/VAY3/SD3OggUGM5iHNAlL4CkK9H9cEOfEPZLkGdmTzP1R3/3sDSF2YPFkQ8rZErAkWvFUWBqMaEpdjMZu8XdOyR+yfvc3ME0Wys/fM+bu4pXlHhoVfkwlprfqew+Zeu8JC8dbhaO7fS78FmxYRNTfik1t77TuXnLOxPsU8T2E2moWj0uYIODX05iktLnZCn6qmwZBQWhX/jOMWLamUu41P/FQBcziCKo+LknMEriiQb9gDdWYdOfbu4s4O0KK+hcstKt2fFdUM5jNtNQkNbo8jM4yYe3ZQqpMe56ufJuuOqGyTntQqePWrv2wj+DOQHZDfkfWE5Z3cdrnemMjhq0l9g9C3uIM03zlWsydrSKCls3Cw/UGjoFrbfcrntr+lgGZiXtdui0fTs9kTAmse/Qd4fJfGJDmiBBAOKRRcZaBXv0x6ZJkP2WRAQX8yymb53HPQ7zKYQc3KFj7JXxLtKfovexxhrOOzquTSRWNj+qk5c+gu5/UhGOjEax/85k1crhBNH0Ph9o0sxfxSCRlIwOe3LL+heHnh+2dNe+JJEKN6ZR5qKC15Woosn4vejWfui/f6efhwVKkCB0HUEf1l+/zd+IC3zKgBko/KIYFjGQqbJFSsMtnppQap+8AAvW5qgwXEGQ1VQoY9MqHFpc6jaKcxpIGPDQKZZ5ZoWAvqO4BBGJ99AXU/QRt3Ay4cXyXwGiKeeAslLqUOHJe9kIIkWhEG8MznUFOiRG+KOXJmYjbmOck2+ehYoIt2rYs2T1HfuN5is43FDakeG5OKpB+9v8iIqnJTzzfoEnlys9q2bk5tMnLMd3uho39YMs7uHDT/Lg3Fre97kijq+sdP4Pu356886WTlFaGor3mmH/z2yWiHLxItPxNyEnfSntDmXTIDTShgmSYBTuWD+9S9hudYLf/fqCKX4RyF16Aud8EC6ZcTVTEN3xSgpTyOyEbVHFN5DXfL6oiMIl9g1L85GBBEEss1QWAgwKeiyGNqo8q0YX3G3uB5XiBSKqpG3Hht8jI/J9y80VUhfnpRUMs9iU+ao2blLhQNaLjL5VR7Z5GQyfkKDo1mHcD81iac9kdT3DradJXV2iiU5zojbJGXYbKt04PudgoHgx9hbsLz1OcvyqS7+EpsF3K4t3a+OHay0+2Tt9A86xIhC7b0vYsRmBs0HYF2YYb6JvidkK0Zz1923oHtreeazwIG6udjjJ5MJLZzeOSKb5ErdxzTuCg9+fR7eCBl9e86l/QH1Ri3seBRFnnDksqGfvZhijGfh0VT1RAzGyjq16nEC/9nBLWNId/Guu+S2qSKtQ9HibBcWsrMdpkefIxWX1He79wPFFN1G1e6/g8KR8KrRwS7YaxwxGzYHWNEWC9XIavtQErvUur9sTRkxIa31pRsfXntwxqknHi6AzGw0+w3xlHnCIrULNiTnni3aiy9JRpnnZG9lQjCIAw2Gdp2YXp882sgsUL23R6OG/ssrxVaPueuDz9sH6liqW4UwFx8AwGCxzrbUBn4rfij3UIr8Wfg="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -86,7 +86,8 @@
                   "type": "encrypted",
                   "content": "gAAAAABqsrPeAV8xC1V0IeA1NaFeNbtaVRsHZOQGkFrnR8Z3Wm9SClEEMmO4XUw3sy_BUE_Pv3qAPTngd1iMS4rVac7I6EGvckrNHeamRCk0BlABCiZkS4QQZx3tDMF1w5cdzxM1iVXVdc61LWz5-4pVWcpjjn0An0C5xxADn185k8YOdKrHo4RYGvt2TVh0wW8SGt7rPxsVKmTIsphxgubyBTfclcVm2ajqptOnQjGeXBP40CbCTzLj25VzD9yVRCnehcev3Z8jb00MriPJeLHO2QvhmjrhKBEa-nJtPu64BjcQGbTFJv11vJrJjAsPatlIMgx1KHvY-2PxPRw7wAk2P1Gp-yLOTTZAXkV1A5YVIxa-qj2iW8iv_UmKqcS8AyPEgnw_VyBNktN4gd8_wnXMS6X8-SbzBNiNhRyiV6-VDw18_iy4H_n45qCdiu1iqKPX7Wq1x8GKPBl7U1G0anaoj4zCG6rPJ16NiYHR8nnVWVrUJMCUHiL3Qaq7Af3bsGyUXs5UJKg5rEzbMjHUVBk8oQNZmYQLbC0cuJrjueICfksFBGsSfzasH4tdwbcZ2ucGG2XFK4zwYYZIMSCwqM4NFesyMgNhLQ-gELtVWWrQoAxSaJk4YE3HpSQJnbB1yGzv1Sj69C7ZV451GhjJfj-0TLETMrQMSflgArWgiVbheDdQZqjU6vL8InIkqOMhLQIaR0MH1hxAuqZvwjsuz56b2AJkGNBWZheoGTVJNCVMxlNpNyiYHbfMUd-YhCjbHFrXEiWZzJdX5zu5nTNAH-nYLHtvno8Y9NuYGEmCZHLRFKM1o8ZQ_fsk4qow5CNH25UuzXHiXv3GxbGy2y4QXOh3NX8UsCNG4Fs-MPpoAz-0EDiCPQxkRr3ZH7CYDjwiZulM3nMZ_A7ru8skPsIxOrhVmgf7P0sGsKUCpCWr83qmxb8XL9H4D2ZtfSauHp8HtthxtwU9UcBM4T18OVBJ0OqjZW9na0reTtunBYs5ermArAUjBo_RZFMdMAn1F-oQUwa_uYpvmezm3sFZ_fqGqtiCzoR8tivul-3eKuBVtMPQmddbagbgM-5Ss2tz2OREKiPDPDQU1i6yjbuopQzzvJaFhfblKjZPxfjoNxzjC2yMxPOeblC0K6O03THKmPrqMkXBuZ4GPzAkfj5yUTctDjDJs_ov-FIeAH5flSSc9HEJhgSdFiR96khXhrf6ot693y_3KLYYg6k87R_s4JhN4kaxz0SHv1aOPAG2g0-_Xvl9cKQ_Kwkj2s8mrKF20Iu_J_c2bZQKnImUtpgt0nusuukjLMu9n3pDIHj0ZaRAevIRlcFCNzgUn_0ZXjVCAnh-c0y3duUaOfxh8m1hhR9JdXZQ53sWN46-MRjcmaXESaonnsJEihOIn2XPz-3jhsXeisc1vCkAMZRs2jaJIFxbCN-DyW89YB-SCL844n6Fb2RZRFs1GmuvAijZFhjwJSpWB67H7Sha1LTjYMCDHaIU-cq0_nqkl1tn_h4T-8G_hMVPxE9Tc7xuA2v2H2zE4w-Tl4f4k_ixgb3gYI5-NGyTvZ1J5nwgkWd8ymkjxgJiKN01Ph1XquFlyc65YbaaskMwldt6QcFg1OyE3zp7QMey8bwtKxi1C2-fS_ylvbNWCrIOhKTSIsHrdBf4JEbgvy7e6VRJKXV2GXilYeTEYxKnVJEHg5uGHDml1sv0vpAwl4ILmpiFzbnw2ekpuwPmE-WhNvqekVHN0lcXaCaCXwUmGChPT3MA7gMdesoZXarUUOF1oJf2TbpsdQ13DeWOUqChdcrcMsql1Ut0zQmKcA_6xMzj1sOF1wPMOw=="
                 }
-              ]
+              ],
+              "provider": "openai"
             },
             {
               "type": "text",

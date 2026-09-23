@@ -1,0 +1,41 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha and report its code.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","thinking":{"budget_tokens":1024,"display":"omitted","type":"enabled"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKCX485TKaPpW1Kmo5fR
+  body: '{"container":null,"content":[{"signature":"EuMCCpIBCBIYAipAnnHrUr2dvq1fDizEFcq/JQVH4om2lcvWn2Vz5bUoPhxyS+U4HZrMt0WKCkLS9TVczBGUW/CKMjN8tncmF49yujIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgBh+rL1QYSDEH2nOk3+t+EzhKg5hoMUsURk0tDuXKCEoe0IjBaqtBUt8i7kWVK5qR/cjB0NHOZHaGBf9gWE7l1OqI36aWY6lQRwubYN7kZO+6NnDQqfoS3Gq21yFOugxJdTMRvMGFjNhwtXWANszebXD0Qeq/aFABlvkC1hQmMPZsNYR4C1/XKb4GQNpTRK072xYYZO8r3iL9PfXL3Lx/q4vmbq7vKZonD7Pa+184y/xUah1WxHc/ORbGuX6C4G/ck3fTNzbCIG/88AX88Ywo+aBBkoRgB","thinking":"","type":"thinking"},{"text":"Sure! Since I have all the information needed — the record name is **\"alpha\"** — I''ll go ahead and make the lookup call right away.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_01Aiqu48vGZCJXC3FpNirwDr","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"id":"msg_011CfKCX4SRoNvEWJKnw27fg","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":605,"output_tokens":119,"output_tokens_details":{"thinking_tokens":30},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha and report its code.","type":"text"}],"role":"user"},{"content":[{"signature":"EuMCCpIBCBIYAipAnnHrUr2dvq1fDizEFcq/JQVH4om2lcvWn2Vz5bUoPhxyS+U4HZrMt0WKCkLS9TVczBGUW/CKMjN8tncmF49yujIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgBh+rL1QYSDEH2nOk3+t+EzhKg5hoMUsURk0tDuXKCEoe0IjBaqtBUt8i7kWVK5qR/cjB0NHOZHaGBf9gWE7l1OqI36aWY6lQRwubYN7kZO+6NnDQqfoS3Gq21yFOugxJdTMRvMGFjNhwtXWANszebXD0Qeq/aFABlvkC1hQmMPZsNYR4C1/XKb4GQNpTRK072xYYZO8r3iL9PfXL3Lx/q4vmbq7vKZonD7Pa+184y/xUah1WxHc/ORbGuX6C4G/ck3fTNzbCIG/88AX88Ywo+aBBkoRgB","thinking":"","type":"thinking"},{"text":"Sure! Since I have all the information needed — the record name is **\"alpha\"** — I''ll go ahead and make the lookup call right away.","type":"text"},{"id":"toolu_01Aiqu48vGZCJXC3FpNirwDr","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record alpha: code amber-5521","type":"text"}],"tool_use_id":"toolu_01Aiqu48vGZCJXC3FpNirwDr","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","thinking":{"budget_tokens":1024,"display":"omitted","type":"enabled"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKCXGAd7ayQUge3Zu9kc
+  body: '{"container":null,"content":[{"text":"The code for record **alpha** is: **amber-5521**.","type":"text"}],"id":"msg_011CfKCXHAuEtD7niZ3icgFG","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":744,"output_tokens":18,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'

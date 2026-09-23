@@ -128,7 +128,8 @@
                     "text": "Let me extract the structured data from the provided text.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip Code: 62701"
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "text",

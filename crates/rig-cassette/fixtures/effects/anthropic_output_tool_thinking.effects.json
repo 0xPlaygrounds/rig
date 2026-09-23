@@ -104,7 +104,8 @@
                     "signature": "EugCCpIBCBIYAipA8YgJgmmJr9gjdIHYNtOxUj/06I3P8CtpnVhEJ5rZqFj5Umc2jTmOw7yBNuYcugqqeSdzQa80401nPzSMtZu5wzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1OrK1QYSDDVcSy4geTU6hL7WIxoMfpKU5kxga64Q2G1IIjDVIEejHyGJjwISgSsswF8/ChyIoP9zRqVW9IGsoxS8ZAHtSq9veeQN26KaZUjUBfoqggFPoISRVS1ux6IfEiB91Tv+bXTwg9qdwXabCLaqMWXAYMrqY5TXrNoQx2w6htryEJwuWnoHZFeonxCTcMH7KTrblsd1FIfwpvUKg9RT56VxEJAdvdHN2QyqRJ6k9tzjrV1WFTFtbe0TW5/W5muB3Qbhd61xSZothhA3nVToqexutc7FGAE="
                   }
                 }
-              ]
+              ],
+              "provider": "anthropic"
             },
             {
               "type": "toolcall",

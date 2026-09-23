@@ -80,6 +80,11 @@ pub fn recorded_json_turn(
     rig_cassette::http::recorded_json_turn(&cassette_root(), provider, scenario)
 }
 
+/// Read each recorded request's query parameters in wire order.
+pub fn recorded_request_query_pairs(provider: &str, scenario: &str) -> Vec<Vec<(String, String)>> {
+    rig_cassette::http::recorded_request_query_pairs(&cassette_root(), provider, scenario)
+}
+
 /// Read recorded request paths in wire order.
 pub fn recorded_request_paths(provider: &str, scenario: &str) -> Vec<String> {
     rig_cassette::http::recorded_request_paths(&cassette_root(), provider, scenario)

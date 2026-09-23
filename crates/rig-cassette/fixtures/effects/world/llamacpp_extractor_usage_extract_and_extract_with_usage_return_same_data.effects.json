@@ -127,7 +127,8 @@
                     "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "llamacpp"
             },
             {
               "type": "toolcall",
@@ -290,7 +291,8 @@
                     "text": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is to extract every field stated in the text. The text mentions Bob Johnson, 55 years old, and retired teacher. So that's all. \n\nFinal check: name, age, profession. All present. Correct values. Submit the function with these.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "llamacpp"
             },
             {
               "type": "toolcall",

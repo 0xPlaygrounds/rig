@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -127,7 +127,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text: \"Alice is a 25 year old developer.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",
@@ -364,7 +365,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text: \"456 Oak Avenue, Cambridge, MA 02139\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",

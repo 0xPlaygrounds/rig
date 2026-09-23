@@ -30,7 +30,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -688,7 +688,8 @@
                     "signature": "CnMBaRR9E5bFalh//sdM08WlMmALVH6a/rdEdQchtxLEwBw1avx2ehpH2O0zSe3F6YQlnL++SBf7XcN/a+zerr2CkEAldwLYIvGiheRAY1EtbgA07a8ez4oEAbqqF6uH7i1RBCfC95G/r65Z32QN9hnjxqhu"
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

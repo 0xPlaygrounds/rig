@@ -28,3 +28,10 @@ mod ecs_session;
 
 use rig_test_support::history_survival;
 use rig_test_support::matrix;
+
+#[path = "common/image_inputs.rs"]
+#[allow(dead_code)]
+mod image_inputs;
+
+#[path = "common/request_identity.rs"]
+mod request_identity;

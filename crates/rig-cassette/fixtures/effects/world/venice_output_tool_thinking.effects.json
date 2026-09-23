@@ -111,7 +111,8 @@
                     "text": "The user is asking for a concise event object for a local Rust meetup in Seattle. I need to create a structured object representing a Rust meetup event in Seattle. I will generate a realistic-looking event object with relevant fields like title, date, location, description, etc.\n\nSince I don't have access to real-time data, I will create a plausible example of such an event object.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "venice"
             },
             {
               "type": "toolcall",

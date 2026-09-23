@@ -1,0 +1,18 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Look up record alpha.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"record\":\"alpha\"}","call_id":"call_dup","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"call_dup","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"},{"content":[{"text":"Now look up record beta.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"record\":\"beta\"}","call_id":"call_dup","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"call_dup","output":"record beta: code cobalt-7730","status":"completed","type":"function_call_output"},{"content":[{"text":"Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-4.1-mini","store":false,"tools":[{"description":"Return the code stored for one record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_488b3f769bfb4c59b8f7609100861b3e
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0530ba2a5ec8101d016ab2f9d8a05887d08420155d125545fb","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"alpha=amber-5521 beta=cobalt-7730","type":"output_text"}],"id":"msg_0530ba2a5ec8101d016ab2f9d92fbc87d0bd6687d58bd7e45b","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Return the code stored for one record.","name":"lookup_code","output_schema":null,"parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":136,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":14,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":150},"user":null}'

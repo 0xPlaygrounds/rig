@@ -4,6 +4,7 @@ mod support;
 mod tools_support;
 
 mod cassette {
+    mod adversarial_matrix;
     mod agent;
     mod agent_run_recovery;
     mod agent_run_resume;
@@ -70,6 +71,7 @@ mod cassette {
     mod hook_stress_streaming;
     mod hook_stress_tools;
     mod image_generation;
+    mod image_input_matrix;
     mod interactions_api;
     mod interactions_raw_capture_matrix;
     mod interactions_raw_stream_capture_matrix;
@@ -86,6 +88,8 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod response_identity;
+    mod session_matrix;
+    mod stateful_chain_matrix;
     mod stream_faults;
     mod stream_terminal_matrix;
     mod streaming;

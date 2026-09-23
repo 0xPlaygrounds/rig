@@ -50,6 +50,7 @@ mod reasoning_block_order;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;
 mod request_hook;
+mod session_matrix;
 mod streaming;
 mod streaming_logprobs_matrix;
 mod streaming_tools;

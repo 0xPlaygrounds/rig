@@ -1,0 +1,37 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"grok-3-mini","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 5d59f965-3a3c-9dd3-a731-85cdef46cfbe
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"5d59f965-3a3c-9dd3-a731-85cdef46cfbe","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_5d59f965-3a3c-9dd3-a731-85cdef46cfbe","status":"completed","summary":[{"text":"I will think through the problem first. Then I will call lookup_code for record alpha.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"record\":\"alpha\"}","call_id":"call-1d7a6884-cb85-42b9-9fe3-269389b55f2e-0","id":"fc_5d59f965-3a3c-9dd3-a731-85cdef46cfbe_0","name":"lookup_code","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":293,"output_tokens":274},"cost_in_usd_ticks":7724500,"input_tokens":293,"input_tokens_details":{"cached_tokens":256},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":270,"output_tokens_details":{"reasoning_tokens":260},"total_tokens":563},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_5d59f965-3a3c-9dd3-a731-85cdef46cfbe","summary":[{"text":"I will think through the problem first. Then I will call lookup_code for record alpha.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"record\":\"alpha\"}","call_id":"call-1d7a6884-cb85-42b9-9fe3-269389b55f2e-0","id":"fc_5d59f965-3a3c-9dd3-a731-85cdef46cfbe_0","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"call-1d7a6884-cb85-42b9-9fe3-269389b55f2e-0","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"}],"max_output_tokens":4096,"model":"grok-3-mini-fast","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 798ef804-4d0d-9139-8e80-087ce5220720
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"798ef804-4d0d-9139-8e80-087ce5220720","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_798ef804-4d0d-9139-8e80-087ce5220720","status":"completed","summary":[{"text":"I will think through the request before calling lookup_code for record alpha.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"amber-5521","type":"output_text"}],"id":"msg_798ef804-4d0d-9139-8e80-087ce5220720","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":316,"output_tokens":180},"cost_in_usd_ticks":5587000,"input_tokens":316,"input_tokens_details":{"cached_tokens":256},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":173,"output_tokens_details":{"reasoning_tokens":169},"total_tokens":489},"user":null}'

@@ -83,7 +83,8 @@
                     "text": "We need to explain Rust and why memory safety matters in one or two sentences. Keep concise. Rust is a systems programming language that focuses on safety, speed, and concurrency, using a borrow checker to enforce memory safety without garbage collection. Memory safety matters because it prevents common bugs like buffer overflows and use-after-free, which can lead to crashes, security vulnerabilities, and undefined behavior."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "text",

@@ -1,0 +1,107 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Use lookup_code to get the code of record alpha. Do not guess.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-5-mini","reasoning":{"effort":"low"},"store":true,"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_a94feeb32c744fa882d71a78be1f8b36
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0ff9b3a3728736b2006ab2ea6394f487d0bd5aca4904258ef3","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"gAAAAABqsupmBmT8nlcjG6YmTUNWlVBkiQT9_XPf5t52t9sgW-L7hRoMnkRxFSi2DP4yNkvzEmV5wBhbldsoNXZYkjZGdcMY4az3kJ7p4jpOpj3BJDcXbxV41rMMa-_NZJWYgJngxIW6pDhEKW2--kB0eO1SnGw-9lALE_fkTxto0h-V47WwOF9xbh3Iq7swRcOnscuJkJSNePHKIhJ7ZiQGWFWl420i2YBhncJi2nGvaw_sXKcRC4g7oO2N66kHHHttYcKw08AnzGsmk3gJhlFEpESNkuf3AAw4GVFD6LQOdoto7yK7UKGnFiqZYt8_nKYYzR9YSRkhhlReOyz1bvnseTqvJSJ5ESHyqUZxrxIetdqz-7hJuzna2c0796VsPCnsH9Kd703RpbtYzbxwY_TbyXDMDXK4ZoNZJg1BQZox993SXEcLm6kX5N3BVhr7E7gWJRJAmdlQGS2LFRpYQKEs6Ub2cbl5xSMWJLhHmep_dfLGMXw-m9DwL8p4IoWvCIk9f9b8WWun4GAwLv-8RuQ6JvZRghwrHLi-ZEBu1q-IsSelvl40rt04oyNltH3Fy8RU1DDkCsII8zDFr9rshETbMLTe-YpXtYnmIT7WoiSNaRp1DWKOCDbMckHpYL0vnMfnWjNTrnS1H0PalWH306TPhr-sMN7L6_w4_D1HoPXj2CSHun4QcktnRV8h32aL8xbL4KcxdfyeojLpXASzZwL2oSgGy9M-KWFRZwORzW41wIXqTkYvbQheYHklYaMuc2PTd7PFGwCmBtevgKAI9XH1xcGWGUt0NZq69iXd3iGYmr9MRY_CM4-IBvdGOG0Nn9C3tynN-meKa4AUJbpTflF8w-wiqgyF--oAr6aMqOqYV6-eN0Zy03LEBjaTj44kpxVCYRpxszvFgabuuN6o3rRn3kNMTAk8-olLps11zQjZRonMkGN3k3MY6hUdr_-ycAwmqsrrMfG-T-FjOWAEeTHcAsfR351fpY8u9BQsRkAjPO0j6asYzBp3WcqFZB40mhdyUEQi_4bV93VQiUC2FrUh59pIqrOXY5tOzUI6_3G0sL3CyGhJrPfRtzu2j2eF_ktHZOvTEEaDPG1Y-AVSy_xaP5sYRaMOcLZiQx7KSCpSfMOzhh25gyAcc7enXTu7rpCo9uRETH_DDqOUmO837H9XR3zd5kCMq5shW8o4HMNILwGrj7wcPGwSDSW4vxAF7IUvckPiCPb5BCDEE4azZE8b3W4PWRQBgQajLIu1Co61DklftN0GEeswCMZSu-1EKIpmIk7anwXKK8M2izbaY6aMlxFFv2Z9kuDViWe5Dw4Wgl_Yfmc8n1j5K6GiXdS_HC1-ihuV2sDhHCFbMAR1M9IdfdrOIpbzfRdEoSoAQrcmZRhsXgfdfbuY-h_VJ-rbeduOeP_pfP0xi5wLsApTMgC-lY-FknVZkyV0peHQHp-JeBES8Ogy-iUoMC0ZnWyPj8CZdGgpgxx0m6pG-OqYVCY6dniwYgYKlWQN1yriQyBY4EmosodXS3MvjKyB4qIoEQsT7DMCLZcunIZSqn3oPy2xhxtDrbItJCn4hCY_CxOF4zGDZm-8OZuKGyG3-_QxMUKicYKGkATL0l5aqCtbBRnwMZk7-yC2K-sbcD7TKKCWLpc6nhuZULwytIgLCSvnCkim8Rnznj1ylruS7U0whQQnLFaBQ2Aa9f8pobxq__I5qSWqWy59Pa2qzFXoNUO06tJx5Tnrk-IIMoPqLuMSSSlWhHMGlV-iyKpYplNpgk4kP7qZFhA0VbCJxpD3bIFgSbGEBkP-lwa7uJwHWOK18on9GIpQ_nJdOqPcictE1hJzilmiRPCJ_2oE7ycvLw2XZ2-ZjrOIBOY7","id":"rs_0ff9b3a3728736b2006ab2ea64900887d0b0499851ef32e1b6","summary":[],"type":"reasoning"},{"arguments":"{\"record\":\"alpha\"}","call_id":"call_m0yzH5PDngpkVVvI2s3s5p2U","id":"fc_0ff9b3a3728736b2006ab2ea65bc7487d0bed5454e21866498","name":"lookup_code","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","output_schema":null,"parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":59,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":119,"output_tokens_details":{"reasoning_tokens":64},"total_tokens":178},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"call_id":"call_m0yzH5PDngpkVVvI2s3s5p2U","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"}],"max_output_tokens":2048,"model":"gpt-5-mini","previous_response_id":"resp_0ff9b3a3728736b2006ab2ea6394f487d0bd5aca4904258ef3","reasoning":{"effort":"low"},"store":true,"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_3b7b676db7d4489bb259af2a2c489050
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0ff9b3a3728736b2006ab2ea663f0c87d0a5c567aeb58316fb","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The code for record \"alpha\" is: amber-5521.","type":"output_text"}],"id":"msg_0ff9b3a3728736b2006ab2ea66d68c87d0bece50b113f95003","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":"resp_0ff9b3a3728736b2006ab2ea6394f487d0bd5aca4904258ef3","prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","output_schema":null,"parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":197,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":18,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":215},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Repeat the code you reported, exactly, and nothing else.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-5-mini","previous_response_id":"resp_0ff9b3a3728736b2006ab2ea663f0c87d0a5c567aeb58316fb","reasoning":{"effort":"low"},"store":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_d39ddcaaa989402ab978534fc8df024f
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0ff9b3a3728736b2006ab2ea67575087d095551e26f42542b0","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"gAAAAABqsupoyl9KkVhHIa5hymO4Lzv3nhDjbgXw2Ls2e34plrnpITlHXj-O_nOQUhvUpBfLLUcPaL12gGo8GUwvrWM65uX5e_Mp43L5lzrCbJHv9xAvx-ZjkR4a7QnAad0M5mrLCqZ3I-ICZEczZTo1jp9_wpcej2bQedYHF9YgRdBp25L07g9oIYpdbxl7C6Hqj4Mkd7-g4hAVUf3hnQm65b9GSdJ8YZINKRWVMeXfZ3n2NXd4wRBSds_qKL-W4E4rDcY53fBf6D_kAI8hZE7AhgMkqeOUTDhmjjrjgz1JIaINURXHn583UBesj75Lj0oqOW3Dflu7j8voVYtsHbOthgJCtMY8wbks6gsQbSFRmqMFqMBWkq-tVT2YtrXXe4HqheneoU8vBFK5MUuRqwVDArd0SAq4tmU81tfK49Au7e32T2z9JrjpZHr6_AQe9MhrrcQKkTwDmh2VedAV-Qs5GOl_Ffkoa58Gqyk-fWzMNLO60j2kx-UnL7Gipbtf8NRFiD4jcoZ1A0gEO7AFg8jd-njuWzUjQrZFe_j55UgGt6MbQX-BF1FjCVE1C1pz_ZQVRoEfkazJ1a5cJGN1AzSqDZeOz8qnBE8VywW3SXqkvjp1CJsHF_VA9EpDrakXIop5NFNpFgjhDfil88FsdnqMnRiNI1tqvX1HxfaaoXyTasYNI9TdgKi5I4o1Gjskxx5M0LbExE61ISgd3X-DzZ1sBBF7SkKOGONeptqtsPIeOAlQTPliikN2Rs-T95lKWeTSp3olZYYnGLjtZUY85x793lWbS3wDcm-D7VWEP6zTZdK2Dm0X9VQ46bp9ceGCzTFP5iJwMiLoc14eTxxxVAzocYoV_LwZI5wunjvpkl0264aZ1vMbbhtgQn-FeK7pEVZKM2EWKriHWxmS5DKMJQ4CLuVaODU1iJGOxFnATFs2LtiZ5pNBaIUcTbYJlva1skpvBqnILPkYaivbHa2HWHRAhLStXV_E3dhn-9hacFKbld8bfZGWnfuCxENFw-SJPyhLsn7_9cv7N2Uzs2DoX-UVtySc8myKHuLnpYtlC0XZ0AIsu3Vl-PsTzSdS648Ie6JGYs1e08iDdM3qOmehH02_VitVwXlTjPAUqEqU4Ab0Ryfnkott73w1PntuHxwipn70yxqk9jwzpbAL4FNobfJNDDbFKvnbhT6H-0SrdwLvepms4xuSdOudvgseGFPVT4mvboX3_SCNdHN2C9HpUMY1HsN3DjubzSSuOpR82nThwYeQdfSkpgoCgNGD_v6Zr0sfNn10DhwI6P3IrDXaxqhwNs_tk5lYzOiJJaLxWdYzllafy2nR1LlFJFv4MujiquF8Y44s4PH4LcXEUqul8javop3X1JjP9oYlmr7SGiTHYbQMVaz-RVMd61lHd112uS4SXNNoMbdap4YuCFg4L_Yq3369l9mfX1lbjDGfm5YhEavAlecmUhM=","id":"rs_0ff9b3a3728736b2006ab2ea67cdb487d08ec9d038c14c27fd","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"amber-5521","type":"output_text"}],"id":"msg_0ff9b3a3728736b2006ab2ea68601087d0ba52a56821c9ecb6","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":"resp_0ff9b3a3728736b2006ab2ea663f0c87d0a5c567aeb58316fb","prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":94,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":56,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":150},"user":null}'
+---
+when:
+  path: /v1/responses/resp_0ff9b3a3728736b2006ab2ea6394f487d0bd5aca4904258ef3
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_aa327111da0448dab87ad507c5010d7e
+  body: '{"deleted":true,"id":"resp_0ff9b3a3728736b2006ab2ea6394f487d0bd5aca4904258ef3","object":"response.deleted"}'
+---
+when:
+  path: /v1/responses/resp_0ff9b3a3728736b2006ab2ea663f0c87d0a5c567aeb58316fb
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_3ee3dc73dee247088346df039301199f
+  body: '{"deleted":true,"id":"resp_0ff9b3a3728736b2006ab2ea663f0c87d0a5c567aeb58316fb","object":"response.deleted"}'
+---
+when:
+  path: /v1/responses/resp_0ff9b3a3728736b2006ab2ea67575087d095551e26f42542b0
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_0cfe3092b6a44092bb0d3be0c8c246e5
+  body: '{"deleted":true,"id":"resp_0ff9b3a3728736b2006ab2ea67575087d095551e26f42542b0","object":"response.deleted"}'

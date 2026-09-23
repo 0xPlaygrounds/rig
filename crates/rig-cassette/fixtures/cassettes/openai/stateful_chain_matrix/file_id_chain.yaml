@@ -1,0 +1,73 @@
+when:
+  path: /v1/files
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=855f7d8bc21b6404-3f562a68516daa93-7622dfbdba000a7c-3efd6426cbe0b489
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_f46b312fbe754c56862c8c8f277cb54a
+  body: '{"bytes":12414,"created_at":0,"expires_at":1790117690,"filename":"rig-pages.pdf","id":"file-9h87sxuu8bQ7VRunxBuMKD","object":"file","purpose":"user_data","status":"processed","status_details":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"file_id":"file-9h87sxuu8bQ7VRunxBuMKD","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"What is the title on the first page? Answer briefly.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-4.1-mini","store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_3716929ba4ae482abf3c14b676009f2c
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0d1602b7ac18a4a3016ab2f92ac91c87d09780647a1e252944","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"There is no visible title on the first page.","type":"output_text"}],"id":"msg_0d1602b7ac18a4a3016ab2f92c9d8487d09ad3ff8837f05434","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":73,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":84},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"file_id":"file-9h87sxuu8bQ7VRunxBuMKD","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"What is the title on the first page? Answer briefly.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"There is no visible title on the first page.","type":"output_text"}],"id":"msg_0d1602b7ac18a4a3016ab2f92c9d8487d09ad3ff8837f05434","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"How many pages does the attached PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-4.1-mini","store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_e12d58d1078b4cac9f7f42d189a714ff
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0d1602b7ac18a4a3016ab2f92cef8c87d083ac0846b1c2a878","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"3","type":"output_text"}],"id":"msg_0d1602b7ac18a4a3016ab2f92db46487d0944245da15fc8f7b","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":105,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":107},"user":null}'
+---
+when:
+  path: /v1/files/file-9h87sxuu8bQ7VRunxBuMKD
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_34ec5b3cdedf496b8d9218209840acb4
+  body: '{"deleted":true,"id":"file-9h87sxuu8bQ7VRunxBuMKD","object":"file"}'

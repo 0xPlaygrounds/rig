@@ -158,7 +158,8 @@
                     "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {
@@ -246,7 +247,8 @@
                         "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ]
             }
@@ -305,7 +307,8 @@
                         "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ]
             }
@@ -355,7 +358,8 @@
                         "signature": "ErECCq4CAWkUfRNSK28btV7qa2q80I+5PTZj6CvannBnj+F8NOZquRgpIhsiY2NPyet0gjOubjpeioscTOuOANMrrUT31IWuNsyDDVCveYkOtusrcBtQ/AnQKGp9xD6Ej15Z0hGAdPzBeq6DoJcOylSuPBQWoYXhSTKskUC+CWOrWxROoZUCUO6/rNur8tPvkGJ3a8HxqkJQ9VamGWIJ2KV/0Lh41Z5zQevcWNb4hvLUYTcMufkca79x8pLJq2scq924+//ydE6EUrWyeqbC8uROfRzroYHuH5qVc962KJO+D7EcET19U09zwqai4H2uvYMAJ3CdyZKdOny/dGz5eVQw/tncg/7UF29nYHXGAPThI4BkMBqDYZaBpylsz32XCC6V9UPGaFVqrAGu4u4l65seF6Y="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ]
             },
@@ -398,7 +402,8 @@
                     "signature": "EpUECpIEAWkUfRMZcrjiRDpVrlpx4ywPcOaI+nXjcRhj4lDi+6EBH7EFRgjJtffNAlvrpp3rH8k2shTXvRWQ1myrjYXMxbYeK4Z3hmf3+NvU6ql+8TtW78hmEbrholc3YBgRQKCC1UtH2dW/E9IUDQFTstx7jf/VYrNeny4T1b78qE5pA2uSZOluYy/PV6a5FMLyO5FRc8F6CvaJTQNuBQ3haFBvjagn11paHmmy4n8AcrSfe20k8a3fD4441ZPtWxCB+rTKmZHdcwipBKdgwVYl8TK/UyQIRbOUuUlZHY0tAda9aQxVx2qKkUc/HQBBIFEqcd/P1yp/7AyW97vj5Ajh82Ywq8BPIm5lPewiJjtkRl30HtfCP1ooydijV58U2DPLfO00NdIaLakc6SuxvFB8VRqTSHFxts/tTyHH0hdFvkux0xypg9ZlxKkdoKg7Ft0Ign+LFBDv6gyEIb2ibeLv/4zfuJnlkfQ1NJXlcJogLVxfBmSf/Ue+TLXXiezJGVCVWJr0Rkq1jd3AoSvJ6i4mKO0dfQliLlS9YAFmTY4xgkO2Y9CoUNkx33zN7AqGbfsFckwggMbWwPxfyiV34l/xgTe2S0K00jV+qXBE/Ib3RIadgpFwK6JI+M0dL73YUYpmt2bvgKU8bYy0EObiNjS26YGP1+k+fqyBPN2IiZJeXwjIi2VLW9aT2c834dr1ZKeNBavP9io="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {
@@ -486,7 +491,8 @@
                         "signature": "EpUECpIEAWkUfRMZcrjiRDpVrlpx4ywPcOaI+nXjcRhj4lDi+6EBH7EFRgjJtffNAlvrpp3rH8k2shTXvRWQ1myrjYXMxbYeK4Z3hmf3+NvU6ql+8TtW78hmEbrholc3YBgRQKCC1UtH2dW/E9IUDQFTstx7jf/VYrNeny4T1b78qE5pA2uSZOluYy/PV6a5FMLyO5FRc8F6CvaJTQNuBQ3haFBvjagn11paHmmy4n8AcrSfe20k8a3fD4441ZPtWxCB+rTKmZHdcwipBKdgwVYl8TK/UyQIRbOUuUlZHY0tAda9aQxVx2qKkUc/HQBBIFEqcd/P1yp/7AyW97vj5Ajh82Ywq8BPIm5lPewiJjtkRl30HtfCP1ooydijV58U2DPLfO00NdIaLakc6SuxvFB8VRqTSHFxts/tTyHH0hdFvkux0xypg9ZlxKkdoKg7Ft0Ign+LFBDv6gyEIb2ibeLv/4zfuJnlkfQ1NJXlcJogLVxfBmSf/Ue+TLXXiezJGVCVWJr0Rkq1jd3AoSvJ6i4mKO0dfQliLlS9YAFmTY4xgkO2Y9CoUNkx33zN7AqGbfsFckwggMbWwPxfyiV34l/xgTe2S0K00jV+qXBE/Ib3RIadgpFwK6JI+M0dL73YUYpmt2bvgKU8bYy0EObiNjS26YGP1+k+fqyBPN2IiZJeXwjIi2VLW9aT2c834dr1ZKeNBavP9io="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ]
             }

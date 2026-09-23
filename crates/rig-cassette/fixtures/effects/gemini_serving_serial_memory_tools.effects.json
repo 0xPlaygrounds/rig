@@ -359,7 +359,8 @@
                     "signature": "Eq0BCqoBAWkUfROvguTCEomSVgQgmUlxJM2SA2yK4S5topjWVRkmWZLdk5GDQGP6JTwoe3MJFi6VKpx2ajJbGMTnyvzso676i6e0zV9H1+zOJg56u0dE/FCpNB/ULSUaRL+xmfbcf6GdZCatZLrpBeFyw6QA+zmP/esZxFZRFrIauroWFnHB5ijZstyUKlxssyCOG/zPwrFD83mEUoS9J/4ySsiyQykH8K7JSPmQReM="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {
@@ -493,7 +494,8 @@
                         "signature": "Eq0BCqoBAWkUfROvguTCEomSVgQgmUlxJM2SA2yK4S5topjWVRkmWZLdk5GDQGP6JTwoe3MJFi6VKpx2ajJbGMTnyvzso676i6e0zV9H1+zOJg56u0dE/FCpNB/ULSUaRL+xmfbcf6GdZCatZLrpBeFyw6QA+zmP/esZxFZRFrIauroWFnHB5ijZstyUKlxssyCOG/zPwrFD83mEUoS9J/4ySsiyQykH8K7JSPmQReM="
                       }
                     }
-                  ]
+                  ],
+                  "provider": "gcp.gemini"
                 }
               ]
             }

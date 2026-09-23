@@ -2,51 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -66,7 +26,7 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 25,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,21 +34,61 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 44,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 38,
+        "batch": 45,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 53,
+        "batch": 64,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,7 +96,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 66,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,7 +104,7 @@
         }
       },
       {
-        "batch": 55,
+        "batch": 67,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -112,7 +112,15 @@
         }
       },
       {
-        "batch": 56,
+        "batch": 68,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -120,7 +128,7 @@
         }
       },
       {
-        "batch": 57,
+        "batch": 71,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -128,15 +136,7 @@
         }
       },
       {
-        "batch": 58,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 59,
+        "batch": 72,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -144,23 +144,7 @@
         }
       },
       {
-        "batch": 60,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 61,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 62,
+        "batch": 73,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -168,15 +152,79 @@
         }
       },
       {
-        "batch": 65,
+        "batch": 75,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
-        "batch": 65,
+        "batch": 76,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 80,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 82,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 85,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 90,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 90,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -312,7 +360,8 @@
                   "type": "encrypted",
                   "content": "gAAAAABqsrRfd0hPK6m66pMSe9C8i7x1unxGlbUC9jdOo2-1H41kaJ-rvJtbyDqerqAwIc_cjU6S4hEhG8oj2_xwUctD0QQwuA5gw7gpPjefAx3AoLqA-bTDU_pnB1tYQnu7Awp8m3paFnvnNctULaDLtMMcN1psoYQ1x8tWtaQy_Vh6_M4tDzUvpEFiJXr60J0ecl_-6wow8G_T_0S3clRLUP8E91PM_o_G4PzQljNy_im1aM636d3kI1cTRYrUs4M_ObPQffQeo14KJ0-5Vh8uWnm2uyUVQ5Y1eB8vOQEfHKNoB_BuP5Mbm6i81BtmUwzXBbJKpn_bqj9Skl8lAnx5uu3VmgTvzZYOE3C0kmI2slc_CWcaJUqtanYBVQ_cDVFc0TNeQ9AgJENGpvdBnJz7WcRPDKfRjzf-iiG7KXAS_JwZFesytOKYAOa0RBQ_3_KeF39mvevWH3bJtzxjwaYhTYqFoMas6VHRo5WKd9puK4TH_3880sec0W3FmxeLzTVuT32TeClt9Qzb6-ei8FQH213X9FrMUkOQNbSorB3nOKUXM1kX0izm5KtRFRKLUoqQYU_6OCQjFrdm0zsO-sbRBnX9ewOLcyAAsJIs_-L9dN26uYLcQP5e6ayGVTUU-zWSYjq_ICHbdlebwzJ4Kj1IvFevlsSshNpMg0owJ3I1biVvA3X0NC84d7FK8TNKD3rWVMrzKVWxbTs5sZ5d8lcJUvL8NNg7MHeNb_Xi_KIxKSP2GiMRRH_9NxmmpYkv1DUffH7MtzN2s9kPnmHSYISPSmSKFVYMcOx48YBbZ-D-fAjS8etljmqotRn6xIHeNYPHPOvd5SQjHPm20-LSo0wzA4ELzTwYgf8vvcvljlKdy3lQXOzN6yXS6aAtZkXrxFQU0soHd2oXiNw4Iq_Xvi5UUZ18b57HxsSSVOlZEea0Wa8Vuahf-HAE2j5DK55Dws1Zg5qhBS-Vvo11HbfY632GfEAefPTwstN-XYZZ1MpI-ta-55fhBd4sIHxW8vxxocy2wOMTJHscQgjBVeM3JSnqZKBC5QUjttTlqkk8u2ur6x17cSMjsyWBwYjBZFzpJhQEYNDkFPK2OjhRq_9pDVNqwZ4b5OHiZsOUhqpuDEaBCj1Eazbk3Btl57ZDikU0Dhx51f8_YEglJz35Q5TlN-gfHttv3ldTGxtnUy5yfZ1kIj24av1nkGwZbTvInloQEtReujGNS5Du97Ei9XMqk21-RQTp4DXhZmoxZqWtxRRKy6ifX4NJF55HzwszOLbmnoVz2dKok7dQRJ8hLwIDBfw97mSgcAibaeKlJv7dwTreXa8pGQFVe2l-FAeW52ffubffo19JRL9DsSUWKSXn0DLXHh0fHpilbE2aNHgdAtLiaII8HJ0ub5_ss82drAM0bm1CvAVZ6F8LXjhVJn8TRHFxLLST9-abCqx_gXF4vdiXWOFOC-fIdrxPwHakjR4S9sb9rNlIg6P1iie-SIr4HV5k1XeFxzpiUiY1rY54o1d3Zfplq95bJvjhrkLqiPsN9gOwqEVXoRj5dwQpwJwEZosbrkAn1YB6OIG0t4wHU27n4PHu2gpneFH9k73U_sQMhWykfltRcmAd0FaZCS5jbgD1FVf2H7vIz5g74eC_rnxdISiyg25MZvRwXozURwPCHO_FIMyiUglzmncMxJEzoEvo8GOXev0dTQHLhWDe1DDOGpeDfcbgq2l_i8QMTRZHI136lXKLysNdi6lJ1M1ljpSHtPQbZS7yIJ_oN9eGBvCs0bdLWN-_v8XddDter_XJ9js6TYEPCbhPWuXSGD68ddBHusK5IszcIlwsYfQiwXgN4nR2eJr_RSXQ7sYU26CSs_2N-zL9vOxcO4SynNSu5G9dLWqc6e5hJGA_P_Qk88KETt_sT4DANG1-xf0UhC8aoHetPUCRJJx4SG4CFuXiDPMqs6AD9VcsBEY5pIaghayNvbbqxoDOpkRYWnsH1UYnrFB0k89pkgu3j0-JxlTwhNM4FLxXMz6LIiyUe4UieOb2VzgPUvrzQjH7d-D9UqWVYTAj91BP4DGfkm-fJQoNCCxwR0osw9he6hlUXhyWOhDHXUaiaaXcGDBPpNeWVXucdJz6pt1h9Qrt"
                 }
-              ]
+              ],
+              "provider": "openai"
             },
             {
               "type": "toolcall",
@@ -640,7 +689,8 @@
                       "type": "encrypted",
                       "content": "gAAAAABqsrRfd0hPK6m66pMSe9C8i7x1unxGlbUC9jdOo2-1H41kaJ-rvJtbyDqerqAwIc_cjU6S4hEhG8oj2_xwUctD0QQwuA5gw7gpPjefAx3AoLqA-bTDU_pnB1tYQnu7Awp8m3paFnvnNctULaDLtMMcN1psoYQ1x8tWtaQy_Vh6_M4tDzUvpEFiJXr60J0ecl_-6wow8G_T_0S3clRLUP8E91PM_o_G4PzQljNy_im1aM636d3kI1cTRYrUs4M_ObPQffQeo14KJ0-5Vh8uWnm2uyUVQ5Y1eB8vOQEfHKNoB_BuP5Mbm6i81BtmUwzXBbJKpn_bqj9Skl8lAnx5uu3VmgTvzZYOE3C0kmI2slc_CWcaJUqtanYBVQ_cDVFc0TNeQ9AgJENGpvdBnJz7WcRPDKfRjzf-iiG7KXAS_JwZFesytOKYAOa0RBQ_3_KeF39mvevWH3bJtzxjwaYhTYqFoMas6VHRo5WKd9puK4TH_3880sec0W3FmxeLzTVuT32TeClt9Qzb6-ei8FQH213X9FrMUkOQNbSorB3nOKUXM1kX0izm5KtRFRKLUoqQYU_6OCQjFrdm0zsO-sbRBnX9ewOLcyAAsJIs_-L9dN26uYLcQP5e6ayGVTUU-zWSYjq_ICHbdlebwzJ4Kj1IvFevlsSshNpMg0owJ3I1biVvA3X0NC84d7FK8TNKD3rWVMrzKVWxbTs5sZ5d8lcJUvL8NNg7MHeNb_Xi_KIxKSP2GiMRRH_9NxmmpYkv1DUffH7MtzN2s9kPnmHSYISPSmSKFVYMcOx48YBbZ-D-fAjS8etljmqotRn6xIHeNYPHPOvd5SQjHPm20-LSo0wzA4ELzTwYgf8vvcvljlKdy3lQXOzN6yXS6aAtZkXrxFQU0soHd2oXiNw4Iq_Xvi5UUZ18b57HxsSSVOlZEea0Wa8Vuahf-HAE2j5DK55Dws1Zg5qhBS-Vvo11HbfY632GfEAefPTwstN-XYZZ1MpI-ta-55fhBd4sIHxW8vxxocy2wOMTJHscQgjBVeM3JSnqZKBC5QUjttTlqkk8u2ur6x17cSMjsyWBwYjBZFzpJhQEYNDkFPK2OjhRq_9pDVNqwZ4b5OHiZsOUhqpuDEaBCj1Eazbk3Btl57ZDikU0Dhx51f8_YEglJz35Q5TlN-gfHttv3ldTGxtnUy5yfZ1kIj24av1nkGwZbTvInloQEtReujGNS5Du97Ei9XMqk21-RQTp4DXhZmoxZqWtxRRKy6ifX4NJF55HzwszOLbmnoVz2dKok7dQRJ8hLwIDBfw97mSgcAibaeKlJv7dwTreXa8pGQFVe2l-FAeW52ffubffo19JRL9DsSUWKSXn0DLXHh0fHpilbE2aNHgdAtLiaII8HJ0ub5_ss82drAM0bm1CvAVZ6F8LXjhVJn8TRHFxLLST9-abCqx_gXF4vdiXWOFOC-fIdrxPwHakjR4S9sb9rNlIg6P1iie-SIr4HV5k1XeFxzpiUiY1rY54o1d3Zfplq95bJvjhrkLqiPsN9gOwqEVXoRj5dwQpwJwEZosbrkAn1YB6OIG0t4wHU27n4PHu2gpneFH9k73U_sQMhWykfltRcmAd0FaZCS5jbgD1FVf2H7vIz5g74eC_rnxdISiyg25MZvRwXozURwPCHO_FIMyiUglzmncMxJEzoEvo8GOXev0dTQHLhWDe1DDOGpeDfcbgq2l_i8QMTRZHI136lXKLysNdi6lJ1M1ljpSHtPQbZS7yIJ_oN9eGBvCs0bdLWN-_v8XddDter_XJ9js6TYEPCbhPWuXSGD68ddBHusK5IszcIlwsYfQiwXgN4nR2eJr_RSXQ7sYU26CSs_2N-zL9vOxcO4SynNSu5G9dLWqc6e5hJGA_P_Qk88KETt_sT4DANG1-xf0UhC8aoHetPUCRJJx4SG4CFuXiDPMqs6AD9VcsBEY5pIaghayNvbbqxoDOpkRYWnsH1UYnrFB0k89pkgu3j0-JxlTwhNM4FLxXMz6LIiyUe4UieOb2VzgPUvrzQjH7d-D9UqWVYTAj91BP4DGfkm-fJQoNCCxwR0osw9he6hlUXhyWOhDHXUaiaaXcGDBPpNeWVXucdJz6pt1h9Qrt"
                     }
-                  ]
+                  ],
+                  "provider": "openai"
                 },
                 {
                   "type": "toolcall",

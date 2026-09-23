@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s what''s running through my processor:\n\n**Record Retrieval: Alpha**\n\nAlright, the user wants me to find the code associated with the record \"alpha.\" Simple enough, I can handle this. My primary tool for this specific task is the `lookup_code` function, part of the `default_api`. The appropriate tool call I need to make is `default_api.lookup_code(record=''alpha'')`. I''ll execute that and await the results. I expect a clean and straightforward lookup.\n","thought":true},{"functionCall":{"args":{"record":"alpha"},"name":"lookup_code"},"thoughtSignature":"CtsBAWkUfRPDcZwhRzYAA+fr0ktiR7SEvjnC9rM0Abih2Rf5dw4SJoyrCgK1Ce5KWlI0ftC9tz407d/Vdut0caW8ze3VWwDaI4Y10EkrCwcQeg7jpmAqT8UWvIIEZeOHrZwZcVNDQ8aZ0kSXVAkvQamilrti9IlsbSipVRSM+ecmbURarUjW2FoDVUOeSHBfj8cX6HTe8vsutlMZ3V9A8uzUGsd2HG60QZ0HStOooyXG9I9oHf25Xanq1Grq3XS//O3Gm2sLg6ZPgWGrq7B8ZZK2+y2JTy1k1fizTgHL"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"rfKyao6kObTmz7IPqLPtqQQ","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":66,"promptTokensDetails":[{"modality":"TEXT","tokenCount":66}],"serviceTier":"standard","thoughtsTokenCount":49,"totalTokenCount":130}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","thought":false}],"role":"user"},{"parts":[{"text":"Okay, here''s what''s running through my processor:\n\n**Record Retrieval: Alpha**\n\nAlright, the user wants me to find the code associated with the record \"alpha.\" Simple enough, I can handle this. My primary tool for this specific task is the `lookup_code` function, part of the `default_api`. The appropriate tool call I need to make is `default_api.lookup_code(record=''alpha'')`. I''ll execute that and await the results. I expect a clean and straightforward lookup.\n","thought":true},{"functionCall":{"args":{"record":"alpha"},"name":"lookup_code"},"thought":false,"thoughtSignature":"CtsBAWkUfRPDcZwhRzYAA+fr0ktiR7SEvjnC9rM0Abih2Rf5dw4SJoyrCgK1Ce5KWlI0ftC9tz407d/Vdut0caW8ze3VWwDaI4Y10EkrCwcQeg7jpmAqT8UWvIIEZeOHrZwZcVNDQ8aZ0kSXVAkvQamilrti9IlsbSipVRSM+ecmbURarUjW2FoDVUOeSHBfj8cX6HTe8vsutlMZ3V9A8uzUGsd2HG60QZ0HStOooyXG9I9oHf25Xanq1Grq3XS//O3Gm2sLg6ZPgWGrq7B8ZZK2+y2JTy1k1fizTgHL"}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_code","response":{"result":"record alpha: code amber-5521"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The code for record alpha is **amber-5521**.","thoughtSignature":"EmUKYwFpFH0TFrzLAp932YnImkwkxXCO0zh2cl+rtrq2fVyE6bVpNNCTir7PBEd9azKXo1ibiytS904xCtC9lU/83dDlEJNM3cH8Xfm+bCuAeovo3+LIZbrayzcz2UDsiHzFvsaZEg=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"r_KyaoCPHrrUz7IP5qPpkQQ","usageMetadata":{"candidatesTokenCount":14,"promptTokenCount":222,"promptTokensDetails":[{"modality":"TEXT","tokenCount":222}],"serviceTier":"standard","totalTokenCount":236}}'

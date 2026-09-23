@@ -116,7 +116,8 @@
                     "text": "Let me extract the structured data from the text:\n\n- Name: John Doe\n- Age: 30\n- Profession: software engineer\n\nI'll submit this using the submit function."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",

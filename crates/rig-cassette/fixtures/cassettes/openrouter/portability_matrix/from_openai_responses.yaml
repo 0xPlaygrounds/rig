@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo, Japan\"}","name":"get_weather"},"id":"call_EQSPnbaP9t5QlSWaGCWykLIW","type":"function"}]},{"content":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","role":"tool","tool_call_id":"call_EQSPnbaP9t5QlSWaGCWykLIW"},{"content":"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.","role":"user"}],"model":"anthropic/claude-haiku-4.5","tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no rain forecasted, you should prioritize packing sunscreen to protect against the sun, though an umbrella isn''t necessary.","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"end_turn"}],"created":0,"id":"gen-1790109163-0THYFA7VTgnNiwE6D0io","model":"anthropic/claude-haiku-4.5","object":"chat.completion","provider":"Amazon Bedrock","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":50,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00105,"cost_details":{"upstream_inference_completions_cost":0.00025,"upstream_inference_cost":0.00105,"upstream_inference_prompt_cost":0.0008},"is_byok":false,"prompt_tokens":800,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":850}}'

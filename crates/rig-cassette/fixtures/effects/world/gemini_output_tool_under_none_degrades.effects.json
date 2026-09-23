@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -106,7 +106,8 @@
                     "signature": "EqkHCqYHAWkUfRNBH8z4K6ySlqD9goGYnLBojVsAdVPtyzYaK6xHvlCwJmiV057I7ZEBetzuRWgIwQMv6xhrIARVIwp0iJfgQZ3PB17ajWA1uRW6wKmtw40WMrxR/3UGJLxXu/pFLmvS0j5K8abzrY91YLTHMRlw+x6y16Px71AA9VeVkShNtziKsQ8gsRN5opdvABR8sZM1N2zDq9SOeLAO1eKpIS7cMD59bSs0SfDHv0+lees6nUuhmKn2OoT2oHqaZ1jKlQYLRHTLvHxOO2uODgYoTt1A+/dvba/UVmlGkPfAONTSWS1jLsBmB/5DWLelW6QVxVtA4Y+lrDUII2De9UX/xCFPR9nuZpzgktC1+SFNMz7PPnc73SlkdlHAQyAp95cSRcWX+jwwqcYc3gHRS4Mi/4EM0SdR5iGw3fGAFM779QN9to5xtQtMWNs0CAMZlvkrM3NNNU1XVTocoU1733AxNT3VU2LPSLmZ0QwKlHoTlwEm+rYBSeoLEYwvrMwYzgEXYfLu1gffb8OjrEc99lzHhTr98z5aYMCnOo2j+3tQVxtJO+3vGV6HJK+tzuNaY8yfvZHOe5900y98bk9tE+O77hXR3ixV2xYdprURci+pZooWYfpd87KjdUufgyiz5GYCeMYXGuS5zGJ+77a1QajtXAAGb+LGDqaBlYRS2XNEdpkYET2rZcjb3VuaXoUC55a6xcvt9sBdMgmRhkIKQF/C/MmlQTi0px/LKDvu5rZ1G2IQHapjjgs+WjliYpFM5Eg/pQLfmDDWyOENtHTcT2xNwt1q/q+odFaE30rSP6N3uX8fIA1kgN5QjiYpfl4hSLi5oD+tAhtCn9/OyAMu6CSv9XPVCezVqKUnWvEXQdWXb/9xCwlLAERq0YJOuOmH6KErhTys8z+PSgMtLoCn4yuaFEz5qjgu4orEaE/kczHTwt91KfobyPW4PxOn65eapCyu9jDqeD53uK4JVpo0YJVA9e9FGRnMAjEMpZst7EDdTAQFq3XDRp/Cj0lvHRrHvDR+dt+Je7H+YbGhO+R4dMCOxRHZlPIdjxXaeBQ7OIn8eZk1RIeclYqBfplCeWHQeNKKf3qEtrPgNEIZn4bKIBwDC9TSellxfLLOFzuOlNaH3fR2Y+OiCkPw1hlxV/1hhNC5lvwGX5BRaY2m2mlwCZaqcRtqWF26IRfDtH8iL5WtOYX4uwStAnWup/97pwCqyKLv2NI0xONGdGY5+K5Rf34I4P3NSLCxjw=="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

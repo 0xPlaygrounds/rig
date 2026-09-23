@@ -302,6 +302,18 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
         .collect();
     forwarded.sort();
     forwarded.dedup();
+    // Reasoning state is only meaningful to the wire that issued it: none of
+    // it may reach another wire. Tool-call ids are correlation, not state.
+    let leaked: Vec<&str> = forwarded
+        .iter()
+        .copied()
+        .filter(|kind| *kind != "tool_call_id")
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "[{provider} from {}] foreign reasoning state reached the target request: {leaked:?}",
+        cell.source.provider()
+    );
     let report = Forwarded {
         delivered,
         forwarded,

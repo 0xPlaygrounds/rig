@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -111,7 +111,8 @@
                     "text": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary. Keep it concise."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",

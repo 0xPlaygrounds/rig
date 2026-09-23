@@ -1,6 +1,7 @@
 mod support;
 
 mod cassette {
+    mod adversarial_matrix;
     mod agent;
     mod boxed_transport;
     mod corpus_causal;
@@ -31,6 +32,7 @@ mod cassette {
     mod ecs_matrix_checkpoint;
     mod ecs_matrix_image;
     mod ecs_matrix_long_loop;
+    mod ecs_matrix_reasoning;
     mod ecs_matrix_stream_delivery;
     mod ecs_memory;
     mod ecs_ordering;
@@ -77,9 +79,11 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod reasoning_usage_matrix;
     mod regression_suite;
+    mod request_identity_matrix;
     mod request_override;
     mod response_identity;
     mod response_identity_edge;
+    mod session_matrix;
     mod stop_sequence_terminal_matrix;
     mod streamed_server_tools;
     mod streaming;

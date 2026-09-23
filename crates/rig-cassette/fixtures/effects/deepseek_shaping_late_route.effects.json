@@ -135,7 +135,8 @@
                     "text": "We need answer. Must use add tool. Then reply just number. Need call add 17 and 25."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",
@@ -275,7 +276,8 @@
                         "text": "We need answer. Must use add tool. Then reply just number. Need call add 17 and 25."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "deepseek"
                 },
                 {
                   "type": "toolcall",

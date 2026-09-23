@@ -7,9 +7,10 @@
 //! round-trip cells apply it to the exchanges they just recorded. The rule
 //! reads wire bytes, not Rig's normalized history, so a field that Rig's
 //! decoder never modeled is still caught when the next request lacks it.
-//! Survival is presence: a delivered value must appear as some string leaf
-//! of the next request. The rule does not check which slot carries it, so a
-//! value kept on one leg of a pair and dropped from the other passes.
+//! Survival is by slot: a delivered value must appear where the next request
+//! carries that kind of value, and a tool-call id on both the call and its
+//! result. Values recorded as legacy placeholders cannot be proven and are
+//! counted apart.
 //!
 //! ```
 //! use rig_test_support::history_survival::{lost_tokens, Dialect};
@@ -18,8 +19,10 @@
 //! ```
 #![allow(dead_code)]
 
+pub mod adversarial;
 pub mod driver;
 pub mod portability;
+pub mod sessions;
 
 use std::collections::BTreeSet;
 
@@ -104,6 +107,12 @@ pub struct Token {
     pub kind: &'static str,
     /// The delivered value, as scrubbed in the cassette.
     pub value: String,
+    /// What the value belongs to, when the response names it: a call's tool
+    /// name and arguments, a signed thinking block's text, a Gemini part's
+    /// kind, an encrypted item's id. The request must carry the value on an
+    /// owner with the same anchor. Streamed deltas that deliver a value apart
+    /// from its owner leave it `None`.
+    pub anchor: Option<String>,
 }
 
 /// Every content kind the rule can observe, for coverage censuses.
@@ -145,7 +154,10 @@ pub fn response_documents(body: &str) -> Vec<Value> {
 /// replays. Every other dialect delivers each value once.
 pub fn response_tokens(dialect: Dialect, body: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
-    for document in response_documents(body) {
+    let documents = response_documents(body);
+    // A whole reply states every owner complete; a stream's deltas may not.
+    let whole = documents.len() == 1;
+    for document in documents {
         let document = match dialect {
             Dialect::OpenAiResponses => match document.get("type").and_then(Value::as_str) {
                 Some("response.output_item.done") => {
@@ -156,60 +168,132 @@ pub fn response_tokens(dialect: Dialect, body: &str) -> Vec<Token> {
             },
             _ => document,
         };
-        collect_tokens(&document, &mut tokens);
+        // Responses `done` items are complete even inside a stream.
+        let complete = whole || dialect == Dialect::OpenAiResponses;
+        collect_tokens(&document, complete, &mut tokens);
     }
     tokens.sort();
     tokens.dedup();
     tokens
 }
 
-fn collect_tokens(value: &Value, tokens: &mut Vec<Token>) {
+fn collect_tokens(value: &Value, complete: bool, tokens: &mut Vec<Token>) {
     match value {
         Value::Object(object) => {
             let kind_of = object.get("type").and_then(Value::as_str);
-            let mut push = |kind: &'static str, key: &str| {
+            let mut push = |kind: &'static str, key: &str, anchor: Option<String>| {
                 if let Some(text) = object.get(key).and_then(Value::as_str)
                     && !text.is_empty()
                 {
                     tokens.push(Token {
                         kind,
                         value: text.to_owned(),
+                        anchor,
                     });
                 }
             };
-            push("signature", "signature");
-            push("thought_signature", "thoughtSignature");
-            push("encrypted_content", "encrypted_content");
+            let thinking = complete
+                .then(|| object.get("thinking").and_then(Value::as_str))
+                .flatten()
+                .map(str::to_owned);
+            push("signature", "signature", thinking);
+            push("thought_signature", "thoughtSignature", part_anchor(object));
+            push(
+                "encrypted_content",
+                "encrypted_content",
+                object.get("id").and_then(Value::as_str).map(str::to_owned),
+            );
+            let call = call_anchor(object, complete);
             match kind_of {
-                Some("redacted_thinking") => push("redacted_reasoning", "data"),
-                Some("reasoning") => push("reasoning_id", "id"),
-                Some("tool_use") => push("tool_call_id", "id"),
-                Some("function_call") => push("tool_call_id", "call_id"),
+                Some("redacted_thinking") => push("redacted_reasoning", "data", None),
+                // OpenRouter encrypted reasoning details.
+                Some("reasoning.encrypted") => push(
+                    "encrypted_content",
+                    "data",
+                    object.get("id").and_then(Value::as_str).map(str::to_owned),
+                ),
+                Some("reasoning") => push("reasoning_id", "id", None),
+                Some("tool_use") => push("tool_call_id", "id", call.clone()),
+                Some("function_call") => push("tool_call_id", "call_id", call.clone()),
                 _ => {}
             }
             // Chat Completions, Ollama and Cohere calls: an object holding a
             // `function` beside its `id`.
             if object.contains_key("function") {
-                push("tool_call_id", "id");
+                push("tool_call_id", "id", call.clone());
             }
             if object.contains_key("toolUseId") {
-                push("tool_call_id", "toolUseId");
+                push("tool_call_id", "toolUseId", call.clone());
             }
             // Gemini function calls carry an optional `id` beside `name`/`args`.
             if object.contains_key("args") && object.contains_key("name") {
-                push("tool_call_id", "id");
+                push("tool_call_id", "id", call);
             }
             for child in object.values() {
-                collect_tokens(child, tokens);
+                collect_tokens(child, complete, tokens);
             }
         }
         Value::Array(items) => {
             for item in items {
-                collect_tokens(item, tokens);
+                collect_tokens(item, complete, tokens);
             }
         }
         _ => {}
     }
+}
+
+/// A call's owner: its tool name, with its arguments when the call is
+/// complete. Arguments compare as JSON, whatever their key order or
+/// string encoding.
+fn call_anchor(object: &serde_json::Map<String, Value>, complete: bool) -> Option<String> {
+    let function = object
+        .get("function")
+        .and_then(Value::as_object)
+        .unwrap_or(object);
+    let name = function.get("name").and_then(Value::as_str)?;
+    if !complete {
+        return Some(name.to_owned());
+    }
+    let arguments = ["arguments", "input", "args"]
+        .iter()
+        .find_map(|key| function.get(*key))
+        .map(|arguments| match arguments {
+            Value::String(text) => serde_json::from_str(text).unwrap_or(arguments.clone()),
+            other => other.clone(),
+        })
+        .map(|arguments| canonical(&arguments).to_string())
+        .unwrap_or_default();
+    Some(format!("{name}{arguments}"))
+}
+
+fn canonical(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => {
+            let sorted: std::collections::BTreeMap<_, _> = object
+                .iter()
+                .map(|(key, value)| (key.clone(), canonical(value)))
+                .collect();
+            Value::Object(sorted.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonical).collect()),
+        other => other.clone(),
+    }
+}
+
+/// A Gemini part's owner: a function call, a thought, or answer text. The
+/// call's name is not part of it, since a repair hook may rename the call
+/// it signs.
+fn part_anchor(object: &serde_json::Map<String, Value>) -> Option<String> {
+    if object.contains_key("functionCall") || object.contains_key("function_call") {
+        return Some("functionCall".to_owned());
+    }
+    object.contains_key("text").then(|| {
+        if object.get("thought").and_then(Value::as_bool) == Some(true) {
+            "thought".to_owned()
+        } else {
+            "text".to_owned()
+        }
+    })
 }
 
 /// Every string leaf in a request body.
@@ -232,13 +316,184 @@ fn collect_strings(value: &Value, values: &mut BTreeSet<String>) {
     }
 }
 
-/// The tokens a response delivered that the continuation request lacks.
+/// The tokens a response delivered that the continuation request does not
+/// carry in the slot that must hold them. A tool-call id must be on both
+/// legs: the call and its result. Values recorded as legacy placeholders
+/// (`call_REDACTED_1`) are excluded; see [`legacy_tokens`].
 pub fn lost_tokens(dialect: Dialect, response_body: &str, next_request: &Value) -> Vec<Token> {
-    let present = string_values(next_request);
+    let slots = request_slots(next_request);
     response_tokens(dialect, response_body)
         .into_iter()
-        .filter(|token| !present.contains(&token.value))
+        .filter(|token| !is_legacy_placeholder(&token.value))
+        .filter(|token| {
+            let legs: &[Leg] = if token.kind == "tool_call_id" {
+                &[Leg::Call, Leg::Result]
+            } else {
+                &[Leg::Call]
+            };
+            !legs.iter().all(|leg| {
+                slots
+                    .get(&(token.kind, *leg))
+                    .and_then(|values| values.get(&token.value))
+                    .is_some_and(|anchors| match (&token.anchor, leg) {
+                        (Some(anchor), Leg::Call) => anchors.contains(&Some(anchor.clone())),
+                        _ => true,
+                    })
+            })
+        })
         .collect()
+}
+
+/// Whether a lost `token` is a Gemini thought signature the response put on
+/// an answer text part and the request carries on a thought part instead.
+/// Rig's `Text` has no signature slot, so the Gemini codecs move a text
+/// part's signature onto reasoning: the value survives, its slot does not.
+pub fn text_signature_on_thought(token: &Token, next_request: &Value) -> bool {
+    token.kind == "thought_signature"
+        && token.anchor.as_deref() == Some("text")
+        && request_slots(next_request)
+            .get(&(token.kind, Leg::Call))
+            .and_then(|values| values.get(&token.value))
+            .is_some_and(|anchors| anchors.contains(&Some("thought".to_owned())))
+}
+
+/// The tokens a response delivered as legacy placeholders: recorded before
+/// cassettes kept provider values verbatim, so their slot cannot be proven.
+pub fn legacy_tokens(dialect: Dialect, response_body: &str) -> Vec<Token> {
+    response_tokens(dialect, response_body)
+        .into_iter()
+        .filter(|token| is_legacy_placeholder(&token.value))
+        .collect()
+}
+
+fn is_legacy_placeholder(value: &str) -> bool {
+    value.split_once("REDACTED_").is_some_and(|(_, counter)| {
+        !counter.is_empty() && counter.bytes().all(|b| b.is_ascii_digit())
+    })
+}
+
+/// Which side of a pairing a value occupies. Only tool-call ids have two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Leg {
+    /// The call, or the single slot of a one-legged kind.
+    Call,
+    /// The result that answers the call.
+    Result,
+}
+
+/// Every value a request carries, indexed by the slot it occupies (the kind
+/// of value that slot holds and the leg of the pairing), with the anchors of
+/// the owners that carry it.
+pub type Slots = std::collections::BTreeMap<
+    (&'static str, Leg),
+    std::collections::BTreeMap<String, BTreeSet<Option<String>>>,
+>;
+
+/// Every value a request carries, indexed by the slot it occupies: the kind
+/// of value that slot holds and the leg of the pairing.
+pub fn request_slots(request: &Value) -> Slots {
+    let mut slots = std::collections::BTreeMap::new();
+    collect_slots(None, request, &mut slots);
+    slots
+}
+
+fn collect_slots(parent_key: Option<&str>, value: &Value, slots: &mut Slots) {
+    match value {
+        Value::Object(object) => {
+            let kind_of = object.get("type").and_then(Value::as_str);
+            let role = object.get("role").and_then(Value::as_str);
+            let mut put =
+                |kind: &'static str, leg: Leg, key: &str, anchors: Vec<Option<String>>| {
+                    if let Some(text) = object.get(key).and_then(Value::as_str)
+                        && !text.is_empty()
+                    {
+                        slots
+                            .entry((kind, leg))
+                            .or_default()
+                            .entry(text.to_owned())
+                            .or_default()
+                            .extend(anchors);
+                    }
+                };
+            // A streamed call names its owner by tool name alone; a whole one
+            // by name and arguments. The request states both.
+            let call = vec![call_anchor(object, false), call_anchor(object, true)];
+            let id = object.get("id").and_then(Value::as_str).map(str::to_owned);
+            match kind_of {
+                // Anthropic thinking blocks, OpenRouter `reasoning.text`
+                // details, Gemini Interactions thought steps.
+                Some("thinking" | "reasoning.text" | "thought") => {
+                    let thinking = object
+                        .get("thinking")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                    put("signature", Leg::Call, "signature", vec![thinking]);
+                }
+                Some("redacted_thinking") => {
+                    put("redacted_reasoning", Leg::Call, "data", vec![None])
+                }
+                // OpenAI Responses reasoning input items.
+                Some("reasoning") => {
+                    put("reasoning_id", Leg::Call, "id", vec![None]);
+                    put(
+                        "encrypted_content",
+                        Leg::Call,
+                        "encrypted_content",
+                        vec![id],
+                    );
+                }
+                // OpenRouter encrypted reasoning details.
+                Some("reasoning.encrypted") => {
+                    put("encrypted_content", Leg::Call, "data", vec![id.clone()]);
+                    put("reasoning_id", Leg::Call, "id", vec![None]);
+                }
+                Some("tool_use") => put("tool_call_id", Leg::Call, "id", call.clone()),
+                Some("tool_result") => put("tool_call_id", Leg::Result, "tool_use_id", vec![None]),
+                Some("function_call") => put("tool_call_id", Leg::Call, "call_id", call.clone()),
+                Some("function_call_output" | "function_result") => {
+                    put("tool_call_id", Leg::Result, "call_id", vec![None]);
+                }
+                _ => {}
+            }
+            // Chat Completions, Ollama and Cohere: calls under `tool_calls`,
+            // results as `role: tool` messages.
+            if parent_key == Some("tool_calls") {
+                put("tool_call_id", Leg::Call, "id", call.clone());
+            }
+            if role == Some("tool") {
+                put("tool_call_id", Leg::Result, "tool_call_id", vec![None]);
+            }
+            // Gemini: part-level thought signatures and optional call ids.
+            put(
+                "thought_signature",
+                Leg::Call,
+                "thoughtSignature",
+                vec![part_anchor(object)],
+            );
+            match parent_key {
+                Some("functionCall" | "function_call") => {
+                    put("tool_call_id", Leg::Call, "id", call);
+                }
+                Some("functionResponse" | "function_response") => {
+                    put("tool_call_id", Leg::Result, "id", vec![None]);
+                }
+                // Bedrock Converse, and its reasoning signature.
+                Some("toolUse") => put("tool_call_id", Leg::Call, "toolUseId", call),
+                Some("toolResult") => put("tool_call_id", Leg::Result, "toolUseId", vec![None]),
+                Some("reasoningText") => put("signature", Leg::Call, "signature", vec![None]),
+                _ => {}
+            }
+            for (key, child) in object {
+                collect_slots(Some(key), child, slots);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_slots(parent_key, item, slots);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Whether `later` continues the conversation `earlier` sent: the same
@@ -298,6 +553,10 @@ pub fn unpaired_tool_calls(dialect: Dialect, request: &Value) -> Vec<Unpaired> {
     let mut open: Vec<String> = Vec::new();
     let mut unpaired = Vec::new();
     let mut previous_assistant = false;
+    // A stored Responses chain sends only the results; the calls they answer
+    // live in the response `previous_response_id` names.
+    let mut server_held =
+        dialect == Dialect::OpenAiResponses && request.get("previous_response_id").is_some();
     for turn in turns {
         let (calls, results) = turn_calls_and_results(dialect, turn);
         let assistant = is_assistant_turn(dialect, turn);
@@ -312,6 +571,7 @@ pub fn unpaired_tool_calls(dialect: Dialect, request: &Value) -> Vec<Unpaired> {
         }
         if assistant {
             open.extend(calls);
+            server_held = false;
         }
         previous_assistant = assistant;
         for result in results {
@@ -319,6 +579,7 @@ pub fn unpaired_tool_calls(dialect: Dialect, request: &Value) -> Vec<Unpaired> {
                 Some(index) => {
                     open.remove(index);
                 }
+                None if server_held => {}
                 None => unpaired.push(Unpaired {
                     side: "result",
                     label: result,

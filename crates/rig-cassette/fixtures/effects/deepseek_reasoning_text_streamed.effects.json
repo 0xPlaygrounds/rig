@@ -78,7 +78,8 @@
                     "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Keep concise. Need maybe mention ownership/borrow checker prevents memory errors. One or two sentences. We can do two sentences. Ensure no extra."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "text",

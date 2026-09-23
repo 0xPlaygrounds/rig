@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -81,7 +81,8 @@
                   "type": "summary",
                   "content": "The question is: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "text",

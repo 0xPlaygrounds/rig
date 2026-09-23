@@ -30,7 +30,7 @@ use rig_ecs::{
     checkpoint::{Checkpoint, RestoreMode, load_world},
 };
 
-const EXPECTED_GOLDENS: usize = 1216;
+const EXPECTED_GOLDENS: usize = 1217;
 const GUARD: Duration = Duration::from_secs(30);
 type Programs = BTreeMap<String, (ServingPolicy, Checkpoint)>;
 

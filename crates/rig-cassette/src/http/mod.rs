@@ -1795,6 +1795,26 @@ pub fn recorded_response_header_pairs(
         .collect()
 }
 
+/// Return each recorded request's query parameters in wire order.
+/// Panics if the fixture cannot be read or parsed.
+pub fn recorded_request_query_pairs(
+    cassette_root: &Path,
+    provider: &str,
+    scenario: &str,
+) -> Vec<Vec<(String, String)>> {
+    cassette_interactions(cassette_root, provider, scenario)
+        .into_iter()
+        .map(|interaction| {
+            interaction
+                .when
+                .query_param
+                .into_iter()
+                .map(|pair| (pair.name, pair.value))
+                .collect()
+        })
+        .collect()
+}
+
 /// Return recorded request paths in wire order.
 /// Panics if the fixture cannot be read or parsed.
 pub fn recorded_request_paths(cassette_root: &Path, provider: &str, scenario: &str) -> Vec<String> {

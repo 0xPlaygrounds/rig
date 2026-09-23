@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 43,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -93,7 +93,8 @@
                   "type": "summary",
                   "content": "The question is: \"First, note this is an image-analysis cassette test.\" Then there's an image, and \"Then answer in one short sentence naming the main visible subject.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "text",

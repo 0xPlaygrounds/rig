@@ -129,7 +129,8 @@
                     "text": "Let me extract the structured data from the provided text:\n\n- Name: Bob Johnson\n- Age: 55\n- Profession: retired teacher\n\nLet me submit this data."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",
@@ -291,7 +292,8 @@
                     "text": "Let me extract the structured data from the text.\n\nName: Bob Johnson\nAge: 55\nProfession: retired teacher"
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",

@@ -1,0 +1,33 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":"Think it through, then call lookup_code for record alpha. Do not guess the code.","role":"user"}],"model":"anthropic/claude-haiku-4.5","reasoning":{"max_tokens":1024},"tools":[{"function":{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"I need to call the lookup_code function to retrieve the actual code for record alpha, rather than guessing. Let me do that now.","reasoning":"The user is asking me to:\n1. Think it through\n2. Call lookup_code for record \"alpha\"\n3. Not guess the code\n\nThe user is emphasizing that I should actually call the function to get the real code, rather than making something up. Let me call the function with the record name \"alpha\" as specified.","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"signature":"EqcECpwBCBIQARgCKkBnWF4bqcv9rOadskKi+u9U8IUvrpW7lU9l9fVJ3kTHDxfUpxOdOSpmrErue+ylUCdApChTrG0BLVO51q/frQCTMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAefay9UGsAECEgyaaVyTUDxpsK3u9pcaDL6X6pVmF9z9Dj9oWSIwF4FD636r9lbljSRtK/oA9wNI1w5ajro1eIZHGA4F/r8wUUyoV4t5lufPTJQmtJtTKrcC/sQRU1IBC65eaysPNeJM5/Jrv722tMkIoGq3cf5sPhUCTc2OxjIPITW25xvb2NZlzJP5dY4mImc2brUUlfK6yDSvmnGeBaxVbbLlaPkMDMrW697P24H35LD/qndKFw8VPfK0cdSazmgOsU85rFejLu1a4kNDIkW6bVC8A282zuvqyEyPDvv0SUb3jvApyyCNzCOoBzX4GwKcWSFuV47CtJQG4shH0hjTOtcUf60R1V7ZEJ01zoOMxoyj1npA6NLZsv4hcvTioNyruBFJ0h8NzfGEQF9AQ0xLAWPJSsY7cpE8Mz41fPnJ02/H6dH+H0V/6SDtTY2SCjgZV3K7b0SJhTheZ6Jj2so8BaRVeJCYRSroXW2cASGr8S6hNnNF4qbH0zUqw+HfgcRw88r0qRM3ZFawr6CzZ+4YAQ==","text":"The user is asking me to:\n1. Think it through\n2. Call lookup_code for record \"alpha\"\n3. Not guess the code\n\nThe user is emphasizing that I should actually call the function to get the real code, rather than making something up. Let me call the function with the record name \"alpha\" as specified.","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\": \"alpha\"}","name":"lookup_code"},"id":"toolu_bdrk_01GuiLi7HKTVbchy8KQJTtaX","index":0,"type":"function"}]},"native_finish_reason":"tool_use"}],"created":0,"id":"gen-1790111078-yD2VQDev2Al81urte7zN","model":"anthropic/claude-haiku-4.5","object":"chat.completion","provider":"Amazon Bedrock","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":163,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":77},"cost":0.001429,"cost_details":{"upstream_inference_completions_cost":0.000815,"upstream_inference_cost":0.001429,"upstream_inference_prompt_cost":0.000614},"is_byok":false,"prompt_tokens":614,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":777}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":"Think it through, then call lookup_code for record alpha. Do not guess the code.","role":"user"},{"content":[{"text":"I need to call the lookup_code function to retrieve the actual code for record alpha, rather than guessing. Let me do that now.","type":"text"}],"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"EqcECpwBCBIQARgCKkBnWF4bqcv9rOadskKi+u9U8IUvrpW7lU9l9fVJ3kTHDxfUpxOdOSpmrErue+ylUCdApChTrG0BLVO51q/frQCTMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAefay9UGsAECEgyaaVyTUDxpsK3u9pcaDL6X6pVmF9z9Dj9oWSIwF4FD636r9lbljSRtK/oA9wNI1w5ajro1eIZHGA4F/r8wUUyoV4t5lufPTJQmtJtTKrcC/sQRU1IBC65eaysPNeJM5/Jrv722tMkIoGq3cf5sPhUCTc2OxjIPITW25xvb2NZlzJP5dY4mImc2brUUlfK6yDSvmnGeBaxVbbLlaPkMDMrW697P24H35LD/qndKFw8VPfK0cdSazmgOsU85rFejLu1a4kNDIkW6bVC8A282zuvqyEyPDvv0SUb3jvApyyCNzCOoBzX4GwKcWSFuV47CtJQG4shH0hjTOtcUf60R1V7ZEJ01zoOMxoyj1npA6NLZsv4hcvTioNyruBFJ0h8NzfGEQF9AQ0xLAWPJSsY7cpE8Mz41fPnJ02/H6dH+H0V/6SDtTY2SCjgZV3K7b0SJhTheZ6Jj2so8BaRVeJCYRSroXW2cASGr8S6hNnNF4qbH0zUqw+HfgcRw88r0qRM3ZFawr6CzZ+4YAQ==","text":"The user is asking me to:\n1. Think it through\n2. Call lookup_code for record \"alpha\"\n3. Not guess the code\n\nThe user is emphasizing that I should actually call the function to get the real code, rather than making something up. Let me call the function with the record name \"alpha\" as specified.","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_code"},"id":"toolu_bdrk_01GuiLi7HKTVbchy8KQJTtaX","type":"function"}]},{"content":"record alpha: code amber-5521","role":"tool","tool_call_id":"toolu_bdrk_01GuiLi7HKTVbchy8KQJTtaX"}],"model":"anthropic/claude-sonnet-4.6","reasoning":{"max_tokens":1024},"tools":[{"function":{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The code stored for record **alpha** is: **amber-5521**. This was retrieved directly from the lookup rather than guessed.","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"end_turn"}],"created":0,"id":"gen-1790111080-3lYGiRKioCR2clbSkM1Q","model":"anthropic/claude-sonnet-4.6","object":"chat.completion","provider":"Claude Platform on AWS","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":32,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.002871,"cost_details":{"upstream_inference_completions_cost":0.00048,"upstream_inference_cost":0.002871,"upstream_inference_prompt_cost":0.002391},"is_byok":false,"prompt_tokens":797,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":829}}'

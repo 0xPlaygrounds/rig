@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for one record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"record":"alpha"},"id":"call_267958","name":"lookup_code"},"thoughtSignature":"EtkECtYEAWkUfRM+oHDT3uhO2V2IGuvL9eqUcq9ElO0QNfsHgWwmkSA5OAuI6nC6JmiHbRTbISjNdzO24IYaPL4GQY0kv/G8KGyI680HgVgGPco3+RCI+JXkeTYFmhqXdQT65VhIRKrbsNNzSfC8IUoeGQBLkWpnZ4n3NnVBPISxFts5koLTqsKR2cd39vL3eOfn7+fLi9q4IYOMOieUy9fw3ceZ3HP+Pu7PzTNQs1/8QMplhumOXJ5uHVyUtZGLOEXvLeFen4dgLQTWQyp2mBr07zcNoopG6UcytbFlBZCRbOk2UxB33nTmwb3srGfRr3i9hhWkQEloJdclW1VgzK9RQ+vRP5nsGwbN01L+n3467yXGt8cbwYqd1+YqP1wD/fylWM3XQCftS51DZITzf3vc6v97ALdcBXM+RslohnX/KYVKsUMJK17SsEYezD2RpZ3YdZT4Ryv+rrbhQTr2232lU+hcGscgzf76NY0wDgWZ9bMfr6aEppbl0xFABwXkmoEI+7fKPxdnybINnfFYCeEJe73xvfOVqKQj8mTBsejv57x2FTvdg44JrLJowzyBJe0xMifMhpRzpa5PiMD9N8ViLaPyZ0zxCKeXs79878tPaJ0iEeXll7tMLuKlymXwfSEfR2phyZT66jVTlA4QVONQCzp9RBH+hvx7FslvZSnsb06HVKBn5YQ1SxvwBwC3M4cFFZVfCTB4FnJ6/LEIY5ZjltpMnxZxscnk2risUBOUB5o2wSlLHO+1OHIUkjsZrPDjUyXeBCGeYJJkFsCWbn5POVlnodyWkjAS9A=="},{"functionCall":{"args":{"record":"beta"},"id":"call_267959","name":"lookup_code"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"6PSyaoHFHKfzz7IP2On6mAQ","usageMetadata":{"candidatesTokenCount":32,"promptTokenCount":67,"promptTokensDetails":[{"modality":"TEXT","tokenCount":67}],"serviceTier":"standard","thoughtsTokenCount":121,"totalTokenCount":220}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"record":"alpha"},"id":"call_267958","name":"lookup_code"},"thought":false,"thoughtSignature":"EtkECtYEAWkUfRM+oHDT3uhO2V2IGuvL9eqUcq9ElO0QNfsHgWwmkSA5OAuI6nC6JmiHbRTbISjNdzO24IYaPL4GQY0kv/G8KGyI680HgVgGPco3+RCI+JXkeTYFmhqXdQT65VhIRKrbsNNzSfC8IUoeGQBLkWpnZ4n3NnVBPISxFts5koLTqsKR2cd39vL3eOfn7+fLi9q4IYOMOieUy9fw3ceZ3HP+Pu7PzTNQs1/8QMplhumOXJ5uHVyUtZGLOEXvLeFen4dgLQTWQyp2mBr07zcNoopG6UcytbFlBZCRbOk2UxB33nTmwb3srGfRr3i9hhWkQEloJdclW1VgzK9RQ+vRP5nsGwbN01L+n3467yXGt8cbwYqd1+YqP1wD/fylWM3XQCftS51DZITzf3vc6v97ALdcBXM+RslohnX/KYVKsUMJK17SsEYezD2RpZ3YdZT4Ryv+rrbhQTr2232lU+hcGscgzf76NY0wDgWZ9bMfr6aEppbl0xFABwXkmoEI+7fKPxdnybINnfFYCeEJe73xvfOVqKQj8mTBsejv57x2FTvdg44JrLJowzyBJe0xMifMhpRzpa5PiMD9N8ViLaPyZ0zxCKeXs79878tPaJ0iEeXll7tMLuKlymXwfSEfR2phyZT66jVTlA4QVONQCzp9RBH+hvx7FslvZSnsb06HVKBn5YQ1SxvwBwC3M4cFFZVfCTB4FnJ6/LEIY5ZjltpMnxZxscnk2risUBOUB5o2wSlLHO+1OHIUkjsZrPDjUyXeBCGeYJJkFsCWbn5POVlnodyWkjAS9A=="},{"functionCall":{"args":{"record":"beta"},"id":"call_267959","name":"lookup_code"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_267959","name":"lookup_code","response":{"result":"record beta: code cobalt-7730"}},"thought":false},{"functionResponse":{"id":"call_267958","name":"lookup_code","response":{"result":"record alpha: code amber-5521"}},"thought":false}],"role":"user"},{"parts":[{"text":"Without calling any tool, reply exactly `alpha=<code> beta=<code>`.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for one record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"alpha=amber-5521 beta=cobalt-7730","thoughtSignature":"EqkDCqYDAWkUfRP5OyTP27Yco22/ZbaxBiEM8tvpnNXIWS3Kxf47JJ613mG8sqDRTDWPtwDRJpmLneA3Aj+MIXDJs7BzIueXUeyZ/K2055Pnpk50zWQ3Pgl/KWeHFiYKQhW21a7wO5zFGN0sBn3Cc5SYdejjrR1PSjaCBTn+0LN05sUMpXdzHZ6/0Jzhi/XTM7bFRGvWZCnPgpiM7k24ODY2+Qx8/shDJYi0ffT56H1IiOhDuz99Opr0o2jvVCEfS5RsB48PcQQ8D+RgKwjKcc0eIlL+kTiFBGSmz9XqJSuOtn4eiZYO8g0ce8ZNZhrsUGUO/0sZ/g6+SfTgrcz+H3fDcH/BbtLZT84e0eUhMCbmSO3R/HtHAAYUw9dgI8fTNwMWjX3OFgYGqKA7kWmnIFr/3esnwa93qe/yaSBiV/4NH+SHO5HWT9b7ns7dnm2Ha8Z1Lx1DRHNViBC1m81tlNuUNioWTuJUFEgHrS2huGEhvJl9vZoQqdgxjzHghv0C6dPUQu7DUvJQfjWnjIr+fokAXlICEx9Y8uCtG+c+EGW486NEXb0uE+NpMPk="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"6fSyasLmN4zUz7IPpZnvqAg","usageMetadata":{"candidatesTokenCount":17,"promptTokenCount":159,"promptTokensDetails":[{"modality":"TEXT","tokenCount":159}],"serviceTier":"standard","thoughtsTokenCount":97,"totalTokenCount":273}}'
