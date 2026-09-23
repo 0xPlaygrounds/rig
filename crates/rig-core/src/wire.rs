@@ -201,9 +201,15 @@ pub trait Operation: Sized + 'static {
     }
 
     /// Scope a request to the wire about to encode it: drop request content
-    /// that only another provider can interpret. Operations with no such
-    /// content do nothing.
-    fn scope_to_wire(_request: &mut Self::Request, _wire: &str) {}
+    /// that only a provider other than `issuers` can interpret. Operations
+    /// with no such content do nothing.
+    fn scope_to_wire(_request: &mut Self::Request, _issuers: &[&str]) {}
+
+    /// The model `request` names over the wire's own, when the operation's
+    /// requests can name one.
+    fn request_model(_request: &Self::Request) -> Option<&str> {
+        None
+    }
 
     /// Stamp the transport request id read off the reply's headers onto a
     /// terminal event. Operations whose events carry no transport id do
@@ -400,6 +406,13 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// that address no model.
     fn model(&self) -> Option<&str> {
         None
+    }
+
+    /// The issuers whose provider state (reasoning signatures, ciphertext,
+    /// ids) a request to `model` may replay. The default is this wire alone;
+    /// a gateway whose state depends on the upstream model narrows it.
+    fn replay_issuers(&self, _model: Option<&str>) -> Vec<String> {
+        vec![self.name().to_owned()]
     }
 
     /// Stable endpoint template for observation grouping, without base-URL

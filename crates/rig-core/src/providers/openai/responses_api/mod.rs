@@ -192,6 +192,10 @@ pub struct OpenAIReasoning {
     pub content: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypted_content: Option<String>,
+    /// The upstream's signature over the reasoning text, which a gateway
+    /// (OpenRouter relaying Claude) returns beside it and needs back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<ToolStatus>,
 }
@@ -572,11 +576,14 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 }
 
 /// Builds reasoning blocks in summary, text, encrypted-content order.
-/// Empty encrypted content contributes no block.
+/// Empty encrypted content contributes no block. A signature signs the
+/// reasoning text, so it rides on the last text block, or on an empty one
+/// when the item carried no text.
 pub(crate) fn reasoning_content_blocks(
     summary: Vec<ReasoningSummary>,
     content: Vec<String>,
     encrypted_content: Option<String>,
+    signature: Option<String>,
 ) -> Vec<message::ReasoningContent> {
     let mut blocks = summary
         .into_iter()
@@ -593,6 +600,18 @@ pub(crate) fn reasoning_content_blocks(
                 signature: None,
             }),
     );
+    if let Some(signature) = signature {
+        match blocks.iter_mut().rev().find_map(|block| match block {
+            message::ReasoningContent::Text { signature, .. } => Some(signature),
+            _ => None,
+        }) {
+            Some(slot) => *slot = Some(signature),
+            None => blocks.push(message::ReasoningContent::Text {
+                text: String::new(),
+                signature: Some(signature),
+            }),
+        }
+    }
 
     if let Some(encrypted_content) = encrypted_content.filter(|content| !content.is_empty()) {
         blocks.push(message::ReasoningContent::Encrypted(encrypted_content));
@@ -608,10 +627,19 @@ fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<O
     let mut summary = Vec::new();
     let mut reasoning_content = Vec::new();
     let mut encrypted_content = None;
+    let mut text_signature = None;
     for content in &reasoning.content {
         match content {
-            crate::message::ReasoningContent::Text { text, .. } => {
-                reasoning_content.push(text.clone());
+            crate::message::ReasoningContent::Text { text, signature } => {
+                // An empty block that only carries the signature adds no text.
+                if !(text.is_empty() && signature.is_some()) {
+                    reasoning_content.push(text.clone());
+                }
+                // A signature covers the reasoning before it, so the last
+                // one is the item's, matching where decoding puts it.
+                if let Some(signature) = signature {
+                    text_signature = Some(signature.clone());
+                }
             }
             crate::message::ReasoningContent::Summary(text) => {
                 summary.push(ReasoningSummary::new(text));
@@ -630,6 +658,7 @@ fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<O
         summary,
         content: reasoning_content,
         encrypted_content,
+        signature: text_signature,
         status: None,
     })
 }
@@ -1807,6 +1836,9 @@ pub enum Output {
         summary: Vec<ReasoningSummary>,
         content: Vec<String>,
         encrypted_content: Option<String>,
+        /// The upstream's signature over the reasoning text, when a gateway
+        /// relays one (OpenRouter for Claude).
+        signature: Option<String>,
         status: Option<ToolStatus>,
     },
     /// An opaque compaction item (`"type": "compaction"`), preserved verbatim
@@ -1831,6 +1863,8 @@ struct ReasoningFields {
     #[serde(default)]
     encrypted_content: Option<String>,
     #[serde(default)]
+    signature: Option<String>,
+    #[serde(default)]
     status: Option<ToolStatus>,
 }
 
@@ -1841,6 +1875,7 @@ impl From<ReasoningFields> for Output {
             summary: fields.summary,
             content: fields.content,
             encrypted_content: fields.encrypted_content,
+            signature: fields.signature,
             status: fields.status,
         }
     }
@@ -1875,6 +1910,7 @@ impl Serialize for Output {
                 summary,
                 content,
                 encrypted_content,
+                signature,
                 status,
             } => {
                 let mut value = serde_json::json!({
@@ -1884,11 +1920,14 @@ impl Serialize for Output {
                     "encrypted_content": encrypted_content,
                     "status": status,
                 });
+                let map = value.as_object_mut().ok_or_else(|| {
+                    serde::ser::Error::custom("reasoning output must serialize to an object")
+                })?;
                 if !content.is_empty() {
-                    let map = value.as_object_mut().ok_or_else(|| {
-                        serde::ser::Error::custom("reasoning output must serialize to an object")
-                    })?;
                     map.insert("content".to_string(), reasoning_text_content_json(content));
+                }
+                if let Some(signature) = signature {
+                    map.insert("signature".to_string(), Value::String(signature.clone()));
                 }
                 Ok(value)
             }

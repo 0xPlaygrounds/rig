@@ -56,8 +56,12 @@ impl Operation for Completion {
 
     /// Reasoning another wire issued is omitted; see
     /// [`crate::message::retain_replayable_reasoning`].
-    fn scope_to_wire(request: &mut Self::Request, wire: &str) {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, wire);
+    fn scope_to_wire(request: &mut Self::Request, issuers: &[&str]) {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, issuers);
+    }
+
+    fn request_model(request: &Self::Request) -> Option<&str> {
+        request.model.as_deref()
     }
 
     fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {

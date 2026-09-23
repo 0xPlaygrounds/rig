@@ -97,22 +97,29 @@ impl StreamingCompletionResponse {
 /// serialization failure is the caller's to surface as an in-band error.
 fn terminal_record(
     provider: &str,
+    upstream_reasoning_issuer: bool,
     response: StreamingCompletionResponse,
 ) -> Result<StreamFinal, CompletionError> {
     let raw = serde_json::to_value(&response)?;
+    let issuer = upstream_reasoning_issuer
+        .then_some(response.model.as_deref())
+        .flatten()
+        .map(|model| crate::providers::openai::wire::upstream_reasoning_issuer(provider, model));
     let finish_reason = response
         .status
         .as_ref()
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
-    Ok(
-        StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_message_id(response.message_id)
-            .with_optional_response_id(response.response_id)
-            .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_model(response.model),
-    )
+    let terminal = StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
+        .with_optional_finish_reason(finish_reason)
+        .with_optional_message_id(response.message_id)
+        .with_optional_response_id(response.response_id)
+        .with_optional_provider_request_id(response.provider_request_id)
+        .with_optional_model(response.model);
+    Ok(match issuer {
+        Some(issuer) => terminal.with_reasoning_issuer(issuer),
+        None => terminal,
+    })
 }
 
 /// Combine summaries, content, and encrypted data into one reasoning restatement.
@@ -123,10 +130,11 @@ pub(crate) fn reasoning_from_done_item(
     summary: Vec<ReasoningSummary>,
     content: Vec<String>,
     encrypted_content: Option<String>,
+    signature: Option<String>,
 ) -> Option<crate::message::Reasoning> {
     // Same builder as the unary decode, so the restatement and the
     // non-streaming conversion of one item cannot drift.
-    let blocks = super::reasoning_content_blocks(summary, content, encrypted_content);
+    let blocks = super::reasoning_content_blocks(summary, content, encrypted_content, signature);
 
     if blocks.is_empty() {
         return None;
@@ -282,6 +290,9 @@ pub struct RawChoiceAccumulator {
     /// text when a gateway changes item IDs between deltas and restatements.
     delta_text_slots: std::collections::HashSet<u64>,
     unattributed_text_delta: bool,
+    /// Whether reasoning belongs to the upstream model's family rather than
+    /// to `provider`, a gateway ([`crate::providers::openai::wire::upstream_reasoning_issuer`]).
+    upstream_reasoning_issuer: bool,
 }
 
 /// The assistant message ID (`msg_...`) a terminal response object carries,
@@ -313,6 +324,7 @@ impl RawChoiceAccumulator {
             delta_text_items: std::collections::HashSet::new(),
             delta_text_slots: std::collections::HashSet::new(),
             unattributed_text_delta: false,
+            upstream_reasoning_issuer: false,
         }
     }
 
@@ -634,6 +646,7 @@ impl RawChoiceAccumulator {
                 summary,
                 content,
                 encrypted_content,
+                signature,
                 ..
             } => {
                 // Restatements replace the slot's accumulated block without changing its key.
@@ -656,6 +669,7 @@ impl RawChoiceAccumulator {
                     summary,
                     content,
                     encrypted_content,
+                    signature,
                 )
                 // Preserve contentless identified items for replay, but do not erase
                 // delta-built content with an empty restatement.
@@ -780,7 +794,11 @@ impl RawChoiceAccumulator {
         if !self.saw_terminal {
             return;
         }
-        match terminal_record(&self.provider, self.terminal) {
+        match terminal_record(
+            &self.provider,
+            self.upstream_reasoning_issuer,
+            self.terminal,
+        ) {
             Ok(record) => out.final_record(record),
             Err(error) => out.error(error),
         }
@@ -888,6 +906,13 @@ impl ResponsesDecoder {
         self
     }
 
+    /// Record reasoning as issued by the upstream model's family, for a
+    /// gateway that relays each upstream's own reasoning state.
+    pub fn with_upstream_reasoning_issuer(mut self) -> Self {
+        self.accumulator.upstream_reasoning_issuer = true;
+        self
+    }
+
     /// Seed the terminal's usage for a replayed body whose frames may not
     /// carry one (the unary Responses body's own `usage`).
     pub fn with_initial_usage(mut self, usage: Option<ResponsesUsage>) -> Self {
@@ -966,10 +991,9 @@ impl ResponsesDecoder {
     /// the terminal record when a genuine terminal arrived.
     fn flush(&mut self, out: &mut AdapterOutput) {
         let provider = self.accumulator.provider.clone();
-        let accumulator = std::mem::replace(
-            &mut self.accumulator,
-            RawChoiceAccumulator::new(provider, None),
-        );
+        let mut fresh = RawChoiceAccumulator::new(provider, None);
+        fresh.upstream_reasoning_issuer = self.accumulator.upstream_reasoning_issuer;
+        let accumulator = std::mem::replace(&mut self.accumulator, fresh);
         accumulator.finish(out);
     }
 }

@@ -31,7 +31,7 @@ impl AwsCompletionRequest {
     ) -> Self {
         rig_core::message::retain_replayable_reasoning(
             &mut inner.chat_history,
-            crate::types::assistant_content::reasoning_issuer(model),
+            &[crate::types::assistant_content::reasoning_issuer(model)],
         );
         Self {
             inner,

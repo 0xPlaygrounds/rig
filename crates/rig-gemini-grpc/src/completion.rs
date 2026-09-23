@@ -201,7 +201,7 @@ pub(crate) fn create_grpc_request(
     } = completion_request;
 
     let mut chat_history = chat_history;
-    rig_core::message::retain_replayable_reasoning(&mut chat_history, REASONING_ISSUER);
+    rig_core::message::retain_replayable_reasoning(&mut chat_history, &[REASONING_ISSUER]);
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
     // functionResponse.name keys the replay: cross-provider ingested
     // results arrive with an empty name and their call carries it.

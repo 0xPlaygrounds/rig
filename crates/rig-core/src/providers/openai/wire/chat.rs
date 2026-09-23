@@ -765,6 +765,10 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
+    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
+        super::replay_issuers(&self.provider.dialect, model.unwrap_or(&self.model))
+    }
+
     fn route(&self) -> Option<&str> {
         Some(self.provider.dialect.quirks.completion_path)
     }
@@ -1220,6 +1224,13 @@ impl ChatDecoder {
 
     /// Build and push the provider's terminal record.
     fn emit_terminal(&mut self, out: &mut Output<Completion>) {
+        // A gateway's reasoning belongs to the upstream model that produced it.
+        let issuer = self
+            .quirks
+            .upstream_reasoning_issuer
+            .then_some(self.response_model.as_deref())
+            .flatten()
+            .map(|model| super::upstream_reasoning_issuer(self.provider, model));
         let native = StreamingCompletionResponse {
             usage: self.final_usage.take(),
             finish_reason: self.final_finish_reason.take(),
@@ -1232,7 +1243,13 @@ impl ChatDecoder {
             additional_params: self.additional_params.take(),
         };
         match serde_json::to_value(&native) {
-            Ok(raw) => out.final_record(native.into_stream_final(self.provider, raw)),
+            Ok(raw) => {
+                let terminal = native.into_stream_final(self.provider, raw);
+                out.final_record(match issuer {
+                    Some(issuer) => terminal.with_reasoning_issuer(issuer),
+                    None => terminal,
+                })
+            }
             Err(error) => out.error(CompletionError::from(error)),
         }
     }
