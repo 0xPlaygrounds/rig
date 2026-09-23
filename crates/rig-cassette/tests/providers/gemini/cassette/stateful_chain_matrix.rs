@@ -408,3 +408,146 @@ async fn interactions_chain_with_tool_call() {
         .expect("turn two sends a result");
     assert_eq!(result["call_id"], json!(issued_call));
 }
+
+/// A text document uploaded to the Files API, referenced by its URI in
+/// `fileData` on two turns, then deleted. The file expires on its own after
+/// 48 hours as a backstop; the delete runs whether the body passes or
+/// panics. The document is text because the recorder keeps only UTF-8 or
+/// multipart request bodies, and a PDF media upload is neither.
+#[tokio::test]
+async fn file_uri_chain() {
+    const SCENARIO: &str = "stateful_chain_matrix/file_uri_chain";
+    with_gemini_interactions_cassette(
+        "stateful_chain_matrix/file_uri_chain",
+        |client| async move {
+            let base = client.wire.base_url.trim_end_matches('/').to_owned();
+            let key = client.wire.api_key.expose().to_owned();
+            let http = reqwest::Client::new();
+            let uploaded: Value = http
+                .post(format!("{base}/upload/v1beta/files?uploadType=media"))
+                .header("x-goog-api-key", &key)
+                .header("content-type", "text/plain")
+                .body(FILE_TEXT)
+                .send()
+                .await
+                .expect("upload is sent")
+                .json()
+                .await
+                .expect("upload reply is JSON");
+            let name = uploaded["file"]["name"]
+                .as_str()
+                .expect("a file name")
+                .to_owned();
+            let uri = uploaded["file"]["uri"]
+                .as_str()
+                .expect("a file uri")
+                .to_owned();
+
+            let body = async {
+                let document = Message::User {
+                    content: vec![
+                        UserContent::Document(rig::message::Document {
+                            data: rig::message::DocumentSourceKind::Url(uri.clone()),
+                            media_type: Some(rig::message::DocumentMediaType::TXT),
+                            additional_params: None,
+                        }),
+                        UserContent::text(
+                            "What is the ordering token in the attached file? Reply with the token only.",
+                        ),
+                    ],
+                };
+                let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+                let first = model
+                    .completion(ask_with(vec![document.clone()]))
+                    .await
+                    .expect("turn one reads the file by uri");
+                assert!(
+                    text(&first.choice).contains("violet-needle"),
+                    "{:?}",
+                    first.choice
+                );
+                let history = vec![
+                    document,
+                    Message::Assistant {
+                        id: first.message_id.clone(),
+                        content: first.choice.clone(),
+                    },
+                    Message::user(
+                        "What is the shelf code in the same attached file? Reply with the code only.",
+                    ),
+                ];
+                let second = model
+                    .completion(ask_with(history))
+                    .await
+                    .expect("turn two still reads the file by uri");
+                assert!(
+                    text(&second.choice).contains("K-4471"),
+                    "{:?}",
+                    second.choice
+                );
+            };
+            let outcome = AssertUnwindSafe(body).catch_unwind().await;
+            let deleted = http
+                .delete(format!("{base}/v1beta/{name}"))
+                .header("x-goog-api-key", &key)
+                .send()
+                .await
+                .map(|response| response.status());
+            if let Err(panic) = outcome {
+                eprintln!("cleanup of {name}: {deleted:?}");
+                resume_unwind(panic);
+            }
+            assert!(
+                deleted.as_ref().is_ok_and(|status| status.is_success()),
+                "cleanup failed, delete {name} by hand: {deleted:?}"
+            );
+        },
+    )
+    .await;
+
+    let turns = turns(SCENARIO);
+    assert_eq!(turns.len(), 4, "upload, two turns, delete");
+    let uri = turns[0].2["file"]["uri"]
+        .as_str()
+        .expect("the upload's uri");
+    let name = turns[0].2["file"]["name"]
+        .as_str()
+        .expect("the upload's name");
+    for (path, request, _) in &turns[1..3] {
+        assert!(path.contains(":generateContent"), "{path}");
+        let referenced: Vec<&str> = request["contents"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|content| content["parts"].as_array().into_iter().flatten())
+            .filter_map(|part| part["fileData"]["fileUri"].as_str())
+            .collect();
+        assert_eq!(
+            referenced,
+            [uri],
+            "the fileData part carries the uploaded uri"
+        );
+    }
+    assert!(
+        turns[3].0.ends_with(&format!("/{name}")),
+        "the upload is deleted"
+    );
+}
+
+const FILE_TEXT: &str =
+    "Warehouse note. The ordering token is violet-needle. The shelf code is K-4471.";
+
+fn ask_with(history: Vec<Message>) -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        chat_history: history,
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: Some(1024),
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}

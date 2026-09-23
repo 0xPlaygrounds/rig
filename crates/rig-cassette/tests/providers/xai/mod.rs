@@ -29,6 +29,7 @@ mod request_hook;
 mod request_identity_matrix;
 mod response_identity;
 mod session_matrix;
+mod stateful_chain_matrix;
 mod streaming;
 mod streaming_tools;
 mod support;

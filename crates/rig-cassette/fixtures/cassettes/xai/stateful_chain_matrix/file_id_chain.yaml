@@ -1,0 +1,69 @@
+when:
+  path: /v1/files
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=f990ad9cd45961da-ab20b64f2c49ab42-9d71b9a7d2373220-88d69c64cb6bbc2c
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"bytes":12414,"created_at":0,"expires_at":null,"filename":"rig-pages.pdf","id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","object":"file","purpose":""}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"file_id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"How many pages does this PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"grok-4-0709","store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: e7da21f7-6fe4-9054-a49e-505ede41ed1e
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"e7da21f7-6fe4-9054-a49e-505ede41ed1e","incomplete_details":null,"instructions":null,"max_output_tokens":256,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_e7da21f7-6fe4-9054-a49e-505ede41ed1e","status":"completed","summary":[{"text":"I need to count the pages in this PDF.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"3","type":"output_text"}],"id":"msg_e7da21f7-6fe4-9054-a49e-505ede41ed1e","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":2238,"output_tokens":230},"cost_in_usd_ticks":27502000,"input_tokens":2238,"input_tokens_details":{"cached_tokens":576},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":223,"output_tokens_details":{"reasoning_tokens":222},"total_tokens":2461},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"file_id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"How many pages does this PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_e7da21f7-6fe4-9054-a49e-505ede41ed1e","summary":[{"text":"I need to count the pages in this PDF.","type":"summary_text"}],"type":"reasoning"},{"content":[{"text":"3","type":"output_text"}],"id":"msg_e7da21f7-6fe4-9054-a49e-505ede41ed1e","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Is the attached PDF longer than two pages? Answer yes or no.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"grok-4-0709","store":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 48336dd1-59ce-9147-b9f7-8197b71e0b82
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"48336dd1-59ce-9147-b9f7-8197b71e0b82","incomplete_details":null,"instructions":null,"max_output_tokens":256,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_48336dd1-59ce-9147-b9f7-8197b71e0b82","status":"completed","summary":[{"text":"I need to check if the attached PDF exceeds two pages.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"yes","type":"output_text"}],"id":"msg_48336dd1-59ce-9147-b9f7-8197b71e0b82","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":2261,"output_tokens":205},"cost_in_usd_ticks":10339500,"input_tokens":2261,"input_tokens_details":{"cached_tokens":2176},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":197,"output_tokens_details":{"reasoning_tokens":196},"total_tokens":2458},"user":null}'
+---
+when:
+  path: /v1/files/file_43afa54b-89a8-4cd6-a1b4-985226d36b18
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"deleted":true,"id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","object":"file"}'
