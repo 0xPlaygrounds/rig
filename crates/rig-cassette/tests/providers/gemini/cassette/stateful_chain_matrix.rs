@@ -13,7 +13,10 @@ use std::time::Duration;
 use futures::FutureExt;
 
 use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
-use rig::message::{AssistantContent, Message, ToolCall, ToolResultContent, UserContent};
+use rig::message::{
+    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, ToolCall,
+    ToolResultContent, UserContent,
+};
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
 use rig::providers::gemini::interactions_api::AdditionalParameters;
@@ -51,6 +54,24 @@ fn text(choice: &[AssistantContent]) -> String {
             _ => None,
         })
         .collect()
+}
+
+const FILE_TEXT: &str =
+    "Warehouse note. The ordering token is violet-needle. The shelf code is K-4471.";
+
+fn ask_with(history: Vec<Message>) -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        chat_history: history,
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: Some(1024),
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
 }
 
 fn ask(prompt: &str) -> CompletionRequest {
@@ -412,8 +433,9 @@ async fn interactions_chain_with_tool_call() {
 /// A text document uploaded to the Files API, referenced by its URI in
 /// `fileData` on two turns, then deleted. The file expires on its own after
 /// 48 hours as a backstop; the delete runs whether the body passes or
-/// panics. The document is text because the recorder keeps only UTF-8 or
-/// multipart request bodies, and a PDF media upload is neither.
+/// panics. The document is text because replay matches a request body only
+/// when it is UTF-8 (or multipart, which it does not record), and a binary
+/// media upload is neither.
 #[tokio::test]
 async fn file_uri_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/file_uri_chain";
@@ -446,9 +468,9 @@ async fn file_uri_chain() {
             let body = async {
                 let document = Message::User {
                     content: vec![
-                        UserContent::Document(rig::message::Document {
-                            data: rig::message::DocumentSourceKind::Url(uri.clone()),
-                            media_type: Some(rig::message::DocumentMediaType::TXT),
+                        UserContent::Document(Document {
+                            data: DocumentSourceKind::Url(uri.clone()),
+                            media_type: Some(DocumentMediaType::TXT),
                             additional_params: None,
                         }),
                         UserContent::text(
@@ -510,6 +532,10 @@ async fn file_uri_chain() {
     let uri = turns[0].2["file"]["uri"]
         .as_str()
         .expect("the upload's uri");
+    assert!(
+        !uri.contains("REDACTED"),
+        "the file uri is recorded verbatim"
+    );
     let name = turns[0].2["file"]["name"]
         .as_str()
         .expect("the upload's name");
@@ -532,22 +558,4 @@ async fn file_uri_chain() {
         turns[3].0.ends_with(&format!("/{name}")),
         "the upload is deleted"
     );
-}
-
-const FILE_TEXT: &str =
-    "Warehouse note. The ordering token is violet-needle. The shelf code is K-4471.";
-
-fn ask_with(history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
 }

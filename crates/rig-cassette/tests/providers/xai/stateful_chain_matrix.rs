@@ -103,7 +103,7 @@ async fn file_id_chain() {
                 .await
                 .expect("turn two still reads the file by id");
             assert!(
-                !text(&second.choice).trim().is_empty(),
+                text(&second.choice).to_ascii_lowercase().contains("yes"),
                 "{:?}",
                 second.choice
             );
