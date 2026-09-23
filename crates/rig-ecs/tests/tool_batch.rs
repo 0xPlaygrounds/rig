@@ -932,6 +932,43 @@ fn a_system_retries_an_invalid_call_with_feedback() {
 }
 
 #[test]
+fn buffered_retry_records_null_arguments_as_returned() {
+    // Parity with rig-agent: only a streamed rollback replays Null as `{}`.
+    let (mut app, agent, _, requests) = tooling(vec![
+        vec![call("c1", "multiply", serde_json::Value::Null)],
+        vec![AssistantContent::text("done")],
+    ]);
+    app.world_mut().entity_mut(agent).insert(InvalidCalls {
+        retries: 1,
+        unhandled: rig_ecs::agent::Unhandled::Fail,
+    });
+    add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "multiply", false, None);
+    ended(&mut app, run, "answered");
+    assert!(app.world().get::<Failed>(run).is_none());
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    let retried: Vec<_> = requests[1]
+        .chat_history
+        .iter()
+        .filter_map(|message| match message {
+            Message::Assistant { content, .. } => Some(content.iter()),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match part {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(retried.len(), 1);
+    assert_eq!(retried[0].function.name, "multiply");
+    assert_eq!(retried[0].function.arguments, serde_json::Value::Null);
+}
+
+#[test]
 fn retry_feedback_targets_only_the_invalid_identity_namespace() {
     use rig_core::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
     for generated_invalid in [false, true] {

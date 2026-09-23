@@ -265,7 +265,7 @@
                   },
                   "function": {
                     "name": "multiply",
-                    "arguments": null
+                    "arguments": {}
                   },
                   "signature": null,
                   "additional_params": null
@@ -504,7 +504,7 @@
                   },
                   "function": {
                     "name": "multiply",
-                    "arguments": null
+                    "arguments": {}
                   },
                   "signature": null,
                   "additional_params": null

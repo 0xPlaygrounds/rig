@@ -231,7 +231,7 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     assert_eq!(calls[0].function.name, "wrong");
     assert_eq!(
         calls[0].function.arguments,
-        serde_json::Value::Null,
+        serde_json::json!({}),
         "future arguments must not enter the retained prefix"
     );
 }
