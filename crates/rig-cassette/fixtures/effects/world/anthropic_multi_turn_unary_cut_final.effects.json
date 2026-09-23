@@ -176,10 +176,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -198,9 +198,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcZEXG7x52YjutRiQQ4",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcZE3j81KhypNNT7dXA",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -215,7 +215,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4",
                 "input": {
                   "token": "start"
                 },
@@ -223,7 +223,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcZEXG7x52YjutRiQQ4",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -300,7 +300,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZEXG7x52YjutRiQQ4",
               "content": [
                 {
                   "type": "text",
@@ -310,10 +310,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -333,10 +333,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -392,10 +392,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_2"
+                "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_2"
+                "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -414,9 +414,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcZHsBPyT3RfzBZ2mPe",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcZHb49Z4DM5Yhm8RmF",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -431,7 +431,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_2",
+                "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ",
                 "input": {
                   "token": "cobalt-17"
                 },
@@ -439,7 +439,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcZHsBPyT3RfzBZ2mPe",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -516,7 +516,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZEXG7x52YjutRiQQ4",
               "content": [
                 {
                   "type": "text",
@@ -526,10 +526,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -549,10 +549,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -570,7 +570,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcZHsBPyT3RfzBZ2mPe",
               "content": [
                 {
                   "type": "text",
@@ -580,10 +580,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -603,10 +603,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -662,10 +662,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_3"
+                "id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_3"
+                "call_id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -684,9 +684,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_3",
+          "message_id": "msg_011CfLcZTCWceRu2NyueVE1K",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_3",
+          "provider_request_id": "req_011CfLcZSkTzsKUchZpTP5zD",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -701,7 +701,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_3",
+                "id": "toolu_0185rvqzNqHmVw7NgSW8aqwK",
                 "input": {
                   "token": "orchard-29"
                 },
@@ -709,7 +709,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_3",
+            "id": "msg_011CfLcZTCWceRu2NyueVE1K",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -786,7 +786,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZEXG7x52YjutRiQQ4",
               "content": [
                 {
                   "type": "text",
@@ -796,10 +796,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -819,10 +819,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -840,7 +840,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcZHsBPyT3RfzBZ2mPe",
               "content": [
                 {
                   "type": "text",
@@ -850,10 +850,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -873,10 +873,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -894,7 +894,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_3",
+              "id": "msg_011CfLcZTCWceRu2NyueVE1K",
               "content": [
                 {
                   "type": "text",
@@ -904,10 +904,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -927,10 +927,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -986,10 +986,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_4"
+                "id": "toolu_01HmaNMmpnd71ptqjaXXJwhR"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_4"
+                "call_id": "toolu_01HmaNMmpnd71ptqjaXXJwhR"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1008,9 +1008,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_4",
+          "message_id": "msg_011CfLcZWUCoFjVqJcU1Excx",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_4",
+          "provider_request_id": "req_011CfLcZW8cLapHLGCCyb89b",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1025,7 +1025,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_4",
+                "id": "toolu_01HmaNMmpnd71ptqjaXXJwhR",
                 "input": {
                   "token": "harbor-43"
                 },
@@ -1033,7 +1033,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_4",
+            "id": "msg_011CfLcZWUCoFjVqJcU1Excx",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -1110,7 +1110,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZEXG7x52YjutRiQQ4",
               "content": [
                 {
                   "type": "text",
@@ -1120,10 +1120,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1143,10 +1143,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Q8UwN5TaKbBmajoxLz7ft4"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1164,7 +1164,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcZHsBPyT3RfzBZ2mPe",
               "content": [
                 {
                   "type": "text",
@@ -1174,10 +1174,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1197,10 +1197,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01V95KzRBdzv2UsKg3LvA4NJ"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1218,7 +1218,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_3",
+              "id": "msg_011CfLcZTCWceRu2NyueVE1K",
               "content": [
                 {
                   "type": "text",
@@ -1228,10 +1228,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1251,10 +1251,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_0185rvqzNqHmVw7NgSW8aqwK"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1272,7 +1272,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_4",
+              "id": "msg_011CfLcZWUCoFjVqJcU1Excx",
               "content": [
                 {
                   "type": "text",
@@ -1282,10 +1282,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_4"
+                    "id": "toolu_01HmaNMmpnd71ptqjaXXJwhR"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_4"
+                    "call_id": "toolu_01HmaNMmpnd71ptqjaXXJwhR"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1305,10 +1305,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_4"
+                    "id": "toolu_01HmaNMmpnd71ptqjaXXJwhR"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_4"
+                    "call_id": "toolu_01HmaNMmpnd71ptqjaXXJwhR"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1358,19 +1358,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "The checkpoint sequence is complete. The result shows done=true.\n\ncheckpoint-complete"
+              "text": "The result shows done=true, so the checkpoint sequence is complete.\n\ncheckpoint-complete"
             }
           ],
           "usage": {
             "input_tokens": 1069,
-            "output_tokens": 20,
-            "total_tokens": 1089,
+            "output_tokens": 21,
+            "total_tokens": 1090,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_5",
+          "message_id": "msg_011CfLcZZu5M5m3APEP5yP9j",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_5",
+          "provider_request_id": "req_011CfLcZZTHfuCgvKeET6ji5",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1378,11 +1378,11 @@
             "container": null,
             "content": [
               {
-                "text": "The checkpoint sequence is complete. The result shows done=true.\n\ncheckpoint-complete",
+                "text": "The result shows done=true, so the checkpoint sequence is complete.\n\ncheckpoint-complete",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_5",
+            "id": "msg_011CfLcZZu5M5m3APEP5yP9j",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -1398,7 +1398,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "not_available",
               "input_tokens": 1069,
-              "output_tokens": 20,
+              "output_tokens": 21,
               "service_tier": "standard"
             }
           }

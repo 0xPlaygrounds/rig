@@ -83,20 +83,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLce44r5uGfWjRDs4hYN",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLce3RQJyTheG3eUk6Y6",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLce44r5uGfWjRDs4hYN",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

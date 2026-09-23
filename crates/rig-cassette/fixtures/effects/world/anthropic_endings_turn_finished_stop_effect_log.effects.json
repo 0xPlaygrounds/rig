@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -125,10 +125,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_017bUskDRxk7xe48cih6VyJ2"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_017bUskDRxk7xe48cih6VyJ2"
               },
               "function": {
                 "name": "add",
@@ -148,19 +148,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcX7mf24drvqe8KZ8zK",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcX7JsPWbjD8beg7nAu",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_017bUskDRxk7xe48cih6VyJ2",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -169,7 +170,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcX7mf24drvqe8KZ8zK",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

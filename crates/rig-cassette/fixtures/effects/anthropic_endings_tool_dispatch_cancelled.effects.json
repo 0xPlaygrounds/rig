@@ -119,10 +119,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01XrM1Z4558uMms6m5y1Yi8Q"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01XrM1Z4558uMms6m5y1Yi8Q"
               },
               "function": {
                 "name": "add",
@@ -142,19 +142,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcWiEJqg6Wqet8APRzQ",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcWhc6BdpNfYixKGz8Q",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01XrM1Z4558uMms6m5y1Yi8Q",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -163,7 +164,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcWiEJqg6Wqet8APRzQ",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

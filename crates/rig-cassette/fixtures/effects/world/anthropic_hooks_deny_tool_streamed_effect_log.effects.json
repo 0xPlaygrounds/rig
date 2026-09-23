@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -22,30 +22,46 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 16,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 10,
-        "id": 0,
+        "batch": 17,
+        "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 5
         }
       },
       {
-        "batch": 11,
-        "id": 0,
+        "batch": 18,
+        "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 11,
-        "id": 0,
+        "batch": 19,
+        "id": 1,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -57,15 +73,7 @@
         }
       },
       {
-        "batch": 22,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -188,10 +196,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
               },
               "function": {
                 "name": "add",
@@ -211,9 +219,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcXaHMKj7kyJVXgNTZj",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcXZmqAujHcoK2984TF",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -229,7 +237,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcXaHMKj7kyJVXgNTZj",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -237,14 +245,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -252,7 +260,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -260,7 +268,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"x\": 1"
@@ -268,7 +276,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "7"
@@ -276,31 +284,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": ", \"y"
+            "arguments": ", \"y\": "
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "\": 2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "5}"
+            "arguments": "25}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_019x6Viuzgkhvr7KAdsKFE3z",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -309,10 +309,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_1"
+              "id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_1"
+              "call_id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
             },
             "function": {
               "name": "add",
@@ -335,9 +335,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcXaHMKj7kyJVXgNTZj",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcXZmqAujHcoK2984TF",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -352,7 +352,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcXaHMKj7kyJVXgNTZj",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -383,16 +383,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcXaHMKj7kyJVXgNTZj",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
                   },
                   "function": {
                     "name": "add",
@@ -413,10 +413,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_019x6Viuzgkhvr7KAdsKFE3z"
                   },
                   "name": "add",
                   "content": [
@@ -467,25 +467,25 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "I'm sorry, I was unable to use the add tool as it is currently disabled. However, 17 + 25 = **42**."
             }
           ],
           "usage": {
             "input_tokens": 720,
-            "output_tokens": 4,
-            "total_tokens": 724,
+            "output_tokens": 34,
+            "total_tokens": 754,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcXi6Pp4RZvXsiV8ygr",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcXhfLyNtUaaXqss3mL",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 4,
+              "output_tokens": 34,
               "input_tokens": 720,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -495,7 +495,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcXi6Pp4RZvXsiV8ygr",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -513,27 +513,131 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": "42"
+            "text": "I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "'m"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " sorry, I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " was"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " unable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " to use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " the add tool as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " it is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " currently"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " disabled. However"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": ", "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "17 + 25 ="
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "42**."
           }
         },
         {
           "event": "final",
           "usage": {
             "input_tokens": 720,
-            "output_tokens": 4,
-            "total_tokens": 724,
+            "output_tokens": 34,
+            "total_tokens": 754,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcXi6Pp4RZvXsiV8ygr",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcXhfLyNtUaaXqss3mL",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 4,
+              "output_tokens": 34,
               "input_tokens": 720,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -543,7 +647,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcXi6Pp4RZvXsiV8ygr",
             "model": "claude-sonnet-4-6"
           }
         }

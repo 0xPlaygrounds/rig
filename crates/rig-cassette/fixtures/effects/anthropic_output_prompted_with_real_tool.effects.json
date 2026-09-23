@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ"
               },
               "function": {
                 "name": "add",
@@ -144,13 +144,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLdNTVAxdLtmNeKk5xHB",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLdNSrirxD8s9mXizWd7",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "I'll start by adding 17 and 25 using the add tool!",
@@ -160,7 +161,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -169,7 +170,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLdNTVAxdLtmNeKk5xHB",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -240,7 +241,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLdNTVAxdLtmNeKk5xHB",
               "content": [
                 {
                   "type": "text",
@@ -250,10 +251,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ"
                   },
                   "function": {
                     "name": "add",
@@ -274,10 +275,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01GBrAx7TZhCA6UYWZbpTCGZ"
                   },
                   "name": "add",
                   "content": [
@@ -328,30 +329,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected for an evening of systems programming, ownership concepts, and community networking.\"}"
+              "text": "The sum is **42**! Now I'll craft the event object with that result baked into the summary.\n\n{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected — come connect with fellow Rustaceans and level up your systems programming skills.\"}"
             }
           ],
           "usage": {
             "input_tokens": 822,
-            "output_tokens": 61,
-            "total_tokens": 883,
+            "output_tokens": 88,
+            "total_tokens": 910,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLdNes3GEb7NB8bGPmGE",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLdNeQ1QfJaK6EUCUwQ9",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected for an evening of systems programming, ownership concepts, and community networking.\"}",
+                "text": "The sum is **42**! Now I'll craft the event object with that result baked into the summary.\n\n{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected — come connect with fellow Rustaceans and level up your systems programming skills.\"}",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLdNes3GEb7NB8bGPmGE",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -367,7 +369,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 822,
-              "output_tokens": 61,
+              "output_tokens": 88,
               "service_tier": "standard"
             }
           }

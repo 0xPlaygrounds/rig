@@ -161,17 +161,13 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "I'll calculate 2 - 5 right away!"
-            },
-            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
               },
               "function": {
                 "name": "subtract",
@@ -186,19 +182,20 @@
           ],
           "usage": {
             "input_tokens": 703,
-            "output_tokens": 82,
-            "total_tokens": 785,
+            "output_tokens": 69,
+            "total_tokens": 772,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
           "response_id": null,
+          "provider_request_id": "req_011CfLcfdwL8XPMZFgu8dcoE",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 82,
+              "output_tokens": 69,
               "input_tokens": 703,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -208,7 +205,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -216,37 +213,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
-            "kind": "text"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
-            "text": "I'll calculate 2 -"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
-            "text": " 5 right away!"
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "delta": {
             "delta": "tool_name",
             "name": "subtract"
@@ -254,7 +228,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -262,31 +236,31 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "{\"x\":"
+            "arguments": "{\"x\": 2"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " 2"
+            "arguments": ", \"y\": "
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": ", \"y\": 5}"
+            "arguments": "5}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01V2zN6zxg7HrvLLtA5nf4qD",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -295,10 +269,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_1"
+              "id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_1"
+              "call_id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
             },
             "function": {
               "name": "subtract",
@@ -315,19 +289,20 @@
           "event": "final",
           "usage": {
             "input_tokens": 703,
-            "output_tokens": 82,
-            "total_tokens": 785,
+            "output_tokens": 69,
+            "total_tokens": 772,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
           "response_id": null,
+          "provider_request_id": "req_011CfLcfdwL8XPMZFgu8dcoE",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 82,
+              "output_tokens": 69,
               "input_tokens": 703,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -337,7 +312,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -391,20 +366,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcfeMPTQ7hQGcs6RF7F",
               "content": [
-                {
-                  "type": "text",
-                  "text": "I'll calculate 2 - 5 right away!"
-                },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
                   },
                   "function": {
                     "name": "subtract",
@@ -425,10 +396,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01V2zN6zxg7HrvLLtA5nf4qD"
                   },
                   "name": "subtract",
                   "content": [
@@ -504,21 +475,22 @@
             }
           ],
           "usage": {
-            "input_tokens": 799,
+            "input_tokens": 786,
             "output_tokens": 18,
-            "total_tokens": 817,
+            "total_tokens": 804,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcfkpLD1jT3VsNfjqY3",
           "response_id": null,
+          "provider_request_id": "req_011CfLcfkN3PSfnwN7HqgS8N",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 18,
-              "input_tokens": 799,
+              "input_tokens": 786,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_5m_input_tokens": 0,
@@ -527,7 +499,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcfkpLD1jT3VsNfjqY3",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -545,7 +517,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": "The result of"
+            "text": "The result of 2 -"
           }
         },
         {
@@ -553,27 +525,36 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " 2 - 5 is **-3**."
+            "text": " 5 is **-3"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "**."
           }
         },
         {
           "event": "final",
           "usage": {
-            "input_tokens": 799,
+            "input_tokens": 786,
             "output_tokens": 18,
-            "total_tokens": 817,
+            "total_tokens": 804,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcfkpLD1jT3VsNfjqY3",
           "response_id": null,
+          "provider_request_id": "req_011CfLcfkN3PSfnwN7HqgS8N",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 18,
-              "input_tokens": 799,
+              "input_tokens": 786,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_5m_input_tokens": 0,
@@ -582,7 +563,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcfkpLD1jT3VsNfjqY3",
             "model": "claude-sonnet-4-6"
           }
         }

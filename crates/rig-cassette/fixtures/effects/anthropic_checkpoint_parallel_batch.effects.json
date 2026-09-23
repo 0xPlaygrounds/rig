@@ -117,10 +117,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -135,10 +135,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_2"
+                "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_2"
+                "call_id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -153,10 +153,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_3"
+                "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_3"
+                "call_id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -175,9 +175,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcZN5vLEWqCbGZQTdoa",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -188,7 +188,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi",
                 "input": {
                   "slot": 0
                 },
@@ -199,7 +199,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_2",
+                "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn",
                 "input": {
                   "slot": 1
                 },
@@ -210,7 +210,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_3",
+                "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd",
                 "input": {
                   "slot": 2
                 },
@@ -218,7 +218,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -345,16 +345,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZNYTVmtEFFk7XH1Jw",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -369,10 +369,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -387,10 +387,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -410,10 +410,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01XwL6vwqwrpTEDYJDjtUHXi"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -427,10 +427,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01Gfsdsqd8CE5y5VCuGFvuAn"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -444,10 +444,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_01H6ZTyJRiGq6WMrFoyGU4dd"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -508,9 +508,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcZT9mhs59LvJMutGFX",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -522,7 +522,7 @@
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcZTaq3JTjSs2KUZB9H",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,

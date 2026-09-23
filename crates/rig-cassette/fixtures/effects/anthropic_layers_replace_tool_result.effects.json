@@ -122,10 +122,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6"
               },
               "function": {
                 "name": "add",
@@ -145,19 +145,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcYJKBck5x58jbi5i2x",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -166,7 +167,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -237,16 +238,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcYJsRFQQuZPUy9cVMZ",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6"
                   },
                   "function": {
                     "name": "add",
@@ -267,10 +268,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01FfPqD2RRt2WMtn7vmaFFE6"
                   },
                   "name": "add",
                   "content": [
@@ -321,30 +322,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "Wait, that doesn't seem right. Let me re-examine the result — the tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool. However, as instructed to reply with just the number returned by the tool:\n\n99"
+              "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42"
             }
           ],
           "usage": {
             "input_tokens": 715,
-            "output_tokens": 64,
-            "total_tokens": 779,
+            "output_tokens": 56,
+            "total_tokens": 771,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcYSBDJ6yWenPvX9Ndk",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcYRjRDvxTEwZ6zJCZJ",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "Wait, that doesn't seem right. Let me re-examine the result — the tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool. However, as instructed to reply with just the number returned by the tool:\n\n99",
+                "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcYSBDJ6yWenPvX9Ndk",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -360,7 +362,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 715,
-              "output_tokens": 64,
+              "output_tokens": 56,
               "service_tier": "standard"
             }
           }

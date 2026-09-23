@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -22,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -30,11 +22,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
         "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,25 +42,17 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 17,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
         }
       },
       {
@@ -76,14 +68,6 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
           "items": 3
         }
       },
@@ -91,22 +75,38 @@
         "batch": 20,
         "id": 2,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 4
         }
       },
       {
         "batch": 21,
-        "id": 3,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 22,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 22,
+        "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
-        "id": 4,
+        "batch": 23,
+        "id": 3,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
@@ -130,7 +130,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 5
         }
       },
       {
@@ -149,10 +149,18 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 32,
         "id": 5,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 38,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 8
         }
       },
       {
@@ -160,45 +168,45 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
+        }
+      },
+      {
+        "batch": 39,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
         }
       },
       {
         "batch": 40,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 41,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 42,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 42,
-        "id": 6,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 43,
         "id": 7,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 47,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 48,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 49,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -214,27 +222,11 @@
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 52,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 53,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 53,
+        "batch": 51,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -352,10 +344,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -374,9 +366,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -392,7 +384,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -439,14 +431,14 @@
         },
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "delta": {
             "delta": "tool_name",
             "name": "checkpoint_step"
@@ -454,7 +446,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -462,7 +454,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"token"
@@ -470,7 +462,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\": \"sta"
@@ -478,7 +470,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "rt\"}"
@@ -486,7 +478,7 @@
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -495,10 +487,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_1"
+              "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_1"
+              "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
             },
             "function": {
               "name": "checkpoint_step",
@@ -520,9 +512,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
@@ -537,7 +529,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -597,7 +589,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
@@ -607,10 +599,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -630,10 +622,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -689,10 +681,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_2"
+                "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_2"
+                "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -711,9 +703,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -729,7 +721,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -776,14 +768,14 @@
         },
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "delta": {
             "delta": "tool_name",
             "name": "checkpoint_step"
@@ -791,7 +783,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -799,7 +791,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"token"
@@ -807,7 +799,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\": \"cob"
@@ -815,7 +807,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "alt-17\"}"
@@ -823,7 +815,7 @@
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_2",
+          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -832,10 +824,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_2"
+              "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_2"
+              "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
             },
             "function": {
               "name": "checkpoint_step",
@@ -857,9 +849,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
@@ -874,7 +866,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -934,7 +926,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
@@ -944,10 +936,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -967,10 +959,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -988,7 +980,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcZGekvH9gqdrpiv31s",
               "content": [
                 {
                   "type": "text",
@@ -998,10 +990,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1021,10 +1013,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1080,10 +1072,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_3"
+                "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_3"
+                "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1102,9 +1094,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_3",
+          "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_3",
+          "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1120,7 +1112,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_3",
+            "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -1167,14 +1159,14 @@
         },
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "delta": {
             "delta": "tool_name",
             "name": "checkpoint_step"
@@ -1182,7 +1174,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -1190,7 +1182,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"token"
@@ -1198,7 +1190,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\": \"orc"
@@ -1206,7 +1198,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "hard-29"
@@ -1214,7 +1206,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\"}"
@@ -1222,7 +1214,7 @@
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_3",
+          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -1231,10 +1223,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_3"
+              "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_3"
+              "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
             },
             "function": {
               "name": "checkpoint_step",
@@ -1256,9 +1248,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_3",
+          "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_3",
+          "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
@@ -1273,7 +1265,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_3",
+            "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -1333,7 +1325,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
@@ -1343,10 +1335,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1366,10 +1358,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1387,7 +1379,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcZGekvH9gqdrpiv31s",
               "content": [
                 {
                   "type": "text",
@@ -1397,10 +1389,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1420,10 +1412,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1441,7 +1433,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_3",
+              "id": "msg_011CfLcZLHn4hMopUP2c4fru",
               "content": [
                 {
                   "type": "text",
@@ -1451,10 +1443,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1474,10 +1466,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1533,10 +1525,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_4"
+                "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_4"
+                "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1555,9 +1547,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_4",
+          "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_4",
+          "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -1573,7 +1565,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_4",
+            "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -1612,14 +1604,14 @@
         },
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "delta": {
             "delta": "tool_name",
             "name": "checkpoint_step"
@@ -1627,7 +1619,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -1635,7 +1627,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"token"
@@ -1643,7 +1635,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\": \"har"
@@ -1651,7 +1643,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "bor-43\"}"
@@ -1659,7 +1651,7 @@
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_4",
+          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -1668,10 +1660,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_4"
+              "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_4"
+              "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
             },
             "function": {
               "name": "checkpoint_step",
@@ -1693,9 +1685,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_4",
+          "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_4",
+          "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
@@ -1710,7 +1702,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_4",
+            "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -1770,7 +1762,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcZDAef683Wen3WuBgK",
               "content": [
                 {
                   "type": "text",
@@ -1780,10 +1772,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1803,10 +1795,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1824,7 +1816,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcZGekvH9gqdrpiv31s",
               "content": [
                 {
                   "type": "text",
@@ -1834,10 +1826,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1857,10 +1849,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1878,7 +1870,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_3",
+              "id": "msg_011CfLcZLHn4hMopUP2c4fru",
               "content": [
                 {
                   "type": "text",
@@ -1888,10 +1880,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1911,10 +1903,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_3"
+                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_3"
+                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1932,7 +1924,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_4",
+              "id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
               "content": [
                 {
                   "type": "text",
@@ -1942,10 +1934,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_4"
+                    "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_4"
+                    "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1965,10 +1957,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_4"
+                    "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_4"
+                    "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -2018,25 +2010,25 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result shows done=true, so the checkpoint sequence is complete.\n\ncheckpoint-complete"
+              "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
             }
           ],
           "usage": {
             "input_tokens": 1069,
-            "output_tokens": 21,
-            "total_tokens": 1090,
+            "output_tokens": 25,
+            "total_tokens": 1094,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_5",
+          "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_5",
+          "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
-              "output_tokens": 21,
+              "output_tokens": 25,
               "input_tokens": 1069,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -2046,7 +2038,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_5",
+            "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -2065,38 +2057,6 @@
           "delta": {
             "delta": "text",
             "text": "The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
-            "text": " result"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
-            "text": " shows done"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
-            "text": "=true, so"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
-            "text": " the"
           }
         },
         {
@@ -2128,6 +2088,46 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
+            "text": " The"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " result"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " shows done"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "=true with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " no next_token."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
             "text": "\n\ncheckpoint"
           }
         },
@@ -2143,20 +2143,20 @@
           "event": "final",
           "usage": {
             "input_tokens": 1069,
-            "output_tokens": 21,
-            "total_tokens": 1090,
+            "output_tokens": 25,
+            "total_tokens": 1094,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_5",
+          "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_5",
+          "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
-              "output_tokens": 21,
+              "output_tokens": 25,
               "input_tokens": 1069,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -2166,7 +2166,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_5",
+            "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
             "model": "claude-haiku-4-5-20251001"
           }
         }

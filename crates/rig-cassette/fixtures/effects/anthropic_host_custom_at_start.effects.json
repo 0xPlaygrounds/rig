@@ -92,30 +92,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready"
+              "text": "ready."
             }
           ],
           "usage": {
             "input_tokens": 26,
-            "output_tokens": 4,
-            "total_tokens": 30,
+            "output_tokens": 5,
+            "total_tokens": 31,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcYsaBJ7MWvqFuKjgvg",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcYsEawpNGjMz9E1rNs",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "ready",
+                "text": "ready.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcYsaBJ7MWvqFuKjgvg",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -131,7 +132,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 26,
-              "output_tokens": 4,
+              "output_tokens": 5,
               "service_tier": "standard"
             }
           }

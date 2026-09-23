@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -140,10 +140,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01VJSaSPFFoZtpeegEZrafgX"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01VJSaSPFFoZtpeegEZrafgX"
               },
               "function": {
                 "name": "add",
@@ -163,19 +163,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcft77nanfDDf3eDKYz",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcfseLcvgAgWky23YKD",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01VJSaSPFFoZtpeegEZrafgX",
                 "input": {
                   "x": 2,
                   "y": 3
@@ -184,7 +185,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcft77nanfDDf3eDKYz",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -257,16 +258,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcft77nanfDDf3eDKYz",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01VJSaSPFFoZtpeegEZrafgX"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01VJSaSPFFoZtpeegEZrafgX"
                   },
                   "function": {
                     "name": "add",
@@ -287,10 +288,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01VJSaSPFFoZtpeegEZrafgX"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01VJSaSPFFoZtpeegEZrafgX"
                   },
                   "name": "add",
                   "content": [
@@ -341,30 +342,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result is **5**.\n\n2 + 3 = 5"
+              "text": "The result of 2 + 3 is **5**."
             }
           ],
           "usage": {
             "input_tokens": 712,
-            "output_tokens": 19,
-            "total_tokens": 731,
+            "output_tokens": 17,
+            "total_tokens": 729,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcfxexttVr49RAtkZWj",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcfwocirfmPj5XPmyYD",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "The result is **5**.\n\n2 + 3 = 5",
+                "text": "The result of 2 + 3 is **5**.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcfxexttVr49RAtkZWj",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -380,7 +382,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "not_available",
               "input_tokens": 712,
-              "output_tokens": 19,
+              "output_tokens": 17,
               "service_tier": "standard"
             }
           }

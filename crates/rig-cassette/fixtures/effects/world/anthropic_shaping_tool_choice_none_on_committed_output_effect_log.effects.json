@@ -174,10 +174,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
               },
               "function": {
                 "name": "add",
@@ -197,13 +197,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLceY1cGHJk9kSGWy11M",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLceXaKVygHq2eAcqNWi",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "I'll start by adding 17 and 25 using the add tool!",
@@ -213,7 +214,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01SwUZAHGBE1nBUw2Gps22zV",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -222,7 +223,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLceY1cGHJk9kSGWy11M",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -295,7 +296,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLceY1cGHJk9kSGWy11M",
               "content": [
                 {
                   "type": "text",
@@ -305,10 +306,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "function": {
                     "name": "add",
@@ -329,10 +330,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "name": "add",
                   "content": [
@@ -406,30 +407,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum is **42**! Now I'll build the event object with that result in the summary."
+              "text": "The sum is **42**! Now I'll use that result to build the event object."
             }
           ],
           "usage": {
             "input_tokens": 894,
-            "output_tokens": 30,
-            "total_tokens": 924,
+            "output_tokens": 28,
+            "total_tokens": 922,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLceipVmcb1TE6DnDXSP",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLceiND96YPnS8NXj55K",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
+                "text": "The sum is **42**! Now I'll use that result to build the event object.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLceipVmcb1TE6DnDXSP",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -445,7 +447,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 894,
-              "output_tokens": 30,
+              "output_tokens": 28,
               "service_tier": "standard"
             }
           }
@@ -477,7 +479,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLceY1cGHJk9kSGWy11M",
               "content": [
                 {
                   "type": "text",
@@ -487,10 +489,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "function": {
                     "name": "add",
@@ -511,10 +513,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01SwUZAHGBE1nBUw2Gps22zV"
                   },
                   "name": "add",
                   "content": [
@@ -528,11 +530,11 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLceipVmcb1TE6DnDXSP",
               "content": [
                 {
                   "type": "text",
-                  "text": "The sum is **42**! Now I'll build the event object with that result in the summary."
+                  "text": "The sum is **42**! Now I'll use that result to build the event object."
                 }
               ]
             },
@@ -609,16 +611,16 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_2"
+                "id": "toolu_01EPJ43gy6GsbHmJYH9DNb13"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_2"
+                "call_id": "toolu_01EPJ43gy6GsbHmJYH9DNb13"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology",
-                  "summary": "Join us at the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
+                  "summary": "Join us for the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
                   "title": "Rust Meetup Seattle"
                 }
               },
@@ -627,35 +629,36 @@
             }
           ],
           "usage": {
-            "input_tokens": 948,
+            "input_tokens": 946,
             "output_tokens": 117,
-            "total_tokens": 1065,
+            "total_tokens": 1063,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_3",
+          "message_id": "msg_011CfLcesWt3PYtRPsufNTUD",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_3",
+          "provider_request_id": "req_011CfLces5pkjsJnVsSbrFHk",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_2",
+                "id": "toolu_01EPJ43gy6GsbHmJYH9DNb13",
                 "input": {
                   "category": "Technology",
-                  "summary": "Join us at the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
+                  "summary": "Join us for the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
                   "title": "Rust Meetup Seattle"
                 },
                 "name": "final_result",
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_3",
+            "id": "msg_011CfLcesWt3PYtRPsufNTUD",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -670,7 +673,7 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 948,
+              "input_tokens": 946,
               "output_tokens": 117,
               "service_tier": "standard"
             }

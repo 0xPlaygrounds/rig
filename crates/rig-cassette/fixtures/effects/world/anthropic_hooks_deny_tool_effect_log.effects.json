@@ -132,10 +132,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_016c8KGyftqyUQg42oET2V5g"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_016c8KGyftqyUQg42oET2V5g"
               },
               "function": {
                 "name": "add",
@@ -155,19 +155,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcXKKSLr3tVerXr4WPA",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcXJreHA7vdEYByA159",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_016c8KGyftqyUQg42oET2V5g",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -176,7 +177,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcXKKSLr3tVerXr4WPA",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -224,16 +225,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcXKKSLr3tVerXr4WPA",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_016c8KGyftqyUQg42oET2V5g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_016c8KGyftqyUQg42oET2V5g"
                   },
                   "function": {
                     "name": "add",
@@ -254,10 +255,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_016c8KGyftqyUQg42oET2V5g"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_016c8KGyftqyUQg42oET2V5g"
                   },
                   "name": "add",
                   "content": [
@@ -308,30 +309,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "I'm sorry, the add tool is currently unavailable. However, I can tell you that 17 + 25 = **42**."
             }
           ],
           "usage": {
             "input_tokens": 720,
-            "output_tokens": 4,
-            "total_tokens": 724,
+            "output_tokens": 33,
+            "total_tokens": 753,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcXRU1nL8AT1tV5VPPU",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcXR2E1HiZBzRiaukrf",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "42",
+                "text": "I'm sorry, the add tool is currently unavailable. However, I can tell you that 17 + 25 = **42**.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcXRU1nL8AT1tV5VPPU",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -347,7 +349,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 720,
-              "output_tokens": 4,
+              "output_tokens": 33,
               "service_tier": "standard"
             }
           }

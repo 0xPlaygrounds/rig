@@ -2,61 +2,53 @@
   "header": {
     "deliveries": [
       {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
         "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -64,23 +56,7 @@
         }
       },
       {
-        "batch": 21,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -204,10 +180,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
               },
               "function": {
                 "name": "add",
@@ -227,9 +203,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcf8p8R1mu68gEBCTrH",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcf8G94a3BK9UJCXAdW",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -245,7 +221,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcf8p8R1mu68gEBCTrH",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -253,14 +229,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -268,7 +244,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -276,7 +252,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"x\": 9"
@@ -284,7 +260,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ", \"y\": "
@@ -292,7 +268,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "16}"
@@ -300,7 +276,7 @@
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01CpRefFG6QwS6bWahs4ZCtT",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -309,10 +285,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_1"
+              "id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_1"
+              "call_id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
             },
             "function": {
               "name": "add",
@@ -335,9 +311,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcf8p8R1mu68gEBCTrH",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcf8G94a3BK9UJCXAdW",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -352,7 +328,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcf8p8R1mu68gEBCTrH",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -408,16 +384,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcf8p8R1mu68gEBCTrH",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
                   },
                   "function": {
                     "name": "add",
@@ -438,10 +414,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01CpRefFG6QwS6bWahs4ZCtT"
                   },
                   "name": "add",
                   "content": [
@@ -502,9 +478,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcfLQeLHZUMZY3WiVj5",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcfKvccFyj6h9FKUssn",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -520,7 +496,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcfLQeLHZUMZY3WiVj5",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -551,9 +527,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcfLQeLHZUMZY3WiVj5",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcfKvccFyj6h9FKUssn",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -568,7 +544,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLcfLQeLHZUMZY3WiVj5",
             "model": "claude-sonnet-4-6"
           }
         }

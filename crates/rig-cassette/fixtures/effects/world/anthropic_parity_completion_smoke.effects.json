@@ -75,29 +75,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed for performance, reliability, and memory safety without a garbage collector, using an ownership model to enforce safe memory access at compile time. Memory safety matters because violations—like buffer overflows, use-after-free, and null pointer dereferences—are among the leading causes of security vulnerabilities and crashes in software."
+              "text": "Rust is a systems programming language designed for performance, reliability, and productivity, featuring a unique ownership system that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations—such as buffer overflows, use-after-free errors, and data races—are among the most common sources of critical security vulnerabilities and crashes in software."
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 75,
-            "total_tokens": 112,
+            "output_tokens": 76,
+            "total_tokens": 113,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcVY2rRabZr3Mm84jvc",
           "response_id": null,
+          "provider_request_id": "req_011CfLcVX15vC8YXcLqSRjwF",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "Rust is a systems programming language designed for performance, reliability, and memory safety without a garbage collector, using an ownership model to enforce safe memory access at compile time. Memory safety matters because violations—like buffer overflows, use-after-free, and null pointer dereferences—are among the leading causes of security vulnerabilities and crashes in software.",
+                "text": "Rust is a systems programming language designed for performance, reliability, and productivity, featuring a unique ownership system that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations—such as buffer overflows, use-after-free errors, and data races—are among the most common sources of critical security vulnerabilities and crashes in software.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcVY2rRabZr3Mm84jvc",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -113,7 +115,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 37,
-              "output_tokens": 75,
+              "output_tokens": 76,
               "service_tier": "standard"
             }
           }

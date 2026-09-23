@@ -23,14 +23,14 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 11,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 15,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -142,16 +142,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by looking up the cache policy for 'prefix' first."
+              "text": "I'll look up the cache policy for 'prefix' first."
             },
             {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01JymV3VoERZLkz5t9qVkicm"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01JymV3VoERZLkz5t9qVkicm"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -165,28 +165,29 @@
           ],
           "usage": {
             "input_tokens": 3,
-            "output_tokens": 72,
-            "total_tokens": 5244,
+            "output_tokens": 70,
+            "total_tokens": 5242,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 5169
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcfjWC7qDTPefp8MSLs",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                "text": "I'll look up the cache policy for 'prefix' first.",
                 "type": "text"
               },
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01JymV3VoERZLkz5t9qVkicm",
                 "input": {
                   "topic": "prefix"
                 },
@@ -194,7 +195,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -210,7 +211,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 3,
-              "output_tokens": 72,
+              "output_tokens": 70,
               "service_tier": "standard"
             }
           }
@@ -267,20 +268,20 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by looking up the cache policy for 'prefix' first."
+                  "text": "I'll look up the cache policy for 'prefix' first."
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -300,10 +301,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -355,10 +356,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_2"
+                "id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_2"
+                "call_id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -373,17 +374,18 @@
           "usage": {
             "input_tokens": 1,
             "output_tokens": 71,
-            "total_tokens": 5342,
+            "total_tokens": 5340,
             "cached_input_tokens": 5169,
-            "cache_creation_input_tokens": 101
+            "cache_creation_input_tokens": 99
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcftRDqbZg3AekDvDdE",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcfsygUabTJ13udR97G",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "Now I'll look up the cache policy for 'breakpoint'.",
@@ -393,7 +395,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_2",
+                "id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq",
                 "input": {
                   "topic": "breakpoint"
                 },
@@ -401,7 +403,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcftRDqbZg3AekDvDdE",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -411,9 +413,9 @@
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 101
+                "ephemeral_5m_input_tokens": 99
               },
-              "cache_creation_input_tokens": 101,
+              "cache_creation_input_tokens": 99,
               "cache_read_input_tokens": 5169,
               "inference_geo": "global",
               "input_tokens": 1,
@@ -474,20 +476,20 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcfjzTmy6YN4SgK5ChV",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by looking up the cache policy for 'prefix' first."
+                  "text": "I'll look up the cache policy for 'prefix' first."
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -507,10 +509,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01JymV3VoERZLkz5t9qVkicm"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -524,7 +526,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_2",
+              "id": "msg_011CfLcftRDqbZg3AekDvDdE",
               "content": [
                 {
                   "type": "text",
@@ -534,10 +536,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -557,10 +559,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_2"
+                    "id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_2"
+                    "call_id": "toolu_01T8uhrGsLd4xhjjhZb3XoYq"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -612,24 +614,25 @@
           "usage": {
             "input_tokens": 1,
             "output_tokens": 6,
-            "total_tokens": 5376,
-            "cached_input_tokens": 5270,
+            "total_tokens": 5374,
+            "cached_input_tokens": 5268,
             "cache_creation_input_tokens": 99
           },
-          "message_id": "msg_REDACTED_3",
+          "message_id": "msg_011CfLcg23Mpzqj51sfCebrC",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_3",
+          "provider_request_id": "req_011CfLcg1a5nQAw6AfAzaPcg",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "cache probe ready",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_3",
+            "id": "msg_011CfLcg23Mpzqj51sfCebrC",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -642,7 +645,7 @@
                 "ephemeral_5m_input_tokens": 99
               },
               "cache_creation_input_tokens": 99,
-              "cache_read_input_tokens": 5270,
+              "cache_read_input_tokens": 5268,
               "inference_geo": "global",
               "input_tokens": 1,
               "output_tokens": 6,

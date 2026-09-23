@@ -151,14 +151,14 @@
           "rig_ecs::agent::Remembering": {},
           "rig_ecs::agent::Run": {},
           "rig_ecs::agent::RunOf": 2,
-          "rig_ecs::agent::RunResult": "ready",
+          "rig_ecs::agent::RunResult": "ready.",
           "rig_ecs::agent::RunSeq": 0,
           "rig_ecs::agent::Settled": {},
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
             "input_tokens": 26,
-            "output_tokens": 4,
-            "total_tokens": 30,
+            "output_tokens": 5,
+            "total_tokens": 31,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -197,10 +197,10 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready"
+                "text": "ready."
               }
             ],
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcb8eMLPrE4ccmYnbCB",
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -221,30 +221,31 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready"
+                  "text": "ready."
                 }
               ],
               "usage": {
                 "input_tokens": 26,
-                "output_tokens": 4,
-                "total_tokens": 30,
+                "output_tokens": 5,
+                "total_tokens": 31,
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
-              "message_id": "msg_REDACTED_1",
+              "message_id": "msg_011CfLcb8eMLPrE4ccmYnbCB",
               "response_id": null,
-              "provider_request_id": "req_REDACTED_1",
+              "provider_request_id": "req_011CfLcb8E3c6bSHEUsqB6gg",
               "finish_reason": "stop",
               "provider": "anthropic",
               "model": "claude-sonnet-4-6",
               "raw": {
+                "container": null,
                 "content": [
                   {
-                    "text": "ready",
+                    "text": "ready.",
                     "type": "text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_011CfLcb8eMLPrE4ccmYnbCB",
                 "model": "claude-sonnet-4-6",
                 "role": "assistant",
                 "stop_details": null,
@@ -260,7 +261,7 @@
                   "cache_read_input_tokens": 0,
                   "inference_geo": "global",
                   "input_tokens": 26,
-                  "output_tokens": 4,
+                  "output_tokens": 5,
                   "service_tier": "standard"
                 }
               }
@@ -274,13 +275,13 @@
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_REDACTED_1"
+          "rig_ecs::agent::content::parts::MessageId": "msg_011CfLcb8eMLPrE4ccmYnbCB"
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready"
+              "text": "ready."
             }
           }
         },

@@ -113,10 +113,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
               },
               "function": {
                 "name": "add",
@@ -136,9 +136,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -154,7 +154,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -162,14 +162,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -177,7 +177,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ""
@@ -185,7 +185,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"x\": 1"
@@ -193,7 +193,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "7"
@@ -201,23 +201,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": ", \"y\": 2"
+            "arguments": ", \"y\": "
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "5}"
+            "arguments": "25}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
           "end": {
             "close": "tool_call",
             "on_unparseable": "error"
@@ -226,10 +226,10 @@
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "toolu_REDACTED_1"
+              "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
             },
             "provider": {
-              "call_id": "toolu_REDACTED_1"
+              "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
             },
             "function": {
               "name": "add",
@@ -252,9 +252,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -269,7 +269,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -331,16 +331,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLccFvvqgbpzszzQiC27",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
                   },
                   "function": {
                     "name": "add",
@@ -361,10 +361,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
                   },
                   "name": "add",
                   "content": [
@@ -413,25 +413,25 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, but it seems the addition tool is currently broken and was unable to compute the result. Please try again later!"
+              "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
             }
           ],
           "usage": {
             "input_tokens": 697,
-            "output_tokens": 29,
-            "total_tokens": 726,
+            "output_tokens": 30,
+            "total_tokens": 727,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 29,
+              "output_tokens": 30,
               "input_tokens": 697,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -441,7 +441,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -475,7 +475,87 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " sorry, but it seems the addition tool is currently broken and was unable to compute the result. Please try again later"
+            "text": " sorry, it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " seems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " the add tool is currently"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " broken and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " unable"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " to return"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " a result. You"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " may"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " want"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " to try again"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " later"
           }
         },
         {
@@ -490,20 +570,20 @@
           "event": "final",
           "usage": {
             "input_tokens": 697,
-            "output_tokens": 29,
-            "total_tokens": 726,
+            "output_tokens": 30,
+            "total_tokens": 727,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 29,
+              "output_tokens": 30,
               "input_tokens": 697,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -513,7 +593,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_2",
+            "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
             "model": "claude-sonnet-4-6"
           }
         }
