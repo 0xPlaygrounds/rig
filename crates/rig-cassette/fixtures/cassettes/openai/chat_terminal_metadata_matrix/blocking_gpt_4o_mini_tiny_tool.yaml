@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-mini-2024-07-18","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":16,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":80,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":96}}'
+    value: req_2e7c4c9e44de4349bfa631a8aa5bd5cc
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25","name":"add"},"id":"call_Ja4ZyIK2h4onLW0C4thEPMIR","type":"function"}]}}],"created":0,"id":"chatcmpl-ERDAsa7DA3GRcWI5oFOrNrQbM6GpT","model":"gpt-4o-mini-2024-07-18","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_28f3a9c586","usage":{"completion_tokens":16,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":80,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":96}}'

@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_e023ba50b8684955a82dae7481354dc7
   body: '{"error":{"code":"model_not_found","message":"The model `gpt-4o-mini-nonexistent-rig-test` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

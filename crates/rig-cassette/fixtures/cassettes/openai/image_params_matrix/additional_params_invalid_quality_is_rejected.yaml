@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_36e7de22f369436e824a7b8335f12311
   body: '{"error":{"code":"invalid_value","message":"Invalid value: ''rig-invalid''. Supported values are: ''low'', ''medium'', ''high'', and ''auto''.","param":"quality","type":"invalid_request_error"}}'

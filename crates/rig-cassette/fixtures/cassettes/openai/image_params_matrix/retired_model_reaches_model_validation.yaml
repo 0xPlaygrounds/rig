@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_610e0111ef4e451fb86cccc018da0a9a
   body: '{"error":{"code":"invalid_value","message":"The model ''dall-e-3'' does not exist.","param":"model","type":"image_generation_user_error"}}'

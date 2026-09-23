@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"ready","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":27,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":37}}'
+    value: req_cd525b97c27b44fe9c7f88d4f4b5f592
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"ready","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDC8qC90vhXxVdyWSKREjVEiiSEP","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":27,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":37}}'
 ---
 when:
   path: /v1/chat/completions
@@ -33,5 +33,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_2
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"again","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":47,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":57}}'
+    value: req_98192d852f4a4b1797af1d4f6ad06b64
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"again","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDCAyUo1G7b1QyBojfwGnkITOQIG","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":47,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":57}}'

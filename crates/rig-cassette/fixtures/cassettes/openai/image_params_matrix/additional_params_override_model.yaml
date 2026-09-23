@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_8349279f7b094b46a5e63d1e00171196
   body: '{"error":{"code":"invalid_value","message":"The model ''rig-nonexistent-image-model'' does not exist.","param":"model","type":"image_generation_user_error"}}'

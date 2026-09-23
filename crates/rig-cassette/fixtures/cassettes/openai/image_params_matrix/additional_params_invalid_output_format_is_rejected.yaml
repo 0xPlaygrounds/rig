@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_80fded66dc234a0e9490bff6e326a5e0
   body: '{"error":{"code":"invalid_value","message":"Invalid value: ''rig-invalid''. Supported values are: ''png'', ''webp'', and ''jpeg''.","param":"output_format","type":"invalid_request_error"}}'

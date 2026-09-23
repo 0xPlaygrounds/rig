@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: 673d498b-8a1a-4f8d-9c2e-b522a90b3e55
   body: '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-inval**************-key. You can find your API key at https://platform.openai.com/account/api-keys.","param":null,"type":"invalid_request_error"}}'

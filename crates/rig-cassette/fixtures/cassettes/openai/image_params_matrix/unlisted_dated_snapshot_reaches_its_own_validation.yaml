@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_12a30082bcd843a29e994bb8584cf83b
   body: '{"error":{"code":"invalid_value","message":"Invalid size ''3x3''. Width and height must both be divisible by 16.","param":"size","type":"image_generation_user_error"}}'
