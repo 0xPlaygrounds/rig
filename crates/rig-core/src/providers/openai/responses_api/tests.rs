@@ -296,6 +296,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
         id: None,
         content: vec![message::AssistantContent::Reasoning(message::Reasoning {
+            provider: None,
             id: Some("rs_0123".to_string()),
             content: vec![message::ReasoningContent::Text {
                 text: "real item".to_string(),
@@ -2063,6 +2064,7 @@ fn structured_reasoning_with_id_still_converts_to_input_item() {
     let assistant = completion::Message::Assistant {
         id: Some("msg_123".to_string()),
         content: vec![message::AssistantContent::Reasoning(message::Reasoning {
+            provider: None,
             id: Some("rs_123".to_string()),
             content: vec![message::ReasoningContent::Summary(
                 "structured summary".to_string(),
@@ -2087,6 +2089,7 @@ fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
         id: Some("msg_123".to_string()),
         content: vec![
             message::AssistantContent::Reasoning(message::Reasoning {
+                provider: None,
                 id: Some("rs_123".to_string()),
                 content: vec![message::ReasoningContent::Summary(
                     "structured summary".to_string(),

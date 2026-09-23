@@ -615,3 +615,58 @@ fn rpc_codes_classify_retryability_and_keep_the_code() {
         assert_eq!(response.transient, Some(retryable));
     }
 }
+
+#[test]
+fn only_gemini_reasoning_is_replayed() {
+    use base64::Engine;
+    use rig_core::message::{AssistantContent, Reasoning};
+
+    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
+    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
+        AssistantContent::Reasoning(
+            Reasoning::new_with_signature(text, Some(signature(bytes))).with_provider(issuer),
+        )
+    };
+    let req = create_grpc_request(
+        "gemini-2.5-flash",
+        CompletionRequest {
+            model: None,
+            chat_history: vec![
+                message::Message::user("What is 2 + 2?"),
+                message::Message::Assistant {
+                    id: None,
+                    content: vec![
+                        reasoning("grpc thought", b"grpc", REASONING_ISSUER),
+                        reasoning(
+                            "rest thought",
+                            b"rest",
+                            rig_core::providers::gemini::completion::PROVIDER_NAME,
+                        ),
+                        reasoning("anthropic thought", b"anthropic", "anthropic"),
+                        AssistantContent::text("4"),
+                    ],
+                },
+                message::Message::user("And 3 + 3?"),
+            ],
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        },
+    )
+    .expect("request build");
+
+    // The Gemini service issued both the gRPC and the REST reasoning.
+    let signatures: Vec<&[u8]> = req
+        .contents
+        .iter()
+        .flat_map(|content| content.parts.iter())
+        .filter(|part| part.thought)
+        .map(|part| part.thought_signature.as_slice())
+        .collect();
+    assert_eq!(signatures, vec![b"grpc".as_slice(), b"rest".as_slice()]);
+}

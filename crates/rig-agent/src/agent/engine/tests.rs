@@ -2842,7 +2842,11 @@ mod span_safety_net {
             let expected: HashSet<&str> = COMPLETION_PARENT_REQUIRED_FIELDS
                 .iter()
                 .copied()
-                .chain([COMPLETION_PARENT_MARKER_FIELD, "gen_ai.agent.name"])
+                .chain([
+                    COMPLETION_PARENT_MARKER_FIELD,
+                    rig_core::telemetry::PROVIDER_REQUEST_ID_FIELD,
+                    "gen_ai.agent.name",
+                ])
                 .collect();
             assert_eq!(declared, expected);
             // Duplicate field names collapse in a `HashSet`, so also pin

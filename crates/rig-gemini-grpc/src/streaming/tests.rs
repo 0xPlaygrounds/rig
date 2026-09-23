@@ -471,3 +471,15 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
         Some("resp-grpc-stream")
     );
 }
+
+/// Streamed reasoning names the Gemini service, as unary reasoning does.
+#[tokio::test]
+async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
+    let terminal =
+        normalized_terminal(vec![response(vec![text_part("hi")], 0), terminal_frame()]).await;
+    assert_eq!(terminal.provider, super::super::completion::PROVIDER_NAME);
+    assert_eq!(
+        terminal.issuer(),
+        super::super::completion::REASONING_ISSUER
+    );
+}

@@ -656,7 +656,9 @@ impl Decoder<Completion> for MessagesDecoder {
                     output_tokens: usage.output_tokens,
                     total_tokens: None,
                     cached_input_tokens: usage.cache_read_input_tokens,
-                    reasoning_tokens: None,
+                    reasoning_tokens: usage
+                        .output_tokens_details
+                        .map(|details| details.thinking_tokens),
                     tool_input_tokens: None,
                 },
             });
@@ -701,6 +703,14 @@ struct ObservedUsage {
     output_tokens: Option<u64>,
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     cache_read_input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens_details: Option<ObservedOutputDetails>,
+}
+
+#[derive(Deserialize)]
+struct ObservedOutputDetails {
+    #[serde(default)]
+    thinking_tokens: u64,
 }
 
 #[derive(Deserialize)]

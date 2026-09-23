@@ -74,6 +74,31 @@ impl ProviderResponseExt for AwsConverseOutput {
 /// Stable descriptor name reported on normalized Bedrock responses.
 pub const PROVIDER_NAME: &str = "aws_bedrock";
 
+/// Convert a Converse output for `model` into a completion response whose
+/// reasoning records its issuer ([`reasoning_issuer`]).
+pub(crate) fn completion_response(
+    output: AwsConverseOutput,
+    model: &str,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    let mut response: completion::CompletionResponse = output.try_into()?;
+    response.choice =
+        rig_core::streaming::stamp_reasoning(response.choice, reasoning_issuer(model));
+    Ok(response)
+}
+
+/// The issuer Bedrock's reasoning records for `model`. Anthropic documents
+/// Claude thinking signatures as valid across the Claude API, Bedrock and
+/// Vertex AI, so Claude reasoning records `anthropic`; other models' reasoning
+/// records [`PROVIDER_NAME`]. An inference-profile ARN that does not name the
+/// model counts as another model.
+pub fn reasoning_issuer(model: &str) -> &'static str {
+    if model.contains("anthropic.claude") {
+        "anthropic"
+    } else {
+        PROVIDER_NAME
+    }
+}
+
 /// Normalizes stop reasons, preserving unknown values in `Other`.
 /// Stop sequences map to `Stop`; guardrail intervention maps to `ContentFilter`.
 pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
@@ -149,12 +174,16 @@ impl TryFrom<ContentBlock> for RigAssistantContent {
                 completion::AssistantContent::tool_call(&call.tool_use_id, &call.name, call.input),
             )),
             ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
-                ReasoningContentBlock::ReasoningText(reasoning_text) => Ok(RigAssistantContent(
-                    AssistantContent::Reasoning(rig_core::message::Reasoning::new_with_signature(
-                        &reasoning_text.text,
-                        reasoning_text.signature,
-                    )),
-                )),
+                ReasoningContentBlock::ReasoningText(reasoning_text) => {
+                    Ok(RigAssistantContent(AssistantContent::Reasoning(
+                        // The issuer depends on the model, which the Converse
+                        // output does not name: `completion_response` stamps it.
+                        rig_core::message::Reasoning::new_with_signature(
+                            &reasoning_text.text,
+                            reasoning_text.signature,
+                        ),
+                    )))
+                }
                 // Base64 preserves opaque redacted bytes for request replay.
                 ReasoningContentBlock::RedactedContent(blob) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(

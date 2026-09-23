@@ -317,6 +317,7 @@ fn stream_from_script(
                 id: whole,
                 end: BlockClose::Reasoning {
                     reasoning: Some(Reasoning {
+                        provider: None,
                         id: None,
                         content: vec![ReasoningContent::Summary("summary".to_owned())],
                     }),

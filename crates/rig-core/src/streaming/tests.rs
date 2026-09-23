@@ -942,8 +942,7 @@ async fn test_stream_aggregates_reasoning_content() {
         item,
         AssistantContent::Reasoning(Reasoning {
             id: Some(id),
-            content
-        }) if id == "rs_1"
+            content, .. }) if id == "rs_1"
             && matches!(
                 content.first(),
                 Some(ReasoningContent::Text {

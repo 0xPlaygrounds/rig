@@ -689,3 +689,154 @@ fn aws_converse_output_round_trips_through_serde_json_value() {
         Some(completion::FinishReason::Stop)
     );
 }
+
+#[test]
+fn claude_on_bedrock_shares_anthropic_reasoning() {
+    use rig_core::message::{Message, Reasoning};
+
+    for model in [
+        "anthropic.claude-sonnet-4-6-v1:0",
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-7-v1:0",
+    ] {
+        assert_eq!(super::reasoning_issuer(model), "anthropic", "{model}");
+    }
+    for model in ["amazon.nova-pro-v1:0", "deepseek.r1-v1:0"] {
+        assert_eq!(
+            super::reasoning_issuer(model),
+            super::PROVIDER_NAME,
+            "{model}"
+        );
+    }
+
+    let signed = |issuer: &str| {
+        AssistantContent::Reasoning(
+            Reasoning::new_with_signature("thinking", Some(format!("{issuer}-signature")))
+                .with_provider(issuer),
+        )
+    };
+    let history = || {
+        vec![
+            Message::user("hi"),
+            Message::Assistant {
+                id: None,
+                content: vec![
+                    signed("anthropic"),
+                    signed("gcp.gemini"),
+                    signed(super::PROVIDER_NAME),
+                    AssistantContent::text("hello"),
+                ],
+            },
+        ]
+    };
+    // Through the request constructor both Converse paths use.
+    let kept = |model: &str| {
+        let mut request = rig_core::completion::CompletionRequest {
+            model: None,
+            chat_history: history(),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+        request = crate::types::completion_request::AwsCompletionRequest::for_model(
+            request, model, false,
+        )
+        .inner;
+        match &request.chat_history[1] {
+            Message::Assistant { content, .. } => content
+                .iter()
+                .filter_map(|part| match part {
+                    AssistantContent::Reasoning(reasoning) => reasoning.provider.clone(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(kept("anthropic.claude-sonnet-4-6-v1:0"), ["anthropic"]);
+    assert_eq!(kept("amazon.nova-pro-v1:0"), [super::PROVIDER_NAME]);
+}
+
+/// A Claude reply's signed and redacted thinking records `anthropic`, and
+/// the next Claude request keeps both; on another model it records Bedrock.
+#[test]
+fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
+    use rig_core::message::Message;
+
+    let reply = || {
+        make_output_with_content(
+            vec![
+                aws_bedrock::ContentBlock::ReasoningContent(
+                    aws_bedrock::ReasoningContentBlock::ReasoningText(
+                        aws_bedrock::ReasoningTextBlock::builder()
+                            .text("thinking")
+                            .signature("sig")
+                            .build()
+                            .expect("reasoning block"),
+                    ),
+                ),
+                aws_bedrock::ContentBlock::ReasoningContent(
+                    aws_bedrock::ReasoningContentBlock::RedactedContent(
+                        aws_smithy_types::Blob::new(b"redacted".to_vec()),
+                    ),
+                ),
+                aws_bedrock::ContentBlock::Text("hello".into()),
+            ],
+            None,
+        )
+    };
+    let issuers = |response: &completion::CompletionResponse| {
+        response
+            .choice
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::Reasoning(reasoning) => reasoning.provider.clone(),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let claude = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+    let response = super::completion_response(reply(), claude).expect("decodes");
+    assert_eq!(issuers(&response), ["anthropic", "anthropic"]);
+    let nova = super::completion_response(reply(), "amazon.nova-pro-v1:0").expect("decodes");
+    assert_eq!(issuers(&nova), [super::PROVIDER_NAME, super::PROVIDER_NAME]);
+
+    let request = rig_core::completion::CompletionRequest {
+        model: None,
+        chat_history: vec![
+            Message::user("hi"),
+            Message::Assistant {
+                id: None,
+                content: response.choice,
+            },
+            Message::user("again"),
+        ],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+    let scoped =
+        crate::types::completion_request::AwsCompletionRequest::for_model(request, claude, false);
+    let Message::Assistant { content, .. } = &scoped.inner.chat_history[1] else {
+        panic!("the assistant turn survives");
+    };
+    assert_eq!(
+        content
+            .iter()
+            .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
+            .count(),
+        2,
+        "the next Claude turn replays both reasoning blocks"
+    );
+}

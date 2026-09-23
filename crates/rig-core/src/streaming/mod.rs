@@ -114,19 +114,34 @@ pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
     }
 }
 
-/// The folded completion response: the aggregated choice plus the terminal
-/// record's usage and metadata, carrying `raw` as the provider's document
-/// for the turn. Usage reports no counter when the reply produced no
-/// terminal record.
+/// Record `issuer` on every reasoning part of `choice` that names none.
+pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<AssistantContent> {
+    choice
+        .into_iter()
+        .map(|part| match part {
+            AssistantContent::Reasoning(reasoning) if reasoning.provider.is_none() => {
+                AssistantContent::Reasoning(reasoning.with_provider(issuer))
+            }
+            part => part,
+        })
+        .collect()
+}
+
+/// The folded completion response: the aggregated choice, its reasoning
+/// stamped with `issuer`, plus the terminal record's usage and metadata,
+/// carrying `raw` as the provider's document for the turn. Usage reports no
+/// counter when the reply produced no terminal record.
 pub(crate) fn fold_finish(
     mut accumulator: BlockAccumulator,
     terminal: Option<&StreamFinal>,
     message_id: Option<String>,
     provider: String,
+    issuer: &str,
     raw: serde_json::Value,
 ) -> CompletionResponse {
+    let choice = stamp_reasoning(accumulator.finish(), issuer);
     CompletionResponse::new(
-        accumulator.finish(),
+        choice,
         terminal.map(|response| response.usage).unwrap_or_default(),
         provider,
         raw,
@@ -254,6 +269,12 @@ pub struct StreamFinal {
     pub provider_request_id: Option<String>,
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
+    /// The service whose reasoning this stream carries, when it is not
+    /// [`Self::provider`]: a transport or deployment of another provider's
+    /// models. The stream's reasoning records it as its issuer
+    /// ([`crate::message::Reasoning::provider`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_issuer: Option<String>,
     /// Provider-reported model identifier, when available.
     #[serde(default)]
     pub model: Option<String>,
@@ -276,9 +297,23 @@ impl StreamFinal {
             response_id: None,
             provider_request_id: None,
             provider: provider.into(),
+            reasoning_issuer: None,
             model: None,
             raw,
         }
+    }
+
+    /// Name the service whose reasoning this stream carries; see
+    /// [`Self::reasoning_issuer`].
+    pub fn with_reasoning_issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.reasoning_issuer = Some(issuer.into());
+        self
+    }
+
+    /// The issuer this stream's reasoning records: [`Self::reasoning_issuer`]
+    /// when set, otherwise [`Self::provider`].
+    pub fn issuer(&self) -> &str {
+        self.reasoning_issuer.as_deref().unwrap_or(&self.provider)
     }
 
     /// Attach the normalized finish reason.
@@ -322,6 +357,8 @@ struct StreamFinalRepr {
     provider_request_id: Option<String>,
     provider: String,
     #[serde(default)]
+    reasoning_issuer: Option<String>,
+    #[serde(default)]
     model: Option<String>,
     raw: serde_json::Value,
 }
@@ -335,15 +372,18 @@ impl From<StreamFinalRepr> for StreamFinal {
             response_id,
             provider_request_id,
             provider,
+            reasoning_issuer,
             model,
             raw,
         } = repr;
-        Self::new(provider, usage, raw)
+        let mut terminal = Self::new(provider, usage, raw)
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
             .with_optional_provider_request_id(provider_request_id)
-            .with_optional_model(model)
+            .with_optional_model(model);
+        terminal.reasoning_issuer = reasoning_issuer;
+        terminal
     }
 }
 
@@ -419,6 +459,9 @@ pub struct StreamingCompletionResponse {
     /// record arrives; a stream a provider opened ([`Self::stream`]) names
     /// its provider up front.
     provider_from_terminal: bool,
+    /// The issuer of this stream's reasoning when it is known before the
+    /// terminal record ([`Self::with_reasoning_issuer`]).
+    reasoning_issuer: Option<String>,
     /// Prevents polling the inner stream after it ends.
     finished: bool,
     /// The provider's normalized terminal record, `None` until the stream
@@ -458,6 +501,7 @@ impl StreamingCompletionResponse {
             accumulator: BlockAccumulator::new(),
             provider: provider.into(),
             provider_from_terminal: true,
+            reasoning_issuer: None,
             finished: false,
             response: None,
             message_id: None,
@@ -467,6 +511,32 @@ impl StreamingCompletionResponse {
     /// Stable descriptor name of the provider producing this stream.
     pub fn provider(&self) -> &str {
         &self.provider
+    }
+
+    /// Name the issuer of this stream's reasoning up front, for a transport
+    /// or deployment of another provider's models, so a partial turn taken
+    /// before the terminal record records it too. The terminal record must
+    /// name the same issuer ([`StreamFinal::with_reasoning_issuer`]): once
+    /// it arrives, it is the one read.
+    pub fn with_reasoning_issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.reasoning_issuer = Some(issuer.into());
+        self
+    }
+
+    /// The issuer this stream's reasoning records: the terminal record's
+    /// [`StreamFinal::issuer`] once it has arrived; before it, the issuer
+    /// named up front, else the provider that opened the stream. `None`
+    /// before the terminal of a stream rebuilt from events
+    /// ([`Self::from_events`]), whose opening label names a handler, not an
+    /// issuer: its reasoning is then of unknown provenance.
+    pub fn reasoning_issuer(&self) -> Option<&str> {
+        match &self.response {
+            Some(terminal) => Some(terminal.issuer()),
+            None => self
+                .reasoning_issuer
+                .as_deref()
+                .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
+        }
     }
 
     /// Returns the accumulated choice without consuming it.
@@ -490,11 +560,13 @@ impl StreamingCompletionResponse {
                     .to_owned(),
             ));
         };
+        let issuer = terminal.issuer().to_owned();
         Ok(fold_finish(
             self.accumulator,
             Some(terminal),
             self.message_id.clone(),
             self.provider.clone(),
+            &issuer,
             terminal.raw.clone(),
         ))
     }

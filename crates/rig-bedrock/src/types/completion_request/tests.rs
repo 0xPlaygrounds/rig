@@ -531,3 +531,88 @@ fn test_output_config_uses_default_name() {
         .expect("should be JsonSchema variant");
     assert_eq!(json_schema.name(), Some("response_schema"));
 }
+
+fn document_request(prompt_document: bool) -> CompletionRequest {
+    use rig_core::completion::Document;
+    use rig_core::message::DocumentMediaType;
+    let mut request = minimal_request();
+    request.chat_history = vec![
+        Message::system("Answer with the exact token from the document only."),
+        Message::assistant("Acknowledged."),
+    ];
+    if prompt_document {
+        request.chat_history.push(Message::User {
+            content: vec![
+                UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
+                UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
+                UserContent::text("According to the document, what is the ordering token?"),
+            ],
+        });
+    } else {
+        request.chat_history.push(Message::user(
+            "According to the document, what is the ordering token?",
+        ));
+    }
+    request.documents = vec![Document {
+        id: "ordering-note".to_owned(),
+        text: "The ordering token is violet-needle.".to_owned(),
+        additional_props: Default::default(),
+    }];
+    request
+}
+
+fn document_names(messages: &[aws_bedrock::Message]) -> Vec<String> {
+    messages
+        .iter()
+        .flat_map(|message| &message.content)
+        .filter_map(|block| match block {
+            aws_bedrock::ContentBlock::Document(document) => Some(document.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Static documents lead the conversation as their own user message, the
+/// system instruction stays in `system`, and history follows in order.
+#[test]
+fn documents_are_prepended_before_history() {
+    let request = aws_request(document_request(false), false);
+    let system = request.system_prompt().expect("system").expect("present");
+    assert!(format!("{system:?}").contains("exact token"));
+    let messages = request.messages().expect("messages");
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
+    assert!(
+        messages[0]
+            .content
+            .iter()
+            .any(|block| matches!(block, aws_bedrock::ContentBlock::Document(_))),
+        "{:?}",
+        messages[0]
+    );
+    assert_eq!(messages[1].role, aws_bedrock::ConversationRole::Assistant);
+    assert_eq!(messages[2].role, aws_bedrock::ConversationRole::User);
+}
+
+/// Document names are a function of the request: encoding it twice gives the
+/// same bytes, and the same content sent twice in one request gets two
+/// distinct names.
+#[test]
+fn document_names_are_deterministic_and_unique_within_a_request() {
+    let first = document_names(
+        &aws_request(document_request(true), false)
+            .messages()
+            .expect("messages"),
+    );
+    let second = document_names(
+        &aws_request(document_request(true), false)
+            .messages()
+            .expect("messages"),
+    );
+    assert_eq!(first, second);
+    assert_eq!(first.len(), 3);
+    let unique: std::collections::HashSet<_> = first.iter().collect();
+    assert_eq!(unique.len(), 3, "{first:?}");
+    assert!(first.iter().all(|name| name.starts_with("document-")));
+    assert_eq!(first[2], format!("{}-2", first[1]));
+}

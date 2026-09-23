@@ -47,6 +47,7 @@ macro_rules! __rig_canonical_completion_span {
             $($header)*
             gen_ai.response.id = $crate::telemetry::__tracing::field::Empty,
             gen_ai.response.model = $crate::telemetry::__tracing::field::Empty,
+            rig.provider_request_id = $crate::telemetry::__tracing::field::Empty,
             gen_ai.usage.input_tokens = $crate::telemetry::__tracing::field::Empty,
             gen_ai.usage.output_tokens = $crate::telemetry::__tracing::field::Empty,
             gen_ai.usage.cache_read.input_tokens = $crate::telemetry::__tracing::field::Empty,
@@ -102,6 +103,13 @@ impl CompletionOperation {
         }
     }
 }
+
+/// Span field holding the provider's transport request id (the request-id
+/// response header), recorded on success and on provider errors. GenAI
+/// semantic conventions define no attribute for it. Rig's own completion
+/// spans declare it; it is not required of an adopted parent, which simply
+/// does not record it when undeclared.
+pub const PROVIDER_REQUEST_ID_FIELD: &str = "rig.provider_request_id";
 
 /// Marker field for completion-parent adoption, independent of tracing target.
 /// Its value is ignored. Adoption requires every field in
@@ -337,6 +345,7 @@ macro_rules! new_modality_span {
             gen_ai.request.model = $request_model,
             gen_ai.response.id = $crate::telemetry::__tracing::field::Empty,
             gen_ai.response.model = $crate::telemetry::__tracing::field::Empty,
+            rig.provider_request_id = $crate::telemetry::__tracing::field::Empty,
             gen_ai.usage.input_tokens = $crate::telemetry::__tracing::field::Empty,
             gen_ai.usage.output_tokens = $crate::telemetry::__tracing::field::Empty,
             gen_ai.usage.cache_read.input_tokens = $crate::telemetry::__tracing::field::Empty,

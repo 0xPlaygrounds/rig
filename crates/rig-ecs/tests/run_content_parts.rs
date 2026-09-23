@@ -133,6 +133,7 @@ fn assistant_signatures_reasoning_ids_and_images_round_trip() {
         id: Some("message-1".into()),
         content: vec![
             AssistantContent::Reasoning(Reasoning {
+                provider: None,
                 id: Some("reasoning-1".into()),
                 content: vec![
                     ReasoningContent::Text {

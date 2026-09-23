@@ -11,8 +11,10 @@
 use crate::{
     client::Client,
     types::{
-        assistant_content::AwsConverseOutput, completion_request::AwsCompletionRequest,
-        converse_output::InternalConverseOutput, errors::AwsSdkConverseError,
+        assistant_content::{AwsConverseOutput, completion_response},
+        completion_request::AwsCompletionRequest,
+        converse_output::InternalConverseOutput,
+        errors::AwsSdkConverseError,
     },
 };
 
@@ -199,10 +201,11 @@ impl CompletionModel {
                 )
                 .build();
 
-        let request = AwsCompletionRequest {
-            inner: completion_request,
-            prompt_caching: self.prompt_caching,
-        };
+        let request = AwsCompletionRequest::for_model(
+            completion_request,
+            &request_model,
+            self.prompt_caching,
+        );
 
         let mut converse_builder = self
             .client
@@ -253,7 +256,8 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.raw_completion(completion_request).await?.try_into()
+        let model = resolve_request_model(&self.model, &completion_request);
+        completion_response(self.raw_completion(completion_request).await?, &model)
     }
 
     async fn stream(

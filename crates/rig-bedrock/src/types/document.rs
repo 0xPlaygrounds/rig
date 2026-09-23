@@ -6,7 +6,7 @@ use rig_core::{
 
 pub(crate) use crate::types::media_types::RigDocumentMediaType;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use uuid::Uuid;
+use sha2::{Digest, Sha256};
 
 use super::converse_output::{DocumentBlock, DocumentSource};
 
@@ -45,8 +45,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             }
         };
 
-        let random_string = Uuid::new_v4().simple().to_string();
-        let document_name = format!("document-{random_string}");
+        let document_name = document_name(&document_source);
         let result = aws_bedrock::DocumentBlock::builder()
             .source(document_source)
             .name(document_name)
@@ -54,6 +53,45 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             .build()
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
         Ok(result)
+    }
+}
+
+/// Bedrock requires a name on every document and Rig's `Document` carries
+/// none. Naming by content keeps a request byte-stable across turns and runs,
+/// which prompt-cache prefixes and recorded replays both rely on; names that
+/// repeat within one request are made unique by
+/// [`disambiguate_document_names`].
+fn document_name(source: &aws_bedrock::DocumentSource) -> String {
+    let bytes: &[u8] = match source {
+        aws_bedrock::DocumentSource::Bytes(blob) => blob.as_ref(),
+        aws_bedrock::DocumentSource::Text(text) => text.as_bytes(),
+        aws_bedrock::DocumentSource::S3Location(location) => location.uri().as_bytes(),
+        _ => &[],
+    };
+    let digest = Sha256::digest(bytes);
+    let hex: String = digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("document-{hex}")
+}
+
+/// Suffix the second and later occurrences of a document name within one
+/// request (`document-ab12`, `document-ab12-2`, …), so the same content sent
+/// twice stays two distinct, deterministically named documents.
+pub(crate) fn disambiguate_document_names(messages: &mut [aws_bedrock::Message]) {
+    let mut seen = std::collections::HashMap::<String, usize>::new();
+    for message in messages {
+        for block in &mut message.content {
+            if let aws_bedrock::ContentBlock::Document(document) = block {
+                let count = seen.entry(document.name.clone()).or_insert(0);
+                *count += 1;
+                if *count > 1 {
+                    document.name = format!("{}-{count}", document.name);
+                }
+            }
+        }
     }
 }
 

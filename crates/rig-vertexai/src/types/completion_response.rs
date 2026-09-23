@@ -87,7 +87,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             } else if let Some(text) = part.text() {
                 if part.thought {
                     assistant_contents.push(AssistantContent::Reasoning(
-                        Reasoning::new_with_signature(text, signature),
+                        Reasoning::new_with_signature(text, signature).with_provider(PROVIDER_NAME),
                     ));
                 } else {
                     assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));

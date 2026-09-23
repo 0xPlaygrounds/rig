@@ -699,7 +699,7 @@ fn completion_parent_span_macro_matches_the_contract_exactly() {
         let expected: HashSet<&str> = COMPLETION_PARENT_REQUIRED_FIELDS
             .iter()
             .copied()
-            .chain([COMPLETION_PARENT_MARKER_FIELD])
+            .chain([COMPLETION_PARENT_MARKER_FIELD, PROVIDER_REQUEST_ID_FIELD])
             .collect();
         // Exact equality in both directions: a field added to the macro
         // but not the constant (or vice versa) is drift, not a superset.
@@ -764,7 +764,11 @@ fn canonical_completion_span_declares_exactly_the_required_fields() {
             panic!("completion span was disabled");
         };
         let declared: HashSet<&str> = metadata.fields().iter().map(|field| field.name()).collect();
-        let expected: HashSet<&str> = COMPLETION_PARENT_REQUIRED_FIELDS.iter().copied().collect();
+        let expected: HashSet<&str> = COMPLETION_PARENT_REQUIRED_FIELDS
+            .iter()
+            .copied()
+            .chain([PROVIDER_REQUEST_ID_FIELD])
+            .collect();
         // The adoption checklist and the span the builder itself creates
         // must be the same set, or an adopted parent could not absorb
         // every field the builder records.
