@@ -402,8 +402,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         crate::message::UserContent::ToolResult(tool_result) => {
                             // Prefer provider identity so results match replayed calls.
                             let call_id = tool_result.wire_call_id().into_owned();
-                            let output = responses_tool_result_output(tool_result.content)
-                                .map_err(|error| EncodeError::request(error.to_string()))?;
+                            let output = responses_tool_result_output(tool_result.content)?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {

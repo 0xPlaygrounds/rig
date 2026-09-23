@@ -1696,7 +1696,7 @@ pub mod gemini_api_types {
     }
 
     /// Extract the suffix of `#/$defs/` or `#/definitions/`.
-    /// Return a response error for any other reference prefix.
+    /// Return a request error for any other reference prefix.
     fn parse_ref_path(ref_str: &str) -> Result<String, EncodeError> {
         if let Some(fragment) = ref_str.strip_prefix('#') {
             if let Some(name) = fragment.strip_prefix("/$defs/") {

@@ -70,8 +70,7 @@ impl Responses {
 
         let request = builder
             .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::Bytes(body))
-            .map_err(|error| EncodeError::request(error.to_string()))?;
+            .body(Body::Bytes(body))?;
 
         let framing = if streaming {
             Framing::Sse

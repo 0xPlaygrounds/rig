@@ -43,18 +43,14 @@ fn assert_request_building(case: &str, error: &ProviderError) {
         "{case}: {error}"
     );
     assert!(!error.is_retryable(), "{case}: {error}");
-    let report = error.report();
-    assert!(
-        matches!(report.kind, ErrorKind::Request | ErrorKind::Url),
-        "{case}: {report:?}"
-    );
+    assert_eq!(error.report().kind, ErrorKind::Request, "{case}: {error}");
     match error {
-        ProviderError::Url(_)
-        | ProviderError::Request(_)
+        ProviderError::Request(_)
         | ProviderError::UnsupportedParameter { .. }
         | ProviderError::InvalidParameterValue { .. }
         | ProviderError::UnsupportedResponseEncoding { .. } => {}
         ProviderError::Http(_)
+        | ProviderError::Url(_)
         | ProviderError::Json(_)
         | ProviderError::Response(_)
         | ProviderError::Provider(_)
@@ -75,7 +71,6 @@ fn every_encode_error_constructor_classifies_as_request_building() {
         .uri("http://bad host")
         .body(())
         .expect_err("bad uri");
-    let url = url::Url::parse("not a url").expect_err("relative");
     let boxed: BoxError = Box::new(std::io::Error::other("io"));
     let message = crate::message::MessageError::ConversionError("nope".into());
     let cases: Vec<(&str, EncodeError)> = vec![
@@ -94,7 +89,6 @@ fn every_encode_error_constructor_classifies_as_request_building() {
         ),
         ("from json", json.into()),
         ("from http", http.into()),
-        ("from url", url.into()),
         ("from boxed", boxed.into()),
         ("from message", message.into()),
     ];

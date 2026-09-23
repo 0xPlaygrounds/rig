@@ -100,8 +100,7 @@ impl crate::wire::Wire for Interactions {
                 crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
                 self.provider.api_key.expose(),
             )
-            .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EncodeError::request(error.to_string()))?;
+            .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))?;
         // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }
@@ -195,8 +194,7 @@ impl crate::wire::Wire for InteractionResume {
                 crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
                 self.provider.api_key.expose(),
             )
-            .body(crate::wire::Body::empty())
-            .map_err(|error| EncodeError::request(error.to_string()))?;
+            .body(crate::wire::Body::empty())?;
         Ok(crate::wire::Encoded::new(request, framing))
     }
 

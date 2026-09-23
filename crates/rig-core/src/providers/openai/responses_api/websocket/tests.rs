@@ -278,6 +278,10 @@ fn websocket_request_rejects_an_unsupported_base_url_scheme() {
         error.to_string().contains("ftp"),
         "the error should name the scheme, got {error}"
     );
+    // Building the handshake request is request building, not transport.
+    let error = ProviderError::from(error);
+    assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
+    assert!(!error.is_retryable());
 }
 
 #[test]

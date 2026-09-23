@@ -628,8 +628,8 @@ impl From<http_client::Error> for ProviderError {
 
 /// A failure to build a provider request, returned by
 /// [`Wire::encode`](crate::wire::Wire::encode). It converts only into a
-/// request-building [`ProviderError`]: `Request`, `Url`, or a typed request
-/// parameter variant, so every provider classifies its encode failures alike.
+/// request-building [`ProviderError`], `Request` or a typed request parameter
+/// variant, so every provider classifies its encode failures alike.
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct EncodeError(ProviderError);
@@ -675,17 +675,8 @@ impl EncodeError {
 
 impl From<EncodeError> for ProviderError {
     fn from(error: EncodeError) -> Self {
-        debug_assert!(matches!(
-            error.0.kind(),
-            ErrorKind::Request | ErrorKind::Url
-        ));
+        debug_assert_eq!(error.0.kind(), ErrorKind::Request);
         error.0
-    }
-}
-
-impl From<url::ParseError> for EncodeError {
-    fn from(error: url::ParseError) -> Self {
-        Self(ProviderError::Url(error))
     }
 }
 

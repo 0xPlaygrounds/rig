@@ -10,7 +10,7 @@
 use crate::completion;
 use crate::driver::{Bound, WireDriver};
 use crate::driver::{TriagedFrame, triage_frame};
-use crate::error::ProviderError;
+use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
 use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{
@@ -831,9 +831,9 @@ fn websocket_frame_to_text(frame: Frame) -> Result<Option<String>, ProviderError
 ///
 /// The backend supplies the websocket-specific handshake headers; this only
 /// states where to connect and who is connecting.
-fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, ProviderError> {
+fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, EncodeError> {
     let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
-        .map_err(ProviderError::Http)?;
+        .map_err(EncodeError::request)?;
 
     let request = wire.provider.headers(
         http_client::Request::builder()
@@ -842,7 +842,7 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, P
     );
 
     request.body(NoBody).map_err(|error| {
-        ProviderError::Provider(format!("Failed to build OpenAI websocket request: {error}"))
+        EncodeError::request(format!("Failed to build OpenAI websocket request: {error}"))
     })
 }
 

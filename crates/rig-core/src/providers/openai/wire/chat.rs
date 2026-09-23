@@ -127,9 +127,7 @@ impl Chat {
             &body,
         );
 
-        let request = builder
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EncodeError::request(error.to_string()))?;
+        let request = builder.body(Body::Bytes(serde_json::to_vec(&body)?))?;
 
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
