@@ -155,7 +155,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_prompted_event(&response.output);
+        assert_event(&response.output);
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         let request = request_at(&log, 0);
@@ -189,7 +189,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
         let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
-        assert_prompted_event(&output);
+        assert_event(&output);
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(log.records[0].events.is_some(), "events are kept");

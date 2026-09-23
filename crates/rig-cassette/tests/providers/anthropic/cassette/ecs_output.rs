@@ -109,7 +109,7 @@ async fn prompted_unary_effect_log() {
                 let output = ecs
                     .prompt_with_max_turns(STRUCTURED_OUTPUT_PROMPT, false, None)
                     .await;
-                assert_prompted_event(&output);
+                assert_event(&output);
                 let log = ecs.effect_log();
                 crate::goldens::world_golden_effects(
                     "anthropic_output_prompted_unary_effect_log",
@@ -157,7 +157,7 @@ async fn prompted_streamed_effect_log() {
                 let output = ecs
                     .prompt_with_max_turns(STRUCTURED_OUTPUT_PROMPT, true, None)
                     .await;
-                assert_prompted_event(&output);
+                assert_event(&output);
                 let log = ecs.effect_log();
                 crate::goldens::world_golden_effects(
                     "anthropic_output_prompted_streamed_effect_log",

@@ -43,9 +43,12 @@ async fn nonexistent_model_error_preserves_status_and_body() {
             // carries the reply's bytes — so reading the id back is the
             // cheapest proof this funnel hands over the body verbatim
             // rather than anything's rendering of it.
+            let request_id = error
+                .provider_request_id()
+                .expect("the transport keeps the request id");
             assert_eq!(
                 body["request_id"].as_str(),
-                error.provider_request_id(),
+                Some(request_id),
                 "the preserved body must be the reply's own envelope, whose id is \
                  the transport's request id: {body}"
             );
@@ -90,9 +93,12 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
             // `stream()` — not the SSE `error` event, which arrives on a
             // 200 and is covered by
             // `anthropic::streaming::tests::terminal_emission::streamed_error_envelope_preserves_the_verbatim_body`.
+            let request_id = error
+                .provider_request_id()
+                .expect("the transport keeps the request id");
             assert_eq!(
                 body["request_id"].as_str(),
-                error.provider_request_id(),
+                Some(request_id),
                 "the streamed path's preserved body must keep the envelope's \
                  own correlation id too: {body}"
             );
