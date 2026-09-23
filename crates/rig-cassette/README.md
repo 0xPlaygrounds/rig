@@ -148,6 +148,26 @@ asks for recording, so a candidate is never implicitly promoted to a fixture.
 While a live run is in progress, `checkpoint_recording` writes the completed,
 scrubbed exchanges to a partial path without finalizing the recording.
 
+A recording only becomes the fixture when the test passed and the recording is
+clean. A failed test's exchanges, and a recording `finish` refuses, go under
+`attempt_root()` (`RIG_CASSETTE_ATTEMPT_DIR`, default `cassette-attempts` in the
+target directory). `finish` refuses two kinds of recording:
+
+- one holding an account failure that the cell did not declare: a refused
+  credential, a spent quota, a rate limit or an empty balance, as classified
+  by `reply_account_failure`, including a failure delivered inside a 2xx
+  stream. Cells declare one with `CassetteSpec::expects_account_failure`,
+  `ProviderCassette::expect_account_failure` or `bogus_api_key`.
+- one in which an OpenAI or xAI Responses request stored a response that the
+  session never deleted (`cassette_stored_state`).
+
+A relay in front of the proxy, and the direct recorder for unary and
+multipart requests, append every created stored response, file, cache,
+interaction, conversation and vector store to the `ledger` module's
+`ledger.jsonl` before the reply reaches the test. `ledger::clean_up` deletes
+what the ledger still holds. The `cassette_tool` example exposes both checks
+and the cleanup pass.
+
 `DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
 preserve binary bodies that a text proxy cannot record. When the proxy omits a
 non-UTF-8 multipart request body, replay accepts multipart input without comparing

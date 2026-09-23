@@ -239,9 +239,16 @@ async fn direct_recorder_omits_sigv4_headers() {
     let policy =
         CassettePolicy::for_scenario("bedrock", "agent/completion_smoke", ReplayMatching::Ordered);
     let interactions = Arc::new(Mutex::new(Vec::new()));
+    let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
         interactions: interactions.clone(),
         policy,
+        ledger: Arc::new(relay::LedgerTarget {
+            path: ledger_dir.path().join("ledger.jsonl"),
+            provider: "bedrock".to_owned(),
+            scenario: "agent/completion_smoke".to_owned(),
+            origin: "https://bedrock-runtime.us-east-1.amazonaws.com".to_owned(),
+        }),
     };
 
     recorder
