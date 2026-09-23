@@ -16,7 +16,7 @@
 //! `timings.cache_n`, which this provider preserves through
 //! [`llamacpp::Timings`](rig::providers::llamacpp::Timings).
 //!
-//! Measured by the fixtures below, against b10499-6d05498 with
+//! Measured by the fixtures below, against b10964-b29c606e2 with
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M: `prompt_caching/blocking_probe` bills
 //! 2,825 prompt tokens on turn 1 and reads **2,824** of them back on turn 2 —
 //! far above the 0.80 floor every other provider in the matrix is held to.

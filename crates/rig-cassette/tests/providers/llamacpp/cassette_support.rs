@@ -26,7 +26,7 @@
 //! A fixture recorded from a local server is reproducible only if the
 //! generation is pinned. Unless a cell's own doc comment says otherwise, every
 //! cassette here was recorded against **`unsloth/Qwen3-1.7B-GGUF` Q4_K_M**
-//! served by `llama-server` **b10499 (commit 6d05498)**, launched as:
+//! served by `llama-server` **b10964 (commit b29c606e2)**, launched as:
 //!
 //! ```text
 //! llama-server -m <Qwen3-1.7B-Q4_K_M.gguf> --host 127.0.0.1 --port 8080 \
@@ -265,7 +265,7 @@ server_config_wrapper!(
 pub(super) const CASSETTE_LARGE_VISION_MODEL: &str = "Qwen2.5-VL-7B-Instruct-Q4_K_M";
 
 server_config_wrapper!(
-    /// The Llama family (`unsloth/Llama-3.2-3B-Instruct-GGUF` Q4_K_M) — a
+    /// The Llama family (`bartowski/Llama-3.2-3B-Instruct-GGUF` Q4_K_M) — a
     /// different chat template, and therefore a different tool-call wire.
     with_llamacpp_llama_family_cassette,
     "LLAMACPP_LLAMA_FAMILY_UPSTREAM",
@@ -274,14 +274,14 @@ server_config_wrapper!(
 
 server_config_wrapper!(
     /// The Mistral family
-    /// (`unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M).
+    /// (`bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M).
     with_llamacpp_mistral_family_cassette,
     "LLAMACPP_MISTRAL_FAMILY_UPSTREAM",
     8091
 );
 
 server_config_wrapper!(
-    /// The Gemma family (`unsloth/gemma-3-12b-it-GGUF` Q4_K_M), whose template
+    /// The Gemma family (`ggml-org/gemma-3-12b-it-GGUF` Q4_K_M), whose template
     /// declares no tool support at all.
     with_llamacpp_gemma_family_cassette,
     "LLAMACPP_GEMMA_FAMILY_UPSTREAM",

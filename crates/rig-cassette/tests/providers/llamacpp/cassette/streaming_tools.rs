@@ -2,7 +2,7 @@
 //!
 //! This file used to open by saying it exercised "llama.cpp-style
 //! complete-single-chunk tool call streaming". It does not, and llama.cpp does
-//! not: measured on b10499-6d05498 across four chat templates, tool-call
+//! not: measured on b10964-b29c606e2 across four chat templates, tool-call
 //! arguments stream one token at a time, which is why
 //! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` is now `false`. What these cells
 //! actually exercise is the shared accumulator reassembling those fragments
@@ -10,7 +10,7 @@
 //! measurement.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 
 use rig::prelude::*;
 

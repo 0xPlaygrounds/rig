@@ -171,7 +171,7 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 
     assert_eq!(
         props["build_info"],
-        serde_json::json!("b10499-6d05498"),
+        serde_json::json!("b10964-b29c606e2"),
         "every fixture in this corpus was recorded against this build; if this \
          assertion fails the corpus was re-recorded against another one and the \
          module docs need updating"

@@ -20,7 +20,9 @@
 //!
 //! `LLAMA_3_1_8B_INSTANT`, `LLAMA_3_3_70B_VERSATILE` and `MINIMAX_M2_7` are
 //! enterprise-contract models after 2026-08-16 and are not required in the
-//! listing, which is recorded from a developer-tier key.
+//! listing, which is recorded from a developer-tier key. The compound systems
+//! (`groq/compound`, `groq/compound-mini`) left the catalog entirely and their
+//! constants were removed.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
@@ -41,8 +43,6 @@ const PUBLIC_CONSTANTS: &[&str] = &[
     groq::GPT_OSS_20B,
     groq::GPT_OSS_SAFEGUARD_20B,
     groq::QWEN3_8_27B,
-    groq::COMPOUND,
-    groq::COMPOUND_MINI,
     groq::WHISPER_LARGE_V3,
     groq::WHISPER_LARGE_V3_TURBO,
 ];

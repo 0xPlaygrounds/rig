@@ -1,7 +1,7 @@
 //! Response identity, and the typed route's parity with the normalized one.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 //!
 //! Two dimensions every mature suite in this tree carries and llama.cpp did
 //! not: what `provider_request_id` and `response_id` are worth here, and
@@ -22,7 +22,7 @@
 //! to `ProviderResponse` provider-wide, so "no contract" needs to be right
 //! rather than merely convenient.
 //!
-//! It is. Measured live against b10499-6d05498 on both transports, the full
+//! It is. Measured live against b10964-b29c606e2 on both transports, the full
 //! response header set is `Server`, `Access-Control-Allow-Origin`,
 //! `Content-Type`, and `Content-Length` (blocking) or `X-Accel-Buffering` +
 //! `Transfer-Encoding` (streaming), plus `Keep-Alive` — no id among them.

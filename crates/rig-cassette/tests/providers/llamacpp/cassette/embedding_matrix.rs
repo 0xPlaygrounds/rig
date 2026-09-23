@@ -2,7 +2,7 @@
 //!
 //! **Server**: `--embeddings --pooling mean` on
 //! `Qwen/Qwen3-Embedding-0.6B-GGUF` Q8_0, `--seed 42 --temp 0 -c 2048`,
-//! `llama-server` b10499-6d05498. A real embedding model, not a causal LM
+//! `llama-server` b10964-b29c606e2. A real embedding model, not a causal LM
 //! pooled into one; what a causal LM does under the same flags is
 //! `error_matrix::embeddings_on_a_causal_lm_return_pooled_numbers`.
 //!

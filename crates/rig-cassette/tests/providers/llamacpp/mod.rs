@@ -1,7 +1,7 @@
 //! The llama.cpp provider suite: one provider, one corpus, one build.
 //!
 //! Every fixture under `crates/rig-cassette/fixtures/cassettes/llamacpp/` was recorded against
-//! `llama-server` **b10499 (commit 6d05498)** built from source, with
+//! `llama-server` **b10964 (commit b29c606e2)** built from source, with
 //! generation pinned (`--seed 42 --temp 0`) and one model per server
 //! configuration. `GET /props` reports the build as `build_info`, and
 //! `unmapped_surface::props_states_which_model_and_modalities_produced_this_corpus`

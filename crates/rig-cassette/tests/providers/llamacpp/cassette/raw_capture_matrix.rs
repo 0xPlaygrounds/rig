@@ -61,7 +61,7 @@
 //! the code no longer performs.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_capture_matrix -- --test-threads=1`
 
@@ -143,9 +143,11 @@ async fn raw_reads_back_as_the_provider_type() {
                 response.raw.as_object().expect("raw is an object"),
                 body.as_object().expect("the recorded body is an object"),
             );
+            // The fixture stores canonical JSON with sorted keys, while `raw`
+            // keeps the server's key order, so the shape is the key set.
             assert_eq!(
-                live.keys().collect::<Vec<_>>(),
-                recorded.keys().collect::<Vec<_>>(),
+                live.keys().collect::<std::collections::BTreeSet<_>>(),
+                recorded.keys().collect::<std::collections::BTreeSet<_>>(),
                 "raw and the recording must be the same document shape"
             );
         }

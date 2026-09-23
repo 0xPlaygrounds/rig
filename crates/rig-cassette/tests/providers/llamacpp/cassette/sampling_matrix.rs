@@ -1,7 +1,7 @@
 //! Sampling parameters, crossed against what `llama-server` does with them.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498 —
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2 —
 //! except where a cell names another. The smoke tier is enough for every cell
 //! here: what is under test is whether a parameter reaches the wire and what
 //! the server does with it, not whether the model is clever.

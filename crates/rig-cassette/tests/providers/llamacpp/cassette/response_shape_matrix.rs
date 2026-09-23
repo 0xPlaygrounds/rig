@@ -2,7 +2,7 @@
 //! multiple candidates, log probabilities, and the finish-reason vocabulary.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 //!
 //! | Cell | Dimension | Pinned |
 //! | --- | --- | --- |

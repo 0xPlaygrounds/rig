@@ -2,7 +2,7 @@
 //! of them actually constrain it.
 //!
 //! **Server**: the competent tier (`unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, b10499-6d05498) for the cells whose
+//! `--jinja --seed 42 --temp 0 -c 8192`, b10964-b29c606e2) for the cells whose
 //! claim is about the *model* holding a shape, and the default smoke tier for
 //! the cells whose claim is about the *server* enforcing one. Grammar
 //! adherence is a capability question, and the split says which side of it
@@ -10,7 +10,7 @@
 //!
 //! | Cell | Mechanism | Constrained by | Result |
 //! | --- | --- | --- | --- |
-//! | [`json_object_response_format_constrains_nothing`] | `response_format: {type: json_object}` | **nothing** | markdown-fenced prose is allowed through |
+//! | [`json_object_response_format_is_enforced_as_an_object`] | `response_format: {type: json_object}` | GBNF for any JSON object | a one-word answer comes back wrapped in an object |
 //! | [`json_schema_response_format_is_enforced_by_the_server`] | `response_format: {type: json_schema, …}` | GBNF derived from the schema | bare JSON matching the schema |
 //! | [`a_gbnf_grammar_through_additional_params_is_enforced`] | `grammar` | GBNF verbatim | only the alternatives the grammar allows |
 //! | [`a_schema_and_a_grammar_together_are_rejected`] | top-level `json_schema` + `grammar` | — | 500, `Cannot use both json_schema and grammar` |
@@ -18,21 +18,16 @@
 //! | [`a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server`] | `json_schema` on the smoke tier | GBNF | the 1.7B cannot violate a grammar-enforced schema |
 //! | [`a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable`] | `output_schema` + `tools` | — | rig withholds `response_format` on turn 1; sending both makes the tool unreachable |
 //!
-//! # `json_object` is a no-op, and that is the finding
+//! # `json_object` constrains the answer to a JSON object
 //!
 //! OpenAI's `response_format: {"type": "json_object"}` guarantees syntactically
-//! valid JSON. llama.cpp's implementation reads
-//! `json_schema = json_value(response_format, "schema", json::object())`
-//! (`server-common.cpp:1167`), so a bare `json_object` with no `schema` key
-//! yields the **empty schema `{}`** — which matches every JSON value and, once
-//! converted to GBNF, constrains nothing. Measured on b10499-6d05498: the
-//! answer comes back as ```` ```json … ``` ```` fenced prose, which no JSON
-//! parser accepts.
+//! valid JSON. llama.cpp b10499 derived an empty schema from a bare
+//! `json_object` and constrained nothing; b10964-b29c606e2 enforces a JSON
+//! object. The cell asks for a single plain word, which only a grammar turns
+//! into JSON, so it tells the two behaviors apart.
 //!
-//! Rig never sends a bare `json_object` on its own — `output_schema` maps to
-//! `json_schema`, which llama.cpp *does* enforce — so this is not a rig defect.
-//! It is a trap for anyone reaching for `additional_params`, and recording it
-//! is how it stops being folklore.
+//! Rig never sends a bare `json_object` on its own: `output_schema` maps to
+//! `json_schema`, which llama.cpp also enforces.
 //!
 //! # The conflict guard has a hole, and rig's route is on the wrong side of it
 //!
@@ -80,18 +75,18 @@ fn recorded_answer(scenario: &str) -> String {
         .to_string()
 }
 
-/// `json_object` alone constrains nothing.
+/// `json_object` alone constrains the answer to a JSON object.
 #[tokio::test]
-async fn json_object_response_format_constrains_nothing() {
+async fn json_object_response_format_is_enforced_as_an_object() {
     with_llamacpp_cassette(
-        "structured_output_matrix/json_object_is_a_no_op",
+        "structured_output_matrix/json_object_is_enforced",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
                         .completion_request(format!(
-                            "{NO_THINK}Return JSON with the key `city` set to Paris."
+                            "{NO_THINK}Reply with the single word hello and nothing else."
                         ))
                         .max_tokens(256)
                         .additional_params(json!({
@@ -110,7 +105,7 @@ async fn json_object_response_format_constrains_nothing() {
 
     let request = recorded_json_request(
         "llamacpp",
-        "structured_output_matrix/json_object_is_a_no_op",
+        "structured_output_matrix/json_object_is_enforced",
     );
     assert_eq!(
         request["response_format"],
@@ -118,17 +113,15 @@ async fn json_object_response_format_constrains_nothing() {
         "additional_params must merge the response_format through unchanged"
     );
 
-    // The finding: llama.cpp derives an *empty* schema from a bare
-    // `json_object`, so the answer is not constrained to JSON at all.
-    let answer = recorded_answer("structured_output_matrix/json_object_is_a_no_op");
+    // Unconstrained, the model answers with the bare word; only the server's
+    // grammar makes it a JSON object.
+    let answer = recorded_answer("structured_output_matrix/json_object_is_enforced");
+    let parsed: Value = serde_json::from_str(answer.trim()).unwrap_or_else(|error| {
+        panic!("a bare json_object must yield a JSON object ({error}): {answer:?}")
+    });
     assert!(
-        serde_json::from_str::<Value>(answer.trim()).is_err(),
-        "if llama.cpp ever starts enforcing bare `json_object`, this cell fails \
-         and the module docs need correcting. Answer was: {answer:?}"
-    );
-    assert!(
-        answer.contains("```") || answer.to_ascii_lowercase().contains("paris"),
-        "the answer is prose that merely mentions the value: {answer:?}"
+        parsed.is_object(),
+        "the answer is a JSON object: {answer:?}"
     );
 }
 
@@ -289,7 +282,7 @@ async fn a_schema_and_a_grammar_together_are_rejected() {
 /// the route rig actually takes for `output_schema` can carry a `grammar`
 /// alongside it and the schema wins with no diagnostic at all.
 ///
-/// Measured on b10499-6d05498: a request pairing a `{city, country,
+/// Measured on b10964-b29c606e2: a request pairing a `{city, country,
 /// population_millions}` schema with `root ::= "yes" | "no"` answers with the
 /// JSON object. Neither constraint is what the caller asked for jointly, and
 /// nothing says so — which is why the pair of cells is worth more than either.
@@ -396,7 +389,7 @@ async fn a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server() {
 /// Sending both at once is not an error here — it is worse. The schema
 /// compiles to a grammar applied during sampling, and that grammar admits only
 /// JSON matching the schema, so the model *cannot emit a tool call at all*:
-/// measured on b10499-6d05498, a request carrying both answers
+/// measured on b10964-b29c606e2, a request carrying both answers
 /// `finish_reason: "stop"` with `{"city": "Paris"}` and no `tool_calls`, even
 /// though the prompt asks for a lookup.
 ///

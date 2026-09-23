@@ -39,7 +39,9 @@ fn union_parameters_schema(count: usize) -> Value {
     })
 }
 
-fn assert_invalid_request(error: &CompletionError) {
+/// The rejection is the schema limit `reason` names, not some other 400
+/// (a spent quota answers with the same status and error type).
+fn assert_invalid_request(error: &CompletionError, reason: &str) {
     let status = error
         .provider_response_status()
         .expect("provider status should be preserved");
@@ -50,6 +52,11 @@ fn assert_invalid_request(error: &CompletionError) {
         .expect("provider error JSON should be preserved");
     assert_eq!(body["type"], "error");
     assert_eq!(body["error"]["type"], "invalid_request_error");
+    let message = body["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains(reason),
+        "the rejection names {reason:?}: {message}"
+    );
 }
 
 fn assert_single_tool_call(
@@ -126,7 +133,7 @@ async fn twenty_one_strict_tools_are_rejected() {
                 .completion(request)
                 .await
                 .expect_err("twenty-one strict tools should exceed the provider limit");
-            assert_invalid_request(&error);
+            assert_invalid_request(&error, "Too many strict tools");
         },
     )
     .await;
@@ -157,7 +164,7 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
                 .completion(request)
                 .await
                 .expect_err("the provider's internal grammar cap should reject this shape");
-            assert_invalid_request(&error);
+            assert_invalid_request(&error, "Schema is too complex");
         },
     )
     .await;
@@ -186,7 +193,7 @@ async fn twenty_five_optional_parameters_are_rejected() {
                 .completion(request)
                 .await
                 .expect_err("twenty-five optional parameters should exceed the provider limit");
-            assert_invalid_request(&error);
+            assert_invalid_request(&error, "too many optional parameters");
         },
     )
     .await;
@@ -217,7 +224,7 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
                 .completion(request)
                 .await
                 .expect_err("the provider's internal grammar cap should reject this shape");
-            assert_invalid_request(&error);
+            assert_invalid_request(&error, "Schema is too complex");
         },
     )
     .await;
@@ -326,7 +333,7 @@ async fn seventeen_union_parameters_are_rejected() {
                 .completion(request)
                 .await
                 .expect_err("seventeen union parameters should exceed the provider limit");
-            assert_invalid_request(&error);
+            assert_invalid_request(&error, "too many parameters with union types");
         },
     )
     .await;

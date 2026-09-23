@@ -23,7 +23,7 @@
 //! | `raw` under the `openai` descriptor name, not `llamacpp` | [`raw_response_text_matches_normalized_choice_text`] |
 //!
 //! Recorded against the default server (`--jinja --seed 42 --temp 0 -c 4096`,
-//! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10499-6d05498).
+//! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10964-b29c606e2).
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;

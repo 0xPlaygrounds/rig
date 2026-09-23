@@ -1,7 +1,7 @@
 //! Message-content shapes, and what the chat template does with each.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
 //! Every claim here is about the request rig builds and the template's
 //! tolerance for it, not about whether the model is clever, so the smoke tier
 //! is the right tier for all of them.

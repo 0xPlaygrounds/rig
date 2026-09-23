@@ -30,6 +30,7 @@ use crate::support::{
 use super::support::with_xai_cassette_result;
 
 pub(super) const SESSION_MODEL: &str = "grok-4.3";
+const SESSION_MAX_TOKENS: Option<u64> = None;
 const REASONING_MODEL: &str = xai::GROK_3_MINI;
 pub(super) const VISION_MODEL: &str = "grok-4.3";
 

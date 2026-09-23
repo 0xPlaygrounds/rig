@@ -15,9 +15,9 @@
 //! | --- | --- | --- | --- | --- |
 //! | Qwen (smoke) | `unsloth/Qwen3-1.7B-GGUF` Q4_K_M | yes | `tools.rs`, `tool_matrix.rs` | `streaming_tools.rs` |
 //! | Qwen (competent) | `unsloth/Qwen3-8B-GGUF` Q4_K_M | yes, parallel | `tool_matrix.rs` | — |
-//! | Llama | `unsloth/Llama-3.2-3B-Instruct-GGUF` Q4_K_M | yes, no parallel | [`llama_family_calls_a_tool`] | [`llama_family_streams_tool_call_arguments_as_deltas`] |
-//! | Mistral | `unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M | yes, parallel | [`mistral_family_calls_a_tool`] | [`mistral_family_streams_tool_call_arguments_as_deltas`] |
-//! | Gemma | `unsloth/gemma-3-12b-it-GGUF` Q4_K_M | **none** | [`gemma_family_has_no_tool_calling_in_its_template`] | dropped — nothing to stream |
+//! | Llama | `bartowski/Llama-3.2-3B-Instruct-GGUF` Q4_K_M | yes, no parallel | [`llama_family_calls_a_tool`] | [`llama_family_streams_tool_call_arguments_as_deltas`] |
+//! | Mistral | `bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M | yes, parallel | [`mistral_family_calls_a_tool`] | [`mistral_family_streams_tool_call_arguments_as_deltas`] |
+//! | Gemma | `ggml-org/gemma-3-12b-it-GGUF` Q4_K_M | **none** | [`gemma_family_has_no_tool_calling_in_its_template`] | dropped — nothing to stream |
 //!
 //! Plus one cell that reads an existing fixture rather than recording:
 //! [`even_a_zero_argument_call_streams_as_two_fragments`], the strongest case
@@ -29,7 +29,7 @@
 //! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` asks whether the backend can put a
 //! whole tool call — id, name and **complete** arguments — into one streaming
 //! chunk. The provider inherited `true` for it. Measured against
-//! `llama-server` b10499-6d05498 it is **false on every family that can call a
+//! `llama-server` b10964-b29c606e2 it is **false on every family that can call a
 //! tool at all**: arguments stream one token at a time, so the first chunk
 //! carries the name beside a lone `{` and the closing `}` arrives ten chunks
 //! later. Even a *zero-argument* call streams as `{` then `}` rather than as
