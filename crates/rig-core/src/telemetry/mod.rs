@@ -1,9 +1,9 @@
 //! GenAI tracing spans, completion-parent adoption, and opt-in content recording.
 //!
 //! ```
-//! use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
+//! use rig_core::telemetry::{GenAiOperation, SpanBuilder};
 //!
-//! let span = CompletionSpanBuilder::new("provider", "model", CompletionOperation::Chat).build();
+//! let span = SpanBuilder::new("provider", "model", GenAiOperation::Chat).build();
 //! ```
 use crate::completion::{AssistantContent, Message, Usage};
 use crate::message::{
@@ -77,9 +77,11 @@ macro_rules! new_completion_span {
     };
 }
 
-/// A supported GenAI completion operation and its canonical span name.
+/// A GenAI operation and its canonical span name. Completion operations carry
+/// message content and may adopt a completion-parent span; the others record
+/// only usage and identity on a fresh span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompletionOperation {
+pub enum GenAiOperation {
     /// A chat completion.
     Chat,
     /// A streaming chat completion.
@@ -90,9 +92,19 @@ pub enum CompletionOperation {
     Interactions,
     /// A streaming Gemini Interactions API request.
     InteractionsStreaming,
+    /// A text (or image) embedding request.
+    Embeddings,
+    /// A reranking request.
+    Rerank,
+    /// An audio transcription request.
+    Transcription,
+    /// An image generation request.
+    ImageGeneration,
+    /// An audio generation (text-to-speech) request.
+    AudioGeneration,
 }
 
-impl CompletionOperation {
+impl GenAiOperation {
     fn as_str(self) -> &'static str {
         match self {
             Self::Chat => "chat",
@@ -100,7 +112,23 @@ impl CompletionOperation {
             Self::GenerateContent => "generate_content",
             Self::Interactions => "interactions",
             Self::InteractionsStreaming => "interactions_streaming",
+            Self::Embeddings => "embeddings",
+            Self::Rerank => "rerank",
+            Self::Transcription => "transcription",
+            Self::ImageGeneration => "image_generation",
+            Self::AudioGeneration => "audio_generation",
         }
+    }
+
+    fn is_completion(self) -> bool {
+        matches!(
+            self,
+            Self::Chat
+                | Self::ChatStreaming
+                | Self::GenerateContent
+                | Self::Interactions
+                | Self::InteractionsStreaming
+        )
     }
 }
 
@@ -304,37 +332,6 @@ fn warn_once_on_completion_parent_verdict(
     }
 }
 
-/// A supported non-completion GenAI operation and its canonical span name.
-///
-/// The completion operations stay on [`CompletionOperation`]: they carry
-/// message content and participate in span adoption. These operations carry
-/// only usage and identity metadata, and their spans are always fresh.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModalityOperation {
-    /// A text (or image) embedding request.
-    Embeddings,
-    /// A reranking request.
-    Rerank,
-    /// An audio transcription request.
-    Transcription,
-    /// An image generation request.
-    ImageGeneration,
-    /// An audio generation (text-to-speech) request.
-    AudioGeneration,
-}
-
-impl ModalityOperation {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Embeddings => "embeddings",
-            Self::Rerank => "rerank",
-            Self::Transcription => "transcription",
-            Self::ImageGeneration => "image_generation",
-            Self::AudioGeneration => "audio_generation",
-        }
-    }
-}
-
 macro_rules! new_modality_span {
     ($name:literal, $provider:expr, $request_model:expr, $operation:expr) => {
         $crate::telemetry::__tracing::info_span!(
@@ -356,137 +353,43 @@ macro_rules! new_modality_span {
     };
 }
 
-/// Builds a GenAI modality span parented on the current span.
-/// Always creates a fresh span, leaving ambient completion fields unchanged.
-pub struct ModalitySpanBuilder<'a> {
-    provider: &'a str,
-    request_model: &'a str,
-    operation: ModalityOperation,
-}
-
-impl<'a> ModalitySpanBuilder<'a> {
-    /// Create a modality-span builder for a provider request.
-    pub fn new(provider: &'a str, request_model: &'a str, operation: ModalityOperation) -> Self {
-        Self {
-            provider,
-            request_model,
-            operation,
-        }
-    }
-
-    /// Build a canonical modality span.
-    pub fn build(self) -> tracing::Span {
-        let operation = self.operation.as_str();
-        match self.operation {
-            ModalityOperation::Embeddings => {
-                new_modality_span!("embeddings", self.provider, self.request_model, operation)
-            }
-            ModalityOperation::Rerank => {
-                new_modality_span!("rerank", self.provider, self.request_model, operation)
-            }
-            ModalityOperation::Transcription => {
-                new_modality_span!(
-                    "transcription",
-                    self.provider,
-                    self.request_model,
-                    operation
-                )
-            }
-            ModalityOperation::ImageGeneration => new_modality_span!(
-                "image_generation",
-                self.provider,
-                self.request_model,
-                operation
-            ),
-            ModalityOperation::AudioGeneration => new_modality_span!(
-                "audio_generation",
-                self.provider,
-                self.request_model,
-                operation
-            ),
-        }
-    }
-}
-
-/// Normalized usage and identity metadata recorded on a modality span.
-pub trait ModalityResponseTelemetry {
-    /// Rig-normalized token usage for the call.
-    fn telemetry_usage(&self) -> &Usage;
-    /// Provider-reported model identifier, when the wire named one.
-    fn telemetry_model(&self) -> Option<&str>;
-    /// Provider-assigned response-scoped identifier, when reported.
-    fn telemetry_response_id(&self) -> Option<&str>;
-}
-
-macro_rules! impl_modality_response_telemetry {
-    ($($ty:ty),+ $(,)?) => {
-        $(impl ModalityResponseTelemetry for $ty {
-            fn telemetry_usage(&self) -> &Usage {
-                &self.usage
-            }
-            fn telemetry_model(&self) -> Option<&str> {
-                self.model.as_deref()
-            }
-            fn telemetry_response_id(&self) -> Option<&str> {
-                self.response_id.as_deref()
-            }
-        })+
-    };
-}
-
-impl_modality_response_telemetry!(
-    crate::embeddings::EmbeddingResponse,
-    crate::embeddings::ImageEmbeddingResponse,
-    crate::rerank::RerankResponse,
-    crate::transcription::TranscriptionResponse,
-);
-#[cfg(feature = "image")]
-impl_modality_response_telemetry!(crate::image_generation::ImageGenerationResponse);
-#[cfg(feature = "audio")]
-impl_modality_response_telemetry!(crate::audio_generation::AudioGenerationResponse);
-
-/// Runs a modality call in its canonical span and records usage and identity
-/// on success. Returns the call's result unchanged; errors leave only request
+/// Runs a call of the unary operation `Op` in its canonical span and records
+/// the response with [`Operation::record`](crate::wire::Operation::record) on
+/// success. Returns the call's result unchanged; errors leave only request
 /// metadata on the span.
-pub async fn instrument_modality<F, T, E>(
+pub async fn instrument_modality<Op, E>(
     provider: &str,
     request_model: &str,
-    operation: ModalityOperation,
-    call: F,
-) -> Result<T, E>
+    call: impl Future<Output = Result<Op::Response, E>>,
+) -> Result<Op::Response, E>
 where
-    F: Future<Output = Result<T, E>>,
-    T: ModalityResponseTelemetry,
+    Op: crate::wire::Operation<Telemetry = GenAiOperation>,
 {
-    let span = ModalitySpanBuilder::new(provider, request_model, operation).build();
+    let span = SpanBuilder::new(provider, request_model, Op::telemetry(false)).build();
     let result = tracing::Instrument::instrument(call, span.clone()).await;
     if let Ok(response) = &result {
-        span.record_token_usage(response.telemetry_usage());
-        if let Some(id) = response.telemetry_response_id() {
-            span.record("gen_ai.response.id", id);
-        }
-        if let Some(model) = response.telemetry_model() {
-            span.record("gen_ai.response.model", model);
-        }
+        Op::record(&span, response);
     }
     result
 }
 
-/// Builder for a canonical GenAI completion span.
+/// Builder for a canonical GenAI span.
 ///
-/// Reuses current spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] and every
-/// field in [`COMPLETION_PARENT_REQUIRED_FIELDS`]. Otherwise creates a
-/// `rig::completions` child of the current span.
-pub struct CompletionSpanBuilder<'a> {
+/// A completion operation reuses the current span when it declares
+/// [`COMPLETION_PARENT_MARKER_FIELD`] and every field in
+/// [`COMPLETION_PARENT_REQUIRED_FIELDS`], and otherwise opens a
+/// `rig::completions` child of the current span. Every other operation opens a
+/// fresh `rig::modalities` span.
+pub struct SpanBuilder<'a> {
     provider: &'a str,
     request_model: &'a str,
-    operation: CompletionOperation,
+    operation: GenAiOperation,
     system_instructions: Option<String>,
 }
 
-impl<'a> CompletionSpanBuilder<'a> {
-    /// Create a completion-span builder for a provider request.
-    pub fn new(provider: &'a str, request_model: &'a str, operation: CompletionOperation) -> Self {
+impl<'a> SpanBuilder<'a> {
+    /// Create a span builder for a provider request.
+    pub fn new(provider: &'a str, request_model: &'a str, operation: GenAiOperation) -> Self {
         Self {
             provider,
             request_model,
@@ -496,7 +399,7 @@ impl<'a> CompletionSpanBuilder<'a> {
     }
 
     /// Set the system instructions sent with the request when sensitive content
-    /// telemetry has been explicitly enabled.
+    /// telemetry has been explicitly enabled. Only completion spans record them.
     pub fn system_instructions(
         mut self,
         system_instructions: Option<&'a str>,
@@ -506,62 +409,63 @@ impl<'a> CompletionSpanBuilder<'a> {
         self
     }
 
-    /// Build a canonical completion span or enrich Rig's current completion-parent span.
+    /// Build the operation's canonical span, or enrich Rig's current
+    /// completion-parent span for a completion operation.
     pub fn build(self) -> tracing::Span {
-        let current = tracing::Span::current();
-        if let Some(metadata) = current.metadata() {
-            let verdict = classify_completion_parent(metadata);
-            warn_once_on_completion_parent_verdict(verdict, metadata);
-            if verdict == CompletionParentVerdict::Adopt {
-                current.record("gen_ai.operation.name", self.operation.as_str());
-                current.record("gen_ai.provider.name", self.provider);
-                current.record("gen_ai.request.model", self.request_model);
-                if let Some(system_instructions) = self.system_instructions.as_deref() {
-                    current.record("gen_ai.system_instructions", system_instructions);
-                }
-                return current;
-            }
+        if self.operation.is_completion()
+            && let Some(parent) = self.adopt_completion_parent()
+        {
+            return parent;
         }
 
-        let operation = self.operation.as_str();
-        let system_instructions = self.system_instructions.as_deref();
+        let (provider, model) = (self.provider, self.request_model);
+        let op = self.operation.as_str();
+        let sys = self.system_instructions.as_deref();
         match self.operation {
-            CompletionOperation::Chat => new_completion_span!(
-                "chat",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::ChatStreaming => new_completion_span!(
-                "chat_streaming",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::GenerateContent => new_completion_span!(
-                "generate_content",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::Interactions => new_completion_span!(
-                "interactions",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::InteractionsStreaming => new_completion_span!(
-                "interactions_streaming",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
+            GenAiOperation::Chat => new_completion_span!("chat", provider, model, op, sys),
+            GenAiOperation::ChatStreaming => {
+                new_completion_span!("chat_streaming", provider, model, op, sys)
+            }
+            GenAiOperation::GenerateContent => {
+                new_completion_span!("generate_content", provider, model, op, sys)
+            }
+            GenAiOperation::Interactions => {
+                new_completion_span!("interactions", provider, model, op, sys)
+            }
+            GenAiOperation::InteractionsStreaming => {
+                new_completion_span!("interactions_streaming", provider, model, op, sys)
+            }
+            GenAiOperation::Embeddings => new_modality_span!("embeddings", provider, model, op),
+            GenAiOperation::Rerank => new_modality_span!("rerank", provider, model, op),
+            GenAiOperation::Transcription => {
+                new_modality_span!("transcription", provider, model, op)
+            }
+            GenAiOperation::ImageGeneration => {
+                new_modality_span!("image_generation", provider, model, op)
+            }
+            GenAiOperation::AudioGeneration => {
+                new_modality_span!("audio_generation", provider, model, op)
+            }
         }
+    }
+
+    /// The current span, enriched with this request, when it is a conforming
+    /// completion parent. Warns once per near-miss callsite.
+    fn adopt_completion_parent(&self) -> Option<tracing::Span> {
+        let current = tracing::Span::current();
+        let metadata = current.metadata()?;
+        let verdict = classify_completion_parent(metadata);
+        warn_once_on_completion_parent_verdict(verdict, metadata);
+        if verdict != CompletionParentVerdict::Adopt {
+            return None;
+        }
+        current.record("gen_ai.operation.name", self.operation.as_str());
+        current.record("gen_ai.provider.name", self.provider);
+        current.record("gen_ai.request.model", self.request_model);
+        if let Some(system_instructions) = self.system_instructions.as_deref() {
+            current.record("gen_ai.system_instructions", system_instructions);
+        }
+        Some(current)
     }
 }
 
@@ -850,10 +754,8 @@ pub trait SpanCombinator {
     /// Record Rig-normalized token usage fields on the span.
     fn record_token_usage(&self, usage: &Usage);
 
-    /// Record provider response metadata such as response ID and model name.
-    fn record_response_metadata<R>(&self, response: &R)
-    where
-        R: ProviderResponseExt;
+    /// Record a response's ID, model, and token usage on the span.
+    fn record_response(&self, response_id: Option<&str>, model: Option<&str>, usage: &Usage);
 }
 
 impl SpanCombinator for tracing::Span {
@@ -888,23 +790,21 @@ impl SpanCombinator for tracing::Span {
         }
     }
 
-    fn record_response_metadata<R>(&self, response: &R)
-    where
-        R: ProviderResponseExt,
-    {
+    fn record_response(&self, response_id: Option<&str>, model: Option<&str>, usage: &Usage) {
         if self.is_disabled() {
             return;
         }
-
-        if let Some(id) = response.response_id() {
+        if let Some(id) = response_id {
             self.record("gen_ai.response.id", id);
         }
-
-        if let Some(model_name) = response.response_model_name() {
-            self.record("gen_ai.response.model", model_name);
+        if let Some(model) = model {
+            self.record("gen_ai.response.model", model);
         }
+        self.record_token_usage(usage);
     }
 }
 
+#[cfg(test)]
+mod equivalence_tests;
 #[cfg(test)]
 mod tests;

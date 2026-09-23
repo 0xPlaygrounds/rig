@@ -90,10 +90,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality(
+        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
             PROVIDER_NAME,
             &self.model,
-            rig_core::telemetry::ModalityOperation::Embeddings,
             async {
                 let documents: Vec<String> = documents.into_iter().collect();
 

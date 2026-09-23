@@ -2512,7 +2512,7 @@ mod span_safety_net {
     use crate::streaming::StreamingCompletionResponse;
     use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
     use crate::tool::{ToolContext, ToolExecutionError};
-    use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
+    use rig_core::telemetry::{GenAiOperation, SpanBuilder};
 
     use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
@@ -2664,12 +2664,8 @@ mod span_safety_net {
             &self,
             request: CompletionRequest,
         ) -> Result<CompletionResponse, ProviderError> {
-            let span = CompletionSpanBuilder::new(
-                "fixture-provider",
-                "fixture-model",
-                CompletionOperation::Chat,
-            )
-            .build();
+            let span =
+                SpanBuilder::new("fixture-provider", "fixture-model", GenAiOperation::Chat).build();
             self.inner.completion(request).instrument(span).await
         }
 
@@ -2677,10 +2673,10 @@ mod span_safety_net {
             &self,
             request: CompletionRequest,
         ) -> Result<StreamingCompletionResponse, ProviderError> {
-            let span = CompletionSpanBuilder::new(
+            let span = SpanBuilder::new(
                 "fixture-provider",
                 "fixture-model",
-                CompletionOperation::ChatStreaming,
+                GenAiOperation::ChatStreaming,
             )
             .build();
             self.inner.stream(request).instrument(span).await

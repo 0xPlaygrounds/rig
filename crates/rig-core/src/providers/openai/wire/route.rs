@@ -17,7 +17,7 @@ use crate::providers::openai::responses_api::wire::Responses;
 use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
-use crate::telemetry::CompletionOperation;
+use crate::telemetry::GenAiOperation;
 use crate::wire::{
     Body, Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
 };
@@ -209,7 +209,7 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.capabilities())
     }
 
-    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+    fn telemetry(&self, streaming: bool) -> GenAiOperation {
         on_route!(self, wire => wire.telemetry(streaming))
     }
 }

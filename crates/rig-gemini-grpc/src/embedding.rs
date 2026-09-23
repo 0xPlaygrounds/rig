@@ -93,10 +93,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
     ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality(
+        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
             super::completion::PROVIDER_NAME,
             &self.model,
-            rig_core::telemetry::ModalityOperation::Embeddings,
             async {
                 let documents_vec: Vec<String> = documents.into_iter().collect();
                 let responses = self.raw_embed_texts(documents_vec.clone()).await?;

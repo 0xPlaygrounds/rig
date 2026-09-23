@@ -140,10 +140,9 @@ fn instrument_modality_records_usage_and_identity() {
             .build()
             .expect("runtime");
         runtime
-            .block_on(instrument_modality(
+            .block_on(instrument_modality::<crate::operation::Embedding, _>(
                 "probe",
                 "probe-embed",
-                ModalityOperation::Embeddings,
                 async { Ok::<_, crate::error::ProviderError>(response) },
             ))
             .expect("call succeeds");
@@ -477,12 +476,12 @@ fn completion_span_uses_canonical_names_fields_and_initial_attributes() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
 
     for (operation, expected_name) in [
-        (CompletionOperation::Chat, "chat"),
-        (CompletionOperation::ChatStreaming, "chat_streaming"),
-        (CompletionOperation::GenerateContent, "generate_content"),
-        (CompletionOperation::Interactions, "interactions"),
+        (GenAiOperation::Chat, "chat"),
+        (GenAiOperation::ChatStreaming, "chat_streaming"),
+        (GenAiOperation::GenerateContent, "generate_content"),
+        (GenAiOperation::Interactions, "interactions"),
         (
-            CompletionOperation::InteractionsStreaming,
+            GenAiOperation::InteractionsStreaming,
             "interactions_streaming",
         ),
     ] {
@@ -491,7 +490,7 @@ fn completion_span_uses_canonical_names_fields_and_initial_attributes() {
             span: captured.clone(),
         });
         tracing::subscriber::with_default(subscriber, || {
-            let span = CompletionSpanBuilder::new("openai", "gpt-5", operation)
+            let span = SpanBuilder::new("openai", "gpt-5", operation)
                 .system_instructions(Some("system prompt"), true)
                 .build();
             assert!(!span.is_disabled());
@@ -604,7 +603,7 @@ fn unrelated_ambient_span_is_parent_not_adopted() {
     tracing::subscriber::with_default(subscriber, || {
         let ambient = tracing::info_span!(target: "application", "ambient");
         let _guard = ambient.enter();
-        let span = CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        let span = SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         assert_ne!(span.id(), ambient.id());
     });
 
@@ -657,7 +656,7 @@ fn marker_span_missing_required_fields_is_not_adopted() {
             "hand-written marker literal is stale; update it to {COMPLETION_PARENT_MARKER_FIELD}"
         );
         let _guard = partial_marker.enter();
-        let span = CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        let span = SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         assert_ne!(span.id(), partial_marker.id());
     });
 
@@ -759,7 +758,7 @@ fn canonical_completion_span_declares_exactly_the_required_fields() {
 
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     tracing::subscriber::with_default(Registry::default(), || {
-        let span = CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        let span = SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         let Some(metadata) = span.metadata() else {
             panic!("completion span was disabled");
         };
@@ -909,10 +908,10 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
             gen_ai.operation.name = tracing::field::Empty,
         );
         let _guard = near_miss.enter();
-        CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         // Second completion under the *same* span callsite: the budget is
         // per callsite, so this one must stay silent.
-        CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
     });
 
     let captured = warnings.take();
@@ -963,7 +962,7 @@ fn distinct_near_miss_callsites_each_warn() {
             gen_ai.operation.name = tracing::field::Empty,
         );
         first.in_scope(|| {
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         });
 
         let second = tracing::info_span!(
@@ -973,7 +972,7 @@ fn distinct_near_miss_callsites_each_warn() {
             gen_ai.operation.name = tracing::field::Empty,
         );
         second.in_scope(|| {
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         });
     });
 
@@ -1012,7 +1011,7 @@ fn conforming_completion_parent_never_warns() {
             gen_ai.operation.name = tracing::field::Empty,
         );
         near_miss.in_scope(|| {
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
         });
         assert_eq!(
             warnings.take().len(),
@@ -1027,7 +1026,7 @@ fn conforming_completion_parent_never_warns() {
             system_instructions: Option::<&str>::None,
         );
         let _guard = conforming.enter();
-        CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
 
         // An ordinary ambient span is not a parent at all, and must not warn
         // either — a runtime that never opted in should never hear about
@@ -1035,7 +1034,7 @@ fn conforming_completion_parent_never_warns() {
         drop(_guard);
         let ambient = tracing::info_span!(target: "application", "ambient");
         let _ambient_guard = ambient.enter();
-        CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
     });
 
     // The control drained the buffer, so anything here was emitted by the
@@ -1062,13 +1061,9 @@ fn agent_chat_span_is_adopted_and_enriched() {
             system_instructions: tracing::field::Empty,
         );
         let _guard = completion_parent.enter();
-        let span = CompletionSpanBuilder::new(
-            "anthropic",
-            "claude-sonnet",
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(Some("provider system"), true)
-        .build();
+        let span = SpanBuilder::new("anthropic", "claude-sonnet", GenAiOperation::ChatStreaming)
+            .system_instructions(Some("provider system"), true)
+            .build();
         assert_eq!(span.id(), completion_parent.id());
     });
 
@@ -1107,12 +1102,8 @@ fn neutral_completion_parent_span_is_adopted_and_enriched() {
             system_instructions: tracing::field::Empty,
         );
         let _guard = completion_parent.enter();
-        let span = CompletionSpanBuilder::new(
-            "neutral-provider",
-            "neutral-model",
-            CompletionOperation::Chat,
-        )
-        .build();
+        let span =
+            SpanBuilder::new("neutral-provider", "neutral-model", GenAiOperation::Chat).build();
         assert_eq!(span.id(), completion_parent.id());
     });
 
@@ -1147,7 +1138,7 @@ fn absent_provider_system_does_not_overwrite_agent_instructions() {
             system_instructions: "effective agent instructions",
         );
         let _guard = completion_parent.enter();
-        CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+        SpanBuilder::new("openai", "gpt-5", GenAiOperation::Chat).build();
     });
 
     let Ok(captured) = captured.0.lock() else {

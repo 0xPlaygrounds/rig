@@ -12,7 +12,7 @@
 use crate::completion::CompletionRequest;
 use crate::error::ProviderError;
 use crate::message::{self, MimeType};
-use crate::telemetry::CompletionOperation;
+use crate::telemetry::GenAiOperation;
 use crate::wire::Mode;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value};
@@ -57,11 +57,11 @@ impl crate::wire::Wire for Interactions {
         Some(&self.model)
     }
 
-    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+    fn telemetry(&self, streaming: bool) -> GenAiOperation {
         if streaming {
-            CompletionOperation::InteractionsStreaming
+            GenAiOperation::InteractionsStreaming
         } else {
-            CompletionOperation::Interactions
+            GenAiOperation::Interactions
         }
     }
 
@@ -158,11 +158,11 @@ impl crate::wire::Wire for InteractionResume {
         None
     }
 
-    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+    fn telemetry(&self, streaming: bool) -> GenAiOperation {
         if streaming {
-            CompletionOperation::InteractionsStreaming
+            GenAiOperation::InteractionsStreaming
         } else {
-            CompletionOperation::Interactions
+            GenAiOperation::Interactions
         }
     }
 

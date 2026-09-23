@@ -85,10 +85,9 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         &self,
         generation_request: ImageGenerationRequest,
     ) -> Result<ImageGenerationResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality(
+        rig_core::telemetry::instrument_modality::<rig_core::operation::ImageGeneration, _>(
             PROVIDER_NAME,
             &self.model,
-            rig_core::telemetry::ModalityOperation::ImageGeneration,
             async {
                 let (response, provider_request_id) = self
                     .raw_image_generation_with_request_id(generation_request)
