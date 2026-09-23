@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were"}],"role":"model"},"finishReason":"MAX_TOKENS","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":24,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":46}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"}],"role":"model"},"finishReason":"MAX_TOKENS","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"p3izatO-GbjiqtsPytTWQA","usageMetadata":{"candidatesTokenCount":24,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":46}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":46,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":68}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"p3izaob7Ooi-qtsPpfaNwQQ","usageMetadata":{"candidatesTokenCount":46,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":68}}'

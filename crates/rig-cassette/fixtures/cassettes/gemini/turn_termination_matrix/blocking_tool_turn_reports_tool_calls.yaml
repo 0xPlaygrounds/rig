@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":2,"y":3},"name":"add"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":72,"promptTokensDetails":[{"modality":"TEXT","tokenCount":72}],"serviceTier":"standard","totalTokenCount":90}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":2,"y":3},"name":"add"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"p3izar7ZKLrVz7IP_6PO0Qc","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":72,"promptTokensDetails":[{"modality":"TEXT","tokenCount":72}],"serviceTier":"standard","totalTokenCount":90}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"The sum of 2 and 3 is 5."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":12,"promptTokenCount":103,"promptTokensDetails":[{"modality":"TEXT","tokenCount":103}],"serviceTier":"standard","totalTokenCount":115}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The sum of 2 and 3 is 5."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"qHizatjDEaWhz7IP7aXA-QY","usageMetadata":{"candidatesTokenCount":12,"promptTokenCount":103,"promptTokensDetails":[{"modality":"TEXT","tokenCount":103}],"serviceTier":"standard","totalTokenCount":115}}'

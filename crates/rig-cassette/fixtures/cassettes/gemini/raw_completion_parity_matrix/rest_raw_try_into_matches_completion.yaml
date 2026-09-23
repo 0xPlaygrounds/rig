@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"parity"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":12,"promptTokensDetails":[{"modality":"TEXT","tokenCount":12}],"serviceTier":"standard","totalTokenCount":13}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"parity"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"tXizaq2nOJusqtsPsf3xkAY","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":12,"promptTokensDetails":[{"modality":"TEXT","tokenCount":12}],"serviceTier":"standard","totalTokenCount":13}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash-lite:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"parity"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":12,"promptTokensDetails":[{"modality":"TEXT","tokenCount":12}],"serviceTier":"standard","totalTokenCount":13}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"parity"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"tnizapn_C4e0qtsPn5viqAQ","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":12,"promptTokensDetails":[{"modality":"TEXT","tokenCount":12}],"serviceTier":"standard","totalTokenCount":13}}'

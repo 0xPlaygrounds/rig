@@ -15,4 +15,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"Hello. ZULU-99"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":7,"promptTokenCount":33,"promptTokensDetails":[{"modality":"TEXT","tokenCount":33}],"serviceTier":"standard","thoughtsTokenCount":23,"totalTokenCount":63}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"Hello. ZULU-99"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"pnizaue8HMLRz7IPnO6ciA0","usageMetadata":{"candidatesTokenCount":7,"promptTokenCount":33,"promptTokensDetails":[{"modality":"TEXT","tokenCount":33}],"serviceTier":"standard","thoughtsTokenCount":23,"totalTokenCount":63}}'

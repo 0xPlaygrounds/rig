@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"A \"glarb-glarb\" is not a recognized term or concept."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":26,"promptTokensDetails":[{"modality":"TEXT","tokenCount":26}],"serviceTier":"standard","thoughtsTokenCount":63,"totalTokenCount":107}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"A \"glarb-glarb\" is not a recognized term or concept."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"oXizaum2Ad-JmtkPlbOD2A8","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":26,"promptTokensDetails":[{"modality":"TEXT","tokenCount":26}],"serviceTier":"standard","thoughtsTokenCount":77,"totalTokenCount":121}}'

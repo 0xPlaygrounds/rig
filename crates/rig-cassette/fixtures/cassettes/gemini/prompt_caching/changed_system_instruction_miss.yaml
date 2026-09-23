@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"sysinstr"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":4358,"promptTokensDetails":[{"modality":"TEXT","tokenCount":4358}],"serviceTier":"standard","totalTokenCount":4360}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"sysinstr"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"sHizar3eCYuUmtkP9ezVmAU","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":4358,"promptTokensDetails":[{"modality":"TEXT","tokenCount":4358}],"serviceTier":"standard","totalTokenCount":4360}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"sysinstr"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":4360,"promptTokensDetails":[{"modality":"TEXT","tokenCount":4360}],"serviceTier":"standard","totalTokenCount":4362}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"sysinstr"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"sHizasi4I4WlqtsPnNnPgAk","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":4360,"promptTokensDetails":[{"modality":"TEXT","tokenCount":4360}],"serviceTier":"standard","totalTokenCount":4362}}'

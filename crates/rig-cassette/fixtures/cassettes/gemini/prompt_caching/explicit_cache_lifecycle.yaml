@@ -15,10 +15,10 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T05:14:26.929848Z","displayName":"rig-lifecycle","expireTime":"2026-08-18T05:24:26.636475153Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T05:14:26.929848Z","usageMetadata":{"totalTokenCount":5770}}'
+  body: '{"createTime":"2026-09-23T06:58:57.513578Z","displayName":"rig-lifecycle","expireTime":"2026-09-23T07:08:56.967126877Z","model":"models/gemini-2.5-flash","name":"cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq","updateTime":"2026-09-23T06:58:57.513578Z","usageMetadata":{"totalTokenCount":5770}}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq
   method: GET
   query_param:
   - name: key
@@ -34,7 +34,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T05:14:26.929848Z","displayName":"rig-lifecycle","expireTime":"2026-08-18T05:24:26.636475153Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T05:14:26.929848Z","usageMetadata":{"totalTokenCount":5770}}'
+  body: '{"createTime":"2026-09-23T06:58:57.513578Z","displayName":"rig-lifecycle","expireTime":"2026-09-23T07:08:56.967126877Z","model":"models/gemini-2.5-flash","name":"cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq","updateTime":"2026-09-23T06:58:57.513578Z","usageMetadata":{"totalTokenCount":5770}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -55,10 +55,10 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T05:14:26.929848Z","displayName":"rig-lifecycle","expireTime":"2026-08-18T05:24:26.636475153Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T05:14:26.929848Z","usageMetadata":{"totalTokenCount":5770}}]}'
+  body: '{"cachedContents":[{"createTime":"2026-09-23T06:58:57.513578Z","displayName":"rig-lifecycle","expireTime":"2026-09-23T07:08:56.967126877Z","model":"models/gemini-2.5-flash","name":"cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq","updateTime":"2026-09-23T06:58:57.513578Z","usageMetadata":{"totalTokenCount":5770}},{"createTime":"2026-09-23T06:58:57.014696Z","displayName":"rig-cross-conversation","expireTime":"2026-09-23T07:08:56.663272749Z","model":"models/gemini-2.5-flash","name":"cachedContents/g3fn2bkuatt48wxt71avl7f7ahkrk726mwmmdsun","updateTime":"2026-09-23T06:58:57.014696Z","usageMetadata":{"totalTokenCount":5770}}]}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq
   method: PATCH
   query_param:
   - name: updateMask
@@ -76,10 +76,10 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T05:14:26.929848Z","displayName":"rig-lifecycle","expireTime":"2026-08-18T05:29:27.290101333Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T05:14:27.317366Z","usageMetadata":{"totalTokenCount":5770}}'
+  body: '{"createTime":"2026-09-23T06:58:57.513578Z","displayName":"rig-lifecycle","expireTime":"2026-09-23T07:13:57.746166125Z","model":"models/gemini-2.5-flash","name":"cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq","updateTime":"2026-09-23T06:58:57.766917Z","usageMetadata":{"totalTokenCount":5770}}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/pkucxaxnfhgp583g861gbmm8mn7kerhsx0fbdkjq
   method: DELETE
   query_param:
   - name: key

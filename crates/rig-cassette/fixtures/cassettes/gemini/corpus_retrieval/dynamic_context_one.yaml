@@ -53,4 +53,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":27,"promptTokenCount":68,"promptTokensDetails":[{"modality":"TEXT","tokenCount":68}],"serviceTier":"standard","thoughtsTokenCount":80,"totalTokenCount":175}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"oXizaoHIJ7yCz7IPvIfHuAM","usageMetadata":{"candidatesTokenCount":27,"promptTokenCount":68,"promptTokensDetails":[{"modality":"TEXT","tokenCount":68}],"serviceTier":"standard","thoughtsTokenCount":80,"totalTokenCount":175}}'

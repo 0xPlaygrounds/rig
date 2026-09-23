@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"small"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":205,"promptTokensDetails":[{"modality":"TEXT","tokenCount":205}],"serviceTier":"standard","totalTokenCount":206}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"small"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"rnizauf2FuP9qtsP-MXjmA8","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":205,"promptTokensDetails":[{"modality":"TEXT","tokenCount":205}],"serviceTier":"standard","totalTokenCount":206}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"small"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":205,"promptTokensDetails":[{"modality":"TEXT","tokenCount":205}],"serviceTier":"standard","totalTokenCount":206}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"small"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"rnizaonzLcOO6dkP4uadsAg","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":205,"promptTokensDetails":[{"modality":"TEXT","tokenCount":205}],"serviceTier":"standard","totalTokenCount":206}}'

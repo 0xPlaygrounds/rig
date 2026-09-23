@@ -17,4 +17,4 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"streamed\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":12,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":12}],\"serviceTier\":\"standard\",\"totalTokenCount\":14}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"streamed\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"tnizarXFBbC0qtsP5bHOkQc\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":12,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":12}],\"serviceTier\":\"standard\",\"totalTokenCount\":14}}\r\n\r\n"

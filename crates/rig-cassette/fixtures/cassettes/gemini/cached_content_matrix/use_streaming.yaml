@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:49:02.201786Z","displayName":"","expireTime":"2026-08-18T07:52:01.874165405Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T07:49:02.201786Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:20.399216Z","displayName":"","expireTime":"2026-09-23T07:01:20.119111067Z","model":"models/gemini-2.5-flash","name":"cachedContents/av029rfa4jzolku3i43w1fn5j7s5yu86lcpftzlk","updateTime":"2026-09-23T06:58:20.399216Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -30,16 +30,16 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"cachedContent":"cachedContents/cached-REDACTED_1","contents":[{"parts":[{"text":"Reply with exactly: streamed","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+  body: '{"cachedContent":"cachedContents/av029rfa4jzolku3i43w1fn5j7s5yu86lcpftzlk","contents":[{"parts":[{"text":"Reply with exactly: streamed","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"streamed\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"cacheTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":1081}],\"cachedContentTokenCount\":1081,\"candidatesTokenCount\":2,\"promptTokenCount\":1087,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":1087}],\"serviceTier\":\"standard\",\"totalTokenCount\":1089}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"streamed\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"jHizaoeyHcqnmtkP6KSo8AQ\",\"usageMetadata\":{\"cacheTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":1081}],\"cachedContentTokenCount\":1081,\"candidatesTokenCount\":2,\"promptTokenCount\":1087,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":1087}],\"serviceTier\":\"standard\",\"totalTokenCount\":1089}}\r\n\r\n"
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/av029rfa4jzolku3i43w1fn5j7s5yu86lcpftzlk
   method: DELETE
   query_param:
   - name: key

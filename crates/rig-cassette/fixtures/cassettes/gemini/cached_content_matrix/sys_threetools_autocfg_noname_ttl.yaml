@@ -15,10 +15,10 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:44:22.426137Z","displayName":"","expireTime":"2026-08-18T07:46:21.996581296Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T07:44:22.426137Z","usageMetadata":{"totalTokenCount":1186}}'
+  body: '{"createTime":"2026-09-23T06:58:22.955799Z","displayName":"","expireTime":"2026-09-23T07:00:22.467024930Z","model":"models/gemini-2.5-flash","name":"cachedContents/wbo1jcf4d5gw7nhd2yy2ra0k2o3xza1alkizaafj","updateTime":"2026-09-23T06:58:22.955799Z","usageMetadata":{"totalTokenCount":1186}}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/wbo1jcf4d5gw7nhd2yy2ra0k2o3xza1alkizaafj
   method: DELETE
   query_param:
   - name: key

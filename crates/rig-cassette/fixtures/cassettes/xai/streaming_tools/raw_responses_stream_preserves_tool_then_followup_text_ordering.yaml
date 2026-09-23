@@ -14,118 +14,55 @@ then:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: req_REDACTED_1
+    value: 60f40fb0-0809-93f1-8011-09cbab6ad3e0
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"req_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"60f40fb0-0809-93f1-8011-09cbab6ad3e0","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"req_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"60f40fb0-0809-93f1-8011-09cbab6ad3e0","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_REDACTED_1","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"The","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"I will call get_status_word","item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" task","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" once and reply with","item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" is","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" the exact returned ","item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":":","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" \"","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"Use","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" get","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"_status","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":"_word","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" function","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" once","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":",","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" then","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" reply","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" with","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" exact","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" returned","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" word","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" in","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" one","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" short","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" sentence","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".\"\n","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"word in one short sentence.","item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_REDACTED_1","output_index":0,"sequence_number":29,"summary_index":0,"text":"The task is: \"Use the get_status_word function once, then reply with the exact returned word in one short sentence.\"\n","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"sequence_number":8,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"The task is: \"Use the get_status_word function once, then reply with the exact returned word in one short sentence.\"\n","type":"summary_text"},"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"},"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Use the get_status_word function once, then reply with the exact returned word in one short sentence.\"\n","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":31,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":10,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"get_status_word","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":32,"type":"response.output_item.added"}
+    data: {"item":{"arguments":"","call_id":"call-3888d840-bdf6-4aea-be3e-ecc6828824ee-0","id":"fc_60f40fb0-0809-93f1-8011-09cbab6ad3e0_0","name":"get_status_word","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":11,"type":"response.output_item.added"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"{}","item_id":"fc_REDACTED_1","output_index":1,"sequence_number":33,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"{}","item_id":"fc_60f40fb0-0809-93f1-8011-09cbab6ad3e0_0","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.done
-    data: {"arguments":"{}","item_id":"fc_REDACTED_1","name":"get_status_word","output_index":1,"sequence_number":34,"type":"response.function_call_arguments.done"}
+    data: {"arguments":"{}","item_id":"fc_60f40fb0-0809-93f1-8011-09cbab6ad3e0_0","name":"get_status_word","output_index":1,"sequence_number":13,"type":"response.function_call_arguments.done"}
 
     event: response.output_item.done
-    data: {"item":{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"get_status_word","status":"completed","type":"function_call"},"output_index":1,"sequence_number":35,"type":"response.output_item.done"}
+    data: {"item":{"arguments":"{}","call_id":"call-3888d840-bdf6-4aea-be3e-ecc6828824ee-0","id":"fc_60f40fb0-0809-93f1-8011-09cbab6ad3e0_0","name":"get_status_word","status":"completed","type":"function_call"},"output_index":1,"sequence_number":14,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"req_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Use the get_status_word function once, then reply with the exact returned word in one short sentence.\"\n","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"get_status_word","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":324,"output_tokens":278},"cost_in_usd_ticks":8959000,"input_tokens":324,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":277,"output_tokens_details":{"reasoning_tokens":274},"total_tokens":601},"user":null},"sequence_number":36,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"60f40fb0-0809-93f1-8011-09cbab6ad3e0","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_60f40fb0-0809-93f1-8011-09cbab6ad3e0","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-3888d840-bdf6-4aea-be3e-ecc6828824ee-0","id":"fc_60f40fb0-0809-93f1-8011-09cbab6ad3e0_0","name":"get_status_word","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":324,"output_tokens":289},"cost_in_usd_ticks":9159000,"input_tokens":324,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":285,"output_tokens_details":{"reasoning_tokens":278},"total_tokens":609},"user":null},"sequence_number":15,"type":"response.completed"}
 
 ---
 when:
@@ -137,120 +74,90 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"Use the provided tool result and answer directly.","type":"input_text"}],"role":"system","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"get_status_word","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"azure","status":"completed","type":"function_call_output"},{"content":[{"text":"Now reply in one short sentence using the provided tool result only.","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-4-0709","stream":true}'
+  body: '{"input":[{"content":[{"text":"Use the provided tool result and answer directly.","type":"input_text"}],"role":"system","type":"message"},{"arguments":"{}","call_id":"call-3888d840-bdf6-4aea-be3e-ecc6828824ee-0","id":"fc_60f40fb0-0809-93f1-8011-09cbab6ad3e0_0","name":"get_status_word","status":"completed","type":"function_call"},{"call_id":"call-3888d840-bdf6-4aea-be3e-ecc6828824ee-0","output":"azure","status":"completed","type":"function_call_output"},{"content":[{"text":"Now reply in one short sentence using the provided tool result only.","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-4-0709","stream":true}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: req_REDACTED_2
+    value: 8b69ebf8-9471-9213-82d0-528807a842b2
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"req_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"8b69ebf8-9471-9213-82d0-528807a842b2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"req_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"8b69ebf8-9471-9213-82d0-528807a842b2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_REDACTED_2","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_REDACTED_2","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"The","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"The user requested a","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" user","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" one-sentence reply ","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" says","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"using only the provided","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":":","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" tool result.","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" \"","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"\n\nThe tool result is","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"Now","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" \"azure\". I will reply","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" reply","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" in one short sentence","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" in","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" one","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" short","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" sentence","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" using","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" the","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" provided","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" tool","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" result","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" only","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":".\"\n","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" using only that word.","item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_REDACTED_2","output_index":0,"sequence_number":22,"summary_index":0,"text":"The user says: \"Now reply in one short sentence using the provided tool result only.\"\n","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"sequence_number":12,"summary_index":0,"text":"The user requested a one-sentence reply using only the provided tool result.\n\nThe tool result is \"azure\". I will reply in one short sentence using only that word.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_REDACTED_2","output_index":0,"part":{"text":"The user says: \"Now reply in one short sentence using the provided tool result only.\"\n","type":"summary_text"},"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":0,"part":{"text":"The user requested a one-sentence reply using only the provided tool result.\n\nThe tool result is \"azure\". I will reply in one short sentence using only that word.","type":"summary_text"},"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The user says: \"Now reply in one short sentence using the provided tool result only.\"\n","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":24,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","status":"completed","summary":[{"text":"The user requested a one-sentence reply using only the provided tool result.\n\nThe tool result is \"azure\". I will reply in one short sentence using only that word.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":14,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_REDACTED_1","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":25,"type":"response.output_item.added"}
+    data: {"item":{"content":[],"id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":15,"type":"response.output_item.added"}
 
     event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":26,"type":"response.content_part.added"}
+    data: {"content_index":0,"item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":16,"type":"response.content_part.added"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"The","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":27,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"The","item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" result","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":28,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" result","item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","logprobs":[],"output_index":1,"sequence_number":18,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" is","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":29,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" is","item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","logprobs":[],"output_index":1,"sequence_number":19,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" azure","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":30,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" azure","item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","logprobs":[],"output_index":1,"sequence_number":20,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":31,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".","item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","logprobs":[],"output_index":1,"sequence_number":21,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":32,"text":"The result is azure.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","logprobs":[],"output_index":1,"sequence_number":22,"text":"The result is azure.","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The result is azure.","type":"output_text"},"sequence_number":33,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The result is azure.","type":"output_text"},"sequence_number":23,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The result is azure.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":34,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The result is azure.","type":"output_text"}],"id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":24,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"req_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The user says: \"Now reply in one short sentence using the provided tool result only.\"\n","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The result is azure.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":230,"output_tokens":329},"cost_in_usd_ticks":9756000,"input_tokens":230,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":329,"output_tokens_details":{"reasoning_tokens":324},"total_tokens":559},"user":null},"sequence_number":35,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"8b69ebf8-9471-9213-82d0-528807a842b2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_8b69ebf8-9471-9213-82d0-528807a842b2","status":"completed","summary":[{"text":"The user requested a one-sentence reply using only the provided tool result.\n\nThe tool result is \"azure\". I will reply in one short sentence using only that word.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The result is azure.","type":"output_text"}],"id":"msg_8b69ebf8-9471-9213-82d0-528807a842b2","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":230,"output_tokens":630},"cost_in_usd_ticks":17081000,"input_tokens":230,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":622,"output_tokens_details":{"reasoning_tokens":617},"total_tokens":852},"user":null},"sequence_number":25,"type":"response.completed"}
 

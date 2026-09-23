@@ -15,10 +15,10 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:46:32.889312Z","displayName":"","expireTime":"2026-08-18T07:48:32.342382354Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T07:46:32.889312Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:23.360760Z","displayName":"","expireTime":"2026-09-23T07:00:22.784012173Z","model":"models/gemini-2.5-flash","name":"cachedContents/748361uf397lxkghsqg2hnv5swg8pwgs5bo657qs","updateTime":"2026-09-23T06:58:23.360760Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/748361uf397lxkghsqg2hnv5swg8pwgs5bo657qs
   method: PATCH
   query_param:
   - name: updateMask
@@ -36,10 +36,10 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:46:32.889312Z","displayName":"","expireTime":"2030-01-01T00:00:00Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T07:46:33.077506Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:23.360760Z","displayName":"","expireTime":"2030-01-01T00:00:00Z","model":"models/gemini-2.5-flash","name":"cachedContents/748361uf397lxkghsqg2hnv5swg8pwgs5bo657qs","updateTime":"2026-09-23T06:58:23.468615Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/748361uf397lxkghsqg2hnv5swg8pwgs5bo657qs
   method: DELETE
   query_param:
   - name: key

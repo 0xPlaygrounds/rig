@@ -55,4 +55,4 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":27,\"promptTokenCount\":95,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":95}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":117,\"totalTokenCount\":239}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"onizapCoMaXnz7IPnNS20QE\",\"usageMetadata\":{\"candidatesTokenCount\":27,\"promptTokenCount\":95,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":95}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":117,\"totalTokenCount\":239}}\r\n\r\n"

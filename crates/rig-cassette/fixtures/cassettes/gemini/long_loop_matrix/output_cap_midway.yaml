@@ -15,4 +15,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"finishMessage":"Malformed function call: tool","finishReason":"MALFORMED_FUNCTION_CALL","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"promptTokenCount":465,"promptTokensDetails":[{"modality":"TEXT","tokenCount":465}],"serviceTier":"standard","totalTokenCount":465}}'
+  body: '{"candidates":[{"finishMessage":"Malformed function call: tool","finishReason":"MALFORMED_FUNCTION_CALL","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"oHizavC1EsejqtsPtJ_XwA0","usageMetadata":{"promptTokenCount":465,"promptTokensDetails":[{"modality":"TEXT","tokenCount":465}],"serviceTier":"standard","totalTokenCount":465}}'

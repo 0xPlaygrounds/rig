@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T08:36:45.024058Z","displayName":"rig-page-0","expireTime":"2026-08-18T08:39:44.769601846Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T08:36:45.024058Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:19.362589Z","displayName":"rig-page-0","expireTime":"2026-09-23T07:01:19.100866040Z","model":"models/gemini-2.5-flash","name":"cachedContents/3t5wavt08njqg0k6uez1lejulph073llb42xgu6c","updateTime":"2026-09-23T06:58:19.362589Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -34,7 +34,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T08:36:45.511449Z","displayName":"rig-page-1","expireTime":"2026-08-18T08:39:45.144211898Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_2","updateTime":"2026-08-18T08:36:45.511449Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:19.868061Z","displayName":"rig-page-1","expireTime":"2026-09-23T07:01:19.486944346Z","model":"models/gemini-2.5-flash","name":"cachedContents/0mth5p9exz3ydna9tbme7tgk6e7cpgzpyd1rr2ey","updateTime":"2026-09-23T06:58:19.868061Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -53,7 +53,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T08:36:45.882020Z","displayName":"rig-page-2","expireTime":"2026-08-18T08:39:45.640639582Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_3","updateTime":"2026-08-18T08:36:45.882020Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:20.313017Z","displayName":"rig-page-2","expireTime":"2026-09-23T07:01:19.986747650Z","model":"models/gemini-2.5-flash","name":"cachedContents/7la3ttlg8dytn8u789nr3le9kw24n8rk1xb7srnr","updateTime":"2026-09-23T06:58:20.313017Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -74,30 +74,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T08:36:45.882020Z","displayName":"rig-page-2","expireTime":"2026-08-18T08:39:45.640639582Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_3","updateTime":"2026-08-18T08:36:45.882020Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"id_REDACTED_1"}'
----
-when:
-  path: /v1beta/cachedContents
-  method: GET
-  query_param:
-  - name: pageSize
-    value: '1'
-  - name: pageToken
-    value: id_REDACTED_1
-  - name: key
-    value: '[REDACTED]'
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: null
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T08:36:45.511449Z","displayName":"rig-page-1","expireTime":"2026-08-18T08:39:45.144211898Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_2","updateTime":"2026-08-18T08:36:45.511449Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"id_REDACTED_2"}'
+  body: '{"cachedContents":[{"createTime":"2026-09-23T06:58:20.399216Z","displayName":"","expireTime":"2026-09-23T07:01:20.119111067Z","model":"models/gemini-2.5-flash","name":"cachedContents/av029rfa4jzolku3i43w1fn5j7s5yu86lcpftzlk","updateTime":"2026-09-23T06:58:20.399216Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"cj0KD4IBDAiM8c3VBhCAm66-AQoqQihhdjAyOXJmYTRqem9sa3UzaTQzdzFmbjVqN3M1eXU4NmxjcGZ0emxr"}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -106,7 +83,7 @@ when:
   - name: pageSize
     value: '1'
   - name: pageToken
-    value: id_REDACTED_2
+    value: cj0KD4IBDAiM8c3VBhCAm66-AQoqQihhdjAyOXJmYTRqem9sa3UzaTQzdzFmbjVqN3M1eXU4NmxjcGZ0emxr
   - name: key
     value: '[REDACTED]'
   header:
@@ -120,10 +97,56 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T08:36:45.024058Z","displayName":"rig-page-0","expireTime":"2026-08-18T08:39:44.769601846Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T08:36:45.024058Z","usageMetadata":{"totalTokenCount":1081}}]}'
+  body: '{"cachedContents":[{"createTime":"2026-09-23T06:58:20.313017Z","displayName":"rig-page-2","expireTime":"2026-09-23T07:01:19.986747650Z","model":"models/gemini-2.5-flash","name":"cachedContents/7la3ttlg8dytn8u789nr3le9kw24n8rk1xb7srnr","updateTime":"2026-09-23T06:58:20.313017Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"cj0KD4IBDAiM8c3VBhCohaGVAQoqQig3bGEzdHRsZzhkeXRuOHU3ODlucjNsZTlrdzI0bjhyazF4Yjdzcm5y"}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents
+  method: GET
+  query_param:
+  - name: pageSize
+    value: '1'
+  - name: pageToken
+    value: cj0KD4IBDAiM8c3VBhCohaGVAQoqQig3bGEzdHRsZzhkeXRuOHU3ODlucjNsZTlrdzI0bjhyazF4Yjdzcm5y
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"cachedContents":[{"createTime":"2026-09-23T06:58:19.868061Z","displayName":"rig-page-1","expireTime":"2026-09-23T07:01:19.486944346Z","model":"models/gemini-2.5-flash","name":"cachedContents/0mth5p9exz3ydna9tbme7tgk6e7cpgzpyd1rr2ey","updateTime":"2026-09-23T06:58:19.868061Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"cj0KD4IBDAiL8c3VBhDInvadAwoqQigwbXRoNXA5ZXh6M3lkbmE5dGJtZTd0Z2s2ZTdjcGd6cHlkMXJyMmV5"}'
+---
+when:
+  path: /v1beta/cachedContents
+  method: GET
+  query_param:
+  - name: pageSize
+    value: '1'
+  - name: pageToken
+    value: cj0KD4IBDAiL8c3VBhDInvadAwoqQigwbXRoNXA5ZXh6M3lkbmE5dGJtZTd0Z2s2ZTdjcGd6cHlkMXJyMmV5
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"cachedContents":[{"createTime":"2026-09-23T06:58:19.362589Z","displayName":"rig-page-0","expireTime":"2026-09-23T07:01:19.100866040Z","model":"models/gemini-2.5-flash","name":"cachedContents/3t5wavt08njqg0k6uez1lejulph073llb42xgu6c","updateTime":"2026-09-23T06:58:19.362589Z","usageMetadata":{"totalTokenCount":1081}}]}'
+---
+when:
+  path: /v1beta/cachedContents/3t5wavt08njqg0k6uez1lejulph073llb42xgu6c
   method: DELETE
   query_param:
   - name: key
@@ -142,7 +165,7 @@ then:
   body: '{}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_2
+  path: /v1beta/cachedContents/0mth5p9exz3ydna9tbme7tgk6e7cpgzpyd1rr2ey
   method: DELETE
   query_param:
   - name: key
@@ -161,7 +184,7 @@ then:
   body: '{}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_3
+  path: /v1beta/cachedContents/7la3ttlg8dytn8u789nr3le9kw24n8rk1xb7srnr
   method: DELETE
   query_param:
   - name: key

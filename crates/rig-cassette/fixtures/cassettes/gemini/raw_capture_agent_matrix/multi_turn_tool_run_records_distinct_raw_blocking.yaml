@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":2,"y":3},"name":"add"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":115,"promptTokensDetails":[{"modality":"TEXT","tokenCount":115}],"serviceTier":"standard","totalTokenCount":133}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":2,"y":3},"name":"add"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"s3izasGIO7fpz7IPnvD3gAg","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":115,"promptTokensDetails":[{"modality":"TEXT","tokenCount":115}],"serviceTier":"standard","totalTokenCount":133}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash-lite:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"The result is 5."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":6,"promptTokenCount":146,"promptTokensDetails":[{"modality":"TEXT","tokenCount":146}],"serviceTier":"standard","totalTokenCount":152}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The result is 5."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"tHizao6HD9jQz7IPh4SA0Ac","usageMetadata":{"candidatesTokenCount":6,"promptTokenCount":146,"promptTokensDetails":[{"modality":"TEXT","tokenCount":146}],"serviceTier":"standard","totalTokenCount":152}}'
