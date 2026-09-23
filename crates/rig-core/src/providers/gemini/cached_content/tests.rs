@@ -139,6 +139,7 @@ fn an_empty_cache_is_rejected_before_it_bills_for_storage() {
         .display_name("empty")
         .validate()
         .expect_err("an empty cached content should be refused");
+    let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
 }
 

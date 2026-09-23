@@ -10,6 +10,7 @@ use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
 use crate::driver::{HasEmbedding, HasImageEmbedding};
 use crate::embeddings::Embedding as Vector;
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
@@ -126,7 +127,7 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
             body.additional_params = Some(json_utils::merge(
@@ -144,8 +145,7 @@ impl Wire for Chat {
         let request = self
             .provider
             .post("/v2/chat")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Http(error.into()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // Cohere reports no request-id response header: its
         // `x-debug-trace-id` is a debug trace handle, not a documented
         // request id, so the normalized id stays unset by design.
@@ -247,7 +247,7 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let body = serde_json::json!({
             "model": self.model,
             "texts": texts,
@@ -256,8 +256,7 @@ impl Wire for Embeddings {
         let request = self
             .provider
             .post("/v1/embed")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Http(error.into()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -346,7 +345,7 @@ impl Wire for ImageEmbeddings {
         Some(super::EMBED_ENGLISH_V3)
     }
 
-    fn encode(&self, images: Vec<Vec<u8>>, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, images: Vec<Vec<u8>>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let requests = images
             .into_iter()
             .map(|image| {
@@ -361,9 +360,9 @@ impl Wire for ImageEmbeddings {
                 self.provider
                     .post("/v1/embed")
                     .body(Body::Bytes(serde_json::to_vec(&body)?))
-                    .map_err(|error| ProviderError::Http(error.into()))
+                    .map_err(EncodeError::from)
             })
-            .collect::<Result<Vec<_>, ProviderError>>()?;
+            .collect::<Result<Vec<_>, EncodeError>>()?;
         Ok(Encoded::batch(requests, Framing::Whole))
     }
 

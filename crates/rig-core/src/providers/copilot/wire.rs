@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::driver::{HasEmbedding, HasModelListing};
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use crate::model::{Model, ModelList};
 use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
@@ -335,7 +335,7 @@ impl Wire for CopilotWire {
         self.wire.route()
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         self.wire
             .encode_with_headers(request, mode, |provider, request, builder| {
                 completion_envelope(provider, request, provider.headers(builder), self.intent)
@@ -433,19 +433,17 @@ impl Wire for Models {
         PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut request = http::Request::get(self.provider.uri(super::MODEL_LISTING_PATH))
             .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::empty())
-            .map_err(ProviderError::from)?;
+            .body(Body::empty())?;
         stamp(
             &mut request,
             self.provider.api_key.expose(),
             "user",
             false,
             CopilotIntent::Panel,
-        )
-        .map_err(ProviderError::from)?;
+        )?;
         Ok(Encoded::new(request, Framing::Whole).with_request_id_header(REQUEST_ID_HEADER))
     }
 

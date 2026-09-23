@@ -1,7 +1,7 @@
 //! Typesafe's unary evaluation operation, using Rig's shared HTTP driver.
 
 use rig_core::client::{EnvError, env};
-use rig_core::error::ProviderError;
+use rig_core::error::EncodeError;
 use rig_core::operation::{One, Take};
 use rig_core::wire::{
     Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
@@ -95,10 +95,10 @@ impl Wire for Jev {
         Some("/v1/systemone")
     }
 
-    fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, EncodeError> {
         if self.token.is_empty() || self.model.trim().is_empty() {
-            return Err(ProviderError::Request(
-                "credential and model must be nonempty".into(),
+            return Err(EncodeError::request(
+                "credential and model must be nonempty",
             ));
         }
         #[derive(Serialize)]
@@ -113,13 +113,12 @@ impl Wire for Jev {
         };
         let mut authorization =
             http::HeaderValue::from_str(&format!("Bearer {}", self.token.expose()))
-                .map_err(rig_core::http_client::Error::from)?;
+                .map_err(EncodeError::request)?;
         authorization.set_sensitive(true);
         let request = http::Request::post(&self.endpoint)
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(http::header::AUTHORIZATION, authorization)
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(rig_core::http_client::Error::from)?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         let mut encoded = Encoded::new(request, Framing::Whole);
         encoded.request_id_header = Some("x-typesafe-request-id");
         Ok(encoded)

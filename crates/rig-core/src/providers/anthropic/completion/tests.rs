@@ -1,5 +1,6 @@
 use super::*;
 use crate::driver::WireDriver;
+use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::operation::Completion;
 use crate::providers::anthropic::wire::Anthropic;

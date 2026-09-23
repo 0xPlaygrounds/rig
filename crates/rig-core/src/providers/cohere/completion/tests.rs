@@ -328,8 +328,10 @@ fn unsupported_tool_choices_are_rejected_before_the_request_is_sent() {
             function_names: vec!["subtract".to_string()],
         },
     ] {
-        let error = CohereToolChoice::try_from(unsupported.clone())
-            .expect_err("Cohere has no encoding for this tool choice");
+        let error = ProviderError::from(
+            CohereToolChoice::try_from(unsupported.clone())
+                .expect_err("Cohere has no encoding for this tool choice"),
+        );
         assert!(
             matches!(error, ProviderError::Request(_)),
             "expected a request error for {unsupported:?}, got {error:?}"

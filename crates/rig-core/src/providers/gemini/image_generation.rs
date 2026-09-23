@@ -14,6 +14,7 @@ use super::completion::gemini_api_types::{
     PartKind, ResponseModality, Role,
 };
 use crate::completion::Usage;
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
@@ -54,7 +55,7 @@ fn generate_content_path(model: &str) -> String {
     format!("/v1beta/models/{model}:generateContent")
 }
 
-fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Value, ProviderError> {
+fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Value, EncodeError> {
     let request = GenerateContentRequest {
         contents: vec![Content {
             role: Some(Role::User),
@@ -180,11 +181,7 @@ impl Wire for Images {
         Some(&self.model)
     }
 
-    fn encode(
-        &self,
-        request: ImageGenerationRequest,
-        _mode: Mode,
-    ) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: ImageGenerationRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let body = serde_json::to_vec(&create_request_body(request)?)?;
         let request = http::Request::post(format!(
             "{}{}?key={}",
@@ -193,8 +190,7 @@ impl Wire for Images {
             self.provider.api_key.expose()
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(body))
-        .map_err(|error| ProviderError::Http(error.into()))?;
+        .body(Body::Bytes(body))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }

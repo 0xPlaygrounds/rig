@@ -1,3 +1,4 @@
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
     model::{Model, ModelList, listing},
@@ -140,7 +141,7 @@ fn list_models_request(
     provider: &super::Gemini,
     auth: Auth,
     page_token: Option<&str>,
-) -> Result<http::Request<Body>, ProviderError> {
+) -> Result<http::Request<Body>, EncodeError> {
     let path = list_models_path(page_token);
     let trimmed = path.trim_start_matches('/');
     let base_url = &provider.base_url;
@@ -153,7 +154,7 @@ fn list_models_request(
         Auth::Header => http::Request::get(format!("{base_url}/{trimmed}"))
             .header("x-goog-api-key", provider.api_key.expose()),
     };
-    request.body(Body::empty()).map_err(ProviderError::from)
+    request.body(Body::empty()).map_err(EncodeError::from)
 }
 
 /// The GenerateContent model-listing wire: `GET /v1beta/models`, paged on
@@ -180,7 +181,7 @@ impl Wire for Models {
     }
 
     /// A listing never streams, so both modes send the one request.
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
             list_models_request(&self.provider, Auth::Query, None)?,
             Framing::Whole,
@@ -216,7 +217,7 @@ impl Wire for InteractionsModels {
     }
 
     /// A listing never streams, so both modes send the one request.
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
             list_models_request(&self.provider, Auth::Header, None)?,
             Framing::Whole,
@@ -297,14 +298,13 @@ impl Wire for VerifyKey {
         super::PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = http::Request::get(format!(
             "{}/v1beta/models?key={}",
             self.provider.base_url,
             self.provider.api_key.expose()
         ))
-        .body(Body::empty())
-        .map_err(|error| ProviderError::Http(crate::http_client::Error::Protocol(error)))?;
+        .body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 

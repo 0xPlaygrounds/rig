@@ -753,16 +753,11 @@ fn transport_503() -> H {
     }
 }
 
-/// Response-shaped embedding faults keep their `response` report and now
-/// report the decode boundary that kind implies; the replaced enums
-/// reported `request` for every operation-specific variant.
+/// Response-shaped embedding faults keep their `response` report and report
+/// the decode boundary that kind implies.
 #[test]
 fn response_shaped_faults_report_the_decode_boundary() {
     for error in [
-        ProviderError::UnsupportedResponseEncoding {
-            provider: "openai",
-            encoding_format: "base64",
-        },
         ProviderError::MissingUsage { provider: "openai" },
         ProviderError::MismatchedDimensions {
             provider: "llamacpp".into(),

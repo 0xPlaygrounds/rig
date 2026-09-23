@@ -13,7 +13,7 @@ use futures::StreamExt;
 
 use super::{Bound, call, stream};
 use crate::completion::{CompletionModel, CompletionRequest};
-use crate::error::ProviderError;
+use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
 use crate::model::{Model, ModelList, ModelLister};
 use crate::observe::{
@@ -164,13 +164,12 @@ impl Wire for Echo {
         Some("echo-1")
     }
 
-    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let body = serde_json::to_vec(&serde_json::json!({
             "messages": request.chat_history.len(),
         }))?;
-        let request = http::Request::post("https://echo.invalid/v1/messages")
-            .body(Body::Bytes(body))
-            .map_err(|error| ProviderError::Response(error.to_string()))?;
+        let request =
+            http::Request::post("https://echo.invalid/v1/messages").body(Body::Bytes(body))?;
         let encoded =
             Encoded::new(request, self.framing).with_request_id_header(self.request_id_header);
         Ok(if self.relaxed_content_type {
@@ -672,10 +671,8 @@ impl Wire for Catalogue {
         "echo"
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
-        let request = http::Request::get("https://echo.invalid/v1/models")
-            .body(Body::empty())
-            .map_err(ProviderError::from)?;
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+        let request = http::Request::get("https://echo.invalid/v1/models").body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -925,10 +922,9 @@ impl Wire for Guarded {
         "guarded"
     }
 
-    fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = http::Request::post("https://echo.invalid/v1/messages")
-            .body(Body::Bytes(Vec::new()))
-            .map_err(|error| ProviderError::Response(error.to_string()))?;
+            .body(Body::Bytes(Vec::new()))?;
         Ok(Encoded::new(request, self.0))
     }
 

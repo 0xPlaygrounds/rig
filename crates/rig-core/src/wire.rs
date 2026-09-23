@@ -11,7 +11,7 @@
 
 use std::borrow::Cow;
 
-use crate::error::ProviderError;
+use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
@@ -385,8 +385,9 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     fn name(&self) -> &str;
 
     /// The request to send. Pure: it may read `self`, `request` and `mode`,
-    /// and nothing else.
-    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, ProviderError>;
+    /// and nothing else. A request that cannot be built is an
+    /// [`EncodeError`], which always reports as a request failure.
+    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, EncodeError>;
 
     /// A fresh decoder for one reply, in the mode [`Self::encode`] was
     /// given.

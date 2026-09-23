@@ -9,6 +9,7 @@
 use crate::client::env::{self, EnvError};
 use crate::driver::{HasEmbedding, HasRerank};
 use crate::embeddings::Embedding as Vector;
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest};
 use crate::rerank::{RerankResponse, RerankResult};
@@ -165,7 +166,7 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = serde_json::Map::new();
         body.insert("model".to_owned(), serde_json::json!(self.model));
         body.insert("input".to_owned(), serde_json::json!(texts));
@@ -184,8 +185,7 @@ impl Wire for Embeddings {
         let request = self
             .provider
             .post("/embeddings")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Http(error.into()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -291,7 +291,7 @@ impl Wire for Rerank {
         Some(&self.model)
     }
 
-    fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = serde_json::Map::new();
         body.insert("query".to_owned(), serde_json::json!(request.query));
         body.insert("documents".to_owned(), serde_json::json!(request.documents));
@@ -309,8 +309,7 @@ impl Wire for Rerank {
         let request = self
             .provider
             .post("/rerank")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Http(error.into()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 

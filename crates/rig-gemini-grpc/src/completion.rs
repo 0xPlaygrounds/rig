@@ -746,7 +746,9 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
 fn tool_parameters_to_proto_schema(
     value: &serde_json::Value,
 ) -> Result<Option<proto::Schema>, ProviderError> {
-    tool_parameters_to_schema(value.clone()).map(|schema| schema.map(gemini_schema_to_proto_schema))
+    tool_parameters_to_schema(value.clone())
+        .map(|schema| schema.map(gemini_schema_to_proto_schema))
+        .map_err(ProviderError::from)
 }
 
 fn gemini_schema_to_proto_schema(schema: GeminiSchema) -> proto::Schema {

@@ -7,7 +7,7 @@
 //! ```
 
 use crate::completion::CompletionRequest;
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use crate::json_utils::string_or_vec;
 use crate::{
     completion,
@@ -1069,7 +1069,7 @@ pub enum ToolChoice {
     },
 }
 impl TryFrom<message::ToolChoice> for ToolChoice {
-    type Error = ProviderError;
+    type Error = EncodeError;
 
     fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
         let res = match value {
@@ -1078,14 +1078,14 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
             message::ToolChoice::Required => Self::Any,
             message::ToolChoice::Specific { function_names } => {
                 if function_names.len() != 1 {
-                    return Err(ProviderError::Provider(
-                        "Only one tool may be specified to be used by Claude".into(),
+                    return Err(EncodeError::request(
+                        "Only one tool may be specified to be used by Claude",
                     ));
                 }
 
                 let Some(name) = function_names.into_iter().next() else {
-                    return Err(ProviderError::Provider(
-                        "Only one tool may be specified to be used by Claude".into(),
+                    return Err(EncodeError::request(
+                        "Only one tool may be specified to be used by Claude",
                     ));
                 };
 
@@ -1659,12 +1659,11 @@ fn content_cache_control(content: &Content) -> Option<&CacheControl> {
 fn validate_cache_control_ttl(
     ttl: CacheControlTtl,
     shorter_ttl_seen: &mut bool,
-) -> Result<(), ProviderError> {
+) -> Result<(), EncodeError> {
     match ttl {
-        CacheControlTtl::OneHour if *shorter_ttl_seen => Err(ProviderError::Request(
+        CacheControlTtl::OneHour if *shorter_ttl_seen => Err(EncodeError::request(
             "Anthropic cache_control markers with ttl `1h` must appear before markers with \
-                 the default 5-minute TTL"
-                .into(),
+                 the default 5-minute TTL",
         )),
         CacheControlTtl::OneHour => Ok(()),
         CacheControlTtl::FiveMinutes => {
@@ -1679,7 +1678,7 @@ fn validate_cache_control_ttl_order(
     messages: &[Message],
     tools: &[serde_json::Value],
     top_level_cache_control: Option<&CacheControl>,
-) -> Result<(), ProviderError> {
+) -> Result<(), EncodeError> {
     let mut shorter_ttl_seen = false;
 
     for tool in tools {
@@ -1728,7 +1727,7 @@ fn apply_tool_cache_control(
     tools: &mut [serde_json::Value],
     remaining_cache_markers: &mut usize,
     cache_control: &CacheControl,
-) -> Result<(), ProviderError> {
+) -> Result<(), EncodeError> {
     let Some(idx) = final_cacheable_tool_idx(tools) else {
         return Ok(());
     };
@@ -1748,10 +1747,9 @@ fn apply_tool_cache_control(
     }
 
     if *remaining_cache_markers == 0 {
-        return Err(ProviderError::Request(
+        return Err(EncodeError::request(
             "Anthropic manual prompt caching requires a cache_control marker on the final \
-             non-deferred tool, but explicit tool markers exhaust the available cache point budget"
-                .into(),
+             non-deferred tool, but explicit tool markers exhaust the available cache point budget",
         ));
     }
 
@@ -1815,7 +1813,7 @@ pub(super) fn apply_prompt_cache_control(
     prompt_caching: bool,
     static_prefix_cache_ttl: Option<&CacheTtl>,
     top_level_cache_control: Option<&CacheControl>,
-) -> Result<(), ProviderError> {
+) -> Result<(), EncodeError> {
     normalize_tool_cache_control(tools);
 
     let max_cache_markers = if top_level_cache_control.is_some() {
@@ -1826,13 +1824,10 @@ pub(super) fn apply_prompt_cache_control(
     let tool_cache_markers = tool_cache_control_count(tools);
 
     if tool_cache_markers > max_cache_markers {
-        return Err(ProviderError::Request(
-            format!(
-                "Too many Anthropic tool `cache_control` markers: {tool_cache_markers} exceeds \
+        return Err(EncodeError::request(format!(
+            "Too many Anthropic tool `cache_control` markers: {tool_cache_markers} exceeds \
                  the available prompt caching budget of {max_cache_markers}"
-            )
-            .into(),
-        ));
+        )));
     }
 
     let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
@@ -1842,12 +1837,11 @@ pub(super) fn apply_prompt_cache_control(
     if static_prefix_cache_ttl == Some(&CacheTtl::FiveMinutes)
         && top_level_ttl == Some(CacheTtl::OneHour)
     {
-        return Err(ProviderError::Request(
+        return Err(EncodeError::request(
             "`with_static_prefix_cache_ttl(CacheTtl::FiveMinutes)` conflicts with the 1-hour \
              top-level cache TTL (`with_automatic_caching_1h` or a raw top-level \
              `cache_control`): Anthropic requires 1h markers to precede 5-minute ones, and the \
-             static prefix precedes the conversation tail"
-                .into(),
+             static prefix precedes the conversation tail",
         ));
     }
 
@@ -1882,7 +1876,7 @@ pub(super) fn apply_prompt_cache_control(
 
 pub(super) fn extract_top_level_cache_control(
     additional_params: &mut serde_json::Value,
-) -> Result<Option<CacheControl>, ProviderError> {
+) -> Result<Option<CacheControl>, EncodeError> {
     if let Some(map) = additional_params.as_object_mut()
         && let Some(raw_cache_control) = map.remove("cache_control")
     {
@@ -1893,10 +1887,9 @@ pub(super) fn extract_top_level_cache_control(
         return serde_json::from_value::<CacheControl>(raw_cache_control)
             .map(Some)
             .map_err(|err| {
-                ProviderError::Request(
-                    format!("Invalid Anthropic `additional_params.cache_control` payload: {err}")
-                        .into(),
-                )
+                EncodeError::request(format!(
+                    "Invalid Anthropic `additional_params.cache_control` payload: {err}"
+                ))
             });
     }
 
@@ -1907,7 +1900,7 @@ pub(super) fn resolve_top_level_cache_control(
     automatic_caching: bool,
     automatic_caching_ttl: Option<&CacheTtl>,
     additional_params: &mut serde_json::Value,
-) -> Result<Option<CacheControl>, ProviderError> {
+) -> Result<Option<CacheControl>, EncodeError> {
     let raw_cache_control = extract_top_level_cache_control(additional_params)?;
     let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
         ttl: automatic_caching_ttl.cloned(),
@@ -1918,10 +1911,9 @@ pub(super) fn resolve_top_level_cache_control(
             if automatic_caching_ttl.is_some()
                 && cache_control_ttl(&typed_cache_control) != cache_control_ttl(&raw_cache_control)
             {
-                return Err(ProviderError::Request(
+                return Err(EncodeError::request(
                     "Anthropic `additional_params.cache_control` conflicts with the typed \
-                     automatic caching TTL"
-                        .into(),
+                     automatic caching TTL",
                 ));
             }
 
@@ -2019,7 +2011,7 @@ impl AnthropicCompletionRequest {
     pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict: Option<fn(&mut ToolDefinition)>,
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, EncodeError> {
         let AnthropicRequestParams {
             model,
             request: mut req,
@@ -2031,8 +2023,8 @@ impl AnthropicCompletionRequest {
         let chat_history = req.chat_history_with_documents();
 
         let Some(max_tokens) = req.max_tokens else {
-            return Err(ProviderError::Request(
-                "`max_tokens` must be set for Anthropic".into(),
+            return Err(EncodeError::request(
+                "`max_tokens` must be set for Anthropic",
             ));
         };
 
@@ -2063,7 +2055,7 @@ impl AnthropicCompletionRequest {
             &full_history,
             server_ids,
         )
-        .map_err(|error| ProviderError::Request(Box::new(error)))?;
+        .map_err(EncodeError::request)?;
         for (position, message) in messages.iter_mut().enumerate() {
             tool_ids
                 .apply(
@@ -2074,7 +2066,7 @@ impl AnthropicCompletionRequest {
                         _ => None,
                     }),
                 )
-                .map_err(|error| ProviderError::Request(Box::new(error)))?;
+                .map_err(EncodeError::request)?;
         }
 
         let mut additional_params_payload = req
@@ -2131,7 +2123,7 @@ impl AnthropicCompletionRequest {
 }
 
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
-    type Error = ProviderError;
+    type Error = EncodeError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
         Self::try_from_params(params, None)
@@ -2140,14 +2132,14 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
 
 pub(super) fn extract_tools_from_additional_params(
     additional_params: &mut serde_json::Value,
-) -> Result<Vec<serde_json::Value>, ProviderError> {
+) -> Result<Vec<serde_json::Value>, EncodeError> {
     if let Some(map) = additional_params.as_object_mut()
         && let Some(raw_tools) = map.remove("tools")
     {
         return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
-            ProviderError::Request(
-                format!("Invalid Anthropic `additional_params.tools` payload: {err}").into(),
-            )
+            EncodeError::request(format!(
+                "Invalid Anthropic `additional_params.tools` payload: {err}"
+            ))
         });
     }
 
@@ -2158,7 +2150,7 @@ pub(super) fn build_tool_definitions(
     tools: Vec<completion::ToolDefinition>,
     additional_params_payload: &mut serde_json::Value,
     strict: Option<fn(&mut ToolDefinition)>,
-) -> Result<Vec<serde_json::Value>, ProviderError> {
+) -> Result<Vec<serde_json::Value>, EncodeError> {
     let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
 
     let mut tools = tools

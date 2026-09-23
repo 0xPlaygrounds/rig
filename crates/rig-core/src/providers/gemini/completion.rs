@@ -35,6 +35,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::completion::{self, CompletionRequest};
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
@@ -105,7 +106,7 @@ impl Wire for GenerateContent {
         }
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -129,8 +130,7 @@ impl Wire for GenerateContent {
         crate::providers::internal::trace_json(target, "Gemini completion request", &body);
         let request = http::Request::post(self.provider.uri(&path))
             .header("Content-Type", "application/json")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Response(error.to_string()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // Gemini supplies no transport request-id response header.
         Ok(Encoded::new(request, framing))
     }
@@ -142,7 +142,7 @@ impl Wire for GenerateContent {
 
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
-) -> Result<GenerateContentRequest, ProviderError> {
+) -> Result<GenerateContentRequest, EncodeError> {
     let chat_history = completion_request.chat_history_with_documents();
 
     let CompletionRequest {
@@ -183,9 +183,9 @@ pub(crate) fn create_request_body(
         match value {
             Value::String(name) => smuggled_cached_content.push(name),
             other => {
-                return Err(ProviderError::Request(
-                    format!("additional_params.{spelling} should be a string, got {other}").into(),
-                ));
+                return Err(EncodeError::request(format!(
+                    "additional_params.{spelling} should be a string, got {other}"
+                )));
             }
         }
     }
@@ -236,17 +236,14 @@ pub(crate) fn create_request_body(
     };
     // Gemini rejects duplicate system-instruction fields rather than selecting one.
     if let (Some(typed), Some(spelling)) = (&system_instruction, smuggled_system_instruction) {
-        return Err(ProviderError::Request(
-            format!(
-                "a Gemini request set the system instruction twice — once as a preamble or \
+        return Err(EncodeError::request(format!(
+            "a Gemini request set the system instruction twice — once as a preamble or \
                  system message ({} part(s)) and once through `additional_params.{spelling}`. \
                  Both would reach the wire, and Gemini rejects that outright: \
                  `system_instruction` is an optional proto field, so a second one is `oneof \
                  field '_system_instruction' is already set`. Set it one way or the other",
-                typed.parts.len()
-            )
-            .into(),
-        ));
+            typed.parts.len()
+        )));
     }
 
     let mut tools = if function_tools.is_empty() {
@@ -269,25 +266,19 @@ pub(crate) fn create_request_body(
     if tool_config.is_some()
         && let Some(spelling) = smuggled_tool_config
     {
-        return Err(ProviderError::Request(
-            format!(
-                "a Gemini request set the tool choice twice — once as `tool_choice` and once \
+        return Err(EncodeError::request(format!(
+            "a Gemini request set the tool choice twice — once as `tool_choice` and once \
                  through `additional_params.{spelling}`. Both would reach the wire, and Gemini \
                  does not take the last — it *merges* them, so the two allowed-function lists \
                  are unioned and the narrower `tool_choice` silently stops restricting anything. \
                  Set it one way or the other"
-            )
-            .into(),
-        ));
+        )));
     }
 
     let mut request = GenerateContentRequest {
         contents: full_history
             .into_iter()
-            .map(|msg| {
-                msg.try_into()
-                    .map_err(|e| ProviderError::Request(Box::new(e)))
-            })
+            .map(|msg| msg.try_into().map_err(EncodeError::request))
             .collect::<Result<Vec<_>, _>>()?,
         generation_config,
         safety_settings: None,
@@ -347,14 +338,14 @@ fn smuggled_field<'a>(payload: &Value, spellings: &[&'a str]) -> Option<&'a str>
 
 fn extract_tools_from_additional_params(
     additional_params: &mut Value,
-) -> Result<Vec<Value>, ProviderError> {
+) -> Result<Vec<Value>, EncodeError> {
     if let Some(map) = additional_params.as_object_mut()
         && let Some(raw_tools) = map.remove("tools")
     {
         return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            ProviderError::Request(
-                format!("Invalid Gemini `additional_params.tools` payload: {err}").into(),
-            )
+            EncodeError::request(format!(
+                "Invalid Gemini `additional_params.tools` payload: {err}"
+            ))
         });
     }
 
@@ -380,16 +371,19 @@ pub(crate) fn streaming_endpoint(model: &str) -> String {
 }
 
 impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
-    type Error = ProviderError;
+    type Error = EncodeError;
 
     fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
         let mut function_declarations = Vec::new();
 
         for tool in tools {
-            let parameters = tool_parameters_to_schema(tool.parameters).map_err(|e| {
-                ProviderError::Provider(format!(
-                    "Tool '{}' could not be converted to a schema: {:?}",
-                    tool.name, e,
+            let parameters = tool_parameters_to_schema(tool.parameters).map_err(|error| {
+                // The reason without the inner error's own `RequestError:` prefix.
+                let reason = std::error::Error::source(&error)
+                    .map_or_else(|| error.to_string(), ToString::to_string);
+                EncodeError::request(format!(
+                    "Tool '{}' could not be converted to a schema: {reason}",
+                    tool.name
                 ))
             })?;
 
@@ -505,7 +499,7 @@ pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
 }
 
 pub mod gemini_api_types {
-    use crate::error::ProviderError;
+    use crate::error::EncodeError;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     use serde::{Deserialize, Serialize};
@@ -1627,7 +1621,7 @@ pub mod gemini_api_types {
     /// Gemini does not need a `parameters` object for no-argument tools, and it
     /// does not support JSON Schema references, so this helper keeps those
     /// conventions centralized for all Gemini transports.
-    pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Schema>, ProviderError> {
+    pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Schema>, EncodeError> {
         if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
             Ok(None)
         } else {
@@ -1639,7 +1633,7 @@ pub mod gemini_api_types {
     /// Return unchanged input if neither section exists. Return an error for a
     /// non-object definitions section, unsupported reference paths, or missing definitions.
     /// Callers must supply acyclic references.
-    pub fn flatten_schema(mut schema: Value) -> Result<Value, ProviderError> {
+    pub fn flatten_schema(mut schema: Value) -> Result<Value, EncodeError> {
         let defs = schema
             .as_object()
             .and_then(|obj| obj.get("$defs").or_else(|| obj.get("definitions")))
@@ -1650,7 +1644,7 @@ pub mod gemini_api_types {
         };
 
         let Some(defs_obj) = defs_value.as_object() else {
-            return Err(ProviderError::Response("$defs must be an object".into()));
+            return Err(EncodeError::request("$defs must be an object"));
         };
 
         resolve_refs(&mut schema, defs_obj)?;
@@ -1668,7 +1662,7 @@ pub mod gemini_api_types {
     fn resolve_refs(
         value: &mut Value,
         defs: &serde_json::Map<String, Value>,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<(), EncodeError> {
         match value {
             Value::Object(obj) => {
                 if let Some(ref_value) = obj.get("$ref")
@@ -1677,7 +1671,7 @@ pub mod gemini_api_types {
                     let def_name = parse_ref_path(ref_str)?;
 
                     let def = defs.get(&def_name).ok_or_else(|| {
-                        ProviderError::Response(format!("Reference not found: {ref_str}"))
+                        EncodeError::request(format!("Reference not found: {ref_str}"))
                     })?;
 
                     let mut resolved = def.clone();
@@ -1703,19 +1697,19 @@ pub mod gemini_api_types {
 
     /// Extract the suffix of `#/$defs/` or `#/definitions/`.
     /// Return a response error for any other reference prefix.
-    fn parse_ref_path(ref_str: &str) -> Result<String, ProviderError> {
+    fn parse_ref_path(ref_str: &str) -> Result<String, EncodeError> {
         if let Some(fragment) = ref_str.strip_prefix('#') {
             if let Some(name) = fragment.strip_prefix("/$defs/") {
                 Ok(name.to_string())
             } else if let Some(name) = fragment.strip_prefix("/definitions/") {
                 Ok(name.to_string())
             } else {
-                Err(ProviderError::Response(format!(
+                Err(EncodeError::request(format!(
                     "Unsupported reference format: {ref_str}"
                 )))
             }
         } else {
-            Err(ProviderError::Response(format!(
+            Err(EncodeError::request(format!(
                 "Only fragment references (#/...) are supported: {ref_str}"
             )))
         }
@@ -1848,7 +1842,7 @@ pub mod gemini_api_types {
     }
 
     impl TryFrom<Value> for Schema {
-        type Error = ProviderError;
+        type Error = EncodeError;
 
         fn try_from(value: Value) -> Result<Self, Self::Error> {
             let flattened_val = flatten_schema(value)?;
@@ -1943,9 +1937,7 @@ pub mod gemini_api_types {
                     items,
                 })
             } else {
-                Err(ProviderError::Response(
-                    "Expected a JSON object for Schema".into(),
-                ))
+                Err(EncodeError::request("Expected a JSON object for Schema"))
             }
         }
     }
@@ -2012,7 +2004,7 @@ pub mod gemini_api_types {
     }
 
     impl TryFrom<message::ToolChoice> for FunctionCallingMode {
-        type Error = ProviderError;
+        type Error = EncodeError;
         fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
             let res = match value {
                 message::ToolChoice::Auto => Self::Auto,
@@ -2055,28 +2047,22 @@ impl gemini_api_types::GenerateContentRequest {
     /// Set an explicit cache handle, requiring the `cachedContents/` prefix.
     /// Return a request error for a different existing handle or for system
     /// instructions, tools, or tool configuration in typed or additional fields.
-    pub fn with_cached_content(&mut self, name: &str) -> Result<(), ProviderError> {
+    pub fn with_cached_content(&mut self, name: &str) -> Result<(), EncodeError> {
         if !name.starts_with("cachedContents/") {
-            return Err(ProviderError::Request(
-                format!(
-                    "gemini cached content handle should look like `cachedContents/<id>`, got \
+            return Err(EncodeError::request(format!(
+                "gemini cached content handle should look like `cachedContents/<id>`, got \
                      `{name}`"
-                )
-                .into(),
-            ));
+            )));
         }
 
         // Reject competing handles rather than silently choose a cache.
         if let Some(existing) = self.cached_content.as_deref()
             && existing != name
         {
-            return Err(ProviderError::Request(
-                format!(
-                    "a Gemini request set cached content twice, to `{existing}` and `{name}` — \
+            return Err(EncodeError::request(format!(
+                "a Gemini request set cached content twice, to `{existing}` and `{name}` — \
                      set it one way or the other"
-                )
-                .into(),
-            ));
+            )));
         }
 
         // Hand-built requests can retain conflicting fields in flattened parameters,
@@ -2130,16 +2116,13 @@ impl gemini_api_types::GenerateContentRequest {
             } else {
                 ""
             };
-            return Err(ProviderError::Request(
-                format!(
-                    "a Gemini request using cached content `{name}` also set {}. The cached \
+            return Err(EncodeError::request(format!(
+                "a Gemini request using cached content `{name}` also set {}. The cached \
                      content already owns the system instruction, tools and tool choice for every \
                      request that uses it — move them into the cache, or drop the cache \
                      handle.{tool_caveat}",
-                    conflicts.join(" and ")
-                )
-                .into(),
-            ));
+                conflicts.join(" and ")
+            )));
         }
 
         self.cached_content = Some(name.to_owned());

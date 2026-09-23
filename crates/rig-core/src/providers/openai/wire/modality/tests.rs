@@ -835,6 +835,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
             .embeddings(model, Some(ndims))
             .encode(documents(), Mode::Unary)
             .expect_err("a width the dialect cannot honour must not reach the wire")
+            .into()
     }
 
     // The two Doubleword refusals read differently, and both texts are the

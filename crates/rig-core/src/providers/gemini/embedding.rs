@@ -12,7 +12,7 @@
 use serde_json::json;
 
 use crate::embeddings;
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use crate::operation::EmbeddingCapabilities;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wire::{
@@ -75,7 +75,7 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let requests: Vec<_> = request
             .iter()
             .map(|doc| {
@@ -110,8 +110,7 @@ impl Wire for Embeddings {
             self.provider.api_key.expose()
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(serde_json::to_vec(&body)?))
-        .map_err(|error| ProviderError::Http(error.into()))?;
+        .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // `batchEmbedContents` has no streaming variant, so a streamed call
         // sends the same bytes and reads the same whole reply.
         Ok(Encoded::new(request, Framing::Whole))

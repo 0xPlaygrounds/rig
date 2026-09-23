@@ -564,10 +564,13 @@ where
     // No streamed operation sends a batch: a batch exists for providers
     // that take one item per request, and those are all unary.
     let [http_request] = <[_; 1]>::try_from(requests).map_err(|requests| {
-        ProviderError::Response(format!(
-            "a streamed reply takes exactly one request, not {}",
-            requests.len()
-        ))
+        ProviderError::Request(
+            format!(
+                "a streamed reply takes exactly one request, not {}",
+                requests.len()
+            )
+            .into(),
+        )
     })?;
     let mut http_request = http_request;
     accept_header(&mut http_request, framing);
@@ -867,8 +870,8 @@ fn byte_request(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, 
     let (parts, body) = request.into_parts();
     match body {
         Body::Bytes(bytes) => Ok(http::Request::from_parts(parts, bytes)),
-        Body::Multipart(_) => Err(ProviderError::Response(
-            "a multipart request cannot open a streamed reply".to_owned(),
+        Body::Multipart(_) => Err(ProviderError::Request(
+            "a multipart request cannot open a streamed reply".into(),
         )),
     }
 }

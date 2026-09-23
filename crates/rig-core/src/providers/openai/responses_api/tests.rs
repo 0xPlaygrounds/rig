@@ -1,5 +1,6 @@
 use super::*;
 use crate::completion::CompletionRequestBuilder;
+use crate::error::ProviderError;
 use crate::message;
 use crate::test_utils::MockCompletionModel;
 use serde_json::json;
@@ -633,7 +634,7 @@ fn responses_tool_choice_specific_empty_names_error() {
     });
 
     assert!(matches!(
-        converted,
+        converted.map_err(ProviderError::from),
         Err(ProviderError::Request(error))
             if error.to_string().contains("at least one function name")
     ));

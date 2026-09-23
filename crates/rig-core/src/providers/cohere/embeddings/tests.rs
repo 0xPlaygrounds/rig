@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ProviderError;
 
 #[tokio::test]
 async fn embeddings_non_success_preserves_status_and_body() {
@@ -102,11 +103,11 @@ fn image_documents_are_stable_without_retaining_image_bytes() {
 #[test]
 fn image_data_url_rejects_unsupported_and_oversized_inputs() {
     assert!(matches!(
-        validate_image(b"not an image"),
+        validate_image(b"not an image").map_err(ProviderError::from),
         Err(ProviderError::Request(_))
     ));
     assert!(matches!(
-        validate_image(&vec![0; MAX_IMAGE_BYTES + 1]),
+        validate_image(&vec![0; MAX_IMAGE_BYTES + 1]).map_err(ProviderError::from),
         Err(ProviderError::Request(_))
     ));
 }

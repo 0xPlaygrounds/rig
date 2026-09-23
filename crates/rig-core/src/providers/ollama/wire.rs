@@ -10,7 +10,7 @@ use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
 use crate::driver::{HasEmbedding, HasModelListing};
 use crate::embeddings::Embedding as Vector;
-use crate::error::ProviderError;
+use crate::error::EncodeError;
 use crate::model::{Model, ModelList};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::wire::{
@@ -152,7 +152,7 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(
@@ -163,8 +163,7 @@ impl Wire for Chat {
         let request = self
             .provider
             .request(http::Method::POST, "/api/chat")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Http(error.into()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // Both modes decode the same record shape; streaming needs NDJSON framing.
         Ok(Encoded::new(
             request,
@@ -204,13 +203,12 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let body = serde_json::json!({ "model": self.model, "input": texts });
         let request = self
             .provider
             .request(http::Method::POST, "/api/embed")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| ProviderError::Http(error.into()))?;
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -286,12 +284,11 @@ impl Wire for Models {
         PROVIDER_NAME
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = self
             .provider
             .request(http::Method::GET, "/api/tags")
-            .body(Body::empty())
-            .map_err(ProviderError::from)?;
+            .body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
