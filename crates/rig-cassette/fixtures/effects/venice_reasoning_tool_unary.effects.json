@@ -127,7 +127,8 @@
                     "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add(17, 25)`.\n2. Return the result \"42\".\n"
                   }
                 }
-              ]
+              ],
+              "provider": "venice"
             },
             {
               "type": "toolcall",
@@ -274,7 +275,8 @@
                         "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add(17, 25)`.\n2. Return the result \"42\".\n"
                       }
                     }
-                  ]
+                  ],
+                  "provider": "venice"
                 },
                 {
                   "type": "toolcall",
@@ -370,7 +372,8 @@
                     "text": "The tool returned 42. The user requested \"just the number\". I will output \"42\".\n"
                   }
                 }
-              ]
+              ],
+              "provider": "venice"
             },
             {
               "type": "text",

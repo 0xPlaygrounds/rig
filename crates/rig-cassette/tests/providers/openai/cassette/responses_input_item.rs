@@ -255,6 +255,7 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
     // reasoning block with no content still converts to an input item rather
     // than being dropped or erroring.
     let reasoning = Reasoning {
+        provider: None,
         id: Some("rs_roundtrip_empty".to_string()),
         content: Vec::new(),
     };

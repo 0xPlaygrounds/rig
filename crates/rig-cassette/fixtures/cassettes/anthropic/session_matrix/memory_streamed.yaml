@@ -1,0 +1,296 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","stream":true,"system":[{"text":"Use tools when asked. Answer briefly.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfKBtZHyf8gEYsHBDRFcH
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfKBtZgoFPcTfTTQaLzki","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":605,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"The user is asking me to think through","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" the","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" request","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" and then call the lookup_harbor_","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"label function. Let","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" me think","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" about what","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I need to do:\n\n1.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" The function","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" lookup_harbor_label takes no required","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" parameters\n2. According","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" to its","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" description, it returns","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" \"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"the alpha signal marker\"\n3.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" The user wants me to call it and","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" report what it returns\n\nThis","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" seems straightforward - I just need to","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" call the function with no parameters and","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" report","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" the","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" result","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":".\n\nLet me call the function now","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":".","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"EtEFCpoBCBIYAipAI9fiI3v68q1nKV9eHwBJ+Xy9G0g9w15Uu/s128bjEIsmDtUag6uFkxeJEKIeV/FFtRKfmEvp53KHpBhjnI86UzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGX5svVBhIM/INnJP6ZiDLFQi3lGgxbfj2j4PlJrt55Q6QiME9M/hNaNzn+0RzWhtBguH8XAE+z0su9YQTERsq0usC7sAZC8I1SUEXiRVl1/d04CCrjA4Si52XGLjDMfUhthqTIs/0nNr5t0oLwRM/XArBgbZxw+2oeV6GluJfSQlGpyet+S+9GXh1dquPRpcriwSHi+2I/j5qbxHWYL8lHko2i7lLxFmdvpt6tMRDSyrVRmfOmc3ouBkAXxsQX1aRrsu0qgoz5QoBEHhsrfuXW5+xlOT0XbLh//hvXn/z9a4Mv88hOSdOA/dh/wZkSoH6Jj2moBtXq6yAgkZt2REtkJq6R6pvW0SMX80VXcW5Bo+T1omFjcp4/T30tvqUrWJDKamRhGCsM6f2CqNdrdmU8XA5/GU7XeMkwOUgVOmo9mNsJ+iHE+sghR8mDEFp8azoLU3LXskHlR3JyMWevyjR6U9wF2gEi86fDJkDHR6ee/fAXDgOhO/64fQzBT4GZj9fhr++ZKpuONm/3CiUxjl/5DTEl/sV3OLYVllhuDuJK1TBUDJpRcSFADNf4/795v2ktk//ttRLUcEYVS59Rb0Lu2TF7/e+4Rbuj4nXsc2LC+UJzr88/TvtLTTBgzZTuOxgVCBYgA82+8XufutovF1X5qqFyMIcijDnj4o2iY6Rp8oXCx9KWWCeQQyi4FGdq/9gHPOAmiJKcUtPjKGrJGxIYyv+v2KWH2ZDYTUZS4QB5fw310Ygk1VzHNRgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"I'll call the lookup_harbor","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"_label function to","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" retrieve","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the alpha signal marker label","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":".","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01R1abKu9UYR3Yr6CJXy4zpL","input":{},"name":"lookup_harbor_label","type":"tool_use"},"index":2,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":2,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":605,"output_tokens":170,"output_tokens_details":{"thinking_tokens":110}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"text"}],"role":"user"},{"content":[{"signature":"EtEFCpoBCBIYAipAI9fiI3v68q1nKV9eHwBJ+Xy9G0g9w15Uu/s128bjEIsmDtUag6uFkxeJEKIeV/FFtRKfmEvp53KHpBhjnI86UzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGX5svVBhIM/INnJP6ZiDLFQi3lGgxbfj2j4PlJrt55Q6QiME9M/hNaNzn+0RzWhtBguH8XAE+z0su9YQTERsq0usC7sAZC8I1SUEXiRVl1/d04CCrjA4Si52XGLjDMfUhthqTIs/0nNr5t0oLwRM/XArBgbZxw+2oeV6GluJfSQlGpyet+S+9GXh1dquPRpcriwSHi+2I/j5qbxHWYL8lHko2i7lLxFmdvpt6tMRDSyrVRmfOmc3ouBkAXxsQX1aRrsu0qgoz5QoBEHhsrfuXW5+xlOT0XbLh//hvXn/z9a4Mv88hOSdOA/dh/wZkSoH6Jj2moBtXq6yAgkZt2REtkJq6R6pvW0SMX80VXcW5Bo+T1omFjcp4/T30tvqUrWJDKamRhGCsM6f2CqNdrdmU8XA5/GU7XeMkwOUgVOmo9mNsJ+iHE+sghR8mDEFp8azoLU3LXskHlR3JyMWevyjR6U9wF2gEi86fDJkDHR6ee/fAXDgOhO/64fQzBT4GZj9fhr++ZKpuONm/3CiUxjl/5DTEl/sV3OLYVllhuDuJK1TBUDJpRcSFADNf4/795v2ktk//ttRLUcEYVS59Rb0Lu2TF7/e+4Rbuj4nXsc2LC+UJzr88/TvtLTTBgzZTuOxgVCBYgA82+8XufutovF1X5qqFyMIcijDnj4o2iY6Rp8oXCx9KWWCeQQyi4FGdq/9gHPOAmiJKcUtPjKGrJGxIYyv+v2KWH2ZDYTUZS4QB5fw310Ygk1VzHNRgB","thinking":"The user is asking me to think through the request and then call the lookup_harbor_label function. Let me think about what I need to do:\n\n1. The function lookup_harbor_label takes no required parameters\n2. According to its description, it returns \"the alpha signal marker\"\n3. The user wants me to call it and report what it returns\n\nThis seems straightforward - I just need to call the function with no parameters and report the result.\n\nLet me call the function now.","type":"thinking"},{"text":"I''ll call the lookup_harbor_label function to retrieve the alpha signal marker label.","type":"text"},{"id":"toolu_01R1abKu9UYR3Yr6CJXy4zpL","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_01R1abKu9UYR3Yr6CJXy4zpL","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","stream":true,"system":[{"text":"Use tools when asked. Answer briefly.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfKBtesqPQdXNe9w631y6
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfKBtfHtnxANiHwoWiREf","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":791,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"The lookup_harbor_label function returns","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" label","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":":","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **crimson-harbor**\n\nThis","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" is the alpha signal marker being","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" requested","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":".","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":791,"output_tokens":30,"output_tokens_details":{"thinking_tokens":0}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"text"}],"role":"user"},{"content":[{"signature":"EtEFCpoBCBIYAipAI9fiI3v68q1nKV9eHwBJ+Xy9G0g9w15Uu/s128bjEIsmDtUag6uFkxeJEKIeV/FFtRKfmEvp53KHpBhjnI86UzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGX5svVBhIM/INnJP6ZiDLFQi3lGgxbfj2j4PlJrt55Q6QiME9M/hNaNzn+0RzWhtBguH8XAE+z0su9YQTERsq0usC7sAZC8I1SUEXiRVl1/d04CCrjA4Si52XGLjDMfUhthqTIs/0nNr5t0oLwRM/XArBgbZxw+2oeV6GluJfSQlGpyet+S+9GXh1dquPRpcriwSHi+2I/j5qbxHWYL8lHko2i7lLxFmdvpt6tMRDSyrVRmfOmc3ouBkAXxsQX1aRrsu0qgoz5QoBEHhsrfuXW5+xlOT0XbLh//hvXn/z9a4Mv88hOSdOA/dh/wZkSoH6Jj2moBtXq6yAgkZt2REtkJq6R6pvW0SMX80VXcW5Bo+T1omFjcp4/T30tvqUrWJDKamRhGCsM6f2CqNdrdmU8XA5/GU7XeMkwOUgVOmo9mNsJ+iHE+sghR8mDEFp8azoLU3LXskHlR3JyMWevyjR6U9wF2gEi86fDJkDHR6ee/fAXDgOhO/64fQzBT4GZj9fhr++ZKpuONm/3CiUxjl/5DTEl/sV3OLYVllhuDuJK1TBUDJpRcSFADNf4/795v2ktk//ttRLUcEYVS59Rb0Lu2TF7/e+4Rbuj4nXsc2LC+UJzr88/TvtLTTBgzZTuOxgVCBYgA82+8XufutovF1X5qqFyMIcijDnj4o2iY6Rp8oXCx9KWWCeQQyi4FGdq/9gHPOAmiJKcUtPjKGrJGxIYyv+v2KWH2ZDYTUZS4QB5fw310Ygk1VzHNRgB","thinking":"The user is asking me to think through the request and then call the lookup_harbor_label function. Let me think about what I need to do:\n\n1. The function lookup_harbor_label takes no required parameters\n2. According to its description, it returns \"the alpha signal marker\"\n3. The user wants me to call it and report what it returns\n\nThis seems straightforward - I just need to call the function with no parameters and report the result.\n\nLet me call the function now.","type":"thinking"},{"text":"I''ll call the lookup_harbor_label function to retrieve the alpha signal marker label.","type":"text"},{"id":"toolu_01R1abKu9UYR3Yr6CJXy4zpL","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_01R1abKu9UYR3Yr6CJXy4zpL","type":"tool_result"}],"role":"user"},{"content":[{"text":"The lookup_harbor_label function returns the label: **crimson-harbor**\n\nThis is the alpha signal marker being requested.","type":"text"}],"role":"assistant"},{"content":[{"text":"What label did the tool return? Reply with just the label.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","stream":true,"system":[{"text":"Use tools when asked. Answer briefly.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tool_choice":{"type":"auto"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfKBtheXKbQ24HwqLgDNt
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfKBti45uwV1AnUSwFrub","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":724,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"The user is asking me to just provide","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" the label that was","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" returned from","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" the tool","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" call. I already","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" called the","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" function and it returned \"crimson-","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"harbor\".","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I should just reply","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" with that label","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" without","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" any additional explanation.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"EtsDCpoBCBIYAipAVR3ZzzzK7ydLbYpaJXkYdldwMwXbN5/OnDrcdXG6yn6GAD86TaVXZKyvPjo4def2juKlkUaFRl2wAPmw226iFjIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGZ5svVBhIM4aV/5IcxRJuCLpmLGgxR+16Kfk89q+e5nxQiMB/6w83BHh8eao1ofN27fPuhIjZcdrIeUfbVZZ60Jr/Cmo2u28g7tzEtjJ5DOzAuVCrtAQQtEfMu+IgKVzzn4eNXEDFZnXkPtDJleF84v+Q+o+Emn6mkGYZwzhHKhXPuQszupCMmLl5LtfwSKkmUMugN3NYoOuh3IxLG9XJKqLYCpU7yHykS9hHfMumIWBVtrH57EVIHshIfyPR/7P5vSo0OYKNgMtYLqesxtBI8YFokQ1atHAtN4Bga7mBFs9vTuKweDxL3nwguyhM5OmWBSMRLqc6EnSq4HEDjp4p3luu8PFCtcLIYVqjfZ4CSgGZgwKPJgLv+amZEJYhCGnv5MmAtBSpkXKhDCbSKfT7r33udoBKQ262OrGOgTWrYC5RJFBgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"crim","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"son-harbor","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":724,"output_tokens":59,"output_tokens_details":{"thinking_tokens":49}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

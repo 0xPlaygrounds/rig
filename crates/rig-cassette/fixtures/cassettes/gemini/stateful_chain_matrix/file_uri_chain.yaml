@@ -1,0 +1,71 @@
+when:
+  path: /upload/v1beta/files
+  method: POST
+  query_param:
+  - name: uploadType
+    value: media
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: text/plain
+  body: Warehouse note. The ordering token is violet-needle. The shelf code is K-4471.
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"file":{"createTime":"2026-09-23T02:44:17.655968Z","expirationTime":"2026-09-25T02:44:17.415774960Z","mimeType":"text/plain","name":"files/pa5t0k649guc","sha256Hash":"YzY4OGZkMzZmZjJkNGEzYWNjMmI5MDNjZWYyNzAwZWIxZmMxNGY3MjI0OWUxMmYxZWM5YzlmZWM5MTkxMzU4Yw==","sizeBytes":"78","source":"UPLOADED","state":"ACTIVE","updateTime":"2026-09-23T02:44:17.655968Z","uri":"https://generativelanguage.googleapis.com/v1beta/files/pa5t0k649guc"}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"fileData":{"fileUri":"https://generativelanguage.googleapis.com/v1beta/files/pa5t0k649guc","mimeType":"text/plain"},"thought":false},{"text":"What is the ordering token in the attached file? Reply with the token only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":1024},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"violet-needle"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"AT2zap7qL52P6dkPxKuUqQY","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":39,"promptTokensDetails":[{"modality":"TEXT","tokenCount":39}],"serviceTier":"standard","thoughtsTokenCount":174,"totalTokenCount":216}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"fileData":{"fileUri":"https://generativelanguage.googleapis.com/v1beta/files/pa5t0k649guc","mimeType":"text/plain"},"thought":false},{"text":"What is the ordering token in the attached file? Reply with the token only.","thought":false}],"role":"user"},{"parts":[{"text":"violet-needle","thought":false}],"role":"model"},{"parts":[{"text":"What is the shelf code in the same attached file? Reply with the code only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":1024},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"K-4471"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"Az2zaqi5ArC0qtsP5bHOkQc","usageMetadata":{"candidatesTokenCount":6,"promptTokenCount":61,"promptTokensDetails":[{"modality":"TEXT","tokenCount":61}],"serviceTier":"standard","thoughtsTokenCount":42,"totalTokenCount":109}}'
+---
+when:
+  path: /v1beta/files/pa5t0k649guc
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{}'

@@ -116,7 +116,8 @@
                     "text": "The text mentions Jane Smith, age 45, and her profession is data scientist. Let me submit this structured data."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",

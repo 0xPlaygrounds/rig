@@ -2,28 +2,28 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 11,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -44,21 +44,21 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 23,
+        "batch": 24,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -364,7 +364,8 @@
                   "type": "summary",
                   "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",
@@ -649,7 +650,8 @@
                       "type": "summary",
                       "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -819,7 +821,8 @@
                   "type": "summary",
                   "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",
@@ -1121,7 +1124,8 @@
                       "type": "summary",
                       "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -1177,7 +1181,8 @@
                       "type": "summary",
                       "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -1364,7 +1369,8 @@
                   "type": "summary",
                   "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",
@@ -1657,7 +1663,8 @@
                       "type": "summary",
                       "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -1713,7 +1720,8 @@
                       "type": "summary",
                       "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -1786,7 +1794,8 @@
                       "type": "summary",
                       "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -1964,7 +1973,8 @@
                   "type": "summary",
                   "content": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",
@@ -2251,7 +2261,8 @@
                       "type": "summary",
                       "content": "The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -2307,7 +2318,8 @@
                       "type": "summary",
                       "content": "The instruction is: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags criti..."
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -2380,7 +2392,8 @@
                       "type": "summary",
                       "content": "The instruction is: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -2444,7 +2457,8 @@
                       "type": "summary",
                       "content": "The instruction says: call exactly one tool at a time in this order: 1. ping_empty... 2. inspect_manifest... 3. join_labels... 4. escape_echo...\n"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -2616,7 +2630,8 @@
                   "type": "summary",
                   "content": "The tools have all been called in the exact order specified, and each returned the expected OK messages.\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "text",

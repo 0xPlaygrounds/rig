@@ -1,6 +1,7 @@
 mod history_survival_matrix;
 mod portability_matrix;
 mod prompt_caching;
+mod request_identity_matrix;
 mod response_identity_edge;
 mod support;
 

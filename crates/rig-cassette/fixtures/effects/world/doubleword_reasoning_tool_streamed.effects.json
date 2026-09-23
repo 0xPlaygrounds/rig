@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -54,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -62,14 +62,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
@@ -77,54 +69,46 @@
         "batch": 12,
         "id": 0,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
         "batch": 13,
-        "id": 1,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 17,
-        "id": 2,
+        "id": 1,
         "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 19,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
@@ -148,7 +132,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -156,11 +140,59 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 26,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 25,
+        "batch": 28,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 30,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 31,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -292,7 +324,8 @@
                     "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number (the result). I need to call the add function with x=17 and y=25."
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             },
             {
               "type": "toolcall",
@@ -669,7 +702,8 @@
                         "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number (the result). I need to call the add function with x=17 and y=25."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "doubleword"
                 },
                 {
                   "type": "toolcall",
@@ -763,7 +797,8 @@
                     "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output \"42\" without any additional text."
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             },
             {
               "type": "text",

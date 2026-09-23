@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"},{"parts":[{"text":"Sure! Let me check the current weather in Tokyo right away!","thought":false},{"functionCall":{"args":{"city":"Tokyo"},"id":"toolu_017BvVzjTGv88pPQmjCJJjGm","name":"get_weather"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"toolu_017BvVzjTGv88pPQmjCJJjGm","name":"get_weather","response":{"result":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}},"thought":false}],"role":"user"},{"parts":[{"text":"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.","thought":false}],"role":"user"},{"parts":[{"text":"Pack sunscreen—it''s sunny with only light clouds, so rain is unlikely.","thought":false}],"role":"model"},{"parts":[{"text":"Restate that advice in different words, in one sentence.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for one record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Given the sunny conditions and minimal cloud cover, you should prioritize sun protection over rain gear.","thoughtSignature":"EsEFCr4FAWkUfROxX36wHuVl+28hIZMQFkhdluh+9OQhKxCr0zqEQyOqfthKPz2nA7u6S+BRbRLjz2v3nbHQf3FdHL8Rsf7qzaEl09W8JWfN3ehfBcw24LrXFq9FAo/4/ghLLK3ssdew7lwbQbrdqqKraJj9HGKBHpkvbFr+s1itN6NuJ3Ah2SCJIhCELKl9INAda8wvJZmGEprAX5nHGwVWRiNAY9B6Sle7QcrPQf58ENmVt8X8wmdzmTOuu3uo9yKSZAD2hsXxcAzgCZ8XtUwsQJLF1KOqBpqrck9tvn2sRYTmJ7aRy/BGBAVq8QLS/kH9mI1dR2/Y7b/9ct675g8KMX/4Ll8qbAWEinewmXnBEzQ8tVySZiO/HCXVtdbFDmFpDHJrxa29wWkQb8BwPsr6cKWTUh0jqSExc3KMkqrjkbsLR5CZ9gsEq8gKWVonX0vqXqZFRZLX12X3jg7zUy035L5ZW7mdy0bEhvOmN0JTh4elUX+hs2rFoEVKwe9MSbdxl9+n2NRyUSpg9CZGitgPq0/4v7rbfXZreM9ENLOrLvtKpy/d/lcxPYyOZs5Dg1RJyquEOwdOMXEp0wA6CWxn91DqO88RgnJ+DqfxFjXgT9Ku1pB3b2fIv1Hi9APEnkp4/9RusiZjnRgYJK6g8J8FcX009l2Y6OCRWz86vb8ow4Op9E2z+5sJYlXJUKMGl4PX4XEJM2wAQ6E+CIyRZOdzRFgpM0BudH5jbsD6/ig5d2wCkJesaj1MK6Ff62gx9FQSXe9ezRe7+vLmH/DIwX0AHJehwHNie2iIh6W/kaVF07bIh9Fdaaqov8iuYSJ5sSb7SabzApyqTJYV699UX1OrLngN26jJiN1As1ntlh7bAssQoJYIcjTuvTdPgShCQ8Y5qSWC3AcGnMNiM8NAdvwFmr6QNR7XlN6YJE4XAqPeyc15"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"qveyapufBMafqtsP-JmTyAo","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":216,"promptTokensDetails":[{"modality":"TEXT","tokenCount":216}],"serviceTier":"standard","thoughtsTokenCount":141,"totalTokenCount":375}}'

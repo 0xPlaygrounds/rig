@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Look up record alpha.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_dup","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record alpha: code amber-5521","type":"text"}],"tool_use_id":"toolu_dup","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now look up record beta.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_dup","input":{"record":"beta"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record beta: code cobalt-7730","type":"text"}],"tool_use_id":"toolu_dup","type":"tool_result"}],"role":"user"},{"content":[{"text":"Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKDDtjR2ofvcGpSVP1KX
+  body: '{"container":null,"content":[{"text":"alpha=amber-5521 beta=cobalt-7730","type":"text"}],"id":"msg_011CfKDDumfwgRdQmoKU1DmE","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":753,"output_tokens":17,"service_tier":"standard"}}'

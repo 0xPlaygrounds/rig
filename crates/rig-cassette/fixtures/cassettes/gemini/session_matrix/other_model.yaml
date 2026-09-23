@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Here''s my thought process, summarized as requested:\n\n**Analyzing the Request: `lookup_code(''alpha'')`**\n\nOkay, so I''ve got a straightforward instruction: the user wants me to execute the `lookup_code` function, with ''alpha'' passed in as the `record` argument. My primary task is to internalize this request. It''s a simple function call, but I need to make sure I understand the context and implications. The user, being an expert, probably has a very specific reason for requesting this lookup, and I need to do it as efficiently and accurately as possible. Let''s see if the tool does this simply, and without error. If it does not, then I must find a way for it to be done correctly. With this is mind, I will proceed to execute the call.\n","thought":true},{"functionCall":{"args":{"record":"alpha"},"name":"lookup_code"},"thoughtSignature":"CsEBAWkUfRNrM3sTYwX6AA9r/siqWQrzbl/3550kNETNIjYjxnnaVZB1SmfjLZ6JQHBsO0I4TSAGR07foo31Z26AGbshKCQ7tLs98v6Rzc4fgsVnREXPshsPFQ32YpxaVsbHs0gCczJ3R+jfCi9NQ8UhbIjI2Z7mGMNhcDA30e2nBmy76ociGutHelKYqG5/CfFrlybHnepE8mcxYlY9Vy8N3zUMuR/kCUOvZsdivy4kPYiI6kUHFu6AyLHm59lYEnyGOw=="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"8O2yaoHeB9K3qtsP_PqwkQo","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":66,"promptTokensDetails":[{"modality":"TEXT","tokenCount":66}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":118}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","thought":false}],"role":"user"},{"parts":[{"text":"Here''s my thought process, summarized as requested:\n\n**Analyzing the Request: `lookup_code(''alpha'')`**\n\nOkay, so I''ve got a straightforward instruction: the user wants me to execute the `lookup_code` function, with ''alpha'' passed in as the `record` argument. My primary task is to internalize this request. It''s a simple function call, but I need to make sure I understand the context and implications. The user, being an expert, probably has a very specific reason for requesting this lookup, and I need to do it as efficiently and accurately as possible. Let''s see if the tool does this simply, and without error. If it does not, then I must find a way for it to be done correctly. With this is mind, I will proceed to execute the call.\n","thought":true},{"functionCall":{"args":{"record":"alpha"},"name":"lookup_code"},"thought":false,"thoughtSignature":"CsEBAWkUfRNrM3sTYwX6AA9r/siqWQrzbl/3550kNETNIjYjxnnaVZB1SmfjLZ6JQHBsO0I4TSAGR07foo31Z26AGbshKCQ7tLs98v6Rzc4fgsVnREXPshsPFQ32YpxaVsbHs0gCczJ3R+jfCi9NQ8UhbIjI2Z7mGMNhcDA30e2nBmy76ociGutHelKYqG5/CfFrlybHnepE8mcxYlY9Vy8N3zUMuR/kCUOvZsdivy4kPYiI6kUHFu6AyLHm59lYEnyGOw=="}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_code","response":{"result":"record alpha: code amber-5521"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The code for record alpha is amber-5521.","thoughtSignature":"EmUKYwFpFH0T2WPLUSkZm9Am7wt3j5VymgWQJC08/UgSA4ExwIab6Dehu930ICIHAVoi9bU55ihrY4H2Mmjsr3Su5nqWzyONRiw61Y/VKymNVbV60LpNjacOM8yilLPWY1SaWEbwKg=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"8e2yav6INonnqtsP3MCJuA0","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":284,"promptTokensDetails":[{"modality":"TEXT","tokenCount":284}],"serviceTier":"standard","totalTokenCount":297}}'

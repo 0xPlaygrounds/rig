@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -126,7 +126,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text. The text is: \"I'm looking at a property that might be interesting. The address is 123 Main St in Springfield, IL 62701.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",

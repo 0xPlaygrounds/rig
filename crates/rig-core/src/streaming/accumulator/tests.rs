@@ -32,6 +32,7 @@ fn wid(id: &str) -> Option<String> {
 
 fn full(id: &str, content: ReasoningContent) -> Reasoning {
     Reasoning {
+        provider: None,
         id: wid(id),
         content: vec![content],
     }
@@ -257,6 +258,7 @@ fn an_id_less_restatement_keeps_the_open_parts_provider_handle() {
         &mut accumulator,
         "rs_1",
         Some(Reasoning {
+            provider: None,
             id: None,
             content: vec![reasoning_text("the complete chain")],
         }),

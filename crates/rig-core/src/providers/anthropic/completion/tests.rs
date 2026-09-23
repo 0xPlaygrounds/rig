@@ -2504,6 +2504,7 @@ fn test_message_with_plaintext_document_deserialization() {
 #[test]
 fn test_assistant_reasoning_multiblock_to_anthropic_content() {
     let reasoning = message::Reasoning {
+        provider: None,
         id: None,
         content: vec![
             message::ReasoningContent::Text {
@@ -2553,6 +2554,7 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 #[test]
 fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     let reasoning = message::Reasoning {
+        provider: None,
         id: None,
         content: vec![message::ReasoningContent::Encrypted(
             "ciphertext".to_string(),

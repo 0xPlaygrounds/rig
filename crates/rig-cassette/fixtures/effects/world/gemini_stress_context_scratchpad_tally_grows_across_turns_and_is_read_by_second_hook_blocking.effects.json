@@ -688,7 +688,8 @@
                     "signature": "CloBaRR9E/qj11JqNGwcrwcwR1A1ERlbtNeeTlmzJdxBZlxeJr2wifzVivDfD7PA4C3czrwzfHdFjbykVt/7jnBssPvBPX52Mv2+WMNAp0vyIxEgNp/CiIreOLU="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

@@ -21,6 +21,24 @@ fn cache_point_block() -> Result<CachePointBlock, CompletionError> {
 }
 
 impl AwsCompletionRequest {
+    /// A Converse request for `model`, with reasoning another issuer
+    /// produced dropped from the history
+    /// ([`crate::types::assistant_content::reasoning_issuer`]).
+    pub fn for_model(
+        mut inner: rig_core::completion::CompletionRequest,
+        model: &str,
+        prompt_caching: bool,
+    ) -> Self {
+        rig_core::message::retain_replayable_reasoning(
+            &mut inner.chat_history,
+            crate::types::assistant_content::reasoning_issuer(model),
+        );
+        Self {
+            inner,
+            prompt_caching,
+        }
+    }
+
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
         self.inner
             .additional_params
@@ -220,6 +238,8 @@ impl AwsCompletionRequest {
                 .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
             messages.push(message);
         }
+
+        crate::types::document::disambiguate_document_names(&mut messages);
 
         // Reasoning anywhere in history prevents a trailing message checkpoint,
         // even after tool results; the system checkpoint remains valid.

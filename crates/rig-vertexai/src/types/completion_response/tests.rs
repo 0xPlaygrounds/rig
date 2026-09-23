@@ -122,6 +122,7 @@ fn test_thought_text_response_captures_thought_signature() {
                 reasoning.first_signature(),
                 Some(BASE64.encode(raw).as_str())
             );
+            assert_eq!(reasoning.provider.as_deref(), Some(super::PROVIDER_NAME));
         }
         _ => panic!("Expected Reasoning"),
     }

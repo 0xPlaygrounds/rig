@@ -1,0 +1,62 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"Use tools when asked. Answer briefly.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKBtHVxo3GG5SNq5pvnS
+  body: '{"container":null,"content":[{"signature":"EpEFCpoBCBIYAipA0D++5qa7eVwLJ4MWN26ESR0BpJ8SI5V7RM3H4b+L5YV6VX5p7FRJugktpLsci196qss9Wfl5xGBF7V97rleubTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGT5svVBhIMet7GYBY31tsUuMUiGgx76u9LDCgSzq4lgwUiMO9FZGHAG/PV8FjFuirjrSCpt9ce+cbmVwgVZTMwJV6j667VYeeQcURehSKN15/kwyqjA5U/LhVZBpcnY4ZYw2qKRHmZ8tAUyH74DmKRjAlMx416S1PWgT18li7WkM9jCYfbX56S2UjB/ezEmox5cmjwzHpMzuQfn4qZ9+N7oVXNcgELKueucLlHsPNCFMQYscQZ+uOY/Yon5GqesPSb3KKhvnEooAZxHA/eaJEZLMAujaKgH5lBeT8FAMeIYoO1QtyAKtwORJlw6U3sHW48C5H3R0abCLZnEaPYssvD1t4RzRrAxz/JsLqYai1DbNQjjpIk0MCOweWI5KMUL0nm4uUstRJw5Aj2HzDffCY26hSh8o+EhSo6ojnoc1jh1TTiU7GSwuiUl8OTS23jyg6BYM++WhPwKG3mpA9ZmCsbPudhoxTtEoDyH29b7LDi7SsyYcweyix7Q8s+EKeEDm+MotZGXLar0l2LLenkkcHElbLxC+Q9O7eySBg/My9PwgBg7GI/cu7MmUeDSErNjLZrwtmzfYJ3r+GpU6Ei+L/qDgaucSa999EdhdENlZPBDyNoKKB0itsYEukiVOTcBAGKIl7sxldr13fJvrh3KZWXSpnvOLP7nJruGAE=","thinking":"The user is asking me to:\n1. Think through the request\n2. Call the lookup_harbor_label function\n3. Report what label it returns\n\nLooking at the function definition:\n- Function name: lookup_harbor_label\n- Description: \"Return the alpha signal marker.\"\n- Parameters: none required (empty required array)\n\nThis is straightforward - I need to call the function with no parameters and report what it returns.","type":"thinking"},{"text":"I''ll call the `lookup_harbor_label` function to retrieve the alpha signal marker.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_01X6aR5bSkLuGSs3gLitymhA","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"id":"msg_011CfKBtJAuJV9djmyQy7wtk","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":605,"output_tokens":159,"output_tokens_details":{"thinking_tokens":98},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"text"}],"role":"user"},{"content":[{"signature":"EpEFCpoBCBIYAipA0D++5qa7eVwLJ4MWN26ESR0BpJ8SI5V7RM3H4b+L5YV6VX5p7FRJugktpLsci196qss9Wfl5xGBF7V97rleubTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGT5svVBhIMet7GYBY31tsUuMUiGgx76u9LDCgSzq4lgwUiMO9FZGHAG/PV8FjFuirjrSCpt9ce+cbmVwgVZTMwJV6j667VYeeQcURehSKN15/kwyqjA5U/LhVZBpcnY4ZYw2qKRHmZ8tAUyH74DmKRjAlMx416S1PWgT18li7WkM9jCYfbX56S2UjB/ezEmox5cmjwzHpMzuQfn4qZ9+N7oVXNcgELKueucLlHsPNCFMQYscQZ+uOY/Yon5GqesPSb3KKhvnEooAZxHA/eaJEZLMAujaKgH5lBeT8FAMeIYoO1QtyAKtwORJlw6U3sHW48C5H3R0abCLZnEaPYssvD1t4RzRrAxz/JsLqYai1DbNQjjpIk0MCOweWI5KMUL0nm4uUstRJw5Aj2HzDffCY26hSh8o+EhSo6ojnoc1jh1TTiU7GSwuiUl8OTS23jyg6BYM++WhPwKG3mpA9ZmCsbPudhoxTtEoDyH29b7LDi7SsyYcweyix7Q8s+EKeEDm+MotZGXLar0l2LLenkkcHElbLxC+Q9O7eySBg/My9PwgBg7GI/cu7MmUeDSErNjLZrwtmzfYJ3r+GpU6Ei+L/qDgaucSa999EdhdENlZPBDyNoKKB0itsYEukiVOTcBAGKIl7sxldr13fJvrh3KZWXSpnvOLP7nJruGAE=","thinking":"The user is asking me to:\n1. Think through the request\n2. Call the lookup_harbor_label function\n3. Report what label it returns\n\nLooking at the function definition:\n- Function name: lookup_harbor_label\n- Description: \"Return the alpha signal marker.\"\n- Parameters: none required (empty required array)\n\nThis is straightforward - I need to call the function with no parameters and report what it returns.","type":"thinking"},{"text":"I''ll call the `lookup_harbor_label` function to retrieve the alpha signal marker.","type":"text"},{"id":"toolu_01X6aR5bSkLuGSs3gLitymhA","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_01X6aR5bSkLuGSs3gLitymhA","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"Use tools when asked. Answer briefly.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKBtPT8xe5QXs1794CuL
+  body: '{"container":null,"content":[{"text":"The label returned by `lookup_harbor_label` is **\"crimson-harbor\"**. This is the alpha signal marker you requested.","type":"text"}],"id":"msg_011CfKBtPzdhkGHcihKJBg4G","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":780,"output_tokens":33,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"text"}],"role":"user"},{"content":[{"signature":"EpEFCpoBCBIYAipA0D++5qa7eVwLJ4MWN26ESR0BpJ8SI5V7RM3H4b+L5YV6VX5p7FRJugktpLsci196qss9Wfl5xGBF7V97rleubTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGT5svVBhIMet7GYBY31tsUuMUiGgx76u9LDCgSzq4lgwUiMO9FZGHAG/PV8FjFuirjrSCpt9ce+cbmVwgVZTMwJV6j667VYeeQcURehSKN15/kwyqjA5U/LhVZBpcnY4ZYw2qKRHmZ8tAUyH74DmKRjAlMx416S1PWgT18li7WkM9jCYfbX56S2UjB/ezEmox5cmjwzHpMzuQfn4qZ9+N7oVXNcgELKueucLlHsPNCFMQYscQZ+uOY/Yon5GqesPSb3KKhvnEooAZxHA/eaJEZLMAujaKgH5lBeT8FAMeIYoO1QtyAKtwORJlw6U3sHW48C5H3R0abCLZnEaPYssvD1t4RzRrAxz/JsLqYai1DbNQjjpIk0MCOweWI5KMUL0nm4uUstRJw5Aj2HzDffCY26hSh8o+EhSo6ojnoc1jh1TTiU7GSwuiUl8OTS23jyg6BYM++WhPwKG3mpA9ZmCsbPudhoxTtEoDyH29b7LDi7SsyYcweyix7Q8s+EKeEDm+MotZGXLar0l2LLenkkcHElbLxC+Q9O7eySBg/My9PwgBg7GI/cu7MmUeDSErNjLZrwtmzfYJ3r+GpU6Ei+L/qDgaucSa999EdhdENlZPBDyNoKKB0itsYEukiVOTcBAGKIl7sxldr13fJvrh3KZWXSpnvOLP7nJruGAE=","thinking":"The user is asking me to:\n1. Think through the request\n2. Call the lookup_harbor_label function\n3. Report what label it returns\n\nLooking at the function definition:\n- Function name: lookup_harbor_label\n- Description: \"Return the alpha signal marker.\"\n- Parameters: none required (empty required array)\n\nThis is straightforward - I need to call the function with no parameters and report what it returns.","type":"thinking"},{"text":"I''ll call the `lookup_harbor_label` function to retrieve the alpha signal marker.","type":"text"},{"id":"toolu_01X6aR5bSkLuGSs3gLitymhA","input":{},"name":"lookup_harbor_label","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"crimson-harbor","type":"text"}],"tool_use_id":"toolu_01X6aR5bSkLuGSs3gLitymhA","type":"tool_result"}],"role":"user"},{"content":[{"text":"The label returned by `lookup_harbor_label` is **\"crimson-harbor\"**. This is the alpha signal marker you requested.","type":"text"}],"role":"assistant"},{"content":[{"text":"What label did the tool return? Reply with just the label.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"Use tools when asked. Answer briefly.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the alpha signal marker.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"lookup_harbor_label"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKBtStm6qUD9tGXju2ow
+  body: '{"container":null,"content":[{"signature":"EosDCpoBCBIYAipAdAeXZwC6TZPOrUyMDIYNITP21jDIsL7dsztI4nw0Gnigc4NOFvqR7PPcb5haJQ7LK4Obwe+DNtzGdETdMXp7oTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGV5svVBhIMvusyoRLIg+fhNx/5GgwiJnEJZUHiuoVgzSAiMJ30XwSlzsjx2B4lWtfp78ZkeKTeSNkPlqXQw8sWsRMSwfW6mftFxZ/P3UQPgOGzYSqdAcmFluae/r+Ystt1MKt7yyzZoM45eoiq9kx7iK5SChuCFaUnCjgHvWW58IzfnroatE9Hef1adjxJws4F2lGJd9bRZCZLMN2fU8UrEBwGfttxnwCWZ/zmG6DtUi/jMQ7DrJWGZgf8D2YrEf9wGFJRP32tqwdpQ8SUrsOrfDce0EFectWB+GxZkQfJ/jHcTFZN5FDUMUwtB99OCfpA4rwYAQ==","thinking":"The user is asking me to reply with just the label that the tool returned. The tool returned \"crimson-harbor\", so I should just provide that.","type":"thinking"},{"text":"crimson-harbor","type":"text"}],"id":"msg_011CfKBtT7A7diwqEFYmafYg","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":728,"output_tokens":47,"output_tokens_details":{"thinking_tokens":37},"service_tier":"standard"}}'

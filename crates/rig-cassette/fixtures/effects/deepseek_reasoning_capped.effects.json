@@ -80,7 +80,8 @@
                     "text": "We need answer in one or two sentences. Explain what Rust is and why memory"
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             }
           ],
           "usage": {

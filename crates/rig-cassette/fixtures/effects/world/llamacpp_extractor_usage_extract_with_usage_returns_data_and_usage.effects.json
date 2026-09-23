@@ -114,7 +114,8 @@
                     "text": "Okay, let's see. The user provided a sentence: \"Jane Smith is a 45 year old data scientist.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Jane Smith. The age is 45, so that's straightforward. The profession is data scientist. The submit function requires name, age, and profession. All three are present in the text. The age is given as 45, which is an integer. The profession is \"data scientist\" as a string. So I should map those directly. There's no ambiguity here, so the tool call should include all three fields with the values from the text. I need to make sure the age is in uint8 format, which 45 is. The name is a string, and the profession is a string. So the JSON should have those values. No other fields are needed since the user didn't mention anything else. Alright, that's all.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "llamacpp"
             },
             {
               "type": "toolcall",

@@ -190,7 +190,8 @@ fn terminal_record(
     )
     .with_optional_finish_reason(finish_reason)
     .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
-    .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty())))
+    .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty()))
+    .with_reasoning_issuer(super::completion::REASONING_ISSUER))
 }
 
 /// Normalizes typed protobuf events through the shared completion driver.
@@ -204,6 +205,7 @@ pub fn stream_from_events(
         super::completion::PROVIDER_NAME,
         run_wire_stream(events, GrpcAdapter::default()),
     )
+    .with_reasoning_issuer(super::completion::REASONING_ISSUER)
 }
 
 /// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
@@ -243,7 +245,8 @@ pub(crate) async fn stream(
     Ok(streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
         run_wire_stream(transport, GrpcAdapter::default()),
-    ))
+    )
+    .with_reasoning_issuer(super::completion::REASONING_ISSUER))
 }
 
 #[cfg(test)]

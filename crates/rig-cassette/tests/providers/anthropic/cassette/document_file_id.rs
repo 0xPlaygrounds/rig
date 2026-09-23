@@ -339,6 +339,55 @@ fn document_file_id_wire_assertions_cover_roundtrip_paths() {
     assert_anthropic_wire_file_source(provider_native_roundtrip_message, file_id);
 }
 
+/// The uploaded file's id is the exact value every later request carries:
+/// each Messages request's document source and the delete path.
+fn assert_recorded_file_id_chain(scenario: &str, turns: usize) {
+    let paths = crate::cassettes::recorded_request_paths("anthropic", scenario);
+    let bodies = crate::cassettes::recorded_interaction_bodies("anthropic", scenario);
+    let upload: serde_json::Value =
+        serde_json::from_str(&bodies[0].1).expect("the upload reply is JSON");
+    let file_id = upload["id"].as_str().expect("the upload issued an id");
+    assert!(
+        !file_id.contains("REDACTED"),
+        "the file id is recorded verbatim"
+    );
+    let mut messages = 0;
+    for (path, (request, _)) in paths.iter().zip(&bodies).skip(1) {
+        if path.ends_with("/v1/messages") {
+            messages += 1;
+            let request: serde_json::Value = serde_json::from_str(request).expect("JSON");
+            let documents: Vec<&serde_json::Value> = request["messages"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .flat_map(|message| message["content"].as_array().into_iter().flatten())
+                .filter(|block| block["type"] == "document")
+                .collect();
+            assert!(
+                !documents.is_empty(),
+                "{path}: the request carries the document"
+            );
+            for document in documents {
+                assert_eq!(
+                    (&document["source"]["type"], &document["source"]["file_id"]),
+                    (&serde_json::json!("file"), &serde_json::json!(file_id)),
+                    "{path}: the document's source is the uploaded file by its exact id"
+                );
+            }
+        }
+    }
+    assert!(
+        messages >= turns,
+        "the file is referenced across {turns} turns, saw {messages}"
+    );
+    assert!(
+        paths
+            .last()
+            .is_some_and(|path| path.ends_with(&format!("/v1/files/{file_id}"))),
+        "the upload is deleted by its exact id"
+    );
+}
+
 #[tokio::test]
 async fn messages_document_file_id_roundtrip_live() {
     with_anthropic_files_cassette(
@@ -430,4 +479,48 @@ async fn streaming_document_file_id_roundtrip_live() {
         },
     )
     .await;
+}
+
+/// A file chain in one session: upload, reference the id in a document on
+/// two turns (the second reading it from history), delete. The recorded
+/// upload id is the exact value both requests and the delete carry. The id
+/// is account-scoped and deleted by the recording, so the fixture replays but
+/// cannot seed a live call.
+#[tokio::test]
+async fn file_id_chain() {
+    with_anthropic_files_cassette(
+        "document_file_id/file_id_chain",
+        ANTHROPIC_FILES_BETA,
+        |parts| async move {
+            let client = parts.bound;
+            let base_url = parts.base_url;
+            let api_key = parts.api_key;
+            with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
+                let agent = client
+                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .preamble(DOCUMENT_PREAMBLE)
+                    .build();
+                let mut history = Vec::new();
+                let response = agent
+                    .chat(direct_file_id_document_question(&file_id, 2), &mut history)
+                    .await
+                    .expect("the first turn reads the file by id")
+                    .output;
+                assert_verifier_response(&response, PAGE_TWO_VERIFIER);
+                let follow_up = agent
+                    .chat(
+                        "Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.",
+                        &mut history,
+                    )
+                    .await
+                    .expect("the second turn reads the file from history")
+                    .output;
+                assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
+                assert_history_preserves_single_file_id(&history, &file_id);
+            })
+            .await;
+        },
+    )
+    .await;
+    assert_recorded_file_id_chain("document_file_id/file_id_chain", 2);
 }

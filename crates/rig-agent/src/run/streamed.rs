@@ -686,6 +686,7 @@ impl StreamedTurnAssembler {
                         Reasoning::new(text).content
                     };
                     part.state = ReasoningPartState::Completed(Reasoning {
+                        provider: None,
                         id: part.provider_id.clone(),
                         content,
                     });
@@ -933,8 +934,20 @@ impl StreamedTurnAssembler {
     }
 
     /// Snapshot of the turn so far, for diagnostics and rollback messages.
-    pub fn partial_turn(&self, message_id: Option<String>) -> PartialStreamedTurn {
-        let reasoning = self.assembled_reasoning();
+    /// Its reasoning records `issuer` as in [`Self::finish`].
+    pub fn partial_turn(
+        &self,
+        message_id: Option<String>,
+        issuer: Option<&str>,
+    ) -> PartialStreamedTurn {
+        let reasoning = self
+            .assembled_reasoning()
+            .into_iter()
+            .map(|reasoning| match (&reasoning.provider, issuer) {
+                (None, Some(issuer)) => reasoning.with_provider(issuer),
+                _ => reasoning,
+            })
+            .collect();
 
         PartialStreamedTurn {
             message_id,
@@ -950,11 +963,15 @@ impl StreamedTurnAssembler {
 
     /// Assemble the completed turn. `final_choice` is the provider's
     /// aggregated choice for the turn
-    /// (`StreamingCompletionResponse::choice`).
+    /// (`StreamingCompletionResponse::choice`) and `issuer` the service its
+    /// reasoning came from (`StreamingCompletionResponse::reasoning_issuer`),
+    /// recorded on every reasoning part that names none. With no issuer the
+    /// reasoning keeps unknown provenance, which every request replays.
     pub fn finish(
         mut self,
         message_id: Option<String>,
         final_choice: &[AssistantContent],
+        issuer: Option<&str>,
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
         let pending_tool_calls = std::mem::take(&mut self.pending_tool_calls);
@@ -976,6 +993,10 @@ impl StreamedTurnAssembler {
             .cloned()
             .collect();
         let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, &provider_choice);
+        let choice = match issuer {
+            Some(issuer) => rig_core::streaming::stamp_reasoning(choice, issuer),
+            None => choice,
+        };
 
         StreamedTurn {
             message_id,

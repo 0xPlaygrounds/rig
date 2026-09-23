@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Look up record alpha.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"record":"alpha"},"id":"call_dup","name":"lookup_code"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_dup","name":"lookup_code","response":{"result":"record alpha: code amber-5521"}},"thought":false}],"role":"user"},{"parts":[{"text":"Now look up record beta.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"record":"beta"},"id":"call_dup","name":"lookup_code"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_dup","name":"lookup_code","response":{"result":"record beta: code cobalt-7730"}},"thought":false}],"role":"user"},{"parts":[{"text":"Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for one record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"alpha=amber-5521 beta=cobalt-7730","thoughtSignature":"EpEFCo4FAWkUfRM2BkPTzd44pwXY5v6xrJzGU5OeCuklEXUWP5IKTd8cLAyI7XbQr71cxCLChq2lrgHdg1WcuDQBWSwXr+AeKRobPdDbEVQGOySG2YKMqfGgSVmG4QCgxVZjr5q6Aryz1gSH6ShiZivBC2fskwm+/YNGnmAikadogrxG1VlXguvYCoYP4sC6AQKZvdbZgjoJZDVE+hAaXQLMqmQluT4ZkJHRzjquPSW/DOwEvjmtGf/qVVjs88FlVC0PkI776leWjtkA1Ekp23YFPdFna/djaIhyz8FYUkQBVbkBiJbpKCYFe1v1REWN/VWCeE39GTWxprbK/pZk7fuJriT82n3m2dXYImCkI4JirTCRDh4XZv8KZRFHKLRneC7gc3WV+4u1YqLK3GCggeYx5OySAfGhrm46Y3DPAvi8spCC5P2MK6QA7FQjLR/zvjxpJgK4XpBshdjcuqF82Tb1ynDvfzzE1dPoZAGZTqHu6s/J6pSiP99K2gRk6vWu4vpfdkFXH+eZl8BgB0b48ZOHDT83nzOanp8R83Vk3EJFc4irnHlr1fmgd7rzE/dWtYi+ubAME+MH/40ksQ+Zo8vlWmHlendsBRsZfD5TkZJiK5e2/eh3ocCttxjZANqzmg0RJLfzm3tyXE7jnCjF1II5p5LqInkHuhnkUu5GTXj/cFKEIpdZqMLY3MCxSPrpIA04DcHog+kVRy0cN1pajU218GPYUGjXt+IL+uN/7im6qjgDilFkW97krZ+X7ig4RY8Z5Ei5+/sYiDml4UdL9Jnryxnvf7ewQSdDiyt+uCp655Ng4VQEqo5ZiEjinr6lAFQOJvJsXKXFqzFXDyW8amEv4jMhA/wrnLLWGbqRSupW33Z+"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"IPeyauzcOdLgz7IPwMm5iQ0","usageMetadata":{"candidatesTokenCount":17,"promptTokenCount":158,"promptTokensDetails":[{"modality":"TEXT","tokenCount":158}],"serviceTier":"standard","thoughtsTokenCount":160,"totalTokenCount":335}}'

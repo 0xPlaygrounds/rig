@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Think it through, then call lookup_code for record alpha. Do not guess the code.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"We need answer. We must call lookup_code for record alpha. Need not guess. Let''s invoke.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\": \"alpha\"}","name":"lookup_code"},"id":"call_00_89C7fgtKxA8yD38mKlIk5186","index":0,"type":"function"}]}}],"created":0,"id":"a76f067b-e7f1-4146-ac65-a54b2666770f","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":60,"completion_tokens_details":{"reasoning_tokens":21},"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":186,"prompt_tokens":314,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":374}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Think it through, then call lookup_code for record alpha. Do not guess the code.","role":"user"},{"content":"","reasoning_content":"We need answer. We must call lookup_code for record alpha. Need not guess. Let''s invoke.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_code"},"id":"call_00_89C7fgtKxA8yD38mKlIk5186","index":0,"type":"function"}]},{"content":"record alpha: code amber-5521","role":"tool","tool_call_id":"call_00_89C7fgtKxA8yD38mKlIk5186"}],"model":"deepseek-v4-pro","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The code for record **alpha** is **amber-5521**.","reasoning_content":"We got code amber-5521. User asked think it through then call lookup_code for record alpha. We did. Final answer should report code.","role":"assistant"}}],"created":0,"id":"78f74fb6-57cb-4bed-a041-f425ef0a65d4","model":"deepseek-v4-pro","object":"chat.completion","system_fingerprint":"a307abda487cd1b463329ccb945ce396","usage":{"completion_tokens":45,"completion_tokens_details":{"reasoning_tokens":30},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":463,"prompt_tokens":463,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":508}}'

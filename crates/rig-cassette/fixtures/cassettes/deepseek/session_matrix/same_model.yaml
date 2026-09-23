@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Think it through, then call lookup_code for record alpha. Do not guess the code.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"We need answer. Need call lookup_code record alpha. Must think through but not reveal? We need call tool. No need explain maybe. We should invoke tool first. Then final answer with code. Let''s do it.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\": \"alpha\"}","name":"lookup_code"},"id":"call_00_nHN46ciHuV7bG05fjWIL0139","index":0,"type":"function"}]}}],"created":0,"id":"c11c2075-da0e-443d-99ac-2dc03e0953b8","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":84,"completion_tokens_details":{"reasoning_tokens":45},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":314,"prompt_tokens":314,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":398}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Think it through, then call lookup_code for record alpha. Do not guess the code.","role":"user"},{"content":"","reasoning_content":"We need answer. Need call lookup_code record alpha. Must think through but not reveal? We need call tool. No need explain maybe. We should invoke tool first. Then final answer with code. Let''s do it.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\":\"alpha\"}","name":"lookup_code"},"id":"call_00_nHN46ciHuV7bG05fjWIL0139","index":0,"type":"function"}]},{"content":"record alpha: code amber-5521","role":"tool","tool_call_id":"call_00_nHN46ciHuV7bG05fjWIL0139"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The code for record alpha is **amber-5521**.","reasoning_content":"Need answer. The tool result gives code amber-5521. We should state code.","role":"assistant"}}],"created":0,"id":"659ad417-2ef9-4dc7-8691-cfdad0a5ec51","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":31,"completion_tokens_details":{"reasoning_tokens":18},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":162,"prompt_tokens":418,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":449}}'

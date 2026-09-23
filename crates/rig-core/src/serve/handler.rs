@@ -210,7 +210,10 @@ fn finish_unary(
     message_id: Option<String>,
     terminal: StreamFinal,
 ) -> Result<Outcome, ErrorReport> {
-    let choice = std::mem::replace(accumulator, BlockAccumulator::new()).finish();
+    let choice = crate::streaming::stamp_reasoning(
+        std::mem::replace(accumulator, BlockAccumulator::new()).finish(),
+        terminal.issuer(),
+    );
     let mut response = CompletionResponse::new(
         choice,
         terminal.usage,

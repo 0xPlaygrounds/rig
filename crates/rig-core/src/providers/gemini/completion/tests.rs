@@ -1923,10 +1923,10 @@ async fn a_signature_on_its_own_text_part_lands_after_that_text_on_both_transpor
 
     let expected = vec![
         message::AssistantContent::text("done"),
-        message::AssistantContent::Reasoning(Reasoning::new_with_signature(
-            "",
-            Some("signature_REDACTED_1".to_owned()),
-        )),
+        message::AssistantContent::Reasoning(
+            Reasoning::new_with_signature("", Some("signature_REDACTED_1".to_owned()))
+                .with_provider("gcp.gemini"),
+        ),
     ];
     assert_eq!(
         buffered.choice.to_vec(),

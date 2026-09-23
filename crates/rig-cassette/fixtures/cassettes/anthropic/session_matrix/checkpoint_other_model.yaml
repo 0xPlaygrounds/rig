@@ -1,0 +1,41 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for a record. Always call it before answering.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKBkR3fKqaCDG14jZ3Lw
+  body: '{"container":null,"content":[{"signature":"EtIGCpoBCBIYAipAs1wt+Fllm9vINHgIhzelYuDIGi6dUfjbE/SKWbDvOMlidJncfwP0u6Y5PkrtJr07fFMOzDDPV1YgQOnjFTjJyjIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGp5cvVBhIMFdvtbmq7P86k/BJkGgxZcVE3705hG5Y4btkiMHD4+/wQcl5LkuKmrpDZoAxExrlDdZgssPNfEaDgAomsOYcqXdyborradfTuyoPWoirkBNdxm7f2/LWk9ibMxvIxrldXkgx3neDQsFS43i6/za7kUoPTY2/W7zdW0HYxo//MJlYxkwcXNuLAp4f74jhCS67BJdJYx+io16AJiY2IFnG+zGrDs27RECKq03n6HZR2ijx6Ez5vnPb7cCnEdFyTyxLfZC6TDqDii5ktVkjVQuOe56fYE7edECYmYFjRYhyplj5LYv4Jtx+b5CdcCqnQlaKXN8xKt4wTKtE8+fRcgLn3SISx4uVJDKaSxl6Qi1zGLplTdFsrA4KpBxR4//rdgflBUX/4dyAH0wy13twUkSBd0K4jp1/bfYOkmDX+a9TDnihTG2Xg1pAUz+q3TpMntSRhQUDa9k0pXIEdQ8arNPodGV+KjjYWZ93HUu+nBbJugTCyePCrCyKQnEhipjt6mriqZ1Hls/DXKDWv6XPYyTyps7IihuN3LK7ZU7lv3WoajhWgJR4N4HF071UspYVDtBCsk8qSrSeCXeDFZMTM8AfkmeNa498de7nehrcML+D+4WuF9XtzuTY5dW7+IIyZuwnQClCEYiuDg2hm8cBe+zY8tB6nefMQfTCeJeNVQQadLNPRkSEgvQqpPkDQg9ampL4q7AjWBl23W/iOddM+ieXFtLmq3EUO7idPXLbV9FvPVIc/CXaERjUhcDydgBMiKDIJYLfIro9KrDT2nP3OO1quzy6uVttLk35aJFykSM1/EnZ/WQXs63jYrVjqlcNVxsw9wmezr8etrsGKDuqo3YPuEZaVMlk+LnEvFIQdoGQNPfJOqYGNEtEIhUzlO0MsrsYn+DSXHzCDc5L8pkYwfDK6+ztP0xgB","thinking":"The user is asking me to think it through and then call lookup_code for record \"alpha\". They explicitly state \"Do not guess the code\" which means I should use the function to look up the code rather than trying to make one up.\n\nLet me break this down:\n1. The user wants me to call lookup_code with the record parameter set to \"alpha\"\n2. I should not guess or make up any code\n3. I should use the actual function to retrieve it\n\nThis is straightforward - I have all the information I need to make the function call. The record name is \"alpha\" (provided by the user).\n\nLet me call the function now.","type":"thinking"},{"text":"I''ll call the lookup_code function for record \"alpha\" to retrieve the actual code stored for that record.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_01FFj9MsGwdBWjc5vvaSyY8K","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"id":"msg_011CfKBkS2wa5krRquoRScKi","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":614,"output_tokens":227,"output_tokens_details":{"thinking_tokens":147},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","type":"text"}],"role":"user"},{"content":[{"signature":"EtIGCpoBCBIYAipAs1wt+Fllm9vINHgIhzelYuDIGi6dUfjbE/SKWbDvOMlidJncfwP0u6Y5PkrtJr07fFMOzDDPV1YgQOnjFTjJyjIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGp5cvVBhIMFdvtbmq7P86k/BJkGgxZcVE3705hG5Y4btkiMHD4+/wQcl5LkuKmrpDZoAxExrlDdZgssPNfEaDgAomsOYcqXdyborradfTuyoPWoirkBNdxm7f2/LWk9ibMxvIxrldXkgx3neDQsFS43i6/za7kUoPTY2/W7zdW0HYxo//MJlYxkwcXNuLAp4f74jhCS67BJdJYx+io16AJiY2IFnG+zGrDs27RECKq03n6HZR2ijx6Ez5vnPb7cCnEdFyTyxLfZC6TDqDii5ktVkjVQuOe56fYE7edECYmYFjRYhyplj5LYv4Jtx+b5CdcCqnQlaKXN8xKt4wTKtE8+fRcgLn3SISx4uVJDKaSxl6Qi1zGLplTdFsrA4KpBxR4//rdgflBUX/4dyAH0wy13twUkSBd0K4jp1/bfYOkmDX+a9TDnihTG2Xg1pAUz+q3TpMntSRhQUDa9k0pXIEdQ8arNPodGV+KjjYWZ93HUu+nBbJugTCyePCrCyKQnEhipjt6mriqZ1Hls/DXKDWv6XPYyTyps7IihuN3LK7ZU7lv3WoajhWgJR4N4HF071UspYVDtBCsk8qSrSeCXeDFZMTM8AfkmeNa498de7nehrcML+D+4WuF9XtzuTY5dW7+IIyZuwnQClCEYiuDg2hm8cBe+zY8tB6nefMQfTCeJeNVQQadLNPRkSEgvQqpPkDQg9ampL4q7AjWBl23W/iOddM+ieXFtLmq3EUO7idPXLbV9FvPVIc/CXaERjUhcDydgBMiKDIJYLfIro9KrDT2nP3OO1quzy6uVttLk35aJFykSM1/EnZ/WQXs63jYrVjqlcNVxsw9wmezr8etrsGKDuqo3YPuEZaVMlk+LnEvFIQdoGQNPfJOqYGNEtEIhUzlO0MsrsYn+DSXHzCDc5L8pkYwfDK6+ztP0xgB","thinking":"The user is asking me to think it through and then call lookup_code for record \"alpha\". They explicitly state \"Do not guess the code\" which means I should use the function to look up the code rather than trying to make one up.\n\nLet me break this down:\n1. The user wants me to call lookup_code with the record parameter set to \"alpha\"\n2. I should not guess or make up any code\n3. I should use the actual function to retrieve it\n\nThis is straightforward - I have all the information I need to make the function call. The record name is \"alpha\" (provided by the user).\n\nLet me call the function now.","type":"thinking"},{"text":"I''ll call the lookup_code function for record \"alpha\" to retrieve the actual code stored for that record.","type":"text"},{"id":"toolu_01FFj9MsGwdBWjc5vvaSyY8K","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record alpha: code amber-5521","type":"text"}],"tool_use_id":"toolu_01FFj9MsGwdBWjc5vvaSyY8K","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for a record. Always call it before answering.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKBkZo1xkhmm2c5cgzHt
+  body: '{"container":null,"content":[{"text":"The code stored for record **alpha** is: **amber-5521**\n\nThis was retrieved directly via the lookup, as requested — no guessing involved!","type":"text"}],"id":"msg_011CfKBkaFoYpj1qrUNKQZp5","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":861,"output_tokens":36,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'

@@ -254,7 +254,8 @@
                     "signature": "EvABCu0BAWkUfRPFh2C2/6O8gz+ze8XEurSZqkKWoHv7k19Xh6gs5a/pZPqKjC6hSgF9+D7NJ1c6/Z1NXFG4hslNo4NN9dCzz4fS4xfDcMxFktVgwWx0iBcZfTViUzciIoRG4fMrvWpmaTDUBhEb6HcVZv48fS1+dQ9ZB2m5FL1pcxSfiJhIK21VC2g5CKmm8zN9rZJLyDaJdEfp4jVh88BeM0GS8XyazWxsF61iySG99uuAHzPWA6EDtoMYWHv+tkY4FVCF4bUDWNo/yCqBYWMzxMtdNRhU9Ft2aqBy0zo9qN+JKl4tvJKztMCQZOXB2G9E"
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

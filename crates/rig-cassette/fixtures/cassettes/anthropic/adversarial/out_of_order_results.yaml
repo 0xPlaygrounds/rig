@@ -1,0 +1,41 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKCWpfx3XoG1SwHA6Bk4
+  body: '{"container":null,"content":[{"signature":"EsgDCpoBCBIYAipAJpzHOjGEIi7pfZitGCNI6xFbKjSFbCD6PCS3SEFtb9w+Eh8ERXnZvtbap3jAhfqx4cgDiO3zRMoQ9dMnPgAiOzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGD6svVBhIMtd03JzvwQW1z+kZLGgxrffKXwGy7iYj6MBMiMAiwBGDj+d662rnjMjWRwJmjEih37m8Nes6Bs9UeHl7hfCkhv52gOMfEuEP4owBEuyraAeowMl+xcHk9g5dXgeKA+ECRmBGir54x8iiYmJ5urvBKtczJuTLbtbtC6e2IctAwIoabSb3YGEnFMaviHQTw5BWjSuErvzfDBgjN8MKwDDMiP57V19Yk9jMkmt51X5cE23Uskl631x51AkmdI47dW6/2OL80YSLxlUS11SxEqZrE8PrqaiSHGLDLUc9eZPLbYUaSzogAi880nF0LRACTupNrjRfG+uNlrXFxKfRMqOkkl1D5U/M97kr5PWrtBzhXUMyHr/Ca+++n2OQRo8YqUVhaJcm38H7CDLhyGAE=","thinking":"The user wants me to call lookup_code for two records: \"alpha\" and \"beta\". Since these are independent calls with no dependencies between them, I should make both calls in the same function_calls block.","type":"thinking"},{"caller":{"type":"direct"},"id":"toolu_0115cfuVcSGrroNbjWdDD5Wr","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"},{"caller":{"type":"direct"},"id":"toolu_013WQvctBsM2yVf2qS8XwF4t","input":{"record":"beta"},"name":"lookup_code","type":"tool_use"}],"id":"msg_011CfKCWq5Wm8eq74CJoZjex","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":609,"output_tokens":141,"output_tokens_details":{"thinking_tokens":49},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.","type":"text"}],"role":"user"},{"content":[{"signature":"EsgDCpoBCBIYAipAJpzHOjGEIi7pfZitGCNI6xFbKjSFbCD6PCS3SEFtb9w+Eh8ERXnZvtbap3jAhfqx4cgDiO3zRMoQ9dMnPgAiOzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGD6svVBhIMtd03JzvwQW1z+kZLGgxrffKXwGy7iYj6MBMiMAiwBGDj+d662rnjMjWRwJmjEih37m8Nes6Bs9UeHl7hfCkhv52gOMfEuEP4owBEuyraAeowMl+xcHk9g5dXgeKA+ECRmBGir54x8iiYmJ5urvBKtczJuTLbtbtC6e2IctAwIoabSb3YGEnFMaviHQTw5BWjSuErvzfDBgjN8MKwDDMiP57V19Yk9jMkmt51X5cE23Uskl631x51AkmdI47dW6/2OL80YSLxlUS11SxEqZrE8PrqaiSHGLDLUc9eZPLbYUaSzogAi880nF0LRACTupNrjRfG+uNlrXFxKfRMqOkkl1D5U/M97kr5PWrtBzhXUMyHr/Ca+++n2OQRo8YqUVhaJcm38H7CDLhyGAE=","thinking":"The user wants me to call lookup_code for two records: \"alpha\" and \"beta\". Since these are independent calls with no dependencies between them, I should make both calls in the same function_calls block.","type":"thinking"},{"id":"toolu_0115cfuVcSGrroNbjWdDD5Wr","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"},{"id":"toolu_013WQvctBsM2yVf2qS8XwF4t","input":{"record":"beta"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record beta: code cobalt-7730","type":"text"}],"tool_use_id":"toolu_013WQvctBsM2yVf2qS8XwF4t","type":"tool_result"},{"content":[{"text":"record alpha: code amber-5521","type":"text"}],"tool_use_id":"toolu_0115cfuVcSGrroNbjWdDD5Wr","type":"tool_result"}],"role":"user"},{"content":[{"text":"Without calling any tool, reply exactly `alpha=<code> beta=<code>`.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKCWucrj3HVjnv5xR9Zf
+  body: '{"container":null,"content":[{"signature":"EpEECpoBCBIYAipALR8f1JnJE3xJZHL1v7LJKwWTMu2voFElq8yeAK3DLbA6JchyjkV1GThvJhzy6nOk2WvEGhe2Dfl7Kv6tAFa+qzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGE6svVBhIMkH2Q1+6UlBwacKkcGgwMOEOe0UXiQdGTuaEiMBAtKRXfG6kueByHMfH/2KBP84q4yLkb2wihfW+riHoRXzZCpFjXLY9D0Thjjyh6WCqjArxVQCwuQlw2geOtsMeW+QAAS3YEu825mwItEEb0He9pZ6JSw9IP+o8ogHUShV0otcZUty+iUR0+XWaLpOPMsr6LZgmaqdvY5yzYqHEue8/Wcnnlw90BXPYDl+jv0IGyz3Xj82zT5qp+s0MDFLjbFDTLXqPITyAQw7SnKU0YXasIcyM+CU4GxBJsHR2QxZVF16RwL227Uk8xc2nDFwSM2w5To3QUTeRc7pGELwnzr5Aral+vEv49KZ7eEu1+rZzulmLim+VZ9+rb5xX7kka3udc5sLn5W+loLmBa1TdAXrcpSfPd76JNUp9TK/QDEw8pn8Ga53WlJqecC8ZVI8dwCGwj55zQWSP+w0znhFbY5RccTOwUc0CuGyXx3iwYT6FKykmQvRgB","thinking":"The user is asking me to reply with the codes from the previous function calls, but formatted as \"alpha=<code> beta=<code>\".\n\nFrom the previous results:\n- record alpha: code amber-5521\n- record beta: code cobalt-7730\n\nSo I should reply with: alpha=amber-5521 beta=cobalt-7730","type":"thinking"},{"text":"alpha=amber-5521 beta=cobalt-7730","type":"text"}],"id":"msg_011CfKCWv2vGWG5Cf7F5Cygi","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":803,"output_tokens":104,"output_tokens_details":{"thinking_tokens":85},"service_tier":"standard"}}'

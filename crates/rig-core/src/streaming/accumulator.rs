@@ -313,6 +313,7 @@ impl BlockAccumulator {
     /// under `id`.
     fn finish_signature_only(&mut self, id: &BlockId, signature: String) -> Option<Reasoning> {
         let index = self.push_reasoning_part(Reasoning {
+            provider: None,
             id: None,
             content: vec![ReasoningContent::Text {
                 text: String::new(),
@@ -330,6 +331,7 @@ impl BlockAccumulator {
         content: Vec<ReasoningContent>,
     ) {
         let index = self.push_reasoning_part(Reasoning {
+            provider: None,
             id: provider_id.map(str::to_owned),
             content,
         });

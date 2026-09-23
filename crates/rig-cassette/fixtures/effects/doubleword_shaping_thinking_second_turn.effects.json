@@ -344,7 +344,8 @@
                     "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive the Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Check:\n- Use add tool? Yes (done).\n- Add 17 and 25? Yes (done).\n- Reply with just the number? Yes (need to ensure no extra text).\n\nPlan: Output \"42\".\n"
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             },
             {
               "type": "text",

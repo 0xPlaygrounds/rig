@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s my thought process on this request:\n\n**Executing the `lookup_code` Function with \"alpha\"**\n\nRight, so the user wants me to execute the `lookup_code` function, and the `record` argument needs to be set to \"alpha\". Easy enough. I need to make sure I''m using the right function for this, so I will leverage the `default_api.lookup_code` function, as that''s the designated way to handle this. It sounds like a straightforward call and I am ready to do that now.\n","thought":true},{"functionCall":{"args":{"record":"alpha"},"name":"lookup_code"},"thoughtSignature":"CsIBAWkUfRPYINo7nmYVKUNK+YC1fwq0+xJbmWYCcBuz8HaLJrg0GP7Rqgqwe4jAYKE+29o+PIWR51orsc14qP6kVwt6jl8PV3Y/oye6+hg2ILnjbd/XLDYDLAo8E3w0gpj5fNYZ8vV+hDc5RNib89N0oK3WsEK5u3xLd28vynoLF23wwogqeQY9nxk5MdeuI38cQpKn/eAmQro2rQKkBizhH/DIm69eF949pclm1gyCkAt2vMwnEJYtc5FSjDaPTsMREFY="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"7O2yavjpHIrUz7IP0POVuAg","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":66,"promptTokensDetails":[{"modality":"TEXT","tokenCount":66}],"serviceTier":"standard","thoughtsTokenCount":42,"totalTokenCount":123}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","thought":false}],"role":"user"},{"parts":[{"text":"Okay, here''s my thought process on this request:\n\n**Executing the `lookup_code` Function with \"alpha\"**\n\nRight, so the user wants me to execute the `lookup_code` function, and the `record` argument needs to be set to \"alpha\". Easy enough. I need to make sure I''m using the right function for this, so I will leverage the `default_api.lookup_code` function, as that''s the designated way to handle this. It sounds like a straightforward call and I am ready to do that now.\n","thought":true},{"functionCall":{"args":{"record":"alpha"},"name":"lookup_code"},"thought":false,"thoughtSignature":"CsIBAWkUfRPYINo7nmYVKUNK+YC1fwq0+xJbmWYCcBuz8HaLJrg0GP7Rqgqwe4jAYKE+29o+PIWR51orsc14qP6kVwt6jl8PV3Y/oye6+hg2ILnjbd/XLDYDLAo8E3w0gpj5fNYZ8vV+hDc5RNib89N0oK3WsEK5u3xLd28vynoLF23wwogqeQY9nxk5MdeuI38cQpKn/eAmQro2rQKkBizhH/DIm69eF949pclm1gyCkAt2vMwnEJYtc5FSjDaPTsMREFY="}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_code","response":{"result":"record alpha: code amber-5521"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s my thought process on this task:\n\n**Delivering the Requested Information**\n\nAlright, the user requested the code associated with record \"alpha.\" I efficiently used the `lookup_code` function, and it returned the crucial information: \"record alpha: code amber-5521.\" That''s the core of the request. Now, as the user is waiting for the result, I need to communicate this back to them. I''ll make sure it''s presented clearly and concisely. No need for any extra fluff; just the relevant data.\n","thought":true},{"text":"The code for record alpha is amber-5521.","thoughtSignature":"Cv4BAWkUfRPnGh4byP+8ijPzbTsROjMF858fxUAzvOiekF4w+UQakg3yZONN56dYxwM+VLOGZG+b/FwBhopLyTWbVegW+NRr8XemP0NNdcTEOvqgW4uUKz//4eEhdHnS/U3Om12Si1m9ou//SujvR0lhgrAZcBmSLAb+S664Us0wOOdHP4BSOSkMZIQLn+ukEb5FsROoVFsQT9dy/focogW3qxPsZWNZwNmFIqHMgURayIW9/z7CbdHw2XPNSLd7mQuerX/bQOB8ZVxAatQVASV0MelNW5Vd2uAiTkkcfpeROE1kUpEn15oU7qnlF9cnPTx+1a9Qs7RkHroLWWnTRC8="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"7e2yauqIO5vQz7IPoY2MmQg","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":225,"promptTokensDetails":[{"modality":"TEXT","tokenCount":225}],"serviceTier":"standard","thoughtsTokenCount":53,"totalTokenCount":291}}'

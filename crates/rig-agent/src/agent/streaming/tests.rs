@@ -6229,3 +6229,62 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
         "not the poller {poller_id}"
     );
 }
+
+/// A turn abandoned mid-stream, before its terminal record, keeps reasoning
+/// the issuing provider will accept on the retry: the stream arrived over
+/// the bus under a handler label, which names no issuer.
+#[tokio::test]
+async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::reasoning_delta_with_id("rs_1", "delta reason"),
+            MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+            MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("retried"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ]);
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+    let mut stream = agent
+        .prompt("use the tool")
+        .add_hook(RetryDefaultApiHook)
+        .max_turns(3)
+        .history(Vec::<Message>::new())
+        .max_invalid_tool_call_retries(1)
+        .stream();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+            Ok(_) => {}
+            Err(err) => panic!("unexpected streaming error: {err:?}"),
+        }
+    }
+
+    let requests = recorded.requests();
+    let reasoning: Vec<_> = requests[1]
+        .chat_history
+        .iter()
+        .flat_map(|message| match message {
+            Message::Assistant { content, .. } => content.iter().collect::<Vec<_>>(),
+            _ => Vec::new(),
+        })
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !reasoning.is_empty(),
+        "the retry carries the abandoned turn's reasoning"
+    );
+    assert!(
+        reasoning
+            .iter()
+            .all(|reasoning| reasoning.replayable_to(rig_core::test_utils::MOCK_PROVIDER)),
+        "the issuing provider accepts it: {reasoning:?}"
+    );
+}

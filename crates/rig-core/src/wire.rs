@@ -200,6 +200,11 @@ pub trait Operation: Sized + 'static {
         Self::Fold::default()
     }
 
+    /// Scope a request to the wire about to encode it: drop request content
+    /// that only another provider can interpret. Operations with no such
+    /// content do nothing.
+    fn scope_to_wire(_request: &mut Self::Request, _wire: &str) {}
+
     /// Stamp the transport request id read off the reply's headers onto a
     /// terminal event. Operations whose events carry no transport id do
     /// nothing.

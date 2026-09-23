@@ -41,8 +41,8 @@ fn assembler_round_trips_mid_stream() {
     }
 
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc1", "add"))];
-    let direct = uninterrupted.finish(Some("msg".to_string()), &final_choice);
-    let resumed = restored.finish(Some("msg".to_string()), &final_choice);
+    let direct = uninterrupted.finish(Some("msg".to_string()), &final_choice, Some("mock"));
+    let resumed = restored.finish(Some("msg".to_string()), &final_choice, Some("mock"));
     assert_eq!(resumed.choice, direct.choice);
     assert_eq!(resumed.block_ids, direct.block_ids);
     assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
@@ -383,7 +383,7 @@ fn finish_orders_reasoning_text_then_tool_calls() {
         AssistantContent::ToolCall(tool_call("tc_1", "add")),
     ];
 
-    let turn = asm.finish(Some("msg_1".to_string()), &final_choice);
+    let turn = asm.finish(Some("msg_1".to_string()), &final_choice, Some("mock"));
     let kinds: Vec<&'static str> = turn
         .choice
         .iter()
@@ -450,7 +450,7 @@ fn completed_reasoning(
 }
 
 fn assembled_reasoning_of(asm: &StreamedTurnAssembler) -> Vec<Reasoning> {
-    asm.partial_turn(None).reasoning
+    asm.partial_turn(None, Some("mock")).reasoning
 }
 
 #[test]
@@ -760,9 +760,9 @@ fn canonical_choice_and_partial_turn_agree_on_multi_part_reasoning() {
     ))
     .expect("ingest");
 
-    let partial = asm.partial_turn(None).reasoning;
+    let partial = asm.partial_turn(None, Some("mock")).reasoning;
     let final_choice = vec![AssistantContent::text("")];
-    let turn = asm.finish(None, &final_choice);
+    let turn = asm.finish(None, &final_choice, Some("mock"));
     let finished: Vec<Reasoning> = turn
         .choice
         .iter()
@@ -781,7 +781,7 @@ fn finish_passes_raw_choice_through_for_plain_text_turns() {
     asm.ingest(&text_item("hi")).expect("ingest should succeed");
 
     let final_choice = vec![AssistantContent::text("hi")];
-    let turn = asm.finish(None, &final_choice);
+    let turn = asm.finish(None, &final_choice, Some("mock"));
     assert_eq!(
         serde_json::to_value(&turn.choice).expect("serialize"),
         serde_json::to_value(&final_choice).expect("serialize"),
@@ -823,7 +823,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     )
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
-    run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
+    run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice, Some("mock")))
         .expect("streamed_turn should succeed");
 
     let AgentRunStep::CallTools { calls } = run.next_step().expect("next_step") else {
@@ -851,7 +851,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     )
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::text("done")];
-    run.streamed_turn(asm.finish(None, &final_choice))
+    run.streamed_turn(asm.finish(None, &final_choice, Some("mock")))
         .expect("streamed_turn should succeed");
 
     let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
@@ -885,7 +885,7 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
         asm.ingest(&tool_call_item("tc_1", "default_api"))
             .expect("ingest should succeed"),
     );
-    let partial = asm.partial_turn(Some("msg_1".to_string()));
+    let partial = asm.partial_turn(Some("msg_1".to_string()), Some("mock"));
     assert_eq!(partial.text.as_deref(), Some("thinking "));
 
     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
@@ -935,7 +935,7 @@ fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
         asm.ingest(&tool_call_item("tc_1", "default_api"))
             .expect("ingest should succeed"),
     );
-    let partial = asm.partial_turn(Some("msg_1".to_string()));
+    let partial = asm.partial_turn(Some("msg_1".to_string()), Some("mock"));
 
     let err = run
         .resolve_streamed_invalid_tool_call(
@@ -971,7 +971,7 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
         asm.ingest(&tool_call_item("tc_1", "default_api"))
             .expect("ingest should succeed"),
     );
-    let partial = asm.partial_turn(Some("msg_1".to_string()));
+    let partial = asm.partial_turn(Some("msg_1".to_string()), Some("mock"));
     let resolution = run
         .resolve_streamed_invalid_tool_call(
             &partial,
@@ -1014,7 +1014,7 @@ fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
         asm.ingest(&tool_call_item("tc_1", "default_api"))
             .expect("ingest should succeed"),
     );
-    let partial = asm.partial_turn(None);
+    let partial = asm.partial_turn(None, Some("mock"));
 
     let resolution = run
         .resolve_streamed_invalid_tool_call(
@@ -1046,7 +1046,7 @@ fn streamed_invalid_name_delta_repair_replays_buffered_arguments() {
     );
     assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
 
-    let partial = asm.partial_turn(None);
+    let partial = asm.partial_turn(None, Some("mock"));
     let resolution = run
         .resolve_streamed_invalid_tool_call(
             &partial,
@@ -1151,7 +1151,7 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
         AssistantContent::ToolCall(tool_call("tc_1", "add")),
         AssistantContent::ToolCall(tool_call("tc_1", "add")),
     ];
-    run.streamed_turn(asm.finish(None, &final_choice))
+    run.streamed_turn(asm.finish(None, &final_choice, Some("mock")))
         .expect("streamed_turn should succeed");
 
     // The internal IDs survive in the run state itself: a serde round
@@ -1189,7 +1189,7 @@ fn streamed_turn_without_a_recorded_completion_call_is_a_protocol_violation() {
     let asm = assembler();
     let final_choice = vec![AssistantContent::text("done")];
     let err = run
-        .streamed_turn(asm.finish(None, &final_choice))
+        .streamed_turn(asm.finish(None, &final_choice, Some("mock")))
         .expect_err("a turn without its completion call recorded is refused");
     assert!(
         matches!(&err, PromptError::PromptCancelled { reason, .. }
@@ -1239,7 +1239,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
     )
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
-    run.streamed_turn(asm.finish(None, &final_choice))
+    run.streamed_turn(asm.finish(None, &final_choice, Some("mock")))
         .expect("streamed_turn should succeed");
     run.next_step().expect("CallTools step");
 
@@ -1287,7 +1287,8 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     .map(AssistantContent::ToolCall)
                     .collect::<Vec<_>>();
                 record_terminal(&mut run);
-                run.streamed_turn(asm.finish(None, &choice)).unwrap();
+                run.streamed_turn(asm.finish(None, &choice, Some("mock")))
+                    .unwrap();
                 if after_call_tools {
                     run.next_step().unwrap();
                 }
@@ -1419,7 +1420,7 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
             assert_eq!(invalid.tool_call, invalid_call);
             assert_eq!(invalid.block_id, block);
             assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
-            let partial = asm.partial_turn(Some("assistant-id".into()));
+            let partial = asm.partial_turn(Some("assistant-id".into()), Some("mock"));
             assert_eq!(partial.pending_tool_calls, vec![peer.clone()]);
             let resolution = match action {
                 "repair" => run
@@ -1547,7 +1548,7 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
                 AssistantContent::ToolCall(peer.clone()),
                 AssistantContent::ToolCall(invalid_call.clone()),
             ];
-            let turn = asm.finish(Some("assistant-id".into()), &choice);
+            let turn = asm.finish(Some("assistant-id".into()), &choice, Some("mock"));
             let expected = if action == "repair" {
                 choice
             } else {
@@ -1598,7 +1599,7 @@ fn an_ignored_name_delta_swallows_the_rest_of_its_block() {
     assert!(end.is_empty(), "{end:?}");
     assert!(asm.pending_delta_error().is_none());
     asm.ingest(&final_item()).expect("the turn finishes");
-    let turn = asm.finish(None, &[]);
+    let turn = asm.finish(None, &[], Some("mock"));
     assert!(
         turn.choice
             .iter()
@@ -1651,7 +1652,7 @@ async fn ignored_name_keeps_the_late_durable_id_out_of_the_final_snapshot() {
         // Also prove the durable tombstone survives checkpoint serialization.
         let asm: StreamedTurnAssembler =
             serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
-        let turn = asm.finish(None, &[AssistantContent::ToolCall(call)]);
+        let turn = asm.finish(None, &[AssistantContent::ToolCall(call)], Some("mock"));
         assert!(
             turn.choice.is_empty(),
             "ignored call resurrected: {:?}",
@@ -1685,10 +1686,10 @@ fn assert_reasoning_matches_core(events: Vec<StreamEvent>, expected_parts: usize
         }
         asm.ingest(&event).expect("normalized event");
     }
-    let choice = core.finish();
+    let choice = rig_core::streaming::stamp_reasoning(core.finish(), "mock");
     assert_eq!(choice.len(), expected_parts);
-    let partial = asm.partial_turn(None).reasoning;
-    let finished = asm.finish(None, &choice);
+    let partial = asm.partial_turn(None, Some("mock")).reasoning;
+    let finished = asm.finish(None, &choice, Some("mock"));
     assert_eq!(
         finished.choice, choice,
         "agent history must retain core-normalized parts"
@@ -1819,7 +1820,7 @@ fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
         }
         asm.ingest(&event).unwrap();
     }
-    let choice = core.finish();
+    let choice = rig_core::streaming::stamp_reasoning(core.finish(), "mock");
     let expected: Vec<_> = choice
         .iter()
         .flat_map(|item| match item {
@@ -1827,7 +1828,7 @@ fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
             _ => unreachable!(),
         })
         .collect();
-    let reasoning = asm.partial_turn(None).reasoning;
+    let reasoning = asm.partial_turn(None, Some("mock")).reasoning;
     assert_eq!(
         reasoning.len(),
         1,
@@ -1837,7 +1838,7 @@ fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
         reasoning[0].content, expected,
         "metadata must replace just B, never repeat its text"
     );
-    let finished = asm.finish(None, &choice);
+    let finished = asm.finish(None, &choice, Some("mock"));
     assert_eq!(
         finished.choice,
         vec![AssistantContent::Reasoning(reasoning[0].clone())]
@@ -1863,14 +1864,14 @@ fn a_provider_id_matched_completion_retains_its_new_correlator_for_metadata() {
             Some("sig"),
         ))
         .unwrap();
-        let reasoning = asm.partial_turn(None).reasoning;
+        let reasoning = asm.partial_turn(None, Some("mock")).reasoning;
         assert_eq!(reasoning.len(), 1);
         assert_eq!(
             reasoning[0].content,
             Reasoning::new_with_signature("think", Some("sig".into())).content
         );
         assert_eq!(
-            asm.finish(None, &[]).choice,
+            asm.finish(None, &[], Some("mock")).choice,
             vec![AssistantContent::Reasoning(reasoning[0].clone())]
         );
     }
@@ -1894,7 +1895,7 @@ fn finish_carries_images_after_the_calls_when_regrouping() {
         AssistantContent::text("look"),
         AssistantContent::ToolCall(tool_call("call_1", "add")),
     ];
-    let turn = asm.finish(None, &final_choice);
+    let turn = asm.finish(None, &final_choice, Some("mock"));
     let kinds: Vec<&str> = turn
         .choice
         .iter()
@@ -1913,5 +1914,48 @@ fn finish_carries_images_after_the_calls_when_regrouping() {
         ))
         .expect("serialize"),
         "the assembler and rig-core's rule agree"
+    );
+}
+
+#[test]
+fn streamed_reasoning_records_the_stream_issuer() {
+    let mut asm = assembler();
+    ingest_all(&mut asm, reasoning_delta_events("corr_a", None, "visible"));
+    asm.ingest(&completed_reasoning(
+        "corr_b",
+        Some("rd_1"),
+        "enc",
+        Some("sig"),
+    ))
+    .expect("ingest");
+
+    let issuers = |reasoning: &[Reasoning]| {
+        reasoning
+            .iter()
+            .map(|reasoning| reasoning.provider.clone())
+            .collect::<Vec<_>>()
+    };
+    let partial = asm.partial_turn(None, Some("anthropic")).reasoning;
+    assert!(!partial.is_empty());
+    assert!(
+        issuers(&partial)
+            .iter()
+            .all(|issuer| issuer.as_deref() == Some("anthropic"))
+    );
+
+    let turn = asm.finish(None, &[AssistantContent::text("")], Some("anthropic"));
+    let finished: Vec<Reasoning> = turn
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(!finished.is_empty());
+    assert!(
+        issuers(&finished)
+            .iter()
+            .all(|issuer| issuer.as_deref() == Some("anthropic"))
     );
 }

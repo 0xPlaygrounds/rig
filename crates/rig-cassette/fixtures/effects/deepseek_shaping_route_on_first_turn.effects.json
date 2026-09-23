@@ -137,7 +137,8 @@
                     "text": "We need answer. Need use add tool. Then reply just number. Let's call."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",
@@ -277,7 +278,8 @@
                         "text": "We need answer. Need use add tool. Then reply just number. Let's call."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "deepseek"
                 },
                 {
                   "type": "toolcall",

@@ -4,6 +4,7 @@ mod regressions;
 
 mod cassette {
     mod additional_params_tools;
+    mod adversarial_matrix;
     mod agent;
     mod audio_params_matrix;
     mod boxed_transport;
@@ -61,6 +62,7 @@ mod cassette {
     mod gpt_5_6_reasoning;
     mod history_survival_matrix_chat;
     mod history_survival_matrix_responses;
+    mod image_input_matrix;
     mod image_params_matrix;
     mod lifecycle_matrix;
     mod max_completion_tokens_matrix;
@@ -80,6 +82,7 @@ mod cassette {
     mod refusal_matrix;
     mod regression_suite;
     mod request_hook;
+    mod request_identity_matrix;
     mod response_identity;
     mod response_identity_edge;
     mod response_metadata_matrix;
@@ -90,6 +93,8 @@ mod cassette {
     mod responses_sessions;
     mod responses_tool_args;
     mod responses_tool_choice;
+    mod session_matrix;
+    mod stateful_chain_matrix;
     mod stateless_replay_matrix;
     mod stream_faults;
     mod streaming;

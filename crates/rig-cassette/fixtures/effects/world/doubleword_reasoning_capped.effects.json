@@ -85,7 +85,8 @@
                     "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             }
           ],
           "usage": {

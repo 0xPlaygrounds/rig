@@ -1,0 +1,179 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use tools when asked. Answer briefly.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"grok-3-mini","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: 2f0d69eb-e849-9e45-b764-a574fb9df8d3
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"2f0d69eb-e849-9e45-b764-a574fb9df8d3","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"2f0d69eb-e849-9e45-b764-a574fb9df8d3","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"I will call lookup_harbor_label","item_id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and report the returned","item_id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" label.","item_id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","output_index":0,"sequence_number":7,"summary_index":0,"text":"I will call lookup_harbor_label and report the returned label.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","output_index":0,"part":{"text":"I will call lookup_harbor_label and report the returned label.","type":"summary_text"},"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","status":"completed","summary":[{"text":"I will call lookup_harbor_label and report the returned label.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","name":"lookup_harbor_label","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":10,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","output_index":1,"sequence_number":11,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","name":"lookup_harbor_label","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","name":"lookup_harbor_label","status":"completed","type":"function_call"},"output_index":1,"sequence_number":13,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"2f0d69eb-e849-9e45-b764-a574fb9df8d3","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","status":"completed","summary":[{"text":"I will call lookup_harbor_label and report the returned label.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","name":"lookup_harbor_label","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":289,"output_tokens":302},"cost_in_usd_ticks":9743500,"input_tokens":289,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":299,"output_tokens_details":{"reasoning_tokens":290},"total_tokens":588},"user":null},"sequence_number":14,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use tools when asked. Answer briefly.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","summary":[{"text":"I will call lookup_harbor_label and report the returned label.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","output":"crimson-harbor","status":"completed","type":"function_call_output"}],"max_output_tokens":4096,"model":"grok-3-mini","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: 8056e22a-ad1b-98a9-b57e-966b3e9025f7
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"8056e22a-ad1b-98a9-b57e-966b3e9025f7","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"8056e22a-ad1b-98a9-b57e-966b3e9025f7","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"cr","item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"im","item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"son","item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-har","item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","logprobs":[],"output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"bor","item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","logprobs":[],"output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","logprobs":[],"output_index":0,"sequence_number":9,"text":"crimson-harbor","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"crimson-harbor","type":"output_text"},"sequence_number":10,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"crimson-harbor","type":"output_text"}],"id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":11,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"8056e22a-ad1b-98a9-b57e-966b3e9025f7","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"crimson-harbor","type":"output_text"}],"id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":308,"output_tokens":114},"cost_in_usd_ticks":3812000,"input_tokens":308,"input_tokens_details":{"cached_tokens":256},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":106,"output_tokens_details":{"reasoning_tokens":101},"total_tokens":414},"user":null},"sequence_number":12,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Use tools when asked. Answer briefly.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_2f0d69eb-e849-9e45-b764-a574fb9df8d3","summary":[{"text":"I will call lookup_harbor_label and report the returned label.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","id":"fc_2f0d69eb-e849-9e45-b764-a574fb9df8d3_0","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"call_id":"call-f15bb01c-894b-476f-8801-38875ab8b18e-0","output":"crimson-harbor","status":"completed","type":"function_call_output"},{"content":[{"text":"crimson-harbor","type":"output_text"}],"id":"msg_8056e22a-ad1b-98a9-b57e-966b3e9025f7","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"What label did the tool return? Reply with just the label.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"grok-3-mini","stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: d7d8eddb-a4e7-991f-ab0a-873f1d1b2176
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"cr","item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"im","item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"son","item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-har","item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","logprobs":[],"output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"bor","item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","logprobs":[],"output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","logprobs":[],"output_index":0,"sequence_number":9,"text":"crimson-harbor","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"crimson-harbor","type":"output_text"},"sequence_number":10,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"crimson-harbor","type":"output_text"}],"id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":11,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"crimson-harbor","type":"output_text"}],"id":"msg_d7d8eddb-a4e7-991f-ab0a-873f1d1b2176","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":334,"output_tokens":160},"cost_in_usd_ticks":4615000,"input_tokens":334,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":152,"output_tokens_details":{"reasoning_tokens":147},"total_tokens":486},"user":null},"sequence_number":12,"type":"response.completed"}
+

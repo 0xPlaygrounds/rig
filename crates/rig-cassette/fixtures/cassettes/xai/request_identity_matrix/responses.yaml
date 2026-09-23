@@ -1,0 +1,89 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with exactly: identity probe","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":64,"model":"grok-3-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: d18f7c95-22e4-97e7-a8d7-dcb7441c9694
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"d18f7c95-22e4-97e7-a8d7-dcb7441c9694","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"identity probe","type":"output_text"}],"id":"msg_d18f7c95-22e4-97e7-a8d7-dcb7441c9694","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":198,"output_tokens":125},"cost_in_usd_ticks":3384000,"input_tokens":198,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":117,"output_tokens_details":{"reasoning_tokens":115},"total_tokens":315},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with exactly: stream identity probe","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":64,"model":"grok-3-mini","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: 6482e2c8-cdee-9a33-a65e-f68fe60ef9ee
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"stream","item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" identity","item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" probe","item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":7,"text":"stream identity probe","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"},"sequence_number":8,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":153},"cost_in_usd_ticks":4096500,"input_tokens":199,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":145,"output_tokens_details":{"reasoning_tokens":142},"total_tokens":344},"user":null},"sequence_number":10,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with exactly: rejected","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":64,"model":"grok-3-mini","temperature":7.0}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 9ae5354b-f047-97fd-bb1e-4557280f9b2d
+  body: '{"code":"invalid-argument","error":"Temperature must be less than 2 but temperature = 7"}'

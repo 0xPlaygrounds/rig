@@ -47,6 +47,11 @@ impl CompletionModel {
 /// Stable descriptor name reported on normalized responses from this provider.
 pub const PROVIDER_NAME: &str = "gemini-grpc";
 
+/// The issuer this transport's reasoning records: the Gemini API service,
+/// which also serves the REST transport, so thought signatures move between
+/// the two.
+pub const REASONING_ISSUER: &str = rig_core::providers::gemini::completion::PROVIDER_NAME;
+
 /// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
 ///
 /// The wire value is a prost enum discriminant; `as_str_name` recovers the
@@ -193,6 +198,8 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
+    let mut chat_history = chat_history;
+    rig_core::message::retain_replayable_reasoning(&mut chat_history, REASONING_ISSUER);
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
     // functionResponse.name keys the replay: cross-provider ingested
     // results arrive with an empty name and their call carries it.
@@ -459,10 +466,13 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             let assistant_content = match &part.data {
                 Some(proto::part::Data::Text(text)) => {
                     if part.thought {
-                        completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
-                            text,
-                            encode_optional_base64(&part.thought_signature),
-                        ))
+                        completion::AssistantContent::Reasoning(
+                            Reasoning::new_with_signature(
+                                text,
+                                encode_optional_base64(&part.thought_signature),
+                            )
+                            .with_provider(REASONING_ISSUER),
+                        )
                     } else {
                         completion::AssistantContent::text(text)
                     }

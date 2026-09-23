@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"text"}],"role":"user"},{"content":[{"signature":"EtsCCpIBCBIYAipAC6Z8WibjV9YpPiJfTcIPQnEyueJdm00rm+j+65aYuY+P6H4ZENNSXTe8rE4KZkQk1XHIIFhFUp3KQyuHCuFlQjIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB+tLK1QYSDA0Nv2cN2KLNcqhhnhoMkOlaU1+RC3Si8y9nIjBBsixV/NdSgFLbTmJJ3Ix0BNBN5ZyDaBtaDt8a226k5amhddB6+RQjeN9ajE7umEQqdrjeLTFPZaLWXu6sTOyKTPjWpZQ5LF7DQgMeVbsLcnHaPZu6O4wzCVU18XgcinwUUCGL+nUKqDNWsWBB+Q+jfbEVLrFiHZTkMW8nUDJxLWT3hgIbKAekRNDYY8jAJW6OQb8GG6kcwaaR0vDSI+sBy+TzaAFao0cYAQ==","thinking":"The user wants to know the current weather in Tokyo, Japan. I''ll call the get_weather tool for Tokyo.","type":"thinking"},{"text":"Sure! Let me check the current weather in Tokyo right away!","type":"text"},{"id":"toolu_017BvVzjTGv88pPQmjCJJjGm","input":{"city":"Tokyo"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","type":"text"}],"tool_use_id":"toolu_017BvVzjTGv88pPQmjCJJjGm","type":"tool_result"}],"role":"user"},{"content":[{"text":"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.","type":"text"}],"role":"user"},{"content":[{"text":"Pack sunscreen—it''s sunny with only light clouds, so rain is unlikely.","type":"text"}],"role":"assistant"},{"content":[{"text":"Restate that advice in different words, in one sentence.","type":"text"}],"role":"user"},{"content":[{"text":"Given the sunny conditions and minimal cloud cover, you should prioritize sun protection over rain gear.","type":"text"}],"role":"assistant"},{"content":[{"text":"Summarize the whole conversation in one sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for one record.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKDP5bX99mVdceMs6sQU
+  body: '{"container":null,"content":[{"signature":"ErUCCpIBCBIYAipA3HwksOpG/Ym2ZPmoK08uGnyrN1dU81LIP+q2Q49kmnctwHgbLYrkdRSZTWu1wirYAuYWD9eLUc8oJcPVw4IdlTIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgBsO/L1QYSDKmlpuw7BGEakOeimBoMUgjWbWzGtG6CGILKIjDvU+9ymJUj7DnDTX2FxrR2EjRoiEHDgU7SKzlhGfhTvjf7W+TLsh5Ba6C3mixVPM8qUOvtkD1IR/tv+ysTrQp2o9sRB+DKMRVWdHKde584lacp4qwohWY1cao6YpzcXmL/BmezNCFVRTOLtM5hAI69JgjAljd6d/Muu4C37VagblMtGAE=","thinking":"The user wants a one-sentence summary of the whole conversation.","type":"thinking"},{"text":"You asked about Tokyo''s weather for trip planning, and based on the sunny, 72°F conditions retrieved, you were advised to pack sunscreen rather than an umbrella.","type":"text"}],"id":"msg_011CfKDP6V72KdipwcF1ZcqX","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":881,"output_tokens":60,"output_tokens_details":{"thinking_tokens":18},"service_tier":"standard"}}'

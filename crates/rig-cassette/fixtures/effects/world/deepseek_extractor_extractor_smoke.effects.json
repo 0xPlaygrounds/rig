@@ -109,7 +109,8 @@
                     "text": "Let me extract the structured data from the text provided.\n\nFirst name: Ada\nLast name: Lovelace\nJob: mathematician\n\nLet me submit this."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",

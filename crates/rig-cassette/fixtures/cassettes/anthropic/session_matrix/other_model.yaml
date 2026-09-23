@@ -1,0 +1,41 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for a record. Always call it before answering.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfK9xhu2svu6x56BYAUe7
+  body: '{"container":null,"content":[{"signature":"EqcFCpoBCBIYAipAx2W3g3SFWFVER5KR1BnVQH0PkB1oXZHajPivZHGgAfgLO3XZ1e+SgIIqcrMDAl4soj1eVERjbkD3/GYWaO2AJzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGq2svVBhIMXMUqhWiu/Ilke3pEGgx0OXAHpVlzs6eAeKMiMISt60WCln1+8yXJl9JIAXN+j4Yp/JnMcEQHI/9t6z0UUmqWHBytaIX3LP1nPPw/DCq5AxuMVTDWP0QHWWuF5DTLb1SW/Ken5scI8WFE/BMVB2Bu5uPgXeK1bQIcnhxRaLaVYhmJeq2eScGjuLjrdalS0oQlKAl9czgOYpSM0fpecG5xRgsnrZiWimUps5L1GgVbJY+z3+5RyvnXoAXx+3gwkZiaYkVIksknE2V/eo0PDognXwrlwBBJZfbzbdwb+S15Skahyt4HGA6WuNKLChibtXEtPcane7BnmUK1tY6kMMnP9Kykth/dnY+AoNgD/HVGD966suPoeh2897wC1j3YEiiARhTej0eKONf257RT+j02LpTlJYMq9sec6wYDghxeaSWVFFMtU5M4pMijeIhlob97IpFz17LaFQ2vsex6bjkubl0cxW3kf1IaW/1H17Q1GR52kr4BDKzZuCs4aOsINQzxGDBCmL+jZy0G39J/TMSbX/DPOh0XCGKFGn6bMBIjvn2np4t48cqziJ5TtI5dA2sAE36zX5+/MSrC+L38PZDypRqdSkK+M93+8H5Ni+W4iVx9tdNWj2Ty/Y5kXBqxrihfPf4xIQJSqGr4qfPoRuGMYuASap/5Ss2pKUiczQ6jQEDWex0UJDMImxgB","thinking":"The user is asking me to:\n1. Think it through\n2. Call lookup_code for record \"alpha\"\n3. Not guess the code\n\nThis is straightforward - they want me to look up the code stored for the record named \"alpha\" using the lookup_code function. The function takes a \"record\" parameter, and the user has specified the record is \"alpha\".\n\nI should call the function with record=\"alpha\" to retrieve the actual code stored for this record.","type":"thinking"},{"text":"I''ll call the lookup_code function to retrieve the actual code stored for record \"alpha\":","type":"text"},{"caller":{"type":"direct"},"id":"toolu_01FpKUmzv8ihnmN146tFvP2X","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"id":"msg_011CfK9xiPYxRxiHkFBvtr8S","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":614,"output_tokens":183,"output_tokens_details":{"thinking_tokens":107},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Think it through, then call lookup_code for record alpha. Do not guess the code.","type":"text"}],"role":"user"},{"content":[{"signature":"EqcFCpoBCBIYAipAx2W3g3SFWFVER5KR1BnVQH0PkB1oXZHajPivZHGgAfgLO3XZ1e+SgIIqcrMDAl4soj1eVERjbkD3/GYWaO2AJzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAGq2svVBhIMXMUqhWiu/Ilke3pEGgx0OXAHpVlzs6eAeKMiMISt60WCln1+8yXJl9JIAXN+j4Yp/JnMcEQHI/9t6z0UUmqWHBytaIX3LP1nPPw/DCq5AxuMVTDWP0QHWWuF5DTLb1SW/Ken5scI8WFE/BMVB2Bu5uPgXeK1bQIcnhxRaLaVYhmJeq2eScGjuLjrdalS0oQlKAl9czgOYpSM0fpecG5xRgsnrZiWimUps5L1GgVbJY+z3+5RyvnXoAXx+3gwkZiaYkVIksknE2V/eo0PDognXwrlwBBJZfbzbdwb+S15Skahyt4HGA6WuNKLChibtXEtPcane7BnmUK1tY6kMMnP9Kykth/dnY+AoNgD/HVGD966suPoeh2897wC1j3YEiiARhTej0eKONf257RT+j02LpTlJYMq9sec6wYDghxeaSWVFFMtU5M4pMijeIhlob97IpFz17LaFQ2vsex6bjkubl0cxW3kf1IaW/1H17Q1GR52kr4BDKzZuCs4aOsINQzxGDBCmL+jZy0G39J/TMSbX/DPOh0XCGKFGn6bMBIjvn2np4t48cqziJ5TtI5dA2sAE36zX5+/MSrC+L38PZDypRqdSkK+M93+8H5Ni+W4iVx9tdNWj2Ty/Y5kXBqxrihfPf4xIQJSqGr4qfPoRuGMYuASap/5Ss2pKUiczQ6jQEDWex0UJDMImxgB","thinking":"The user is asking me to:\n1. Think it through\n2. Call lookup_code for record \"alpha\"\n3. Not guess the code\n\nThis is straightforward - they want me to look up the code stored for the record named \"alpha\" using the lookup_code function. The function takes a \"record\" parameter, and the user has specified the record is \"alpha\".\n\nI should call the function with record=\"alpha\" to retrieve the actual code stored for this record.","type":"thinking"},{"text":"I''ll call the lookup_code function to retrieve the actual code stored for record \"alpha\":","type":"text"},{"id":"toolu_01FpKUmzv8ihnmN146tFvP2X","input":{"record":"alpha"},"name":"lookup_code","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"record alpha: code amber-5521","type":"text"}],"tool_use_id":"toolu_01FpKUmzv8ihnmN146tFvP2X","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Return the code stored for a record. Always call it before answering.","input_schema":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"name":"lookup_code"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfK9xqD5BF3nrShHmnUVz
+  body: '{"container":null,"content":[{"text":"The code stored for record **alpha** is: **amber-5521**","type":"text"}],"id":"msg_011CfK9xqdNkpaF1jcdozTp4","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":817,"output_tokens":19,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'

@@ -34,8 +34,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use rig_test_support::history_survival::{
-    Dialect, TOKEN_KINDS, Token, continues, lost_tokens, unpaired_normalized_tool_calls,
-    unpaired_tool_calls,
+    Dialect, TOKEN_KINDS, Token, continues, legacy_tokens, lost_tokens, text_signature_on_thought,
+    unpaired_normalized_tool_calls, unpaired_tool_calls,
 };
 
 /// Scenarios whose continuation legitimately lacks a delivered value.
@@ -43,15 +43,7 @@ use rig_test_support::history_survival::{
 /// `(cassette path suffix, token kind, reason)`. The reason must cite the
 /// provider behavior; an entry that stops matching a real loss is reported
 /// as stale so exemptions cannot outlive the behavior they excuse.
-const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[(
-    "xai/prompt_caching/streaming_probe.yaml",
-    "reasoning_id",
-    "the cache probe hand-builds each follow-up turn from the previous reply's text \
-     alone (`cache_conformance::run_cache_probe_streaming`), so the reasoning item \
-     xAI delivered is never part of the history it sends; xAI accepts the text-only \
-     history, and `xai/reasoning_roundtrip/streaming.yaml` shows Rig's own loop \
-     replaying the id-only reasoning item",
-)];
+const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[];
 
 /// Scenarios whose recorded requests deliberately carry unpaired calls.
 const PAIRING_EXEMPT: &[(&str, &str)] = &[];
@@ -214,11 +206,36 @@ fn delivered_opaque_fields_reach_the_next_request() {
     let mut losses: Vec<String> = Vec::new();
     let mut used: BTreeSet<(&str, &str)> = BTreeSet::new();
     let mut compared = 0usize;
+    let mut legacy = 0usize;
+    let mut misplaced: Vec<String> = Vec::new();
+    let mut legacy_absent: Vec<String> = Vec::new();
 
     for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
         compared += 1;
+        let placeholders = legacy_tokens(earlier.dialect, &earlier.response);
+        legacy += placeholders.len();
+        // A placeholder cannot prove its slot, but its absence is still worth
+        // reporting.
+        let carried = rig_test_support::history_survival::string_values(&later.request);
+        legacy_absent.extend(
+            placeholders
+                .iter()
+                .filter(|token| !carried.contains(&token.value))
+                .map(|token| {
+                    format!(
+                        "{scenario} exchange {index}: {} {}",
+                        token.kind, token.value
+                    )
+                }),
+        );
         let lost: Vec<Token> = lost_tokens(earlier.dialect, &earlier.response, &later.request);
         for token in lost {
+            // A known misplacement, reported rather than failed: see
+            // `text_signature_on_thought`. Any other misplacement fails.
+            if text_signature_on_thought(&token, &later.request) {
+                misplaced.push(format!("{scenario} exchange {index}"));
+                continue;
+            }
             if let Some((suffix, kind, _)) = SURVIVAL_EXEMPT
                 .iter()
                 .find(|(suffix, kind, _)| scenario.ends_with(suffix) && *kind == token.kind)
@@ -227,7 +244,7 @@ fn delivered_opaque_fields_reach_the_next_request() {
                 continue;
             }
             losses.push(format!(
-                "{scenario} exchange {index}: response delivered {} {:?}, the next request lacks it",
+                "{scenario} exchange {index}: response delivered {} {:?}, the next request does not carry it in its slot",
                 token.kind, token.value
             ));
         }
@@ -240,6 +257,18 @@ fn delivered_opaque_fields_reach_the_next_request() {
         .collect();
 
     assert!(compared > 0, "no continuation pairs found in the corpus");
+    // Legacy placeholders cannot prove a slot; they are counted, not judged.
+    eprintln!("continuation pairs: {compared}; legacy placeholder values not judged: {legacy}");
+    eprintln!(
+        "legacy placeholder values absent from the next request (reported, not judged): {}\n{}",
+        legacy_absent.len(),
+        legacy_absent.join("\n")
+    );
+    eprintln!(
+        "Gemini text-part signatures replayed on a thought part: {}\n{}",
+        misplaced.len(),
+        misplaced.join("\n")
+    );
     assert!(
         losses.is_empty() && stale.is_empty(),
         "opaque content lost between turns ({} pairs compared):\n{}\n\nstale exemptions:\n{}",

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -153,7 +153,8 @@
                   "type": "summary",
                   "content": "The instruction is: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short senten..."
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",
@@ -402,7 +403,8 @@
                       "type": "summary",
                       "content": "The instruction is: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short senten..."
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -525,7 +527,8 @@
                   "type": "summary",
                   "content": "The user says: \"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence th..."
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "text",

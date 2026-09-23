@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -107,7 +107,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text. The text is: \"Hello, my name is Ada Lovelace and I work as a mathematician.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",

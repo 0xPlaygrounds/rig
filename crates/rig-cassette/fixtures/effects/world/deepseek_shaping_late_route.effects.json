@@ -16,7 +16,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -156,7 +156,8 @@
                     "text": "We need answer. Must use add tool. Then reply just number. Need call add 17 and 25."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",
@@ -298,7 +299,8 @@
                         "text": "We need answer. Must use add tool. Then reply just number. Need call add 17 and 25."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "deepseek"
                 },
                 {
                   "type": "toolcall",

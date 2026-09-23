@@ -54,6 +54,12 @@ impl Operation for Completion {
         Some(StreamEvent::Unknown(payload))
     }
 
+    /// Reasoning another wire issued is omitted; see
+    /// [`crate::message::retain_replayable_reasoning`].
+    fn scope_to_wire(request: &mut Self::Request, wire: &str) {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, wire);
+    }
+
     fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
         // The terminal's own id wins: it saw the reply that carried it.
         if let StreamEvent::Final(terminal) = event
@@ -176,11 +182,18 @@ impl Fold<Completion> for CompletionFold {
     fn finish(self, reply: Reply) -> Result<CompletionResponse, CompletionError> {
         // The buffered reply's document is the response's `raw`, not the
         // terminal record's: the wire decoded the whole body at once.
+        let issuer = self
+            .terminal
+            .as_ref()
+            .map_or(reply.provider.clone(), |terminal| {
+                terminal.issuer().to_owned()
+            });
         let response = crate::streaming::fold_finish(
             self.accumulator,
             self.terminal.as_ref(),
             self.message_id,
             reply.provider,
+            &issuer,
             reply.raw,
         );
         // The terminal's own id wins; the reply headers only fill a gap.
@@ -616,6 +629,7 @@ impl AdapterOutput {
             id,
             end: BlockClose::Reasoning {
                 reasoning: Some(crate::message::Reasoning {
+                    provider: None,
                     id: provider_id,
                     content: vec![content],
                 }),
@@ -644,3 +658,6 @@ impl AdapterOutput {
         self.push(Ok(StreamEvent::Unknown(payload)));
     }
 }
+
+#[cfg(test)]
+mod tests;

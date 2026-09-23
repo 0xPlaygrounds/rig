@@ -343,7 +343,8 @@
                     "signature": "Eq0BCqoBAWkUfROiVbpCOtVYAyzazoRM1nU9JfA2HW+3vzMgmekg+vQX3EKmfWRReBqutyf45zCfbbIcPIzeiaZzIK22wD/xSf3cpam1tZw9Xb8HO/rn7AbF4eSiAN03J0sbq+sGdBnDj0SoaTc4MvprSsRPmTc+Xo8CTXzu7IuAElQ/v84RNDVXXqhNMNfJ48lpwpczXvsN8mq0d81jle/Qb6CfMIZ/1JffKhalNwg="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -87,7 +87,8 @@
                     "text": "We need answer in one or two sentences. Explain what Rust is and why memory"
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             }
           ],
           "usage": {

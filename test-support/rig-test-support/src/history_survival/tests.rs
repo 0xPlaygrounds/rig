@@ -202,3 +202,183 @@ fn normalized_histories_pair_by_call_identity() {
         ("call", "tool-1")
     );
 }
+
+/// Keeping a tool-call id on the result but dropping it from the call is a
+/// loss, even though the value still appears in the request.
+#[test]
+fn a_tool_call_id_on_one_leg_only_is_lost() {
+    let body = json!({ "choices": [{ "message": { "tool_calls": [
+        { "id": "call_7", "function": { "name": "f", "arguments": "{}" } },
+    ]}}]})
+    .to_string();
+    let half = json!({ "messages": [
+        { "role": "assistant", "tool_calls": [{ "function": { "name": "f", "arguments": "{}" } }] },
+        { "role": "tool", "tool_call_id": "call_7", "content": "ok" },
+    ]});
+    assert_eq!(
+        kinds(&lost_tokens(Dialect::ChatCompletions, &body, &half)),
+        [("tool_call_id", "call_7")]
+    );
+    let whole = json!({ "messages": [
+        { "role": "assistant", "tool_calls": [{ "id": "call_7", "function": { "name": "f", "arguments": "{}" } }] },
+        { "role": "tool", "tool_call_id": "call_7", "content": "ok" },
+    ]});
+    assert!(lost_tokens(Dialect::ChatCompletions, &body, &whole).is_empty());
+}
+
+/// A value in the wrong slot is lost: a signature carried as text is not a
+/// signature carried back.
+#[test]
+fn a_value_outside_its_slot_is_lost() {
+    let body =
+        json!({ "content": [{ "type": "thinking", "thinking": "t", "signature": "sig-9" }] })
+            .to_string();
+    let misplaced = json!({ "messages": [{ "role": "assistant", "content": [
+        { "type": "text", "text": "sig-9" },
+    ]}]});
+    assert_eq!(
+        kinds(&lost_tokens(Dialect::AnthropicMessages, &body, &misplaced)),
+        [("signature", "sig-9")]
+    );
+}
+
+/// Legacy placeholders are counted apart, never passed or failed.
+#[test]
+fn legacy_placeholders_are_neither_lost_nor_proven() {
+    let body = json!({ "content": [{ "type": "tool_use", "id": "toolu_REDACTED_1", "name": "f", "input": {} }] })
+        .to_string();
+    let next = json!({ "messages": [] });
+    assert!(lost_tokens(Dialect::AnthropicMessages, &body, &next).is_empty());
+    assert_eq!(
+        kinds(&legacy_tokens(Dialect::AnthropicMessages, &body)),
+        [("tool_call_id", "toolu_REDACTED_1")]
+    );
+}
+
+#[test]
+fn a_stored_chain_answers_a_server_held_call_only_before_its_own_turns() {
+    let stored = json!({
+        "previous_response_id": "resp_1",
+        "input": [{ "type": "function_call_output", "call_id": "call_1", "output": "ok" }]
+    });
+    assert!(unpaired_tool_calls(Dialect::OpenAiResponses, &stored).is_empty());
+
+    let stateless = json!({
+        "input": [{ "type": "function_call_output", "call_id": "call_1", "output": "ok" }]
+    });
+    assert_eq!(
+        unpaired_tool_calls(Dialect::OpenAiResponses, &stateless).len(),
+        1
+    );
+
+    let late = json!({
+        "previous_response_id": "resp_1",
+        "input": [
+            { "type": "function_call", "call_id": "call_2", "name": "f", "arguments": "{}" },
+            { "type": "function_call_output", "call_id": "call_2", "output": "ok" },
+            { "type": "function_call_output", "call_id": "call_1", "output": "ok" }
+        ]
+    });
+    assert_eq!(
+        unpaired_tool_calls(Dialect::OpenAiResponses, &late).len(),
+        1
+    );
+}
+
+#[test]
+fn swapped_parallel_call_ids_are_lost() {
+    let body = json!({ "content": [
+        { "type": "tool_use", "id": "toolu_a", "name": "lookup", "input": { "record": "alpha" } },
+        { "type": "tool_use", "id": "toolu_b", "name": "lookup", "input": { "record": "beta" } },
+    ]})
+    .to_string();
+    let next = |first: &str, second: &str| {
+        json!({ "messages": [
+            { "role": "assistant", "content": [
+                { "type": "tool_use", "id": first, "name": "lookup", "input": { "record": "alpha" } },
+                { "type": "tool_use", "id": second, "name": "lookup", "input": { "record": "beta" } },
+            ]},
+            { "role": "user", "content": [
+                { "type": "tool_result", "tool_use_id": "toolu_a", "content": "a" },
+                { "type": "tool_result", "tool_use_id": "toolu_b", "content": "b" },
+            ]},
+        ]})
+    };
+    assert!(
+        lost_tokens(
+            Dialect::AnthropicMessages,
+            &body,
+            &next("toolu_a", "toolu_b")
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        kinds(&lost_tokens(
+            Dialect::AnthropicMessages,
+            &body,
+            &next("toolu_b", "toolu_a")
+        )),
+        [("tool_call_id", "toolu_a"), ("tool_call_id", "toolu_b")]
+    );
+}
+
+#[test]
+fn a_signature_moved_to_another_thinking_block_is_lost() {
+    let body = json!({ "content": [
+        { "type": "thinking", "thinking": "first", "signature": "sig-1" },
+        { "type": "thinking", "thinking": "second", "signature": "sig-2" },
+    ]})
+    .to_string();
+    let next = json!({ "messages": [
+        { "role": "assistant", "content": [
+            { "type": "thinking", "thinking": "first", "signature": "sig-2" },
+            { "type": "thinking", "thinking": "second", "signature": "sig-1" },
+        ]},
+    ]});
+    assert_eq!(
+        kinds(&lost_tokens(Dialect::AnthropicMessages, &body, &next)),
+        [("signature", "sig-1"), ("signature", "sig-2")]
+    );
+}
+
+#[test]
+fn a_call_signature_moved_to_a_text_part_is_lost() {
+    let body = json!({ "candidates": [{ "content": { "role": "model", "parts": [
+        { "functionCall": { "name": "lookup", "args": {} }, "thoughtSignature": "sig-call" },
+    ]}}]})
+    .to_string();
+    let kept = json!({ "contents": [{ "role": "model", "parts": [
+        { "functionCall": { "name": "renamed", "args": {} }, "thoughtSignature": "sig-call" },
+    ]}]});
+    assert!(lost_tokens(Dialect::GeminiGenerateContent, &body, &kept).is_empty());
+    let moved = json!({ "contents": [{ "role": "model", "parts": [
+        { "text": "", "thoughtSignature": "sig-call" },
+        { "functionCall": { "name": "lookup", "args": {} } },
+    ]}]});
+    assert_eq!(
+        kinds(&lost_tokens(Dialect::GeminiGenerateContent, &body, &moved)),
+        [("thought_signature", "sig-call")]
+    );
+}
+
+#[test]
+fn openrouter_encrypted_details_must_return_on_their_own_item() {
+    let body = json!({ "choices": [{ "message": { "role": "assistant", "reasoning_details": [
+        { "type": "reasoning.encrypted", "id": "rd_1", "data": "cipher-1" },
+    ]}}]})
+    .to_string();
+    assert_eq!(
+        kinds(&response_tokens(Dialect::ChatCompletions, &body)),
+        [("encrypted_content", "cipher-1")]
+    );
+    let next = |id: &str| {
+        json!({ "messages": [{ "role": "assistant", "reasoning_details": [
+            { "type": "reasoning.encrypted", "id": id, "data": "cipher-1" },
+        ]}]})
+    };
+    assert!(lost_tokens(Dialect::ChatCompletions, &body, &next("rd_1")).is_empty());
+    assert_eq!(
+        kinds(&lost_tokens(Dialect::ChatCompletions, &body, &next("rd_2"))),
+        [("encrypted_content", "cipher-1")]
+    );
+}

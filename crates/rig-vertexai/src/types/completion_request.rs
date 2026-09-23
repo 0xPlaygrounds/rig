@@ -16,6 +16,10 @@ impl VertexCompletionRequest {
         // Cross-provider ingested results arrive with an empty name and
         // their paired call carries it.
         rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
+        rig_core::message::retain_replayable_reasoning(
+            &mut history,
+            crate::types::completion_response::PROVIDER_NAME,
+        );
 
         let mut contents = Vec::new();
         for message in history {

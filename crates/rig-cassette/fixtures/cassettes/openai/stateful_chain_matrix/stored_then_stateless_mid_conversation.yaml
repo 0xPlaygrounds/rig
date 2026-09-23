@@ -1,0 +1,90 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Use lookup_code to get the code of record alpha. Do not guess.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-5-mini","reasoning":{"effort":"low"},"store":true,"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_a6a497b8179645f183c9c31f8201003e
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b0382c783a4ce8e006ab2ea6aa33487d08e5097b0479b095c","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"gAAAAABqsupsytOTwt0C2zl4f3CXt6h1Ap70ypGuGmutCC6yQ8pV6udpeb9felwQsq43zwc0N7UtqKl-VSOf5iaJSI7rawvBrn6wEeMel_kS-nHjFSc8IQkjCOYCz26x9TNFIIwWMLYoMDImi0EQdh_1w94TMVZxjNg7pq7lHYMe4T1yUwLitvn47XMY_Y_5EHF6pfJAG2-7dJCGkSe6cvhdSdIWItvxf7ng_8t7sOhKAp2OkVz0j1KoT16PMKbv6KG6LlUWhvwt9NLrQsValmzdYEhMSPK2RrA6JBp6Ai1P58TJN9I09ryDcpnwqWyx0WupZl4jjgo1kyV36kgwaYkbW8gS8BCV2uKZOwGpTMhfc1NQL4QqqCl2qWiNkdqMI87KecFucZAJrb1OhouK27DoqLtCDpDLcHRl3rdlgDAoJOI_dupPWgguLeYS8gSUIZW7UMEpKmbuHpFlu2Dy00Apqr-YEKSY8Zgf6XKG4-hMJK3E5K7xTOWj0FRt-QX7iUuUYiESol3FQtinQuPgowWylxjBouIpLmd25PKtmBc4m11sT0MYuWXpVHILi9eSuQPmEALy1GSCfqHAQsBM7NN6j2QFzoO_6r4QBJ-u3ut9Y9VbZ5xVWNF3dJh06uWxeuDsjJOiLWwgLunLJpt9v4bEFfhS-EwhSKAlHmL72MZOzsyZpfkzqPzejyNZbNaCGxVpxTTav4Zi4LqbAuQZj8HdOubqMz9v1NZNq4vTSsEVTCPlgIYmAgnJM5AAbsLitcwSgNscquwRtoBL3_zirH7FVReIs6AOJCVNPE-ZEqxFF_CqJVBgCgh_2l4EUW-Ssx9s8IZQDg6uJ_X41gp4Kywh9Rcz8x8_aa67a_iRPTA1QhcMdvPR6o3BJn6MwrXUJ8fdQG-ulRjK10Of-unthAMN9KdgULjsGfpMO5pEuoWsgfd4-EyBob_qtSIoMVKVf2izzR2xiEWIVqBN2fp5FOXLevJ-RIyl5uwVz1v4f7OYh4JDXvH2Y3ZQL_lpbXbJ63J9JQGMdtla53X7dkFrSvcUv6Q08RnLwPMeZOuV64FcGo8qP6t0u3d-tQt8u6hcyMyk87lC__mkmvI0ehB8pCJx5YF4OZVXrCrzX5PeTYNI_iRoKj3deoDCJSTFVZjGtGug4jByzCDZrUppzzmQC0blhcuIrHyp24614KYZ5w1qdypNJeayN2VDiq_bWpDSYkE0L1bU6rLADYOYRGqehEgC9bOWdMd3B7L8keyGRfxxCwPqVKeT1fIWcoLumYzZ3c2qC_-L6BJ9xVlNMdiIFPIl8N1JUNuviFWk0dUKfEbAdxf_V2HaTITGJzZjArzBFZqrxEEAsbaWyzgnXFCYOwqpHwyQaLWlCaPeZFJWhzT8vNc9ciTR9Y7xpNtKH_Dupg22qDwo8VsnC-7ICnqV3CxEjahAAF_yei61CKoFTn_fi3-PbOMgW8jfhc2489lm5OMWLqoFu6Zlt1MrxUOcURx3TmEgdBHgHtKZVw05DnpEapxJ7twBvYkFQEf3jSZls-R3O5yAWLmZHvC-0WSz45sZ38k8RlNVB-y2xMIVZn5Ti9QOTMdKFHMPAcHJ6MQrrw7KsrLHVqT8wNCkL9zW27_8NVsvQPXmxwIMOHOsU5DX5EOnM-JI7Tw1cNV5u5Y-cSaVef1s7rVA6Dij5q9kzxA8iO_FLiTNDmiXTIzMs_lzhgxpqD__hAMZZJ6v2atSF0BaeDxJ4MYrftysiy2v1SI2mZeoeNhZVHqtCkWD7JddfJlL3iW5UO3nHZNCr7XFqw20rz5XOBLq3UOnEaYrSaNLr_qukCp0zVDxntM0N7BcNuvLDqWiwqa8f8bOv_Gn2viVSxjv7oTiiVjrrGCwJfMSY3VEHH1wtNsUUe6OP1UdeqfbO11KRoM=","id":"rs_0b0382c783a4ce8e006ab2ea6b203887d08b317b5af4af53c6","summary":[],"type":"reasoning"},{"arguments":"{\"record\":\"alpha\"}","call_id":"call_0PlI0th0slez8pZ0TmlRmDRq","id":"fc_0b0382c783a4ce8e006ab2ea6c2ba487d08aeca23b6313340c","name":"lookup_code","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","output_schema":null,"parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":59,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":119,"output_tokens_details":{"reasoning_tokens":64},"total_tokens":178},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"call_id":"call_0PlI0th0slez8pZ0TmlRmDRq","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"}],"max_output_tokens":2048,"model":"gpt-5-mini","previous_response_id":"resp_0b0382c783a4ce8e006ab2ea6aa33487d08e5097b0479b095c","reasoning":{"effort":"low"},"store":true,"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_9df54c33acd348a0b8fc66c2212e10a6
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b0382c783a4ce8e006ab2ea6ca41087d08706e936fb5cc560","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"record alpha: code amber-5521","type":"output_text"}],"id":"msg_0b0382c783a4ce8e006ab2ea6d520087d0b218438158a118bf","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":"resp_0b0382c783a4ce8e006ab2ea6aa33487d08e5097b0479b095c","prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","output_schema":null,"parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":197,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":12,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":209},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Use lookup_code to get the code of record alpha. Do not guess.","type":"input_text"}],"role":"user","type":"message"},{"encrypted_content":"gAAAAABqsupsytOTwt0C2zl4f3CXt6h1Ap70ypGuGmutCC6yQ8pV6udpeb9felwQsq43zwc0N7UtqKl-VSOf5iaJSI7rawvBrn6wEeMel_kS-nHjFSc8IQkjCOYCz26x9TNFIIwWMLYoMDImi0EQdh_1w94TMVZxjNg7pq7lHYMe4T1yUwLitvn47XMY_Y_5EHF6pfJAG2-7dJCGkSe6cvhdSdIWItvxf7ng_8t7sOhKAp2OkVz0j1KoT16PMKbv6KG6LlUWhvwt9NLrQsValmzdYEhMSPK2RrA6JBp6Ai1P58TJN9I09ryDcpnwqWyx0WupZl4jjgo1kyV36kgwaYkbW8gS8BCV2uKZOwGpTMhfc1NQL4QqqCl2qWiNkdqMI87KecFucZAJrb1OhouK27DoqLtCDpDLcHRl3rdlgDAoJOI_dupPWgguLeYS8gSUIZW7UMEpKmbuHpFlu2Dy00Apqr-YEKSY8Zgf6XKG4-hMJK3E5K7xTOWj0FRt-QX7iUuUYiESol3FQtinQuPgowWylxjBouIpLmd25PKtmBc4m11sT0MYuWXpVHILi9eSuQPmEALy1GSCfqHAQsBM7NN6j2QFzoO_6r4QBJ-u3ut9Y9VbZ5xVWNF3dJh06uWxeuDsjJOiLWwgLunLJpt9v4bEFfhS-EwhSKAlHmL72MZOzsyZpfkzqPzejyNZbNaCGxVpxTTav4Zi4LqbAuQZj8HdOubqMz9v1NZNq4vTSsEVTCPlgIYmAgnJM5AAbsLitcwSgNscquwRtoBL3_zirH7FVReIs6AOJCVNPE-ZEqxFF_CqJVBgCgh_2l4EUW-Ssx9s8IZQDg6uJ_X41gp4Kywh9Rcz8x8_aa67a_iRPTA1QhcMdvPR6o3BJn6MwrXUJ8fdQG-ulRjK10Of-unthAMN9KdgULjsGfpMO5pEuoWsgfd4-EyBob_qtSIoMVKVf2izzR2xiEWIVqBN2fp5FOXLevJ-RIyl5uwVz1v4f7OYh4JDXvH2Y3ZQL_lpbXbJ63J9JQGMdtla53X7dkFrSvcUv6Q08RnLwPMeZOuV64FcGo8qP6t0u3d-tQt8u6hcyMyk87lC__mkmvI0ehB8pCJx5YF4OZVXrCrzX5PeTYNI_iRoKj3deoDCJSTFVZjGtGug4jByzCDZrUppzzmQC0blhcuIrHyp24614KYZ5w1qdypNJeayN2VDiq_bWpDSYkE0L1bU6rLADYOYRGqehEgC9bOWdMd3B7L8keyGRfxxCwPqVKeT1fIWcoLumYzZ3c2qC_-L6BJ9xVlNMdiIFPIl8N1JUNuviFWk0dUKfEbAdxf_V2HaTITGJzZjArzBFZqrxEEAsbaWyzgnXFCYOwqpHwyQaLWlCaPeZFJWhzT8vNc9ciTR9Y7xpNtKH_Dupg22qDwo8VsnC-7ICnqV3CxEjahAAF_yei61CKoFTn_fi3-PbOMgW8jfhc2489lm5OMWLqoFu6Zlt1MrxUOcURx3TmEgdBHgHtKZVw05DnpEapxJ7twBvYkFQEf3jSZls-R3O5yAWLmZHvC-0WSz45sZ38k8RlNVB-y2xMIVZn5Ti9QOTMdKFHMPAcHJ6MQrrw7KsrLHVqT8wNCkL9zW27_8NVsvQPXmxwIMOHOsU5DX5EOnM-JI7Tw1cNV5u5Y-cSaVef1s7rVA6Dij5q9kzxA8iO_FLiTNDmiXTIzMs_lzhgxpqD__hAMZZJ6v2atSF0BaeDxJ4MYrftysiy2v1SI2mZeoeNhZVHqtCkWD7JddfJlL3iW5UO3nHZNCr7XFqw20rz5XOBLq3UOnEaYrSaNLr_qukCp0zVDxntM0N7BcNuvLDqWiwqa8f8bOv_Gn2viVSxjv7oTiiVjrrGCwJfMSY3VEHH1wtNsUUe6OP1UdeqfbO11KRoM=","id":"rs_0b0382c783a4ce8e006ab2ea6b203887d08b317b5af4af53c6","summary":[],"type":"reasoning"},{"arguments":"{\"record\":\"alpha\"}","call_id":"call_0PlI0th0slez8pZ0TmlRmDRq","id":"fc_0b0382c783a4ce8e006ab2ea6c2ba487d08aeca23b6313340c","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"call_0PlI0th0slez8pZ0TmlRmDRq","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"},{"content":[{"text":"record alpha: code amber-5521","type":"output_text"}],"id":"msg_0b0382c783a4ce8e006ab2ea6d520087d0b218438158a118bf","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Repeat the code you reported, exactly, and nothing else.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":2048,"model":"gpt-5-mini","reasoning":{"effort":"low"},"store":false,"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_cd5b78c621734462afea467fc77ac428
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0b0382c783a4ce8e016ab2ea6de50887d09c1421e871bc6489","incomplete_details":null,"instructions":null,"max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"gAAAAABqsupw-_67WY1C-yTZ7w40gViCUNPGNN-_9fPUYGK8RPZlTCBjvRdVJTw4AZvbQhhPZ4Od0xp5-D5sulDuaRfkUMPjt35BX2QHOTlwlY209gDctU8hyLl9S7_7ef7m9IqEB-nsJTuWLEqHnGCtLerPtcqopH1pUMqCk0M56ACGg3yt1kacH7Zw-8E7cMhqO9Yko8eWJ_Do0beBesM2CBNbZP3GhEPj4-U0aA8wyC19yvyL_EDEV8TbQzf_a7Jq630HgSQp8K44LFWgC8UGA6ZqwNNnY_m_kAd8NqvalTukAHq18mUOpP1b7Mb6mVXHD3MUJC119JIlrBkEqcCP0rnCJyEOjY46IA17aR4wcyueas_HhuegL9EHnRfOBF8dL5aOJK6GX3wRDfEbYhnfddNGn4G8NTEQQzPmrpLGvpkgx1Y8NAf-fKrmYl9zDwJzL2y68IFi5qqyQ3Hfk4NHCZOcf3wuQD4BwUZS2B7p6Jo-QdrZ4pRwvR_FaJ4ad6B25DHS8GHuhjupWAaV_TjPl4V3EYoRBG9V87KwraXGCWkTrcuERvPe4sLtTHVW0GS8GiZMMP95udm8HWGcLMteX7v6o9uR5JeqoFAWV9gyLx22OcJKxjLxMPUdTT8efXrw9-rAPp7RcU4aAKnyq02YuKaSt4ADw79NfQUX2A4_uFGsS1B-_vjPlnorWNLkvN8mBD628PmYNMPX_7SPWxMmdu0h_FKPRkfk1PSJjnTjyD2NHoSpypq1Bcf3QTHR1P09hwFADLFxUaCRAGDJHb4SHIaAocb-xMJUPHmdoC-2HLqTQmHQaXrLr0_7Y2OotBIN4oyFv_T7p3i-MA4z7fwQDIcZx9YqxejgRw6fMTncHxTzBbrSRYMTPHYO2k0Y_NgiDxSBGBC9IcnukUz_4OWMi2zClBNx432qsMNfKFxhMqOeqmG7pSA6VX9NoxtQnsIEPsv4nqnBkd0p9Zjxj33OJday4TIUBZPYuxmp0dU-fOuFk-8XPJh1d2pFXzYNdKmkYmEG7H4Fbjbl5XG-RWPPLmhuIH1XH2cZU2jYiA27otBW0rACoETRMNpGa8xUHLF0JDP3qguihORnWPN2QyIzT-lb3LXCEx6VY9DDqWMEXzt9_ouvL6xP66RRss4vJhJ4dIC-GCgjHYndHcSjH0g3-mK-cN9CFe9aOVw3XnOeUMM_PtJPsNP-i3oGTQp63wxSABZHcTGC5pGD4LenD3Ca8pS-sAglDVNcjoTBtlAigmsaRg45gvuCc1yvsXdcIstVgQFT-5n_xGuuRc4mj59dRl1JIdQiB8ZSkV3eytSUQQdoJRgBQ722oChWlKyw82FPxPk7dCphgKl3335aJEClvCq64jOmPfRLvenplOlr2UjMd_6PFvgIxND7GXZ3xOV4gIIWANXwV3yqpfaqhE6toxv-89YmuucJKD2DdOiB5v6k5M2Xw6nrLdXHQ1yutxWccGUb3R1Yf_QnYchnbM2NUFNTxNJXZBhMCvLeHLNgIvEtX4tjlCLyuhwMF_5pOXdhGzsKqqd2KAbZdT3w25OVIf7_BWqe8A==","id":"rs_0b0382c783a4ce8e016ab2ea6e574887d0a4a4206838931b72","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"record alpha: code amber-5521","type":"output_text"}],"id":"msg_0b0382c783a4ce8e016ab2ea6ee43c87d085cb0b10250fae57","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Return the code stored for a record.","name":"lookup_code","output_schema":null,"parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":126,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":72,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":198},"user":null}'
+---
+when:
+  path: /v1/responses/resp_0b0382c783a4ce8e006ab2ea6aa33487d08e5097b0479b095c
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_2f8d2da6d6f14febaf21e082ab943fed
+  body: '{"deleted":true,"id":"resp_0b0382c783a4ce8e006ab2ea6aa33487d08e5097b0479b095c","object":"response.deleted"}'
+---
+when:
+  path: /v1/responses/resp_0b0382c783a4ce8e006ab2ea6ca41087d08706e936fb5cc560
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_0f37e87c276e4058892c85f7e84c7b97
+  body: '{"deleted":true,"id":"resp_0b0382c783a4ce8e006ab2ea6ca41087d08706e936fb5cc560","object":"response.deleted"}'

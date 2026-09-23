@@ -217,22 +217,40 @@ re-recorded. Still review every cassette diff for:
 
 A provider hands Rig opaque fields only it can interpret (thinking signatures,
 encrypted reasoning, redacted reasoning, reasoning item ids, tool-call ids)
-and expects them back on the next turn. The rule lives in
-`test-support/rig-test-support/src/history_survival.rs` and is applied twice:
+and expects them back on the next turn, in the slot that carries them: the
+signature on its own reasoning block, the ciphertext on its reasoning item,
+the call id on both the call and its result. The rule lives in
+`test-support/rig-test-support/src/history_survival.rs`, modeled per dialect,
+and is applied twice:
 
 - `crates/rig-cassette/tests/cassette_history_survival.rs` sweeps every
   committed cassette and effect golden at zero provider cost: delivered fields
-  must reach every continuation request, every recorded request must pair its
-  tool calls with results, every native `chat_history` must pair too (this
-  includes the requests after cancellations, invalid arguments and provider
-  faults), and a census proves each provider and content kind was examined.
-  Exemptions need a cited provider behavior and are reported when stale.
+  must reach every continuation request in their slot, every recorded request
+  must pair its tool calls with results (a stored Responses chain answers
+  calls held by `previous_response_id`), every native `chat_history` must
+  pair too (this includes the requests after cancellations, invalid arguments
+  and provider faults), and a census proves each provider and content kind
+  was examined. Legacy `REDACTED_<n>` placeholders cannot prove a slot and
+  are counted, not judged. Exemptions need a cited provider behavior and are
+  reported when stale.
 - `history_survival_matrix` cells per provider run three prompts over
   deterministic lookup/verify tools with one transient tool failure, assert
   the same delivered content on unary and streaming transports, then apply
   the rule to the recording they just made. `portability_matrix` cells decode
-  another wire's committed reply through Rig's real decoder and continue it on
-  the target wire.
+  another wire's committed reply through Rig's real decoder, continue it on
+  the target wire, and assert no foreign reasoning state reached it.
+
+Reasoning records the service that issued it, and a request replays only that
+service's reasoning (Claude on Bedrock shares Anthropic's).
+Further cell families exercise the same round trip: `stateful_chain_matrix`
+(OpenAI `previous_response_id` and file ids, Gemini `cachedContents` and
+Interactions), `session_matrix` (history persisted through serde, an ECS
+checkpoint restored into a fresh world, or agent memory, then continued),
+`adversarial_matrix` (reused call ids, reordered parallel results, long
+ciphertext, signed empty reasoning, a history ported across three providers
+and back), `image_input_matrix` and `request_identity_matrix`. Chains create
+and delete their server-side resources in the recorded session, so a
+committed chain replays but its handles cannot seed a live call.
 
 Record a cell with the ordinary record mode and an exact test name. Set
 `RIG_LONG_TASK_ATTEMPT_DIR` to keep the exchanges of a failed attempt outside

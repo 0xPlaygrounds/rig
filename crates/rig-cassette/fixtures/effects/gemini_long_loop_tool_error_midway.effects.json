@@ -4880,7 +4880,8 @@
                     "signature": "ClABaRR9E8eggUI2wgBd4EXl0t3wrwVF2uafATohlRbIKsT5dsmXloXsneYDyUu3syAtZIQARLGNe+61vofSifeEVHlzEntBPJYykz5i/odHvQ=="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

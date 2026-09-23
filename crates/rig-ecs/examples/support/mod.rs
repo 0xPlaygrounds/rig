@@ -106,6 +106,7 @@ impl Serve for Scripted {
                             response_id: None,
                             provider_request_id: None,
                             provider: "scripted".to_owned(),
+                            reasoning_issuer: None,
                             model: None,
                             raw: serde_json::json!({ "provider": "scripted" }),
                         })

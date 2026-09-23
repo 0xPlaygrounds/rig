@@ -841,3 +841,42 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
         Some(rig_core::completion::FinishReason::Stop)
     );
 }
+
+/// A Claude stream names `anthropic` as its reasoning issuer, and the folded
+/// turn's reasoning records it.
+#[tokio::test]
+async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
+    let state = StreamState {
+        reasoning_issuer: Some("anthropic"),
+        ..StreamState::default()
+    };
+    let events = futures::stream::iter(
+        vec![
+            reasoning_text_delta(0, "thinking"),
+            reasoning_signature_delta(0, "sig"),
+            block_stop(0),
+            text_delta_event(1, "done"),
+            block_stop(1),
+            message_stop_event(aws_bedrock::StopReason::EndTurn),
+            metadata_event_with_usage(3, 1),
+        ]
+        .into_iter()
+        .map(Ok),
+    );
+    let mut stream =
+        StreamingCompletionResponse::stream(PROVIDER_NAME, run_wire_stream(events, state));
+    while let Some(item) = stream.next().await {
+        item.expect("stream item");
+    }
+    assert_eq!(stream.reasoning_issuer(), Some("anthropic"));
+    let response = stream.finish().expect("a terminal record");
+    let issuers: Vec<_> = response
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(issuers, ["anthropic"]);
+}

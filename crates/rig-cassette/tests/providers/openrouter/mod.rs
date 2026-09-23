@@ -33,6 +33,7 @@ mod cassette {
     mod refusal_matrix;
     mod request_hook;
     mod response_identity_edge;
+    mod session_matrix;
     mod streaming;
     mod streaming_logprobs_matrix;
     mod streaming_tools;

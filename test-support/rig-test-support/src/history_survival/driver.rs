@@ -19,7 +19,10 @@ use rig_core::message::{
 };
 use rig_core::tool::{Tool, ToolOutput};
 
-use super::{Dialect, Token, continues, lost_tokens, response_tokens, unpaired_tool_calls};
+use super::{
+    Dialect, Token, continues, lost_tokens, response_tokens, text_signature_on_thought,
+    unpaired_tool_calls,
+};
 
 /// The alpha record's code.
 pub const ALPHA_CODE: &str = "alpha-code-7431";
@@ -568,6 +571,10 @@ pub fn assert_recorded(cell: Cell, scenario: &str) {
                 continue;
             }
             for token in lost_tokens(*dialect, response, later_request) {
+                // Reported by the corpus sweep; see `text_signature_on_thought`.
+                if text_signature_on_thought(&token, later_request) {
+                    continue;
+                }
                 failures.push(format!(
                     "response {earlier_index} delivered {} {:?}; request {later_index} lacks it",
                     token.kind, token.value

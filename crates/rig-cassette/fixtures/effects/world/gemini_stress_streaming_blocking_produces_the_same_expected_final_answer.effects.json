@@ -16,21 +16,21 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -688,7 +688,8 @@
                     "signature": "CpcBAWkUfRNST8raK8HfRTdGLmse48uddRzYjkzUaSpbZj1YAkQW4e7ij8AxusQyJ2UCVkSBXAx6WZwQI0OshPNKH4iZq17CuYw216D+Wdr7RcBsCfk8tZZiBSpA6e6dupwl0PzlKE0NR4WZKpbdEQJ4OYiQYfxp3WD8KBjY1bksn5VXwnE72VXkuRnz0vxY5OnmN/5feN0DFw=="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

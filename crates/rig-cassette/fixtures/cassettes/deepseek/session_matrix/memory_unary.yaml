@@ -1,0 +1,50 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Use tools when asked. Answer briefly.","role":"system"},{"content":"Think it through, then call lookup_harbor_label and report the label it returns.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"I''ll start by considering what this tool likely does, then invoke it.\n\nThis function takes no parameters, so there''s no ambiguity about arguments. The tool description says it returns \"the alpha signal marker\"—some kind of label string. My plan: call it once, then report exactly what it returns.","reasoning_content":"The user asks me to call lookup_harbor_label and report the label. Let me do it.\n\nI should think it through first, then call.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_00_rmWvBqanSAYKTLAi1iw08698","index":0,"type":"function"}]}}],"created":0,"id":"d3518237-6a63-4c91-9dae-97e1a9d8e8f8","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":117,"completion_tokens_details":{"reasoning_tokens":31},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":306,"prompt_tokens":306,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":423}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Use tools when asked. Answer briefly.","role":"system"},{"content":"Think it through, then call lookup_harbor_label and report the label it returns.","role":"user"},{"content":"I''ll start by considering what this tool likely does, then invoke it.\n\nThis function takes no parameters, so there''s no ambiguity about arguments. The tool description says it returns \"the alpha signal marker\"—some kind of label string. My plan: call it once, then report exactly what it returns.","reasoning_content":"The user asks me to call lookup_harbor_label and report the label. Let me do it.\n\nI should think it through first, then call.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_00_rmWvBqanSAYKTLAi1iw08698","index":0,"type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_00_rmWvBqanSAYKTLAi1iw08698"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The label returned is **`crimson-harbor`**.","reasoning_content":"The tool returned \"crimson-harbor\". Report it.","role":"assistant"}}],"created":0,"id":"65be7a66-3e0e-4666-ac35-aff06cc21fd3","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":29,"completion_tokens_details":{"reasoning_tokens":14},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":185,"prompt_tokens":441,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":470}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":"Use tools when asked. Answer briefly.","role":"system"},{"content":"Think it through, then call lookup_harbor_label and report the label it returns.","role":"user"},{"content":"I''ll start by considering what this tool likely does, then invoke it.\n\nThis function takes no parameters, so there''s no ambiguity about arguments. The tool description says it returns \"the alpha signal marker\"—some kind of label string. My plan: call it once, then report exactly what it returns.","reasoning_content":"The user asks me to call lookup_harbor_label and report the label. Let me do it.\n\nI should think it through first, then call.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_00_rmWvBqanSAYKTLAi1iw08698","index":0,"type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_00_rmWvBqanSAYKTLAi1iw08698"},{"content":"The label returned is **`crimson-harbor`**.","reasoning_content":"The tool returned \"crimson-harbor\". Report it.","role":"assistant"},{"content":"What label did the tool return? Reply with just the label.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"crimson-harbor","reasoning_content":"","role":"assistant"}}],"created":0,"id":"54c8e746-215b-43a3-a6bc-142848c15048","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":7,"completion_tokens_details":{"reasoning_tokens":0},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":231,"prompt_tokens":487,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":494}}'

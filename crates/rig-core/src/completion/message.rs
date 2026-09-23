@@ -174,6 +174,36 @@ pub struct Reasoning {
     pub id: Option<String>,
     /// Ordered reasoning content blocks.
     pub content: Vec<ReasoningContent>,
+    /// The service that issued this reasoning, stamped when a completion is
+    /// decoded: the wire's [`Wire::name`](crate::wire::Wire::name), or the
+    /// model vendor where several transports serve the same models (Claude
+    /// on Bedrock records `anthropic`). Signatures, encrypted and redacted
+    /// payloads and reasoning ids only mean something to their issuer, so a
+    /// request elsewhere omits them ([`retain_replayable_reasoning`]).
+    /// `None` is unknown provenance (reasoning built by hand, or history
+    /// serialized before provenance existed) and is replayed as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+}
+
+/// Drop reasoning `issuer` did not issue from `history`, before a request to
+/// `issuer` is encoded. Signatures, encrypted and redacted payloads and
+/// reasoning ids only mean something to the service that issued them.
+/// Reasoning of unknown provenance is kept. An assistant turn that held
+/// nothing else is dropped with it rather than sent empty, which leaves the
+/// user turns around it adjacent.
+pub fn retain_replayable_reasoning(history: &mut Vec<Message>, issuer: &str) {
+    history.retain_mut(|message| {
+        let Message::Assistant { content, .. } = message else {
+            return true;
+        };
+        let before = content.len();
+        content.retain(|part| match part {
+            AssistantContent::Reasoning(reasoning) => reasoning.replayable_to(issuer),
+            _ => true,
+        });
+        before == 0 || !content.is_empty()
+    });
 }
 
 impl Reasoning {
@@ -185,12 +215,27 @@ impl Reasoning {
     /// Create a new reasoning item from a single text item and optional signature.
     pub fn new_with_signature(input: &str, signature: Option<String>) -> Self {
         Self {
+            provider: None,
             id: None,
             content: vec![ReasoningContent::Text {
                 text: input.to_string(),
                 signature,
             }],
         }
+    }
+
+    /// Record the wire that issued this reasoning.
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        self.provider = Some(provider.into());
+        self
+    }
+
+    /// Whether this reasoning may be replayed to `issuer`: it was issued
+    /// there, or its provenance is unknown.
+    pub fn replayable_to(&self, issuer: &str) -> bool {
+        self.provider
+            .as_deref()
+            .is_none_or(|provider| provider == issuer)
     }
 
     /// Set a provider reasoning ID.
@@ -202,6 +247,7 @@ impl Reasoning {
     /// Create reasoning content from multiple text blocks.
     pub fn multi(input: Vec<String>) -> Self {
         Self {
+            provider: None,
             id: None,
             content: input
                 .into_iter()
@@ -216,6 +262,7 @@ impl Reasoning {
     /// Create a redacted reasoning block.
     pub fn redacted(data: impl Into<String>) -> Self {
         Self {
+            provider: None,
             id: None,
             content: vec![ReasoningContent::Redacted { data: data.into() }],
         }
@@ -224,6 +271,7 @@ impl Reasoning {
     /// Create an encrypted reasoning block.
     pub fn encrypted(data: impl Into<String>) -> Self {
         Self {
+            provider: None,
             id: None,
             content: vec![ReasoningContent::Encrypted(data.into())],
         }
@@ -232,6 +280,7 @@ impl Reasoning {
     /// Create one reasoning block containing summary items.
     pub fn summaries(input: Vec<String>) -> Self {
         Self {
+            provider: None,
             id: None,
             content: input.into_iter().map(ReasoningContent::Summary).collect(),
         }

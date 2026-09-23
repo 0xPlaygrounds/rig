@@ -78,7 +78,8 @@
                     "text": "We need answer in one or two sentences. Explain what Rust is and why memory safety matters. Concise. Ensure one or two sentences. Could be: Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races, which cause crashes and security vulnerabilities. That's two sentences. Good."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "text",

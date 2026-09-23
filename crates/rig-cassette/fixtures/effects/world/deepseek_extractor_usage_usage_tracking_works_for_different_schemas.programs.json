@@ -242,7 +242,8 @@
                       "text": "Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this."
                     }
                   }
-                ]
+                ],
+                "provider": "deepseek"
               },
               {
                 "type": "toolcall",
@@ -294,7 +295,8 @@
                         "text": "Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "deepseek"
                 },
                 {
                   "type": "toolcall",
@@ -396,7 +398,8 @@
                     "text": "Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             }
           }
         },

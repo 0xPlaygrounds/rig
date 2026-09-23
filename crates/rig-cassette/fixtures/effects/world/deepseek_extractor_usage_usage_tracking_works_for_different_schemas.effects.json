@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -129,7 +129,8 @@
                     "text": "Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",
@@ -294,7 +295,8 @@
                     "text": "Let me extract the structured data from this address:\n\n- Street: 456 Oak Avenue\n- City: Cambridge\n- State: MA\n- Zip code: 02139"
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",

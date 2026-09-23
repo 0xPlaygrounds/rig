@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 18,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -33,7 +33,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 27,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -41,7 +41,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 28,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -150,7 +150,8 @@
                   "type": "encrypted",
                   "content": "gAAAAABqsrMLPbVbuUeis7aOtrHERWJaLOdahfoXMmW8yh4Ha9FIJ1W97f4Ij9XeHluLyiGhww3M6LH_A7eFrOvFwqAG1939oBLvFCf4wvhmBPnDjZYk2pREFFzJcpIv-rwj-oLnqMCZvH5fe90A6KzAksmXmDMc4Tyfi3JsPpdR_4Hbi63ltP-6JBx7YntdeD5w5Cr1LiK15t-zOHWzRRlhg3OLdFEAG_LlLpBpOCgkl1f2kdLYoMdzcLcKbPs2L2jpGGbnqfcbrttiNrKoT2RboqET-URSMXuuAqKIdQRFNCKpupfe0-1vXgkAlkncNLP5eOQiBbNwKb-nOzGpNQGTyxyEEphwRBbi5wcsELc7XPdQFBHL7e40HZkYEFzRLBM5TaKaxrBypOaMFXFRtlIFD0Y9vRMEhDvYadrMug1KovNVFuaXuD6MGO84Xp0aYHfHfiYHh-WBR3FWSNouzWNBDOp5qsuZ6hpdXF1TtVU1lwnys2WsRQzE_VGk7U1RW33PBwmpEVDxpU90_iSN8UWlq8LqKg-DqIXEfOPphWMRA3blLy4-SV-QlGDMe7pyNYw45xpuo6oaSlcgdl8ZQWZh5cD24oQmmBF7r8EjfKm6eI4uVmWVBzwkrouZcxctJHenQ1Au4Y2pUusd9nriNMpGHqK-gfLPbXn0rPJzyYmvPrjVtjs_Qcf9Kv7ods5QowojPBJe12BDrVQhEqjZdHJse2ZJnZvmN9gNkHqSq9lcGW7nRP5i6myLcxut5huFxCYYLy8i5DassehcLKDKRsiNaVaU4xhM13f5nfVX80psyCPhSOuKO0RGFlcj6hn332I-cB9NX0Li6njWNapAlvB8-1EB3O3_ixA4tj7MhIXYzr-QR9fwNd6znVUNadL6qelWflosFKhNWWUK3r6J2MQcZepZEnKEBFDeBduq-gkdZTekV_0vR3tBHrcWQmxj09eJL7p4PIEA8TkUxOVa2zfSVee2gniBH-BD04CMnqljm4sE_k4Uq4pURUBg1up_ju-cLItTbwW5MHFtkgunqskhgcoSpxuye7znNH7CW1sTOVyANn_DV8iHmyjLasroOdjkEgcPzjml8mqlVqbphe7C5OxAgGZLfbAw4AP-nx7rr5486TVEr8LeFw3KO8n6r5GOTNKd7F5Fbfx7RBHfFYulxi37JajupybLY6RameeMmNGFjp8cBc6ZHGUwMXUet3ybTYOIAnVPb5hmneUu_d4fugk0N6-d4QjJsCyJgK6BDUtgGCQHs9mLPUbrDcE_Sjj4HZbJGzwsPa8lwxCDeymG6x0snIsmtiZnvAhe6Mw1BmOrf98NKjQlreGUzf96mu7rZao4a9BC6F6Mo7FaaDew6mySK_vDa-C_2Iob4A3o4CpRTpjjZsw="
                 }
-              ]
+              ],
+              "provider": "openai"
             },
             {
               "type": "text",

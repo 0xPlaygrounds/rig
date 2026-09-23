@@ -124,7 +124,8 @@
                     "text": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "llamacpp"
             },
             {
               "type": "toolcall",

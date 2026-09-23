@@ -1,0 +1,41 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKLH4vyxqajAvWf5w93u
+  body: '{"container":null,"content":[{"signature":"EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB","thinking":"The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.","type":"thinking"},{"caller":{"type":"direct"},"id":"toolu_013oMgsNijtJH7Mpf3FY4pZ6","input":{"x":17,"y":25},"name":"add","type":"tool_use"}],"id":"msg_011CfKLH5qJuErfdA3VUKWGF","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":662,"output_tokens":122,"output_tokens_details":{"thinking_tokens":51},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"},{"content":[{"signature":"EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB","thinking":"The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.","type":"thinking"},{"id":"toolu_013oMgsNijtJH7Mpf3FY4pZ6","input":{"x":17,"y":25},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"42","type":"text"}],"tool_use_id":"toolu_013oMgsNijtJH7Mpf3FY4pZ6","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CfKLHAz7pb8YcePpxSJk7
+  body: '{"container":null,"content":[{"text":"42","type":"text"}],"id":"msg_011CfKLHBPwBJ1CoLRJesyvy","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":797,"output_tokens":4,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'

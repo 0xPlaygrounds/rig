@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -114,7 +114,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text: \"John Doe is a 30 year old software engineer.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             },
             {
               "type": "toolcall",

@@ -1,0 +1,62 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Use tools when asked. Answer briefly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Initiating Harbor Label Lookup**\\n\\nI've got the task of retrieving a harbor label. My first step is to execute the `lookup_harbor_label` function. Once I receive the label from the function's output, I'll pass that label on.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"H_OyapzaCZKhqtsPlKHkqQg\",\"usageMetadata\":{\"promptTokenCount\":59,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":59}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":32,\"totalTokenCount\":91}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"CiQBaRR9E3UJSLykBPIDVlM51HOupzdMP4qO/zjYGBJ5bU0CjogKXgFpFH0TtKiyPzGCp19pt36YFI+m57lurdZBX8RWxjbMDRd7q0rcVQZbiHZXi876vimch13wflEtAX1zHQ+IezE6b/NK9DJMDza7skCrVaWYlS9//ZPRv+jG+1J9bhEKaQFpFH0TYgj8i0qwXhwTJD+qBQ7AZezp0i4/8NGGPPyeDZ3o1Md4ra8kIv3kL4ma9C3V1DWvHGhOZX3KSFgIPCPsyJ8Ufg9c8SokKFXCriBUUH0cCtI/Z3G4NgbaIroBtKpcK8JIMld+JQ==\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"H_OyapzaCZKhqtsPlKHkqQg\",\"usageMetadata\":{\"candidatesTokenCount\":12,\"promptTokenCount\":59,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":59}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":32,\"totalTokenCount\":103}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","thought":false}],"role":"user"},{"parts":[{"text":"**Initiating Harbor Label Lookup**\n\nI''ve got the task of retrieving a harbor label. My first step is to execute the `lookup_harbor_label` function. Once I receive the label from the function''s output, I''ll pass that label on.\n\n\n","thought":true},{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"CiQBaRR9E3UJSLykBPIDVlM51HOupzdMP4qO/zjYGBJ5bU0CjogKXgFpFH0TtKiyPzGCp19pt36YFI+m57lurdZBX8RWxjbMDRd7q0rcVQZbiHZXi876vimch13wflEtAX1zHQ+IezE6b/NK9DJMDza7skCrVaWYlS9//ZPRv+jG+1J9bhEKaQFpFH0TYgj8i0qwXhwTJD+qBQ7AZezp0i4/8NGGPPyeDZ3o1Md4ra8kIv3kL4ma9C3V1DWvHGhOZX3KSFgIPCPsyJ8Ufg9c8SokKFXCriBUUH0cCtI/Z3G4NgbaIroBtKpcK8JIMld+JQ=="}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Use tools when asked. Answer briefly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The label is\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"IPOyasvkF5qgqtsPoomO0Ao\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":184,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":184}],\"serviceTier\":\"standard\",\"totalTokenCount\":187}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" \\\"crimson-harbor\\\".\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"IPOyasvkF5qgqtsPoomO0Ao\",\"usageMetadata\":{\"candidatesTokenCount\":10,\"promptTokenCount\":184,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":184}],\"serviceTier\":\"standard\",\"totalTokenCount\":194}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Think it through, then call lookup_harbor_label and report the label it returns.","thought":false}],"role":"user"},{"parts":[{"text":"**Initiating Harbor Label Lookup**\n\nI''ve got the task of retrieving a harbor label. My first step is to execute the `lookup_harbor_label` function. Once I receive the label from the function''s output, I''ll pass that label on.\n\n\n","thought":true},{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"CiQBaRR9E3UJSLykBPIDVlM51HOupzdMP4qO/zjYGBJ5bU0CjogKXgFpFH0TtKiyPzGCp19pt36YFI+m57lurdZBX8RWxjbMDRd7q0rcVQZbiHZXi876vimch13wflEtAX1zHQ+IezE6b/NK9DJMDza7skCrVaWYlS9//ZPRv+jG+1J9bhEKaQFpFH0TYgj8i0qwXhwTJD+qBQ7AZezp0i4/8NGGPPyeDZ3o1Md4ra8kIv3kL4ma9C3V1DWvHGhOZX3KSFgIPCPsyJ8Ufg9c8SokKFXCriBUUH0cCtI/Z3G4NgbaIroBtKpcK8JIMld+JQ=="}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"},{"parts":[{"text":"The label is \"crimson-harbor\".","thought":false}],"role":"model"},{"parts":[{"text":"What label did the tool return? Reply with just the label.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Use tools when asked. Answer briefly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Extracting Harbor Label Value**\\n\\nI've successfully received the output from the `lookup_harbor_label` tool, which is a JSON object. My next step is to efficiently extract the `crimson-harbor` value from the `result` key within the `lookup_harbor_label_response` dictionary. I need to make sure I isolate this particular value.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"IPOyapTPMMTpqtsP-YSe0Qo\",\"usageMetadata\":{\"promptTokenCount\":177,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":177}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":62,\"totalTokenCount\":239}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Isolating the Harbor Value**\\n\\nI've got the JSON response from the `lookup_harbor_label` tool and can confirm it contains the expected structure. Now, I need to isolate the `\\\"crimson-harbor\\\"` value. I'll focus on directly accessing the nested `result` key within the `lookup_harbor_label_response` dictionary to extract the label, nothing else.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"IPOyapTPMMTpqtsP-YSe0Qo\",\"usageMetadata\":{\"promptTokenCount\":177,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":177}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":76,\"totalTokenCount\":253}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"crimson-harbor\",\"thoughtSignature\":\"ClkBaRR9E7pinc7nSpiDfgEp0c2jTVIdfhfuTRSSnwa7g5LQ6K85oD0icxpBipCT8OyDOj0JT+tWbFcuLe43qyUIOuKsgjFEfcANh+toCSpNRslnULlqfuYuXQreAQFpFH0Txcnf9OxyYDi7mNPCQ1h6W75Wctce6sCk03lBaq8hc+lo/aeQg3tFTdPtCcRJ+z7gQZ0G7esbCWmN/fWgZ33D93tbZzv1syytemBudl2YAFz+YbY6K2Vt2iZ2uJB1BiiPc5M3Qp33oOeV6qisXzPclJHFqEpM+W1K5rXQY0ovp5o8hGlE1hUUkc9IoRGRNGBKIN1Eszlf5aSBdYxzE7BfakM0sccSMqmezvw0T/RAsNT0DAH5rcDCQJipxhOClF4L3aILcjK9ZnNggckaI7LduuzwdAkPyagxKgpeAWkUfROveXAQ4zhk2pAiNf+I65gp/kD+l2hTA6No+D56caSK/IP54aqD1Cti0axKQMKF8qjw64XGQxQ+eyj58sq3Ex+0ny4A0d8dHRk4SJvJqgymDpPuLrdpkwTwrA==\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"IPOyapTPMMTpqtsP-YSe0Qo\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":177,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":177}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":76,\"totalTokenCount\":256}}\r\n\r\n"

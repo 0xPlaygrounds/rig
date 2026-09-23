@@ -10447,11 +10447,11 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -10513,6 +10513,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "tracing",
  "tracing-subscriber",
  "url",
 ]

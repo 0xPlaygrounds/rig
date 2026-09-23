@@ -803,3 +803,41 @@ fn generation_config_rejects_invalid_thinking_config() {
             .contains("thinking_budget and thinking_level cannot both be set")
     );
 }
+
+#[test]
+fn only_vertex_reasoning_is_replayed() {
+    use rig_core::message::{AssistantContent, Reasoning};
+
+    let signed = |text: &str, issuer: &str| {
+        AssistantContent::Reasoning(
+            Reasoning::new_with_signature(text, Some("c2lnbmF0dXJl".to_owned()))
+                .with_provider(issuer),
+        )
+    };
+    let mut request = minimal_request();
+    request.chat_history = vec![
+        Message::user("What is 2 + 2?"),
+        Message::Assistant {
+            id: None,
+            content: vec![
+                signed(
+                    "vertex thought",
+                    crate::types::completion_response::PROVIDER_NAME,
+                ),
+                signed("anthropic thought", "anthropic"),
+                AssistantContent::text("4"),
+            ],
+        },
+        Message::user("And 3 + 3?"),
+    ];
+    let contents = VertexCompletionRequest(request)
+        .contents()
+        .expect("contents build");
+    let thoughts: Vec<String> = contents
+        .iter()
+        .flat_map(|content| content.parts.iter())
+        .filter(|part| part.thought)
+        .filter_map(|part| part.text().cloned())
+        .collect();
+    assert_eq!(thoughts, ["vertex thought"]);
+}

@@ -1,4 +1,6 @@
-use crate::types::assistant_content::{PROVIDER_NAME, map_stop_reason, normalize_usage};
+use crate::types::assistant_content::{
+    PROVIDER_NAME, map_stop_reason, normalize_usage, reasoning_issuer,
+};
 use crate::types::completion_request::AwsCompletionRequest;
 use crate::types::converse_output::{StopReason, TokenUsage};
 use crate::{
@@ -101,6 +103,9 @@ struct StreamState {
     /// stream is opened; stamped onto the terminal record. `None` on the
     /// events-first seam, where no SDK operation exists.
     provider_request_id: Option<String>,
+    /// The issuer the stream's reasoning records when it is not
+    /// [`PROVIDER_NAME`] (see [`reasoning_issuer`]).
+    reasoning_issuer: Option<&'static str>,
 }
 
 /// A static, log-safe label for a stop reason: known variants map to their
@@ -272,6 +277,10 @@ fn process_event(
             };
             match terminal_record(final_response) {
                 Ok(record) => {
+                    let record = match state.reasoning_issuer {
+                        Some(issuer) => record.with_reasoning_issuer(issuer),
+                        None => record,
+                    };
                     tracing::Span::current().record_token_usage(&record.usage);
                     out.final_record(record);
                 }
@@ -329,12 +338,14 @@ impl CompletionModel {
         completion_request: rig_core::completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
+        let issuer = reasoning_issuer(&request_model);
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = AwsCompletionRequest {
-            inner: completion_request,
-            prompt_caching: self.prompt_caching,
-        };
+        let request = AwsCompletionRequest::for_model(
+            completion_request,
+            &request_model,
+            self.prompt_caching,
+        );
         let span = CompletionSpanBuilder::new(
             "aws_bedrock",
             &request_model,
@@ -395,13 +406,16 @@ impl CompletionModel {
 
         let state = StreamState {
             provider_request_id,
+            reasoning_issuer: (issuer != PROVIDER_NAME).then_some(issuer),
             ..StreamState::default()
         };
         let stream = run_wire_stream(transport, state).instrument(span);
-        Ok(StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            Box::pin(stream),
-        ))
+        let response = StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(stream));
+        Ok(if issuer == PROVIDER_NAME {
+            response
+        } else {
+            response.with_reasoning_issuer(issuer)
+        })
     }
 }
 

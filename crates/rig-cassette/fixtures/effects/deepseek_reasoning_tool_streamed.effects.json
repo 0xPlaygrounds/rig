@@ -127,7 +127,8 @@
                     "text": "We need answer. Need use add tool. Need call add x 17 y 25. Then reply just number. Need perhaps tool call then final. Let's do."
                   }
                 }
-              ]
+              ],
+              "provider": "deepseek"
             },
             {
               "type": "toolcall",
@@ -722,7 +723,8 @@
                         "text": "We need answer. Need use add tool. Need call add x 17 y 25. Then reply just number. Need perhaps tool call then final. Let's do."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "deepseek"
                 },
                 {
                   "type": "toolcall",

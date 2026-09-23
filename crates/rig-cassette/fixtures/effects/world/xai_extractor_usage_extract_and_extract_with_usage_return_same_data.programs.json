@@ -237,7 +237,8 @@
                     "type": "summary",
                     "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
                   }
-                ]
+                ],
+                "provider": "xai"
               },
               {
                 "type": "toolcall",
@@ -288,7 +289,8 @@
                       "type": "summary",
                       "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
                     }
-                  ]
+                  ],
+                  "provider": "xai"
                 },
                 {
                   "type": "toolcall",
@@ -462,7 +464,8 @@
                   "type": "summary",
                   "content": "The task is to extract structured data from the provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n"
                 }
-              ]
+              ],
+              "provider": "xai"
             }
           }
         },

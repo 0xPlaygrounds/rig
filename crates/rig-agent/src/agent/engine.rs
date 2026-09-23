@@ -1096,7 +1096,10 @@ impl TurnSource for StreamingTurnSource {
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
-                            let partial = assembler.partial_turn(stream.message_id.clone());
+                            let partial = assembler.partial_turn(
+                                stream.message_id.clone(),
+                                stream.reasoning_issuer(),
+                            );
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
                             // fails fast.
@@ -1231,7 +1234,11 @@ impl TurnSource for StreamingTurnSource {
             }
 
             let mut final_turn_content = stream.snapshot();
-            let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            let streamed_turn = assembler.finish(
+                stream.message_id.clone(),
+                &final_turn_content,
+                stream.reasoning_issuer(),
+            );
             // This attempt's identity comes from this stream's terminal record,
             // and every attempt opens its own stream, so earlier ids cannot leak
             // in. The message id prefers the assembled turn's, which folds in an

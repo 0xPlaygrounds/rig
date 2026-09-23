@@ -334,7 +334,8 @@
                     "signature": "EmUKYwFpFH0T2wiumc2gw67PElYIrLLWAU8bulYhBswPKls4k2nsA3c3ntLbCDNPEifjLxKmgs86yzPUh7FJI3QHYSzAPRsvJLz2HFFgCAcWmfCtVaqZE1vAoqAKuBstK0oo1oAupg=="
                   }
                 }
-              ]
+              ],
+              "provider": "gcp.gemini"
             }
           ],
           "usage": {

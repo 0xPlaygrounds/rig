@@ -109,7 +109,8 @@
                     "text": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "llamacpp"
             },
             {
               "type": "toolcall",

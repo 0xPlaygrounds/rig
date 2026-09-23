@@ -3801,7 +3801,10 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                 let StreamedTurnEvent::InvalidToolCall(invalid) = streamed else {
                                     continue;
                                 };
-                                let partial = assembler.partial_turn(stream.message_id.clone());
+                                let partial = assembler.partial_turn(
+                                    stream.message_id.clone(),
+                                    stream.reasoning_issuer(),
+                                );
                                 let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
                                     Some(retry_feedback(&invalid.tool_call.function.name))
                                 } else if program.hooks.contains(&Hook::RepairToAdd) {
@@ -3907,7 +3910,11 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         let usage = terminal.usage;
                         let raw = terminal.raw.clone();
                         let snapshot = stream.snapshot();
-                        let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
+                        let streamed = assembler.finish(
+                            stream.message_id.clone(),
+                            &snapshot,
+                            stream.reasoning_issuer(),
+                        );
                         ModelTurn::new(
                             streamed.message_id,
                             streamed.choice,

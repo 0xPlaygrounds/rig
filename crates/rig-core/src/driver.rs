@@ -333,7 +333,27 @@ where
 {
     let span =
         <W::Op as Operation>::span(wire.name(), wire.model(), wire.telemetry(false), &request);
+    let result = call_in(wire, http, request, context, &span).await;
+    if let Err(error) = &result {
+        record_request_id(&span, error.report().request_id.as_deref());
+    }
+    result
+}
+
+async fn call_in<W, H>(
+    wire: &W,
+    http: &H,
+    request: Request<W>,
+    context: Option<AdapterContext>,
+    span: &tracing::Span,
+) -> Result<Response<W>, Error<W>>
+where
+    W: Wire,
+    H: HttpClientExt,
+{
     let mut fold = <W::Op as Operation>::fold(&request);
+    let mut request = request;
+    <W::Op as Operation>::scope_to_wire(&mut request, wire.name());
     let Encoded {
         requests,
         framing,
@@ -507,8 +527,10 @@ where
         documents.pop().unwrap_or(serde_json::Value::Null)
     };
 
+    let request_id = reply.provider_request_id.clone();
     let response = fold.finish(reply)?;
-    <W::Op as Operation>::record(&span, &response);
+    <W::Op as Operation>::record(span, &response);
+    record_request_id(span, request_id.as_deref());
     Ok(response)
 }
 
@@ -527,6 +549,8 @@ where
 {
     let span =
         <W::Op as Operation>::span(wire.name(), wire.model(), wire.telemetry(true), &request);
+    let mut request = request;
+    <W::Op as Operation>::scope_to_wire(&mut request, wire.name());
     let Encoded {
         requests,
         framing,
@@ -595,6 +619,7 @@ where
                 let request_id = error
                     .non_success_headers()
                     .and_then(|headers| request_id_from(headers, request_id_header));
+                record_request_id(&recording, request_id.as_deref());
                 driver.fail(
                     <Error<W> as WireError>::transport(error)
                         .with_provider_request_id(request_id),
@@ -609,6 +634,7 @@ where
             observation.response_with_headers(response.status(), Some(response.headers()));
         }
         let request_id = request_id_from(response.headers(), request_id_header);
+        record_request_id(&recording, request_id.as_deref());
         let mut body = response.into_body();
         let mut framer = Framer::new(framing);
         while let Some(chunk) = body.next().await {
@@ -670,7 +696,20 @@ fn stamped<W: Wire>(
             <W::Op as Operation>::record_event(span, &event);
             Ok(event)
         }
-        Err(error) => Err(error.with_provider_request_id(request_id.clone())),
+        Err(error) => {
+            let error = error.with_provider_request_id(request_id.clone());
+            record_request_id(span, error.report().request_id.as_deref());
+            Err(error)
+        }
+    }
+}
+
+/// Record the transport request id on the call's span, success or failure.
+fn record_request_id(span: &tracing::Span, request_id: Option<&str>) {
+    if let Some(request_id) = request_id
+        && !span.is_disabled()
+    {
+        span.record(crate::telemetry::PROVIDER_REQUEST_ID_FIELD, request_id);
     }
 }
 

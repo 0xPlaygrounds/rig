@@ -2242,7 +2242,7 @@ mod projection {
     event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
     event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n\
     event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-    event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}\n\n\
+    event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3,\"output_tokens_details\":{\"thinking_tokens\":2}}}\n\n\
     event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
         let http = MockStreamingClient {
             sse_bytes: bytes::Bytes::from(sse),
@@ -2265,9 +2265,11 @@ mod projection {
                 ..AdapterUsage::default()
             }
         }));
+        // The witnessed reasoning count is the one the response reports.
         assert!(events.contains(&AdapterEvent::Usage {
             usage: AdapterUsage {
                 output_tokens: Some(3),
+                reasoning_tokens: Some(2),
                 ..AdapterUsage::default()
             }
         }));

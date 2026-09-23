@@ -125,7 +125,8 @@
                     "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number (the result). I need to call the add function with x=17 and y=25."
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             },
             {
               "type": "toolcall",
@@ -500,7 +501,8 @@
                         "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number (the result). I need to call the add function with x=17 and y=25."
                       }
                     }
-                  ]
+                  ],
+                  "provider": "doubleword"
                 },
                 {
                   "type": "toolcall",
@@ -594,7 +596,8 @@
                     "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output \"42\" without any additional text."
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             },
             {
               "type": "text",

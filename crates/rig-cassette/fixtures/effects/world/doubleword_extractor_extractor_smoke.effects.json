@@ -109,7 +109,8 @@
                     "text": "The user is introducing themselves with their name and job. I need to extract the following information:\n- first_name: Ada\n- last_name: Lovelace\n- job: mathematician\n\nI should call the submit function with this structured data.\n"
                   }
                 }
-              ]
+              ],
+              "provider": "doubleword"
             },
             {
               "type": "toolcall",

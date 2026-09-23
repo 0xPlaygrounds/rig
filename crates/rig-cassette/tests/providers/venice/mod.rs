@@ -30,6 +30,7 @@ mod cassette {
     mod extractor;
     mod history_survival_matrix;
     mod image_generation;
+    mod image_input_matrix;
     mod model_listing;
     mod prompt_caching;
     mod raw_capture_matrix;
