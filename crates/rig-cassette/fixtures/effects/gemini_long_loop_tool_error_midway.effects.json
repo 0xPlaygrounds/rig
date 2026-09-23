@@ -4867,21 +4867,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "done"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "ClABaRR9E8eggUI2wgBd4EXl0t3wrwVF2uafATohlRbIKsT5dsmXloXsneYDyUu3syAtZIQARLGNe+61vofSifeEVHlzEntBPJYykz5i/odHvQ=="
-                  }
+              "text": "done",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "ClABaRR9E8eggUI2wgBd4EXl0t3wrwVF2uafATohlRbIKsT5dsmXloXsneYDyUu3syAtZIQARLGNe+61vofSifeEVHlzEntBPJYykz5i/odHvQ=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,15 +10,23 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 7,
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,7 +116,7 @@
             "reasoning_tokens": 34
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "lnizarrwCKOez7IPveCJ8QQ",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -134,7 +142,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "lnizarrwCKOez7IPveCJ8QQ"
           }
         }
       },
@@ -181,7 +189,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "lnizarrwCKOez7IPveCJ8QQ",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -206,7 +214,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "lnizarrwCKOez7IPveCJ8QQ"
           }
         }
       ],

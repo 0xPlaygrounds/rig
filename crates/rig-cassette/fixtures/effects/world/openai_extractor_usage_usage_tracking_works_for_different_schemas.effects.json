@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -123,11 +123,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3ymAR8TCfsol4GJniEYlL0OV"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
               },
               "function": {
                 "name": "submit",
@@ -142,18 +142,20 @@
             }
           ],
           "usage": {
-            "input_tokens": 168,
+            "input_tokens": 169,
             "output_tokens": 14,
-            "total_tokens": 182,
+            "total_tokens": 183,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5",
+          "provider_request_id": "req_0cd2d5104915470eab5bdbfa009d0e30",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -162,7 +164,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5",
             "incomplete_details": null,
             "instructions": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.",
             "max_output_tokens": null,
@@ -174,8 +176,8 @@
             "output": [
               {
                 "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                "id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -225,9 +227,9 @@
               {
                 "description": "Submit the structured data you extracted from the provided text.",
                 "name": "submit",
+                "output_schema": null,
                 "parameters": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "additionalProperties": false,
                   "properties": {
                     "age": {
                       "format": "uint8",
@@ -251,15 +253,10 @@
                       ]
                     }
                   },
-                  "required": [
-                    "name",
-                    "age",
-                    "profession"
-                  ],
                   "title": "Person",
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -267,15 +264,16 @@
             "top_p": 1.0,
             "truncation": "disabled",
             "usage": {
-              "input_tokens": 168,
+              "input_tokens": 169,
               "input_tokens_details": {
+                "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
               "output_tokens": 14,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 182
+              "total_tokens": 183
             },
             "user": null
           }
@@ -360,11 +358,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_oP8CyoQgYoIEhjLJzYHlY2QN"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_oP8CyoQgYoIEhjLJzYHlY2QN",
+                "item_id": "fc_00f283ba31e27a1c006ab3969e424487d0bc4b46ea0688cc61"
               },
               "function": {
                 "name": "submit",
@@ -387,11 +385,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_00f283ba31e27a1c006ab3969dc10887d098e85bc0643a5ef4",
+          "provider_request_id": "req_345ea420c71a4b00a48aeb9dd904614b",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-mini-2024-07-18",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -400,7 +400,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_00f283ba31e27a1c006ab3969dc10887d098e85bc0643a5ef4",
             "incomplete_details": null,
             "instructions": "You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.",
             "max_output_tokens": null,
@@ -412,8 +412,8 @@
             "output": [
               {
                 "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
-                "call_id": "call_REDACTED_2",
-                "id": "fc_REDACTED_2",
+                "call_id": "call_oP8CyoQgYoIEhjLJzYHlY2QN",
+                "id": "fc_00f283ba31e27a1c006ab3969e424487d0bc4b46ea0688cc61",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -463,9 +463,9 @@
               {
                 "description": "Submit the structured data you extracted from the provided text.",
                 "name": "submit",
+                "output_schema": null,
                 "parameters": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "additionalProperties": false,
                   "properties": {
                     "city": {
                       "type": [
@@ -492,16 +492,10 @@
                       ]
                     }
                   },
-                  "required": [
-                    "street",
-                    "city",
-                    "state",
-                    "zip_code"
-                  ],
                   "title": "Address",
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -511,6 +505,7 @@
             "usage": {
               "input_tokens": 162,
               "input_tokens_details": {
+                "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
               "output_tokens": 23,

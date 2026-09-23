@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_e213ab1490fb48cb98514cec7c22d4e1
   body: '{"error":{"code":"invalid_value","message":"Invalid value: ''rig-invalid''. Supported values are: ''transparent'', ''opaque'', and ''auto''.","param":"background","type":"invalid_request_error"}}'

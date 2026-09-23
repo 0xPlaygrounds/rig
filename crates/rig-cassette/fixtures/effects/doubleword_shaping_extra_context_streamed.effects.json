@@ -87,7 +87,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -112,7 +112,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -277,7 +277,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
@@ -301,7 +301,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

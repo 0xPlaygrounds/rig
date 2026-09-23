@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_929fccb9ba1f4c0688a5c3cc"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_929fccb9ba1f4c0688a5c3cc"
               },
               "function": {
                 "name": "add",
@@ -146,7 +146,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_6acdd981-ea34-4d9d-b417-75b071ad389c",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -164,7 +164,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "call_929fccb9ba1f4c0688a5c3cc",
                       "type": "function"
                     }
                   ]
@@ -172,7 +172,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_6acdd981-ea34-4d9d-b417-75b071ad389c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {

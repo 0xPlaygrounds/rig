@@ -27,6 +27,7 @@ use crate::support::{
 use super::support::with_mistral_cassette_result;
 
 const SESSION_MODEL: &str = mistral::MISTRAL_SMALL;
+const SESSION_MAX_TOKENS: Option<u64> = None;
 const STRUCTURED_MODEL: &str = mistral::MISTRAL_SMALL;
 
 const COMPLEX_SESSION_PREAMBLE: &str = "\

@@ -17,4 +17,4 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":2,\"y\":3},\"name\":\"add\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":67,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":67}],\"serviceTier\":\"standard\",\"totalTokenCount\":85}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":2,\"y\":3},\"name\":\"add\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"tnizavfaLdqnmtkP0Lvj0Ag\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":67,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":67}],\"serviceTier\":\"standard\",\"totalTokenCount\":85}}\r\n\r\n"

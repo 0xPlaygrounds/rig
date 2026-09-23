@@ -45,7 +45,7 @@ use super::RAW_CAPTURE_MATRIX_MODEL;
 use super::support::with_groq_cassette_result;
 use crate::cassettes::{recorded_json_turn, recorded_response_header};
 use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat};
-use crate::support::{Observed, assert_matches_recorded_token};
+use crate::support::{Observed, assert_matches_recorded_token, assert_wire_value_matches};
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -99,7 +99,7 @@ async fn raw_is_the_verbatim_response_body() {
         .as_object()
         .expect("the recorded reply is a JSON object")
         .keys()
-        .filter(|key| key.as_str() != "id")
+        .filter(|key| key.as_str() != "id" && key.as_str() != "created")
     {
         assert_eq!(
             raw.get(key),
@@ -107,6 +107,9 @@ async fn raw_is_the_verbatim_response_body() {
             "raw should carry the provider's `{key}` unchanged"
         );
     }
+    // The recorder normalizes the volatile timestamp, so a recording pass
+    // compares its type and replay its exact value.
+    assert_wire_value_matches(raw, &body, "created");
 
     // And it is still the shared chat-completions shape: the typed escape
     // hatch reads it back, and agrees with the normalized identity.

@@ -2,28 +2,28 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 12,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -147,10 +147,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_iQcZJOsBb7eb834rq0hyuJEI"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -163,10 +163,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_B2tEwlopa4FIVqJtadPwpzQL"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -185,7 +185,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -206,7 +206,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
                       "index": 0,
                       "type": "function"
                     },
@@ -215,7 +215,7 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_REDACTED_2",
+                      "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
                       "index": 1,
                       "type": "function"
                     }
@@ -225,12 +225,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_24e955c341",
             "usage": {
               "completion_tokens": 45,
               "completion_tokens_details": {
@@ -339,10 +339,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_iQcZJOsBb7eb834rq0hyuJEI"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -355,10 +355,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_B2tEwlopa4FIVqJtadPwpzQL"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -376,10 +376,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_iQcZJOsBb7eb834rq0hyuJEI"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_iQcZJOsBb7eb834rq0hyuJEI"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -393,10 +393,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_B2tEwlopa4FIVqJtadPwpzQL"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_B2tEwlopa4FIVqJtadPwpzQL"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -444,19 +444,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
+              "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
             }
           ],
           "usage": {
             "input_tokens": 225,
-            "output_tokens": 25,
-            "total_tokens": 250,
+            "output_tokens": 23,
+            "total_tokens": 248,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
           "finish_reason": "stop",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -467,7 +467,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
+                  "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
                   "reasoning": null,
                   "refusal": null,
                   "role": "assistant"
@@ -476,23 +476,23 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_24e955c341",
             "usage": {
-              "completion_tokens": 25,
+              "completion_tokens": 23,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.0008125,
+              "cost": 0.0007925,
               "cost_details": {
-                "upstream_inference_completions_cost": 0.00025,
-                "upstream_inference_cost": 0.0008125,
+                "upstream_inference_completions_cost": 0.00023,
+                "upstream_inference_cost": 0.0007925,
                 "upstream_inference_prompt_cost": 0.0005625
               },
               "is_byok": false,
@@ -503,7 +503,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 250
+              "total_tokens": 248
             }
           }
         }

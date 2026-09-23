@@ -126,7 +126,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_8037712f-2c2d-4eef-872f-840eecbedc3c",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -143,7 +143,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_8037712f-2c2d-4eef-872f-840eecbedc3c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {

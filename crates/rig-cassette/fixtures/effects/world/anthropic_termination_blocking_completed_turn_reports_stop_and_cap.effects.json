@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -85,20 +85,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcgJrAChU7s4KDm1qQG",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcgJP7ugxrGDZYW1avn",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "cedar",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcgJrAChU7s4KDm1qQG",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,

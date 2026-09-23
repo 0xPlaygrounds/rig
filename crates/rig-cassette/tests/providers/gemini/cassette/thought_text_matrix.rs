@@ -59,20 +59,19 @@
 //! | 24 | — | — | deleted with the reader it tested; see below |
 //! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
 //! | 26 | `blocking_keeps_a_trailing_thought_signature` | blocking choice | Gemini 3's no-`thought`-flag signature |
-//! | 27 | `streaming_twin_agrees_on_a_trailing_thought_signature` | stream | the same bytes, the same choice |
-//! | 28 | `a_trailing_signature_becomes_a_signature_only_reasoning_block` (unit) | blocking | see below |
+//! | 27 | `streaming_twin_agrees_on_a_trailing_thought_signature` | stream | the signature stays on its own part |
+//! | 28 | `a_trailing_signature_stays_on_its_text` (unit) | blocking | see below |
 //! | 29 | `a_thought_flagged_part_still_signs_its_own_reasoning` (unit) | blocking | see below |
 //! | 30 | `a_text_part_without_a_signature_yields_no_reasoning` (unit) | blocking | see below |
 //! | 31 | `transcription_rejects_a_candidate_with_no_parts_at_all` (unit) | transcription | see below |
-//! | 32 | `a_trailing_signature_signs_the_chain_of_thought_before_it` (unit) | blocking | see below |
+//! | 32 | `a_text_signature_does_not_sign_the_chain_of_thought` (unit) | blocking | see below |
 //!
-//! Cells 26–30 cover a fourth defect the cold review of this branch turned
-//! up, in the same reader family: Gemini 3 attaches `thoughtSignature` to a
-//! *trailing* part carrying no `thought` flag, and the blocking mapper
-//! dropped it while the streaming adapter kept it as a signature-only
-//! reasoning block. The signature is replay-required state, so blocking now
-//! produces the same block. Cells 26–27 are recorded; 28–30 state orderings
-//! one live turn cannot emit.
+//! Cells 26–32 cover Gemini 3's `thoughtSignature` on an answer part carrying
+//! no `thought` flag. Gemini requires every signature back inside the part
+//! that carried it, never merged into another part, so it stays on that
+//! answer text (`gemini::text_thought_signature`) rather than on reasoning.
+//! Cells 26–27 are recorded; 28–32 state orderings one live turn cannot
+//! emit.
 //!
 //! The cells marked `(unit)` are unit tests because a live turn cannot be
 //! made to produce their states: Gemini does not split a short transcript
@@ -497,27 +496,26 @@ async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: T
         "{scenario}: the normalized text must be every visible text part and only those"
     );
 
-    // Reasoning blocks come from two distinct wire facts, and the assertion
-    // has to name both or it mislabels one as the other: a `thought: true`
-    // text part, and a trailing `thoughtSignature` on a part with no
-    // `thought` flag (Gemini 3's shape), which becomes a signature-only
-    // reasoning block so the replay-required signature is not dropped.
-    let signature_recorded = document
+    // Reasoning blocks come from `thought: true` parts only. A signature on
+    // an answer part stays on that answer's text, to return in its own part.
+    assert_eq!(
+        has_reasoning(&response.choice),
+        thoughts_expected,
+        "{scenario}: reasoning blocks must appear exactly when the turn carried thought text"
+    );
+    let answer_signatures: Vec<&str> = document
         .candidates
         .first()
         .and_then(|candidate| candidate.content.as_ref())
-        .is_some_and(|content| {
-            content
-                .parts
-                .iter()
-                .any(|part| part.thought_signature.is_some())
-        });
+        .into_iter()
+        .flat_map(|content| content.parts.iter())
+        .filter(|part| !part.thought.unwrap_or(false))
+        .filter_map(|part| part.thought_signature.as_deref())
+        .collect();
     assert_eq!(
-        has_reasoning(&response.choice),
-        thoughts_expected || signature_recorded,
-        "{scenario}: reasoning blocks must appear exactly when the turn carried thought text \
-         or a thought signature (thought text: {thoughts_expected}, signature: \
-         {signature_recorded})"
+        text_signatures(&response.choice),
+        answer_signatures,
+        "{scenario}: every answer-part signature stays on its text"
     );
 }
 
@@ -1036,16 +1034,15 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
 /// where the wire hangs the trailing `thoughtSignature`.
 const SIGNATURE_PROMPT: &str = "What is 17 squared? Answer with the number only.";
 
-fn signature_of(choice: &[AssistantContent]) -> Option<String> {
-    choice.iter().find_map(|content| match content {
-        AssistantContent::Reasoning(reasoning) => {
-            reasoning.content.iter().find_map(|block| match block {
-                rig::message::ReasoningContent::Text { signature, .. } => signature.clone(),
-                _ => None,
-            })
-        }
-        _ => None,
-    })
+/// The signatures the answer texts of `choice` carry, in order.
+fn text_signatures(choice: &[AssistantContent]) -> Vec<&str> {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => gemini::text_thought_signature(text),
+            _ => None,
+        })
+        .collect()
 }
 
 #[tokio::test]
@@ -1083,11 +1080,13 @@ async fn blocking_keeps_a_trailing_thought_signature() {
                 "this cell's premise is a signed part with no thought flag"
             );
 
-            assert!(
-                signature_of(&response.choice).is_some(),
-                "the trailing signature is replay-required state and must survive as a \
-                 reasoning block; dropping it is the bug"
+            assert_eq!(
+                text_signatures(&response.choice).len(),
+                1,
+                "the signature is replay-required state and stays on the answer text: {:?}",
+                response.choice
             );
+            assert!(!has_reasoning(&response.choice));
             assert!(
                 choice_text(&response.choice).contains("289"),
                 "the answer must still be there, got {:?}",
@@ -1115,13 +1114,11 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
                 .expect("stream should open");
             while stream.next().await.is_some() {}
 
-            // The parity statement: the streaming adapter always produced a
-            // signature-only reasoning block for these bytes. The blocking
-            // mapper now agrees.
-            assert!(
-                signature_of(&stream.snapshot()).is_some(),
-                "the streamed choice should carry the trailing signature"
-            );
+            // The stream sends the answer, then an empty part carrying the
+            // signature: that empty part keeps it, on its own text.
+            let snapshot = stream.snapshot();
+            assert_eq!(text_signatures(&snapshot).len(), 1, "{snapshot:?}");
+            assert!(!has_reasoning(&snapshot));
             assert!(
                 choice_text(&stream.snapshot()).contains("289"),
                 "the streamed answer must be there, got {:?}",
@@ -1361,11 +1358,11 @@ mod unit {
     }
 
     /// Not a recording: one live turn emits one part ordering. When a
-    /// visible thought part precedes the signed text, the signature belongs
-    /// to *that* block — it is what the signature signs — rather than to a
-    /// new empty sibling.
+    /// visible thought part precedes the signed answer, the signature stays
+    /// on the answer: Gemini requires it back inside the part that carried
+    /// it, and merging it into the thought part is what corrupts replay.
     #[tokio::test]
-    async fn a_trailing_signature_signs_the_chain_of_thought_before_it() {
+    async fn a_text_signature_does_not_sign_the_chain_of_thought() {
         let response = completion_of(
             vec![
                 json!({ "text": "the chain", "thought": true }),
@@ -1374,47 +1371,40 @@ mod unit {
             "model",
         )
         .await;
-        assert_eq!(
-            response.choice.len(),
-            2,
-            "no empty sibling: the existing reasoning block takes the signature, got {:?}",
-            response.choice
-        );
+        assert_eq!(response.choice.len(), 2, "{:?}", response.choice);
         assert!(
             matches!(
                 response.choice.first(),
                 Some(AssistantContent::Reasoning(reasoning))
                     if matches!(reasoning.content.first(),
-                        Some(ReasoningContent::Text { text, signature })
-                            if text == "the chain" && signature.as_deref() == Some("sig-trailing"))
+                        Some(ReasoningContent::Text { text, signature: None }) if text == "the chain")
             ),
-            "the chain-of-thought block must carry the signature, got {:?}",
+            "the chain-of-thought block stays unsigned, got {:?}",
             response.choice
         );
+        assert!(matches!(
+            response.choice.get(1),
+            Some(AssistantContent::Text(text))
+                if text.text == "answer"
+                    && rig::providers::gemini::text_thought_signature(text) == Some("sig-trailing")
+        ));
     }
 
-    /// Not a recording: one live turn emits one part ordering, and with no
-    /// reasoning block to sign, the signature becomes a signature-only
-    /// reasoning part — what the accumulator records when nothing streamed as
-    /// reasoning.
+    /// Not a recording: one part carrying both the answer and its signature
+    /// stays one text with that signature.
     #[tokio::test]
-    async fn a_trailing_signature_becomes_a_signature_only_reasoning_block() {
+    async fn a_trailing_signature_stays_on_its_text() {
         let response = completion_of(
             vec![json!({ "text": "17 squared is 289.", "thoughtSignature": "sig-trailing" })],
             "model",
         )
         .await;
-        assert_eq!(response.choice.len(), 2, "text then signature block");
+        assert_eq!(response.choice.len(), 1, "{:?}", response.choice);
         assert!(matches!(
             response.choice.first(),
-            Some(AssistantContent::Text(text)) if text.text == "17 squared is 289."
-        ));
-        assert!(matches!(
-            response.choice.get(1),
-            Some(AssistantContent::Reasoning(reasoning))
-                if matches!(reasoning.content.first(),
-                    Some(ReasoningContent::Text { text, signature })
-                        if text.is_empty() && signature.as_deref() == Some("sig-trailing"))
+            Some(AssistantContent::Text(text))
+                if text.text == "17 squared is 289."
+                    && rig::providers::gemini::text_thought_signature(text) == Some("sig-trailing")
         ));
     }
 

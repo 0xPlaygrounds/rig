@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 4,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -186,14 +186,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_name",
             "name": "subtract"
@@ -201,7 +201,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -209,7 +209,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -217,7 +217,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -225,7 +225,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "2"
@@ -233,7 +233,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ",\""
@@ -241,7 +241,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -249,7 +249,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":"
@@ -257,7 +257,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "5"
@@ -265,7 +265,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -273,27 +273,27 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_REDACTED_1",
+            "tool_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
             "name": "subtract",
             "arguments": {
               "x": 2,
               "y": 5
             },
-            "call_id": "call_REDACTED_1",
+            "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
             },
             "provider": {
-              "call_id": "call_REDACTED_1",
-              "item_id": "fc_REDACTED_1"
+              "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+              "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
             },
             "function": {
               "name": "subtract",

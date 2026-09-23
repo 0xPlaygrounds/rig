@@ -239,8 +239,8 @@
           "rig_ecs::agent::Usage": {
             "input_tokens": 1115,
             "output_tokens": 9,
-            "total_tokens": 1230,
-            "reasoning_tokens": 106
+            "total_tokens": 1177,
+            "reasoning_tokens": 53
           },
           "rig_ecs::agent::UsesModel": 1,
           "rig_ecs::bus::effect::Scope": "golden/run#0"
@@ -331,21 +331,12 @@
             "content": [
               {
                 "type": "text",
-                "text": "The dominant non-background color is red."
-              },
-              {
-                "type": "reasoning",
-                "id": null,
-                "content": [
-                  {
-                    "type": "text",
-                    "content": {
-                      "text": "",
-                      "signature": "ErEECq4EAWkUfRPi0mU2zuRUmnTrCeyhJ8pZZLv/3WjOlWr4kvbRaQ8OUkiFFumzwAfdiaGQsLuOV7pdHvf6BQGRcHU+9m8NmvjsQe9WMEnnX65rFnjmvbPoJFigULTY6kwO00RRnPMYnW7jrsVsJLsCJuRDN5T5HP1C2SayS2cFIO5sZ3A3p1BQLBVo0opf96o2b/1HWMphayAM/lVQyQxXQhMr16I/rl5xmtZc1LoJkPuouEs9PxG29vs/VdGyUZIsal1A43lYGtwxEV5h9m749hzeJzScP+oZ4sY0qIRQyZ+N4O7X6qCrpKbSEQAmhfHsyrLx5pTvKZvKH6vBQNMXUljmZ5UftDcYeEbIH37J4+sSQQMRN481bnId0LA3CuORfwCrriEXp6jemFluSnu2zbqK6yV4/GdXanMmhOAmbuQVCDdlUNV3jzqZJHwvbPGSF5f/gFVpZA/hf6MOzD6tj+py/Q3Ie6riHcFANc7HwxG9jhpLZChcosc3QhybOaZ4ob5NUiI5NG5Jajmkwu6PngtWO+73ydgho/iXw0EgcdQY+vG4TAN5u4cBW9+uI9ZWBWO9DFtiDOW6X4wxawZQvwSJ0xIBLiZayr0PFyRgRbzrMGtKCf+lrsguV683OfsvhlPrx9QEaMvABKokhlHDdBDY+fpjiop6CA1pD4vanzseNsCd2QlqGjk+M5u24g1strkjScLG0FDEGBonv6yD3WnYUaCA+4Vd16b7WvEUqCxP"
-                    }
+                "text": "The dominant non-background color is red.",
+                "additional_params": {
+                  "gemini": {
+                    "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
                   }
-                ],
-                "provider": "gcp.gemini"
+                }
               }
             ],
             "message_id": null,
@@ -369,31 +360,22 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is red."
-                },
-                {
-                  "type": "reasoning",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "",
-                        "signature": "ErEECq4EAWkUfRPi0mU2zuRUmnTrCeyhJ8pZZLv/3WjOlWr4kvbRaQ8OUkiFFumzwAfdiaGQsLuOV7pdHvf6BQGRcHU+9m8NmvjsQe9WMEnnX65rFnjmvbPoJFigULTY6kwO00RRnPMYnW7jrsVsJLsCJuRDN5T5HP1C2SayS2cFIO5sZ3A3p1BQLBVo0opf96o2b/1HWMphayAM/lVQyQxXQhMr16I/rl5xmtZc1LoJkPuouEs9PxG29vs/VdGyUZIsal1A43lYGtwxEV5h9m749hzeJzScP+oZ4sY0qIRQyZ+N4O7X6qCrpKbSEQAmhfHsyrLx5pTvKZvKH6vBQNMXUljmZ5UftDcYeEbIH37J4+sSQQMRN481bnId0LA3CuORfwCrriEXp6jemFluSnu2zbqK6yV4/GdXanMmhOAmbuQVCDdlUNV3jzqZJHwvbPGSF5f/gFVpZA/hf6MOzD6tj+py/Q3Ie6riHcFANc7HwxG9jhpLZChcosc3QhybOaZ4ob5NUiI5NG5Jajmkwu6PngtWO+73ydgho/iXw0EgcdQY+vG4TAN5u4cBW9+uI9ZWBWO9DFtiDOW6X4wxawZQvwSJ0xIBLiZayr0PFyRgRbzrMGtKCf+lrsguV683OfsvhlPrx9QEaMvABKokhlHDdBDY+fpjiop6CA1pD4vanzseNsCd2QlqGjk+M5u24g1strkjScLG0FDEGBonv6yD3WnYUaCA+4Vd16b7WvEUqCxP"
-                      }
+                  "text": "The dominant non-background color is red.",
+                  "additional_params": {
+                    "gemini": {
+                      "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
                     }
-                  ],
-                  "provider": "gcp.gemini"
+                  }
                 }
               ],
               "usage": {
                 "input_tokens": 1115,
                 "output_tokens": 9,
-                "total_tokens": 1230,
-                "reasoning_tokens": 106
+                "total_tokens": 1177,
+                "reasoning_tokens": 53
               },
               "message_id": null,
-              "response_id": "oq6yaqDlH4KBqtsPxc3p2QI",
+              "response_id": "W2GzavWdO4qsz7IP3-jl0Ac",
               "finish_reason": "stop",
               "provider": "gcp.gemini",
               "model": "gemini-3-flash-preview",
@@ -404,7 +386,7 @@
                       "parts": [
                         {
                           "text": "The dominant non-background color is red.",
-                          "thoughtSignature": "ErEECq4EAWkUfRPi0mU2zuRUmnTrCeyhJ8pZZLv/3WjOlWr4kvbRaQ8OUkiFFumzwAfdiaGQsLuOV7pdHvf6BQGRcHU+9m8NmvjsQe9WMEnnX65rFnjmvbPoJFigULTY6kwO00RRnPMYnW7jrsVsJLsCJuRDN5T5HP1C2SayS2cFIO5sZ3A3p1BQLBVo0opf96o2b/1HWMphayAM/lVQyQxXQhMr16I/rl5xmtZc1LoJkPuouEs9PxG29vs/VdGyUZIsal1A43lYGtwxEV5h9m749hzeJzScP+oZ4sY0qIRQyZ+N4O7X6qCrpKbSEQAmhfHsyrLx5pTvKZvKH6vBQNMXUljmZ5UftDcYeEbIH37J4+sSQQMRN481bnId0LA3CuORfwCrriEXp6jemFluSnu2zbqK6yV4/GdXanMmhOAmbuQVCDdlUNV3jzqZJHwvbPGSF5f/gFVpZA/hf6MOzD6tj+py/Q3Ie6riHcFANc7HwxG9jhpLZChcosc3QhybOaZ4ob5NUiI5NG5Jajmkwu6PngtWO+73ydgho/iXw0EgcdQY+vG4TAN5u4cBW9+uI9ZWBWO9DFtiDOW6X4wxawZQvwSJ0xIBLiZayr0PFyRgRbzrMGtKCf+lrsguV683OfsvhlPrx9QEaMvABKokhlHDdBDY+fpjiop6CA1pD4vanzseNsCd2QlqGjk+M5u24g1strkjScLG0FDEGBonv6yD3WnYUaCA+4Vd16b7WvEUqCxP"
+                          "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
                         }
                       ],
                       "role": "model"
@@ -414,7 +396,7 @@
                   }
                 ],
                 "modelVersion": "gemini-3-flash-preview",
-                "responseId": "oq6yaqDlH4KBqtsPxc3p2QI",
+                "responseId": "W2GzavWdO4qsz7IP3-jl0Ac",
                 "usageMetadata": {
                   "candidatesTokenCount": 9,
                   "promptTokenCount": 1115,
@@ -429,8 +411,8 @@
                     }
                   ],
                   "serviceTier": "standard",
-                  "thoughtsTokenCount": 106,
-                  "totalTokenCount": 1230
+                  "thoughtsTokenCount": 53,
+                  "totalTokenCount": 1177
                 }
               }
             }
@@ -449,25 +431,12 @@
           "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "The dominant non-background color is red."
-            }
-          }
-        },
-        {
-          "bevy_ecs::hierarchy::ChildOf": 10,
-          "rig_ecs::agent::content::parts::ContentPart": {
-            "Reasoning": {
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "ErEECq4EAWkUfRPi0mU2zuRUmnTrCeyhJ8pZZLv/3WjOlWr4kvbRaQ8OUkiFFumzwAfdiaGQsLuOV7pdHvf6BQGRcHU+9m8NmvjsQe9WMEnnX65rFnjmvbPoJFigULTY6kwO00RRnPMYnW7jrsVsJLsCJuRDN5T5HP1C2SayS2cFIO5sZ3A3p1BQLBVo0opf96o2b/1HWMphayAM/lVQyQxXQhMr16I/rl5xmtZc1LoJkPuouEs9PxG29vs/VdGyUZIsal1A43lYGtwxEV5h9m749hzeJzScP+oZ4sY0qIRQyZ+N4O7X6qCrpKbSEQAmhfHsyrLx5pTvKZvKH6vBQNMXUljmZ5UftDcYeEbIH37J4+sSQQMRN481bnId0LA3CuORfwCrriEXp6jemFluSnu2zbqK6yV4/GdXanMmhOAmbuQVCDdlUNV3jzqZJHwvbPGSF5f/gFVpZA/hf6MOzD6tj+py/Q3Ie6riHcFANc7HwxG9jhpLZChcosc3QhybOaZ4ob5NUiI5NG5Jajmkwu6PngtWO+73ydgho/iXw0EgcdQY+vG4TAN5u4cBW9+uI9ZWBWO9DFtiDOW6X4wxawZQvwSJ0xIBLiZayr0PFyRgRbzrMGtKCf+lrsguV683OfsvhlPrx9QEaMvABKokhlHDdBDY+fpjiop6CA1pD4vanzseNsCd2QlqGjk+M5u24g1strkjScLG0FDEGBonv6yD3WnYUaCA+4Vd16b7WvEUqCxP"
-                  }
+              "text": "The dominant non-background color is red.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EtwCCtkCAWkUfRMVZfhluvkgBKlrrEfuITuHmOUw3FvcjVcgS3ld5CDgcf7NEDTlp5cVLfMDY+utjaQQckkzQcPGMMeIvX6BMnpl0DntltmmTQt1XMZLZMGIMZ4pdUuSp8qGxjuqx1cpMvmYnvrY/T1k4Mpe+ogPZDuJFDsATW5OPLz7u+iS15s73Jr4pCerZ205ALj5N+4EZI068FS+5EtZPuzEL/kcQ3LKjPi+4qLrI+cy9Jkvoc4XXZMtlUhbvAp9FwXj5YQHLOii9cNOucMQCQClXbiwLVNqaNCkuB6S3xb7ET0WMKkM2GZfGmlGdu3Z5puBUa3mz0vT2+/X52QkummApVd4KVOKoWbTVSCO5rNcfcpCHQa3/pi/f/VKdes6eC3LCDP2ou5co+R9L0oi40tYYMeWNP7NAUBzbDjGXd8jF81WlglsJ9lkPqaSgrvbB2tHyHbkSTlx0ajP"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           }
         },
@@ -504,12 +473,12 @@
           "rig_ecs::bus::effect::Scope": "golden/run#1"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 14,
+          "bevy_ecs::hierarchy::ChildOf": 13,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 15,
+          "bevy_ecs::hierarchy::ChildOf": 14,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "What shape did the image I sent earlier contain? Answer in one short sentence."
@@ -517,7 +486,7 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 14,
+          "bevy_ecs::hierarchy::ChildOf": 13,
           "rig_ecs::bus::effect::Seq": 3
         }
       ],

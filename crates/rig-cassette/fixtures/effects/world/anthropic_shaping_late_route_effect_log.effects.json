@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -150,10 +150,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf"
               },
               "function": {
                 "name": "add",
@@ -173,19 +173,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLceEX9v6BmYqEoU3R1n",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLceE9a4d7Zswf2Wk9Qg",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -194,7 +195,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLceEX9v6BmYqEoU3R1n",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,
@@ -267,16 +268,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLceEX9v6BmYqEoU3R1n",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf"
                   },
                   "function": {
                     "name": "add",
@@ -297,10 +298,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01UZWEmSYAa1GUyHYMB7mqZf"
                   },
                   "name": "add",
                   "content": [
@@ -361,20 +362,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLceKEfEnaY78iKyXpT1",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLceJrLsUrRKqRDqAz5y",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "42",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLceKEfEnaY78iKyXpT1",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
             "stop_details": null,

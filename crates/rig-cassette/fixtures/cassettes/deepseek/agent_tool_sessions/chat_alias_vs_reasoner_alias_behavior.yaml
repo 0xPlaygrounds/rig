@@ -13,7 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"chat-mode-ok","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":4,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":12,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":16}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"chat-mode-ok","role":"assistant"}}],"created":0,"id":"52425d44-60ad-415b-b39f-18bb6d1c170d","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":4,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":12,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":16}}'
 ---
 when:
   path: /chat/completions
@@ -30,4 +30,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"reasoner-mode-ok","reasoning_content":"We need to reply with exactly \"reasoner-mode-ok\". The instruction says: \"Reply with exactly: reasoner-mode-ok\". So I''ll output that.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":40,"completion_tokens_details":{"reasoning_tokens":34},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":13,"prompt_tokens":13,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":53}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"reasoner-mode-ok","reasoning_content":"The user wants exactly \"reasoner-mode-ok\". I should reply with just that.","role":"assistant"}}],"created":0,"id":"97e34c6d-b1ca-4fe0-a825-ca0ff26ca4d6","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":24,"completion_tokens_details":{"reasoning_tokens":18},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":39,"prompt_tokens":39,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":63}}'

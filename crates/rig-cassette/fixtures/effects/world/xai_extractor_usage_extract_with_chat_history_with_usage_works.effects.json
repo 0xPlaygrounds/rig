@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -120,11 +120,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The task is to extract structured data from the provided text. The text is: \"I'm looking at a property that might be interesting. The address is 123 Main St in Springfield, IL 62701.\"\n"
+                  "content": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data."
                 }
               ],
               "provider": "xai"
@@ -133,11 +133,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
+                "item_id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0"
               },
               "function": {
                 "name": "submit",
@@ -153,15 +153,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 443,
-            "output_tokens": 361,
-            "total_tokens": 804,
-            "cached_input_tokens": 256,
-            "reasoning_tokens": 328
+            "input_tokens": 425,
+            "output_tokens": 349,
+            "total_tokens": 774,
+            "cached_input_tokens": 192,
+            "reasoning_tokens": 323
           },
           "message_id": null,
-          "response_id": "req_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+          "provider_request_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -171,23 +171,23 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_1",
+            "id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_1",
+                "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "The task is to extract structured data from the provided text. The text is: \"I'm looking at a property that might be interesting. The address is 123 Main St in Springfield, IL 62701.\"\n",
+                    "text": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data.",
                     "type": "summary_text"
                   }
                 ],
@@ -195,8 +195,8 @@
               },
               {
                 "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
+                "id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -265,21 +265,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 443,
-                "output_tokens": 361
+                "input_tokens": 425,
+                "output_tokens": 353
               },
-              "cost_in_usd_ticks": 11874500,
-              "input_tokens": 443,
+              "cost_in_usd_ticks": 12021500,
+              "input_tokens": 425,
               "input_tokens_details": {
-                "cached_tokens": 256
+                "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 361,
+              "output_tokens": 349,
               "output_tokens_details": {
-                "reasoning_tokens": 328
+                "reasoning_tokens": 323
               },
-              "total_tokens": 804
+              "total_tokens": 774
             },
             "user": null
           }

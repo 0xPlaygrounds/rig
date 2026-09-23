@@ -7,12 +7,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Never authenticated","role":"user"}],"model":"llama-3.3-70b-versatile"}'
+  body: '{"messages":[{"content":"Never authenticated","role":"user"}],"model":"openai/gpt-oss-120b"}'
 then:
   status: 401
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_01m36k0bt5ed7ten4pdgzzpmn0
   body: '{"error":{"code":"invalid_api_key","message":"Invalid API Key","type":"invalid_request_error"}}'

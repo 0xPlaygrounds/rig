@@ -119,7 +119,7 @@
           "retrieved": "ids",
           "results": [
             [
-              0.4907409894370684,
+              0.49076605775338566,
               "subtract"
             ]
           ]
@@ -187,11 +187,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_vjC8DKrTMOPloSucDkMkgXum"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_vjC8DKrTMOPloSucDkMkgXum",
+                "item_id": "fc_0595106a4e9eb58f006ab39694062c87d08a6aa103a82ad526"
               },
               "function": {
                 "name": "subtract",
@@ -212,12 +212,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_3",
+          "response_id": "resp_0595106a4e9eb58f006ab39693620c87d0be233cc3fa6ae5f0",
+          "provider_request_id": "req_8ff9a02dd4af4fcdb8b8c7038e3708a7",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -226,7 +227,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0595106a4e9eb58f006ab39693620c87d0be233cc3fa6ae5f0",
             "incomplete_details": null,
             "instructions": "You are a calculator. You must use the provided tools for every arithmetic operation.",
             "max_output_tokens": null,
@@ -238,8 +239,8 @@
             "output": [
               {
                 "arguments": "{\"x\":50,\"y\":8}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_vjC8DKrTMOPloSucDkMkgXum",
+                "id": "fc_0595106a4e9eb58f006ab39694062c87d08a6aa103a82ad526",
                 "name": "subtract",
                 "status": "completed",
                 "type": "function_call"
@@ -291,7 +292,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "type": "integer"
@@ -306,7 +306,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -414,11 +414,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_vjC8DKrTMOPloSucDkMkgXum"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_vjC8DKrTMOPloSucDkMkgXum",
+                    "item_id": "fc_0595106a4e9eb58f006ab39694062c87d08a6aa103a82ad526"
                   },
                   "function": {
                     "name": "subtract",
@@ -439,11 +439,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_vjC8DKrTMOPloSucDkMkgXum"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_vjC8DKrTMOPloSucDkMkgXum",
+                    "item_id": "fc_0595106a4e9eb58f006ab39694062c87d08a6aa103a82ad526"
                   },
                   "name": "subtract",
                   "content": [
@@ -502,13 +502,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_5",
+          "message_id": "msg_0595106a4e9eb58f006ab396954d9887d09f6d3d5703ad3462",
+          "response_id": "resp_0595106a4e9eb58f006ab39694af2087d0af5ed362d8a539c9",
+          "provider_request_id": "req_75a37a9bed954c06ac02df1b4bc2ed86",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -517,7 +518,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_0595106a4e9eb58f006ab39694af2087d0af5ed362d8a539c9",
             "incomplete_details": null,
             "instructions": "You are a calculator. You must use the provided tools for every arithmetic operation.",
             "max_output_tokens": null,
@@ -536,7 +537,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_0595106a4e9eb58f006ab396954d9887d09f6d3d5703ad3462",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -588,7 +589,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "type": "integer"
@@ -603,7 +603,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

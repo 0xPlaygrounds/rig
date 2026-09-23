@@ -109,7 +109,7 @@
             "total_tokens": 116
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "nHizav_8MpusqtsPsf3xkAY",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -133,7 +133,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "id_REDACTED_1",
+            "responseId": "nHizav_8MpusqtsPsf3xkAY",
             "usageMetadata": {
               "candidatesTokenCount": 10,
               "promptTokenCount": 106,
@@ -270,7 +270,7 @@
             "total_tokens": 33925
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "nXizavT6B9SDmtkP097woAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -290,7 +290,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "id_REDACTED_2",
+            "responseId": "nXizavT6B9SDmtkP097woAk",
             "usageMetadata": {
               "candidatesTokenCount": 3,
               "promptTokenCount": 33922,

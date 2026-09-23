@@ -144,10 +144,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
               },
               "function": {
                 "name": "add",
@@ -167,7 +167,7 @@
             "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "496c0207-e733-4430-8fad-7c3fd44cf922",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -186,7 +186,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_CI3ShWp51AmpbgmLDmqe1759",
                       "index": 0,
                       "type": "function"
                     }
@@ -195,7 +195,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "496c0207-e733-4430-8fad-7c3fd44cf922",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -267,10 +267,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "function": {
                     "name": "add",
@@ -291,10 +291,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "name": "add",
                   "content": [
@@ -355,7 +355,7 @@
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "4c4c9acf-6189-4117-9791-f2702c86f02d",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -372,7 +372,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "4c4c9acf-6189-4117-9791-f2702c86f02d",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -417,10 +417,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "function": {
                     "name": "add",
@@ -441,10 +441,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_CI3ShWp51AmpbgmLDmqe1759"
                   },
                   "name": "add",
                   "content": [

@@ -131,10 +131,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "rPufh4x95h7x33dvuABIt51agMEeiVbz"
               },
               "function": {
                 "name": "submit",
@@ -153,10 +153,10 @@
             "input_tokens": 366,
             "output_tokens": 184,
             "total_tokens": 550,
-            "cached_input_tokens": 325
+            "cached_input_tokens": 197
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
           "finish_reason": "tool_calls",
           "provider": "llamacpp",
           "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
@@ -175,7 +175,7 @@
                         "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
                       "type": "function"
                     }
                   ]
@@ -183,26 +183,26 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
             "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "object": "chat.completion",
-            "system_fingerprint": "b10499-6d05498",
+            "system_fingerprint": "b10964-b29c606e2",
             "timings": {
-              "cache_n": 325,
-              "predicted_ms": 1542.456,
+              "cache_n": 197,
+              "predicted_ms": 1557.517,
               "predicted_n": 184,
-              "predicted_per_second": 118.64195802019637,
-              "predicted_per_token_ms": 8.428721311475408,
-              "prompt_ms": 44.715,
-              "prompt_n": 41,
-              "prompt_per_second": 916.9182600916919,
-              "prompt_per_token_ms": 1.0906097560975612
+              "predicted_per_second": 117.49470471269333,
+              "predicted_per_token_ms": 8.511021857923497,
+              "prompt_ms": 111.114,
+              "prompt_n": 169,
+              "prompt_per_second": 1520.9604550281692,
+              "prompt_per_token_ms": 0.6574792899408284
             },
             "usage": {
               "completion_tokens": 184,
               "prompt_tokens": 366,
               "prompt_tokens_details": {
-                "cached_tokens": 325
+                "cached_tokens": 197
               },
               "total_tokens": 550
             }

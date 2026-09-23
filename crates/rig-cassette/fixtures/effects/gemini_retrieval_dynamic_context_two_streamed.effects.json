@@ -131,7 +131,7 @@
             "reasoning_tokens": 117
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "onizapCoMaXnz7IPnNS20QE",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -150,7 +150,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "onizapCoMaXnz7IPnNS20QE"
           }
         }
       },
@@ -180,7 +180,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "onizapCoMaXnz7IPnNS20QE",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -198,7 +198,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "onizapCoMaXnz7IPnNS20QE"
           }
         }
       ]

@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -54,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -70,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -78,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -126,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -134,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -142,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -150,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -206,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -214,19 +214,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 32,
+        "batch": 31,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -242,39 +234,7 @@
         }
       },
       {
-        "batch": 34,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 35,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 37,
+        "batch": 33,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -373,10 +333,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_BS3cNqjhG7nRR4QUHKV46584"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_BS3cNqjhG7nRR4QUHKV46584"
               },
               "function": {
                 "name": "final_result",
@@ -397,7 +357,7 @@
             "cached_input_tokens": 128
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "ea8cf6ce-fa49-43a5-a44a-536f33cfe5a9",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -413,7 +373,7 @@
               "prompt_cache_miss_tokens": 248
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "ea8cf6ce-fa49-43a5-a44a-536f33cfe5a9",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -426,7 +386,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_name",
             "name": "final_result"
@@ -434,7 +394,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{"
@@ -442,7 +402,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -450,7 +410,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "title"
@@ -458,7 +418,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -466,7 +426,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -474,7 +434,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -482,7 +442,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "Se"
@@ -490,7 +450,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "attle"
@@ -498,7 +458,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Rust"
@@ -506,7 +466,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Meet"
@@ -514,7 +474,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "up"
@@ -522,7 +482,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -530,7 +490,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ", "
@@ -538,7 +498,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -546,7 +506,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "category"
@@ -554,7 +514,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -562,7 +522,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -570,7 +530,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -578,7 +538,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "Meet"
@@ -586,7 +546,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "up"
@@ -594,7 +554,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -602,7 +562,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ", "
@@ -610,7 +570,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -618,7 +578,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "summary"
@@ -626,7 +586,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -634,7 +594,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -642,7 +602,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -650,7 +610,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "A"
@@ -658,7 +618,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " local"
@@ -666,7 +626,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " gathering"
@@ -674,7 +634,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " for"
@@ -682,7 +642,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Rust"
@@ -690,7 +650,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " developers"
@@ -698,7 +658,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " in"
@@ -706,7 +666,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Seattle"
@@ -714,7 +674,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " to"
@@ -722,7 +682,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " share"
@@ -730,7 +690,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " projects"
@@ -738,7 +698,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -746,7 +706,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " discuss"
@@ -754,7 +714,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " the"
@@ -762,7 +722,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " language"
@@ -770,7 +730,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -778,7 +738,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " and"
@@ -786,7 +746,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " network"
@@ -794,7 +754,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " with"
@@ -802,7 +762,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " the"
@@ -810,7 +770,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " community"
@@ -818,7 +778,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "."
@@ -826,7 +786,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -834,7 +794,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -842,20 +802,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_BS3cNqjhG7nRR4QUHKV46584",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_00_BS3cNqjhG7nRR4QUHKV46584",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_00_BS3cNqjhG7nRR4QUHKV46584"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_00_BS3cNqjhG7nRR4QUHKV46584"
             },
             "function": {
               "name": "final_result",
@@ -879,7 +839,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "ea8cf6ce-fa49-43a5-a44a-536f33cfe5a9",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
@@ -894,7 +854,7 @@
               "prompt_cache_miss_tokens": 248
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "ea8cf6ce-fa49-43a5-a44a-536f33cfe5a9",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

@@ -1,19 +1,11 @@
 //! Doubleword prompt-caching cassette suite.
 //!
-//! **This provider does not do meaningful prefix caching**, and this suite is
-//! what records that as a measured fact rather than an assumption.
-//!
-//! Measured: a 4,865-token prompt re-sent byte-identically reads **zero** cached
-//! tokens on every turn. Doubleword serves an OpenAI-compatible wire and rig
-//! would surface `prompt_tokens_details.cached_tokens` if it were populated.
-//!
-//! The cells assert the *absence* through `assert_no_meaningful_prefix_cache`,
-//! which is self-invalidating: the day this provider ships real prefix caching,
-//! the assertion fails and tells whoever is looking to replace it with the full
-//! `assert_cache_conformance` suite and drop the coverage opt-out.
-//!
-//! Doubleword serves an OpenAI-compatible wire, so a cache hit would arrive in
-//! `prompt_tokens_details.cached_tokens`.
+//! Doubleword serves an OpenAI-compatible wire and reports cache hits in
+//! `prompt_tokens_details.cached_tokens`. It did no measurable prefix caching
+//! when this suite was first recorded; re-recorded, every turn of a
+//! 4,865-token probe read 4,752 cached tokens (97.7%), turn one included,
+//! because the probe's prefix was already warm from an earlier run. The
+//! probes assert the full conformance suite.
 //!
 //! # Recording
 //!
@@ -27,8 +19,7 @@ use rig::providers::doubleword;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_no_meaningful_prefix_cache, assert_prefix_stable, run_cache_probe,
-    run_cache_probe_streaming,
+    assert_cache_conformance, assert_prefix_stable, run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_doubleword_prompt_caching_cassette;
@@ -50,17 +41,13 @@ fn probe() -> CacheProbe {
 }
 
 #[tokio::test]
-async fn blocking_probe_observes_no_meaningful_prefix_cache() {
+async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_doubleword_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(&model, &probe()).await;
-        assert_no_meaningful_prefix_cache(
-            &observation,
-            &DOUBLEWORD_CACHE_SUPPORT,
-            "blocking probe",
-        );
+        assert_cache_conformance(&observation, &DOUBLEWORD_CACHE_SUPPORT, "blocking probe");
     })
     .await;
 
@@ -68,7 +55,7 @@ async fn blocking_probe_observes_no_meaningful_prefix_cache() {
 }
 
 #[tokio::test]
-async fn streaming_probe_observes_no_meaningful_prefix_cache() {
+async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_doubleword_prompt_caching_cassette(
@@ -76,11 +63,7 @@ async fn streaming_probe_observes_no_meaningful_prefix_cache() {
         |client| async move {
             let model = client.completion(CACHE_MODEL);
             let observation = run_cache_probe_streaming(&model, &probe()).await;
-            assert_no_meaningful_prefix_cache(
-                &observation,
-                &DOUBLEWORD_CACHE_SUPPORT,
-                "streaming probe",
-            );
+            assert_cache_conformance(&observation, &DOUBLEWORD_CACHE_SUPPORT, "streaming probe");
         },
     )
     .await;
@@ -91,9 +74,8 @@ async fn streaming_probe_observes_no_meaningful_prefix_cache() {
 /// A real agent loop with a tool round-trip, asserted on **prefix stability
 /// alone**.
 ///
-/// This provider's cache is intermittent or absent (see the module docs), so a
-/// cache-growth assertion here would be a coin flip or trivially unsatisfiable.
-/// What the cell still buys — and what nothing else in the suite covers — is the
+/// The probes above assert the cache itself. What this cell adds, and what
+/// nothing else in the suite covers, is the
 /// loop-level guarantee: across a real multi-turn agent run with a tool
 /// round-trip, every outbound request must *extend* its predecessor rather than
 /// rewrite it. A driver that re-advertises tools in a different order, rebuilds

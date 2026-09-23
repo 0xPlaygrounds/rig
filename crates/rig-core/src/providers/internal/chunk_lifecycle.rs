@@ -24,6 +24,9 @@ pub struct ChunkParts {
     pub reasoning_signature: Option<String>,
     /// Visible text content.
     pub text: Option<String>,
+    /// Provider extras for the text block this chunk's text lands in, such
+    /// as a signature the wire put on that text part.
+    pub text_meta: Option<crate::message::AdditionalParams>,
     /// Tool-call events in wire order, with adapter-assigned keys and IDs.
     /// Emitted after reasoning closes and text is emitted.
     pub tool_events: Vec<StreamEvent>,
@@ -32,7 +35,9 @@ pub struct ChunkParts {
 impl ChunkParts {
     /// Whether this chunk's text or tool events close an open reasoning block.
     fn has_boundary_content(&self) -> bool {
-        self.text.as_ref().is_some_and(|text| !text.is_empty()) || !self.tool_events.is_empty()
+        self.text.as_ref().is_some_and(|text| !text.is_empty())
+            || self.text_meta.is_some()
+            || !self.tool_events.is_empty()
     }
 }
 
@@ -109,6 +114,9 @@ impl MintedReasoningLifecycle {
 
         if let Some(text) = parts.text.filter(|text| !text.is_empty()) {
             out.text(text);
+        }
+        if let Some(meta) = parts.text_meta {
+            out.text_meta(meta);
         }
 
         for event in parts.tool_events {

@@ -1,7 +1,7 @@
 //! What an output-budget cut does to a tool call, on both transports.
 //!
 //! **Server**: the competent tier — `unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10499-6d05498. A
+//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10964-b29c606e2. A
 //! model that reliably makes the call is the precondition for cutting one in
 //! half.
 //!

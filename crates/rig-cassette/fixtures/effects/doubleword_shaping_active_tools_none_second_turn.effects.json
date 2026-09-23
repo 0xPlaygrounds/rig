@@ -121,10 +121,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_88cbabef3fc34385849767a2"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_88cbabef3fc34385849767a2"
               },
               "function": {
                 "name": "add",
@@ -146,7 +146,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_4d1a8642-31fb-4d02-8b7d-448b62f12657",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -164,7 +164,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "call_88cbabef3fc34385849767a2",
                       "type": "function"
                     }
                   ]
@@ -172,7 +172,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_4d1a8642-31fb-4d02-8b7d-448b62f12657",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -256,10 +256,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_88cbabef3fc34385849767a2"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_88cbabef3fc34385849767a2"
                   },
                   "function": {
                     "name": "add",
@@ -280,10 +280,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_88cbabef3fc34385849767a2"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_88cbabef3fc34385849767a2"
                   },
                   "name": "add",
                   "content": [
@@ -326,7 +326,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_50dd2803-156e-4f61-9f03-d07c431330c5",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -343,7 +343,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_50dd2803-156e-4f61-9f03-d07c431330c5",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {

@@ -132,10 +132,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_496cef96aaa34306b17c1b1a"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_496cef96aaa34306b17c1b1a"
               },
               "function": {
                 "name": "add",
@@ -149,15 +149,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 354,
+            "input_tokens": 344,
             "output_tokens": 84,
-            "total_tokens": 438,
+            "total_tokens": 428,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 46
+            "reasoning_tokens": 37
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_055a56a9-ab7b-4281-97a9-d2c6c374ce9d",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -184,7 +184,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_496cef96aaa34306b17c1b1a",
                       "type": "function"
                     }
                   ]
@@ -192,7 +192,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_055a56a9-ab7b-4281-97a9-d2c6c374ce9d",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -207,16 +207,16 @@
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 46
+                "reasoning_tokens": 37
               },
-              "prompt_tokens": 354,
+              "prompt_tokens": 344,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cache_write_tokens": 0,
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 438
+              "total_tokens": 428
             }
           }
         }
@@ -289,10 +289,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_496cef96aaa34306b17c1b1a"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_496cef96aaa34306b17c1b1a"
                   },
                   "function": {
                     "name": "add",
@@ -313,10 +313,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_496cef96aaa34306b17c1b1a"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_496cef96aaa34306b17c1b1a"
                   },
                   "name": "add",
                   "content": [
@@ -374,7 +374,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
+                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output 42.\n"
                   }
                 }
               ],
@@ -382,19 +382,19 @@
             },
             {
               "type": "text",
-              "text": "\n\n42"
+              "text": "42"
             }
           ],
           "usage": {
             "input_tokens": 445,
-            "output_tokens": 48,
-            "total_tokens": 493,
+            "output_tokens": 47,
+            "total_tokens": 492,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 43
+            "reasoning_tokens": 35
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_1795adc5-3d43-4315-a9e7-36f638d4b759",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -404,13 +404,13 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "\n\n42",
-                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+                  "content": "42",
+                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output 42.\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+                      "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output 42.\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -420,7 +420,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_1795adc5-3d43-4315-a9e7-36f638d4b759",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -431,11 +431,11 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 48,
+              "completion_tokens": 47,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 43
+                "reasoning_tokens": 35
               },
               "prompt_tokens": 445,
               "prompt_tokens_details": {
@@ -444,7 +444,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 493
+              "total_tokens": 492
             }
           }
         }

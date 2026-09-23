@@ -124,7 +124,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                    "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
                   }
                 }
               ],
@@ -134,10 +134,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_2"
+                "id": "chatcmpl-tool-860b566f9f15b4d3"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_2"
+                "call_id": "chatcmpl-tool-860b566f9f15b4d3"
               },
               "function": {
                 "name": "add",
@@ -152,22 +152,22 @@
           ],
           "usage": {
             "input_tokens": 1308,
-            "output_tokens": 168,
-            "total_tokens": 1476
+            "output_tokens": 191,
+            "total_tokens": 1499
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
               "prompt_tokens": 1308,
-              "completion_tokens": 168,
-              "total_tokens": 1476
+              "completion_tokens": 191,
+              "total_tokens": 1499
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -175,7 +175,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.0011765999999999999
+                "usd": 0.0012571000000000001
               }
             }
           }
@@ -626,15 +626,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "1"
+            "text": " 1"
           }
         },
         {
@@ -706,31 +698,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "`"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "3"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
+            "text": "`\n3."
           }
         },
         {
@@ -1002,7 +970,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " the"
+            "text": " "
           }
         },
         {
@@ -1010,7 +978,15 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " sum"
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
           }
         },
         {
@@ -1170,7 +1146,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "Let"
+            "text": "Plan"
           }
         },
         {
@@ -1178,7 +1154,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "'s"
+            "text": ":"
           }
         },
         {
@@ -1186,7 +1162,159 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " call"
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " `"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "`"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "7"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "5"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Return"
           }
         },
         {
@@ -1202,7 +1330,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " tool"
+            "text": " result"
           }
         },
         {
@@ -1210,7 +1338,31 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": "."
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\"."
           }
         },
         {
@@ -1231,7 +1383,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_2",
+          "id": "wire:chatcmpl-tool-860b566f9f15b4d3",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -1239,7 +1391,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_2",
+          "id": "wire:chatcmpl-tool-860b566f9f15b4d3",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"x\": 17, \"y\": 25}"
@@ -1247,20 +1399,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:chatcmpl-REDACTED_2",
+          "id": "wire:chatcmpl-tool-860b566f9f15b4d3",
           "end": {
             "close": "tool_call",
-            "tool_id": "chatcmpl-REDACTED_2",
+            "tool_id": "chatcmpl-tool-860b566f9f15b4d3",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "chatcmpl-REDACTED_2"
+              "id": "chatcmpl-tool-860b566f9f15b4d3"
             },
             "provider": {
-              "call_id": "chatcmpl-REDACTED_2"
+              "call_id": "chatcmpl-tool-860b566f9f15b4d3"
             },
             "function": {
               "name": "add",
@@ -1277,22 +1429,22 @@
           "event": "final",
           "usage": {
             "input_tokens": 1308,
-            "output_tokens": 168,
-            "total_tokens": 1476
+            "output_tokens": 191,
+            "total_tokens": 1499
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
               "prompt_tokens": 1308,
-              "completion_tokens": 168,
-              "total_tokens": 1476
+              "completion_tokens": 191,
+              "total_tokens": 1499
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -1300,7 +1452,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.0011765999999999999
+                "usd": 0.0012571000000000001
               }
             }
           }
@@ -1364,7 +1516,7 @@
                     {
                       "type": "text",
                       "content": {
-                        "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                        "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
                       }
                     }
                   ],
@@ -1374,10 +1526,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_2"
+                    "id": "chatcmpl-tool-860b566f9f15b4d3"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_2"
+                    "call_id": "chatcmpl-tool-860b566f9f15b4d3"
                   },
                   "function": {
                     "name": "add",
@@ -1398,10 +1550,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_2"
+                    "id": "chatcmpl-tool-860b566f9f15b4d3"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_2"
+                    "call_id": "chatcmpl-tool-860b566f9f15b4d3"
                   },
                   "name": "add",
                   "content": [
@@ -1473,23 +1625,23 @@
             }
           ],
           "usage": {
-            "input_tokens": 1493,
+            "input_tokens": 1516,
             "output_tokens": 21,
-            "total_tokens": 1514
+            "total_tokens": 1537
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
-              "prompt_tokens": 1493,
+              "prompt_tokens": 1516,
               "completion_tokens": 21,
-              "total_tokens": 1514
+              "total_tokens": 1537
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_3",
+            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -1497,7 +1649,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00074535
+                "usd": 0.0007557
               }
             }
           }
@@ -1673,23 +1825,23 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 1493,
+            "input_tokens": 1516,
             "output_tokens": 21,
-            "total_tokens": 1514
+            "total_tokens": 1537
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
-              "prompt_tokens": 1493,
+              "prompt_tokens": 1516,
               "completion_tokens": 21,
-              "total_tokens": 1514
+              "total_tokens": 1537
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_3",
+            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -1697,7 +1849,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00074535
+                "usd": 0.0007557
               }
             }
           }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -103,10 +103,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_fv3ubVl9yrU9F9Q6VolXP8K0"
               },
               "function": {
                 "name": "submit",
@@ -129,7 +129,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o-mini",
@@ -150,7 +150,7 @@
                         "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0",
                       "index": 0,
                       "type": "function"
                     }
@@ -160,12 +160,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP",
             "model": "openai/gpt-4o-mini",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_2e30314e0f",
             "usage": {
               "completion_tokens": 28,
               "completion_tokens_details": {

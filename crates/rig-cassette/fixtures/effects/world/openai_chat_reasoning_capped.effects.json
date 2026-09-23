@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -83,8 +83,8 @@
             "reasoning_tokens": 16
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCZcNI5NXlDUWW7tR6GqUhZABhn",
+          "provider_request_id": "req_58bc94fb9b3a44f8a8f96ffa559e97da",
           "finish_reason": "length",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -102,7 +102,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDCZcNI5NXlDUWW7tR6GqUhZABhn",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",

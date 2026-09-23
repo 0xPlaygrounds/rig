@@ -2,40 +2,56 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 6,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 10,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 11,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
         }
       },
       {
@@ -43,7 +59,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -51,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -59,7 +75,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -67,11 +83,11 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 16,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -79,15 +95,7 @@
         }
       },
       {
-        "batch": 17,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -213,10 +221,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_669beb5b4c8f443b8807c14f"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_669beb5b4c8f443b8807c14f"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -229,10 +237,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_3"
+                "id": "call_288cafa840594b2d9c9938d6"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_3"
+                "call_id": "call_288cafa840594b2d9c9938d6"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -251,7 +259,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146075-rj293AAFKqO9ciCaZ7jA",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -276,7 +284,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146075-rj293AAFKqO9ciCaZ7jA",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -367,10 +375,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_669beb5b4c8f443b8807c14f"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_669beb5b4c8f443b8807c14f"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -383,10 +391,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_288cafa840594b2d9c9938d6"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_288cafa840594b2d9c9938d6"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -404,10 +412,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_669beb5b4c8f443b8807c14f"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_669beb5b4c8f443b8807c14f"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -421,10 +429,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_288cafa840594b2d9c9938d6"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_288cafa840594b2d9c9938d6"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -474,7 +482,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The labels are crimson-harbor and silver-orchard."
+              "text": "The signals are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
@@ -486,7 +494,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "gen-1790146077-4U3xXkJPWxCC3IWztTGm",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -511,7 +519,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_4",
+            "response_id": "gen-1790146077-4U3xXkJPWxCC3IWztTGm",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

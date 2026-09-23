@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -22,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -30,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -46,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -62,218 +70,26 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 16,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 28
         }
       },
       {
-        "batch": 21,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 23,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 24,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 26,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 30,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 32,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 35,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 38,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 39,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 7
-        }
-      },
-      {
-        "batch": 40,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -356,7 +172,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
           "finish_reason": "length",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -372,7 +188,7 @@
               "prompt_cache_miss_tokens": 24
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -528,7 +344,7 @@
           },
           "finish_reason": "length",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
@@ -543,7 +359,7 @@
               "prompt_cache_miss_tokens": 24
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -594,25 +410,25 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called samaras. In autumn, many maple species display brilliant red, orange, and yellow foliage."
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
             }
           ],
           "usage": {
             "input_tokens": 24,
-            "output_tokens": 34,
-            "total_tokens": 58,
+            "output_tokens": 26,
+            "total_tokens": 50,
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 24,
-              "completion_tokens": 34,
-              "total_tokens": 58,
+              "completion_tokens": 26,
+              "total_tokens": 50,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
@@ -620,7 +436,7 @@
               "prompt_cache_miss_tokens": 24
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -739,55 +555,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " winged"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " seeds"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " called"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " sam"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "aras"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " In"
+            "text": " vibrant"
           }
         },
         {
@@ -803,7 +571,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": ","
+            "text": " colors"
           }
         },
         {
@@ -811,7 +579,63 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " many"
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " Their"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " sap"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " often"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " harvested"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " produce"
           }
         },
         {
@@ -827,79 +651,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " species"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " display"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " brilliant"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " red"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " orange"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " yellow"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " foliage"
+            "text": " syrup"
           }
         },
         {
@@ -914,20 +666,20 @@
           "event": "final",
           "usage": {
             "input_tokens": 24,
-            "output_tokens": 34,
-            "total_tokens": 58,
+            "output_tokens": 26,
+            "total_tokens": 50,
             "cached_input_tokens": 0
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 24,
-              "completion_tokens": 34,
-              "total_tokens": 58,
+              "completion_tokens": 26,
+              "total_tokens": 50,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
@@ -935,7 +687,7 @@
               "prompt_cache_miss_tokens": 24
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

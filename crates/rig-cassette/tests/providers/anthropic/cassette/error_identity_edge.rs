@@ -68,12 +68,14 @@ async fn validation_error_carries_identity() {
                 Some(400)
             );
             assert_transport_request_id(error.provider_request_id(), "400 validation error");
+            let body = error
+                .provider_response_json()
+                .expect("error body is JSON")
+                .expect("the provider's error envelope survives");
+            let message = body["error"]["message"].as_str().unwrap_or_default();
             assert!(
-                error
-                    .provider_response_json()
-                    .expect("error body is JSON")
-                    .is_some(),
-                "the provider's error envelope survives"
+                message.contains("temperature"),
+                "the 400 is the temperature validation: {message}"
             );
         },
     )

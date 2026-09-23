@@ -122,10 +122,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_8gSZ1K5CfWiupNnInaJ0FuqP"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_8gSZ1K5CfWiupNnInaJ0FuqP"
               },
               "function": {
                 "name": "submit",
@@ -149,7 +149,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790152493-CLDwLia4jDlCMobHlqgl",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o-mini",
@@ -170,7 +170,7 @@
                         "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_8gSZ1K5CfWiupNnInaJ0FuqP",
                       "index": 0,
                       "type": "function"
                     }
@@ -180,12 +180,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "gen-1790152493-CLDwLia4jDlCMobHlqgl",
             "model": "openai/gpt-4o-mini",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_2fc8487449",
             "usage": {
               "completion_tokens": 30,
               "completion_tokens_details": {

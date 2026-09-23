@@ -85,10 +85,11 @@
             "output_tokens": 3,
             "total_tokens": 40,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_808f1b70-1303-45fd-b419-f7c38e0d6f6d",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -105,9 +106,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_808f1b70-1303-45fd-b419-f7c38e0d6f6d",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
+            "system_fingerprint": "vllm-0.23.0-ed3ef83f",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -118,11 +120,16 @@
               "cache_read_input_tokens": 0,
               "completion_tokens": 3,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "prompt_tokens": 37,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
               },
               "total_tokens": 40
             }

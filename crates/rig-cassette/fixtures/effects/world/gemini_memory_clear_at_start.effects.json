@@ -23,7 +23,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -143,21 +143,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "ErECCq4CAWkUfROUrvExBXhSIzbA3hgOHwHADrZZqCTKQyhVV39tXCxgo9YkoUGO53jYXZbbKJq11nyegswEK5cVIwX//u7RXMymQuhsMgEYSR6VNrWed8pvmkgeQ2hUoI2YjQirIrP2LOvsFfNGk47iKwfUMrYLboUKHsvlRzg+3Zrf0vp5g0p70o1E6EI6kiBl8DpzOe7f50I3PVdtSYkHPfcY1gOwda6w98lupNtWp6Ag9XZF5dUQ32a9CqfrAvOIIe1JOn7q4gG2+l96+210aMcvjuvBhDzN1ujeObZa6U4CH2mBORE59ACFeaGOSiPZXCDasNBKZJI0M4O6V8rdCAjHae3bWe6eyOKnvwNT5yowEoPmIehvCY3foMRTQOfv+J2eJRR+BHVA3kXgQrgXckQ="
-                  }
+              "text": "ready.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "ErECCq4CAWkUfROUrvExBXhSIzbA3hgOHwHADrZZqCTKQyhVV39tXCxgo9YkoUGO53jYXZbbKJq11nyegswEK5cVIwX//u7RXMymQuhsMgEYSR6VNrWed8pvmkgeQ2hUoI2YjQirIrP2LOvsFfNGk47iKwfUMrYLboUKHsvlRzg+3Zrf0vp5g0p70o1E6EI6kiBl8DpzOe7f50I3PVdtSYkHPfcY1gOwda6w98lupNtWp6Ag9XZF5dUQ32a9CqfrAvOIIe1JOn7q4gG2+l96+210aMcvjuvBhDzN1ujeObZa6U4CH2mBORE59ACFeaGOSiPZXCDasNBKZJI0M4O6V8rdCAjHae3bWe6eyOKnvwNT5yowEoPmIehvCY3foMRTQOfv+J2eJRR+BHVA3kXgQrgXckQ="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
@@ -232,21 +223,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready."
-                },
-                {
-                  "type": "reasoning",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "",
-                        "signature": "ErECCq4CAWkUfROUrvExBXhSIzbA3hgOHwHADrZZqCTKQyhVV39tXCxgo9YkoUGO53jYXZbbKJq11nyegswEK5cVIwX//u7RXMymQuhsMgEYSR6VNrWed8pvmkgeQ2hUoI2YjQirIrP2LOvsFfNGk47iKwfUMrYLboUKHsvlRzg+3Zrf0vp5g0p70o1E6EI6kiBl8DpzOe7f50I3PVdtSYkHPfcY1gOwda6w98lupNtWp6Ag9XZF5dUQ32a9CqfrAvOIIe1JOn7q4gG2+l96+210aMcvjuvBhDzN1ujeObZa6U4CH2mBORE59ACFeaGOSiPZXCDasNBKZJI0M4O6V8rdCAjHae3bWe6eyOKnvwNT5yowEoPmIehvCY3foMRTQOfv+J2eJRR+BHVA3kXgQrgXckQ="
-                      }
+                  "text": "ready.",
+                  "additional_params": {
+                    "gemini": {
+                      "thoughtSignature": "ErECCq4CAWkUfROUrvExBXhSIzbA3hgOHwHADrZZqCTKQyhVV39tXCxgo9YkoUGO53jYXZbbKJq11nyegswEK5cVIwX//u7RXMymQuhsMgEYSR6VNrWed8pvmkgeQ2hUoI2YjQirIrP2LOvsFfNGk47iKwfUMrYLboUKHsvlRzg+3Zrf0vp5g0p70o1E6EI6kiBl8DpzOe7f50I3PVdtSYkHPfcY1gOwda6w98lupNtWp6Ag9XZF5dUQ32a9CqfrAvOIIe1JOn7q4gG2+l96+210aMcvjuvBhDzN1ujeObZa6U4CH2mBORE59ACFeaGOSiPZXCDasNBKZJI0M4O6V8rdCAjHae3bWe6eyOKnvwNT5yowEoPmIehvCY3foMRTQOfv+J2eJRR+BHVA3kXgQrgXckQ="
                     }
-                  ],
-                  "provider": "gcp.gemini"
+                  }
                 }
               ]
             }

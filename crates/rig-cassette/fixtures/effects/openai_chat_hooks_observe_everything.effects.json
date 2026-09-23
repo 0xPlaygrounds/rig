@@ -146,10 +146,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_fP04b3n6r62Gp0a6D574po4Z"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_fP04b3n6r62Gp0a6D574po4Z"
               },
               "function": {
                 "name": "add",
@@ -170,8 +170,8 @@
             "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDBhXbcuXpK1ee37vHSNkge2wdC0",
+          "provider_request_id": "req_aa1cc0b1095a45eb875bc3304bb4c6ab",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -191,7 +191,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_fP04b3n6r62Gp0a6D574po4Z",
                       "type": "function"
                     }
                   ]
@@ -199,7 +199,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDBhXbcuXpK1ee37vHSNkge2wdC0",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -277,10 +277,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "function": {
                     "name": "add",
@@ -301,10 +301,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "name": "add",
                   "content": [
@@ -366,8 +366,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "chatcmpl-ERDBj9PtMGhJU3zofPg7mRc1o5uQz",
+          "provider_request_id": "req_20bf2e2f66f944ec8529f78cb9d36ac1",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -385,7 +385,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-ERDBj9PtMGhJU3zofPg7mRc1o5uQz",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -436,10 +436,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "function": {
                     "name": "add",
@@ -460,10 +460,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_fP04b3n6r62Gp0a6D574po4Z"
                   },
                   "name": "add",
                   "content": [

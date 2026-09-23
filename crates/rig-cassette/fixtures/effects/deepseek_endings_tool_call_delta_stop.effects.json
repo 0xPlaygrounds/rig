@@ -224,7 +224,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_UT5eA5ZdA3XggHCk8jE91324",
           "delta": {
             "delta": "tool_name",
             "name": "write_note"

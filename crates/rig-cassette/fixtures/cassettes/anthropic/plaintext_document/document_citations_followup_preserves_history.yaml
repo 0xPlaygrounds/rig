@@ -15,7 +15,9 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[{"citations":[{"cited_text":"The Rust Programming Language\n\nRust is a systems programming language focused on three goals: safety, speed,\nand concurrency. ","document_index":0,"document_title":"Rust Goals","end_char_index":126,"start_char_index":0,"type":"char_location"}],"text":"Rust focuses on three goals: **safety**, **speed**, and **concurrency**.","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":684,"output_tokens":38,"service_tier":"standard"}}'
+  - name: request-id
+    value: req_011CfLcmZaZnioPLzvHYSi3i
+  body: '{"container":null,"content":[{"citations":[{"cited_text":"The Rust Programming Language\n\nRust is a systems programming language focused on three goals: safety, speed,\nand concurrency. ","document_index":0,"document_title":"Rust Goals","end_char_index":126,"start_char_index":0,"type":"char_location"}],"text":"Rust focuses on three goals: **safety**, **speed**, and **concurrency**.","type":"text"}],"id":"msg_011CfLcma4bSGWdVbW26WUWy","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":684,"output_tokens":38,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -34,4 +36,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[{"text":"citations follow-up ok","type":"text"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":733,"output_tokens":8,"service_tier":"standard"}}'
+  - name: request-id
+    value: req_011CfLcmeaCQ4imPQggznbJ2
+  body: '{"container":null,"content":[{"text":"citations follow-up ok","type":"text"}],"id":"msg_011CfLcmez12dKj3T6V7FRHg","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":733,"output_tokens":8,"service_tier":"standard"}}'

@@ -43,7 +43,7 @@ use serde_json::json;
 use super::super::support::with_perplexity_cassette;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
-use crate::support::{Observed, assert_matches_recorded_token};
+use crate::support::{Observed, assert_matches_recorded_token, assert_wire_value_matches};
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
@@ -95,7 +95,7 @@ async fn raw_is_the_verbatim_response_body() {
         .as_object()
         .expect("the recorded reply is a JSON object")
         .keys()
-        .filter(|key| key.as_str() != "id")
+        .filter(|key| key.as_str() != "id" && key.as_str() != "created")
     {
         assert_eq!(
             raw.get(key),
@@ -103,6 +103,9 @@ async fn raw_is_the_verbatim_response_body() {
             "raw should carry the provider's `{key}` unchanged"
         );
     }
+    // The recorder normalizes the volatile timestamp, so a recording pass
+    // compares its type and replay its exact value.
+    assert_wire_value_matches(raw, &body, "created");
     assert_eq!(
         Some(raw["id"].as_str()),
         Some(response.response_id.as_deref())

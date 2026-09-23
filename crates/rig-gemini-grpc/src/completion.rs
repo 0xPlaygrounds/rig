@@ -19,9 +19,11 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use base64::Engine as _;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
-use rig_core::providers::gemini::completion::attach_trailing_signature;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
+};
+use rig_core::providers::gemini::{
+    GEMINI_TEXT_EXTRAS_KEY, text_signature_extras, text_thought_signature,
 };
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
@@ -199,7 +201,7 @@ pub(crate) fn create_grpc_request(
     } = completion_request;
 
     let mut chat_history = chat_history;
-    rig_core::message::retain_replayable_reasoning(&mut chat_history, REASONING_ISSUER);
+    rig_core::message::retain_replayable_reasoning(&mut chat_history, &[REASONING_ISSUER]);
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
     // functionResponse.name keys the replay: cross-provider ingested
     // results arrive with an empty name and their call carries it.
@@ -398,7 +400,12 @@ fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::AssistantContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
+        message::AssistantContent::Text(text) => Ok(proto::Part {
+            thought_signature: decode_optional_base64(
+                text_thought_signature(&text).map(str::to_owned),
+            )?,
+            ..text_part(text.text)
+        }),
         message::AssistantContent::ToolCall(tool_call) => {
             let args = json_to_prost_struct(tool_call.function.arguments)?;
 
@@ -474,7 +481,14 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                             .with_provider(REASONING_ISSUER),
                         )
                     } else {
-                        completion::AssistantContent::text(text)
+                        // A signature on answer text returns on that text part.
+                        completion::AssistantContent::Text(message::Text {
+                            text: text.clone(),
+                            additional_params: encode_optional_base64(&part.thought_signature)
+                                .and_then(|signature| {
+                                    text_signature_extras(GEMINI_TEXT_EXTRAS_KEY, signature)
+                                }),
+                        })
                     }
                 }
                 Some(proto::part::Data::InlineData(inline_data)) => {
@@ -522,14 +536,6 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             };
 
             assistant_contents.push(assistant_content);
-
-            // Non-thought text can carry the preceding reasoning signature.
-            if !part.thought
-                && matches!(part.data, Some(proto::part::Data::Text(_)))
-                && let Some(signature) = encode_optional_base64(&part.thought_signature)
-            {
-                attach_trailing_signature(&mut assistant_contents, signature);
-            }
         }
 
         rig_core::message::normalize_missing_tool_call_ids(&mut assistant_contents);

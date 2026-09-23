@@ -483,3 +483,43 @@ async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
         super::super::completion::REASONING_ISSUER
     );
 }
+
+/// The streamed twin of a signed answer: the text, then an empty part
+/// carrying the signature. The signature stays on its own empty part.
+#[tokio::test]
+async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
+    let mut signed = text_part("");
+    signed.thought_signature = b"sig".to_vec();
+    let mut stream = stream_from_events(futures::stream::iter(
+        vec![
+            response(vec![text_part("289")], 0),
+            response(vec![signed], 0),
+            terminal_frame(),
+        ]
+        .into_iter()
+        .map(Ok),
+    ));
+    while let Some(item) = stream.next().await {
+        item.expect("stream item");
+    }
+    let choice = stream.finish().expect("terminal").choice;
+    let texts: Vec<(String, bool)> = choice
+        .iter()
+        .map(|part| match part {
+            rig_core::message::AssistantContent::Text(text) => (
+                text.text.clone(),
+                rig_core::providers::gemini::text_thought_signature(text).is_some(),
+            ),
+            other => panic!("answer text only: {other:?}"),
+        })
+        .collect();
+    // The terminal frame's own text starts after the signed part.
+    assert_eq!(
+        texts,
+        [
+            ("289".to_owned(), false),
+            (String::new(), true),
+            ("!".to_owned(), false)
+        ]
+    );
+}

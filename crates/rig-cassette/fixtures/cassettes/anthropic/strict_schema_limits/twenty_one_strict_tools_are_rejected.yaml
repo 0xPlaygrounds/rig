@@ -15,4 +15,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"error":{"message":"Too many strict tools (21). The maximum number of strict tools supported is 20. Try reducing the number of tools marked as strict.","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'
+  - name: request-id
+    value: req_011CfLcxQo2bbT7vDB96GdGn
+  body: '{"error":{"message":"Too many strict tools (21). The maximum number of strict tools supported is 20. Try reducing the number of tools marked as strict.","type":"invalid_request_error"},"request_id":"req_011CfLcxQo2bbT7vDB96GdGn","type":"error"}'

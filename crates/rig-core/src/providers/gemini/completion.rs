@@ -35,7 +35,6 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::completion::{self, CompletionError, CompletionRequest};
-use crate::message::{self, Reasoning};
 use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
@@ -490,32 +489,6 @@ pub(crate) fn function_call_finish_reason_error(
             )))
         }
         _ => None,
-    }
-}
-
-/// Attach a trailing signature to the last reasoning item whose first text is unsigned.
-/// If none exists, append a signature-only reasoning item.
-/// This preserves provider state required for replay.
-pub fn attach_trailing_signature(
-    content: &mut Vec<completion::AssistantContent>,
-    signature: String,
-) {
-    let unsigned_reasoning = content.iter_mut().rev().find_map(|item| match item {
-        completion::AssistantContent::Reasoning(reasoning) => match reasoning.content.first_mut() {
-            Some(message::ReasoningContent::Text {
-                signature: slot @ None,
-                ..
-            }) => Some(slot),
-            _ => None,
-        },
-        _ => None,
-    });
-
-    match unsigned_reasoning {
-        Some(slot) => *slot = Some(signature),
-        None => content.push(completion::AssistantContent::Reasoning(
-            Reasoning::new_with_signature("", Some(signature)),
-        )),
     }
 }
 
@@ -1082,7 +1055,15 @@ pub mod gemini_api_types {
 
         fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
             match content {
-                message::AssistantContent::Text(message::Text { text, .. }) => Ok(text.into()),
+                message::AssistantContent::Text(text) => {
+                    // A signed answer part returns with its signature.
+                    let thought_signature =
+                        super::super::text_thought_signature(&text).map(str::to_owned);
+                    Ok(Part {
+                        thought_signature,
+                        ..text.text.into()
+                    })
+                }
                 message::AssistantContent::Image(image) => image_to_part(image),
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
                 message::AssistantContent::Reasoning(reasoning) => Ok(Part {

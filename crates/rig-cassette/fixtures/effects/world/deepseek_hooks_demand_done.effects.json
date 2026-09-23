@@ -82,7 +82,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design."
+              "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like buffer overflows, use-after-free, and data races cause crashes and security vulnerabilities, which Rust prevents by design."
             }
           ],
           "usage": {
@@ -92,7 +92,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "768539cf-942e-4abc-9646-1e3f3db0c02e",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -103,13 +103,13 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design.",
+                  "content": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like buffer overflows, use-after-free, and data races cause crashes and security vulnerabilities, which Rust prevents by design.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "768539cf-942e-4abc-9646-1e3f3db0c02e",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -156,7 +156,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design."
+                  "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like buffer overflows, use-after-free, and data races cause crashes and security vulnerabilities, which Rust prevents by design."
                 }
               ]
             },
@@ -186,17 +186,17 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design. DONE"
+              "text": "Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing rules, without a garbage collector. Memory safety matters because bugs like buffer overflows, use-after-free, and data races cause crashes and security vulnerabilities, which Rust prevents by design. DONE"
             }
           ],
           "usage": {
             "input_tokens": 102,
-            "output_tokens": 59,
-            "total_tokens": 161,
+            "output_tokens": 57,
+            "total_tokens": 159,
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "92e957e0-aa71-4419-9f2b-1ddcf75cb30f",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -207,25 +207,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races cause crashes and security vulnerabilities, which Rust prevents by design. DONE",
+                  "content": "Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing rules, without a garbage collector. Memory safety matters because bugs like buffer overflows, use-after-free, and data races cause crashes and security vulnerabilities, which Rust prevents by design. DONE",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "92e957e0-aa71-4419-9f2b-1ddcf75cb30f",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 59,
+              "completion_tokens": 57,
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 102,
               "prompt_tokens": 102,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 161
+              "total_tokens": 159
             }
           }
         }

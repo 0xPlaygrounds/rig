@@ -132,21 +132,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor code is ALPHA-11. The orchard code is BETA-22."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
-                  }
+              "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

@@ -82,6 +82,7 @@ fn a_full_chunk_emits_canonical_order_with_the_boundary_end() {
         reasoning: Some("thinking".to_owned()),
         reasoning_signature: None,
         text: Some("visible".to_owned()),
+        text_meta: None,
         tool_events: tool_events(),
     }]);
     assert_eq!(
@@ -136,6 +137,7 @@ fn a_signature_closes_the_block_before_text() {
         reasoning: Some("thinking".to_owned()),
         reasoning_signature: Some("sig".to_owned()),
         text: Some("visible".to_owned()),
+        text_meta: None,
         tool_events: Vec::new(),
     }]);
     assert_eq!(
@@ -170,6 +172,7 @@ fn an_empty_chunk_emits_nothing() {
         reasoning: Some(String::new()),
         reasoning_signature: None,
         text: Some(String::new()),
+        text_meta: None,
         tool_events: Vec::new(),
     }]);
     assert!(order.is_empty());
@@ -285,6 +288,7 @@ fn a_second_signature_only_chunk_closes_a_fresh_key_not_the_same_one() {
         reasoning: None,
         reasoning_signature: Some("sig".to_owned()),
         text: None,
+        text_meta: None,
         tool_events: Vec::new(),
     };
     lifecycle.emit_chunk(signed(), &mut out);

@@ -45,6 +45,13 @@ async fn assert_strict_schema_rejected(
         .expect("provider error should be JSON")
         .expect("provider error body should be preserved");
     assert_eq!(body["error"]["type"], "invalid_request_error");
+    // The rejection points at the tool, not at some other 400 such as a spent
+    // quota, which shares the status and error type.
+    let message = body["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.starts_with("tools.0"),
+        "the rejection names the tool: {message}"
+    );
 }
 
 #[tokio::test]

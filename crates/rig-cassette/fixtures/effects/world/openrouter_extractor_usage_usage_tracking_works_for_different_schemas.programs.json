@@ -237,10 +237,10 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_1"
+                  "id": "call_rQP7FA75ifQdrMM6nMT3t3eT"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_1"
+                  "call_id": "call_rQP7FA75ifQdrMM6nMT3t3eT"
                 },
                 "function": {
                   "name": "submit",
@@ -277,10 +277,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_rQP7FA75ifQdrMM6nMT3t3eT"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_rQP7FA75ifQdrMM6nMT3t3eT"
                   },
                   "function": {
                     "name": "submit",
@@ -303,7 +303,7 @@
                 "reasoning_tokens": 0
               },
               "message_id": null,
-              "response_id": "chatcmpl-REDACTED_1",
+              "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
               "finish_reason": "tool_calls",
               "provider": "openrouter",
               "model": "openai/gpt-4o-mini",
@@ -324,7 +324,7 @@
                             "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
                             "name": "submit"
                           },
-                          "id": "call_REDACTED_1",
+                          "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
                           "index": 0,
                           "type": "function"
                         }
@@ -334,12 +334,12 @@
                   }
                 ],
                 "created": 0,
-                "id": "chatcmpl-REDACTED_1",
+                "id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
                 "model": "openai/gpt-4o-mini",
                 "object": "chat.completion",
                 "provider": "OpenAI",
                 "service_tier": null,
-                "system_fingerprint": "fp_REDACTED_1",
+                "system_fingerprint": "fp_1e58d0ce9b",
                 "usage": {
                   "completion_tokens": 21,
                   "completion_tokens_details": {

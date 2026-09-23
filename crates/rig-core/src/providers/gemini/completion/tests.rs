@@ -1862,52 +1862,63 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_answer() {
     assert_eq!(buffered.usage.total_tokens, Some(24));
 }
 
-/// The turn whose signature is the thing that has to agree: Gemini hangs
-/// `thoughtSignature` on a trailing part, and it is replay-required state
-/// the provider validates. Both transports must place it identically or a
-/// turn replayed from one of them is rejected.
+/// Gemini hangs `thoughtSignature` on an answer part, and it must return
+/// inside the part that carried it (Gemini's thought-signature rules: never
+/// merge a signed part with an unsigned one). The unary reply signs the one
+/// answer part; the streamed twin sends the text, then an empty signed part.
+/// Each keeps its signature on its own text, and neither moves it onto
+/// reasoning.
 #[tokio::test]
-async fn both_transports_place_a_trailing_thought_signature_the_same_way() {
+async fn a_trailing_thought_signature_stays_on_the_part_that_carried_it() {
     let buffered = unary("gemini-3-flash-preview", SIGNED_UNARY).await;
     let streamed = streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
-    assert_eq!(buffered.choice.to_vec(), streamed.choice.to_vec());
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    let signature = |response: &crate::completion::CompletionResponse| {
-        response.choice.iter().find_map(|item| match item {
-            message::AssistantContent::Reasoning(reasoning) => match reasoning.content.first() {
-                Some(message::ReasoningContent::Text { signature, .. }) => signature.clone(),
-                _ => None,
-            },
-            _ => None,
+    let signed = |text: &str| {
+        message::AssistantContent::Text(message::Text {
+            text: text.to_owned(),
+            additional_params: super::super::text_signature_extras(
+                super::super::GEMINI_TEXT_EXTRAS_KEY,
+                "signature_REDACTED_1".to_owned(),
+            ),
         })
     };
+    assert_eq!(buffered.choice.to_vec(), vec![signed("289")]);
     assert_eq!(
-        signature(&buffered).as_deref(),
-        Some("signature_REDACTED_1"),
-        "the unary reply kept the signature: {:?}",
-        buffered.choice
+        streamed.choice.to_vec(),
+        vec![message::AssistantContent::text("289"), signed("")]
     );
-    assert_eq!(signature(&buffered), signature(&streamed));
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+
+    // Both replay the signature on the text part that carried it.
+    for (response, parts) in [
+        (&buffered, vec![("289", true)]),
+        (&streamed, vec![("289", false), ("", true)]),
+    ] {
+        let content: Content = message::Message::Assistant {
+            id: None,
+            content: response.choice.clone(),
+        }
+        .try_into()
+        .expect("the turn replays");
+        let replayed: Vec<(&str, bool)> = content
+            .parts
+            .iter()
+            .map(|part| match &part.part {
+                PartKind::Text(text) => (
+                    text.as_str(),
+                    part.thought_signature.as_deref() == Some("signature_REDACTED_1"),
+                ),
+                other => panic!("an answer part: {other:?}"),
+            })
+            .collect();
+        assert_eq!(replayed, parts);
+        assert!(content.parts.iter().all(|part| part.thought != Some(true)));
+    }
 }
 
-/// One part carrying *both* non-empty text and the trailing
-/// `thoughtSignature`, in a single frame — the shape
-/// [`both_transports_place_a_trailing_thought_signature_the_same_way`]
-/// cannot reach.
-///
-/// There the signature rides an *empty* text in its own event, so the text
-/// is already delivered by the time the signature arrives and any folding
-/// order agrees. Here the two ride one part, and the transports are free to
-/// disagree: the unary mapper pushes the text and *then* appends the
-/// signature-only reasoning block (`attach_trailing_signature`), while a
-/// streamed reply that declared the part as one chunk emitted the chunk's
-/// reasoning end before its text and put the block ahead of the text. The
-/// signature is replay-required state Gemini validates
-/// (`MISSING_THOUGHT_SIGNATURE`), so a turn replayed from the streamed view
-/// of these bytes sent it back in a different place than one replayed from
-/// the unary view. Recorded in the effect corpus
-/// (`crates/rig-cassette/fixtures/effects/gemini_tool_call_turns.effects.json`), which
-/// is why this is a fixture-bearing contract and not a curiosity.
+/// One part carrying both non-empty text and its `thoughtSignature`, in a
+/// single frame: both transports keep the signature on that text.
+/// Recorded in the effect corpus
+/// (`crates/rig-cassette/fixtures/effects/gemini_tool_call_turns.effects.json`).
 const SIGNED_ONE_PART: &str = r#"{"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#;
 
 /// The same document as one SSE event: the streamed twin of [`SIGNED_ONE_PART`].
@@ -1917,27 +1928,19 @@ const SIGNED_ONE_PART_STREAM: &str = concat!(
 );
 
 #[tokio::test]
-async fn a_signature_on_its_own_text_part_lands_after_that_text_on_both_transports() {
+async fn a_signature_on_its_own_text_part_stays_on_that_text_on_both_transports() {
     let buffered = unary("gemini-3-flash-preview", SIGNED_ONE_PART).await;
     let streamed = streamed("gemini-3-flash-preview", SIGNED_ONE_PART_STREAM).await;
 
-    let expected = vec![
-        message::AssistantContent::text("done"),
-        message::AssistantContent::Reasoning(
-            Reasoning::new_with_signature("", Some("signature_REDACTED_1".to_owned()))
-                .with_provider("gcp.gemini"),
+    let expected = vec![message::AssistantContent::Text(message::Text {
+        text: "done".to_owned(),
+        additional_params: super::super::text_signature_extras(
+            super::super::GEMINI_TEXT_EXTRAS_KEY,
+            "signature_REDACTED_1".to_owned(),
         ),
-    ];
-    assert_eq!(
-        buffered.choice.to_vec(),
-        expected,
-        "the unary reply answers the text first and hangs the signature on the block after it"
-    );
-    assert_eq!(
-        streamed.choice.to_vec(),
-        expected,
-        "the streamed reply must place the same bytes the same way"
-    );
+    })];
+    assert_eq!(buffered.choice.to_vec(), expected);
+    assert_eq!(streamed.choice.to_vec(), expected);
 }
 
 /// The one request an `Encoded` carries: every Gemini wire sends one per
@@ -2029,4 +2032,164 @@ async fn an_inline_data_part_survives_as_a_raw_content_block() {
             .and_then(serde_json::Value::as_str),
         Some("iVBORw0KGgoAAAANSUhEUg==")
     );
+}
+
+/// Parts within one document are distinct: two answer parts are two texts,
+/// and a signed empty part keeps its own text rather than merging.
+#[tokio::test]
+async fn answer_parts_in_one_document_stay_distinct() {
+    let body = r#"{"candidates":[{"content":{"parts":[{"text":"first"},{"text":"second"},{"text":"","thoughtSignature":"sig-9"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"r","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":1,"totalTokenCount":2}}"#;
+    let response = unary("gemini-3-flash-preview", body).await;
+    let texts: Vec<(String, Option<String>)> = response
+        .choice
+        .iter()
+        .map(|part| match part {
+            message::AssistantContent::Text(text) => (
+                text.text.clone(),
+                super::super::text_thought_signature(text).map(str::to_owned),
+            ),
+            other => panic!("answer text only: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            ("first".to_owned(), None),
+            ("second".to_owned(), None),
+            (String::new(), Some("sig-9".to_owned())),
+        ]
+    );
+}
+
+/// A Gemini answer-text signature is Gemini API state: another provider's
+/// wire encodes the text and never the signature.
+#[test]
+fn a_text_signature_reaches_no_other_wire() {
+    use crate::wire::{Body, Mode, Wire};
+
+    fn body<W>(wire: &W, request: CompletionRequest) -> String
+    where
+        W: Wire,
+        W::Op: crate::wire::Operation<Request = CompletionRequest>,
+        crate::wire::Error<W>: std::fmt::Debug,
+    {
+        let encoded = wire
+            .encode(request, Mode::Unary)
+            .expect("the request encodes");
+        let [request] = encoded.requests.as_slice() else {
+            panic!("one request per turn");
+        };
+        let Body::Bytes(bytes) = request.body() else {
+            panic!("a completion body is bytes");
+        };
+        String::from_utf8(bytes.to_vec()).expect("a JSON body")
+    }
+
+    let signed = message::Text {
+        text: "the answer".to_owned(),
+        additional_params: super::super::text_signature_extras(
+            super::super::GEMINI_TEXT_EXTRAS_KEY,
+            "c2lnbmVkLWFuc3dlcg==".to_owned(),
+        ),
+    };
+    let request = CompletionRequest {
+        model: None,
+        chat_history: vec![
+            message::Message::user("q"),
+            message::Message::Assistant {
+                id: None,
+                content: vec![message::AssistantContent::Text(signed)],
+            },
+            message::Message::user("again"),
+        ],
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: Some(16),
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let openai = crate::providers::openai::wire::OpenAI::new("sk-test");
+    for (wire, encoded) in [
+        (
+            "anthropic",
+            body(
+                &crate::providers::anthropic::Anthropic::new("sk-test")
+                    .messages("claude-haiku-4-5"),
+                request.clone(),
+            ),
+        ),
+        (
+            "openai chat",
+            body(&openai.chat("gpt-4.1-nano"), request.clone()),
+        ),
+        (
+            "openai responses",
+            body(&openai.responses("gpt-5-mini"), request.clone()),
+        ),
+    ] {
+        assert!(encoded.contains("the answer"), "{wire}: {encoded}");
+        assert!(
+            !encoded.contains("c2lnbmVkLWFuc3dlcg") && !encoded.contains("thoughtSignature"),
+            "{wire} must not carry Gemini's signature: {encoded}"
+        );
+    }
+}
+
+/// A signed answer text survives serde, which is how a history persists, and
+/// still replays its signature on its own part.
+#[test]
+fn a_signed_answer_text_round_trips_through_serde() {
+    let message = message::Message::Assistant {
+        id: None,
+        content: vec![message::AssistantContent::Text(message::Text {
+            text: "the answer".to_owned(),
+            additional_params: super::super::text_signature_extras(
+                super::super::GEMINI_TEXT_EXTRAS_KEY,
+                "c2lnbmVk".to_owned(),
+            ),
+        })],
+    };
+    let json = serde_json::to_string(&message).expect("the message serializes");
+    let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
+    assert_eq!(loaded, message);
+    let content: Content = loaded.try_into().expect("the turn replays");
+    let [part] = content.parts.as_slice() else {
+        panic!("one answer part: {:?}", content.parts);
+    };
+    assert_eq!(part.thought_signature.as_deref(), Some("c2lnbmVk"));
+    assert_ne!(part.thought, Some(true));
+}
+
+/// A history saved before answer-text signatures had a slot holds the
+/// signature on a signature-only reasoning block. It still loads and replays
+/// that signature on a thought part, as it did.
+#[test]
+fn a_history_with_a_signature_only_reasoning_block_still_replays() {
+    let message = message::Message::Assistant {
+        id: None,
+        content: vec![
+            message::AssistantContent::text("289"),
+            message::AssistantContent::Reasoning(message::Reasoning::new_with_signature(
+                "",
+                Some("c2lnbmVk".to_owned()),
+            )),
+        ],
+    };
+    let json = serde_json::to_string(&message).expect("the message serializes");
+    let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
+    let content: Content = loaded.try_into().expect("the turn replays");
+    let signed: Vec<(bool, &str)> = content
+        .parts
+        .iter()
+        .filter_map(|part| {
+            part.thought_signature
+                .as_deref()
+                .map(|signature| (part.thought == Some(true), signature))
+        })
+        .collect();
+    assert_eq!(signed, [(true, "c2lnbmVk")]);
 }

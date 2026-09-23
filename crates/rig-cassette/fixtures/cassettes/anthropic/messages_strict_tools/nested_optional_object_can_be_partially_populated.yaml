@@ -15,4 +15,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"customer":{"address":{"city":"oslo"},"name":"mira"}},"name":"record_customer","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":772,"output_tokens":72,"service_tier":"standard"}}'
+  - name: request-id
+    value: req_011CfLciimd9yMNu7hUuVHFi
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01EZnEUMMTNErFHJpiAVRvJ8","input":{"customer":{"address":{"city":"oslo"},"name":"mira"}},"name":"record_customer","type":"tool_use"}],"id":"msg_011CfLcijDfVmHoqLGFULaDu","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":772,"output_tokens":53,"service_tier":"standard"}}'

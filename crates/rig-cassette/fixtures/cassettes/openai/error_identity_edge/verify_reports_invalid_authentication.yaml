@@ -5,6 +5,8 @@ when:
   header:
   - name: accept
     value: '*/*'
+  - name: content-type
+    value: application/json
   body: null
 then:
   status: 401
@@ -12,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: 5fd0d832-f2e4-4527-b07c-e58d7cf0ee0d
   body: '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-inval**************-key. You can find your API key at https://platform.openai.com/account/api-keys.","param":null,"type":"invalid_request_error"}}'

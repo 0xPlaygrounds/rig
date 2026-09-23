@@ -203,11 +203,11 @@
           "rig_ecs::agent::Settled": {},
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
-            "input_tokens": 433,
-            "output_tokens": 114,
-            "total_tokens": 547,
+            "input_tokens": 448,
+            "output_tokens": 88,
+            "total_tokens": 536,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 35
+            "reasoning_tokens": 15
           },
           "rig_ecs::agent::UsesModel": 0,
           "rig_ecs::bus::effect::Scope": "parity/run#0"
@@ -236,7 +236,7 @@
                   {
                     "type": "text",
                     "content": {
-                      "text": "Let me extract the structured data from the provided text:\n\n- Name: Bob Johnson\n- Age: 55\n- Profession: retired teacher\n\nLet me submit this data."
+                      "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
                     }
                   }
                 ],
@@ -246,10 +246,10 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call_REDACTED_1"
+                  "id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
                 },
                 "provider": {
-                  "call_id": "call_REDACTED_1"
+                  "call_id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
                 },
                 "function": {
                   "name": "submit",
@@ -289,7 +289,7 @@
                     {
                       "type": "text",
                       "content": {
-                        "text": "Let me extract the structured data from the provided text:\n\n- Name: Bob Johnson\n- Age: 55\n- Profession: retired teacher\n\nLet me submit this data."
+                        "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
                       }
                     }
                   ],
@@ -299,10 +299,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
                   },
                   "function": {
                     "name": "submit",
@@ -317,17 +317,17 @@
                 }
               ],
               "usage": {
-                "input_tokens": 433,
-                "output_tokens": 114,
-                "total_tokens": 547,
+                "input_tokens": 448,
+                "output_tokens": 88,
+                "total_tokens": 536,
                 "cached_input_tokens": 0,
-                "reasoning_tokens": 35
+                "reasoning_tokens": 15
               },
               "message_id": null,
-              "response_id": "chatcmpl-REDACTED_1",
+              "response_id": "8100a836-9559-4369-9daa-854fa1e366ec",
               "finish_reason": "tool_calls",
               "provider": "deepseek",
-              "model": "deepseek-v4-flash",
+              "model": "deepseek-flash",
               "raw": {
                 "choices": [
                   {
@@ -336,7 +336,7 @@
                     "logprobs": null,
                     "message": {
                       "content": "",
-                      "reasoning_content": "Let me extract the structured data from the provided text:\n\n- Name: Bob Johnson\n- Age: 55\n- Profession: retired teacher\n\nLet me submit this data.",
+                      "reasoning_content": "Extract: name Bob Johnson, age 55, profession retired teacher.",
                       "role": "assistant",
                       "tool_calls": [
                         {
@@ -344,7 +344,7 @@
                             "arguments": "{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}",
                             "name": "submit"
                           },
-                          "id": "call_REDACTED_1",
+                          "id": "call_00_XBVPxYePeGjQsBWmwIFL4951",
                           "index": 0,
                           "type": "function"
                         }
@@ -353,22 +353,22 @@
                   }
                 ],
                 "created": 0,
-                "id": "chatcmpl-REDACTED_1",
-                "model": "deepseek-v4-flash",
+                "id": "8100a836-9559-4369-9daa-854fa1e366ec",
+                "model": "deepseek-flash",
                 "object": "chat.completion",
-                "system_fingerprint": "fp_REDACTED_1",
+                "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
                 "usage": {
-                  "completion_tokens": 114,
+                  "completion_tokens": 88,
                   "completion_tokens_details": {
-                    "reasoning_tokens": 35
+                    "reasoning_tokens": 15
                   },
                   "prompt_cache_hit_tokens": 0,
-                  "prompt_cache_miss_tokens": 433,
-                  "prompt_tokens": 433,
+                  "prompt_cache_miss_tokens": 448,
+                  "prompt_tokens": 448,
                   "prompt_tokens_details": {
                     "cached_tokens": 0
                   },
-                  "total_tokens": 547
+                  "total_tokens": 536
                 }
               }
             }
@@ -392,7 +392,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Let me extract the structured data from the provided text:\n\n- Name: Bob Johnson\n- Age: 55\n- Profession: retired teacher\n\nLet me submit this data."
+                    "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
                   }
                 }
               ],

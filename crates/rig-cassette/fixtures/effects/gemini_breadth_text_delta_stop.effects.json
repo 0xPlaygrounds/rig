@@ -86,7 +86,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "Rust began as a personal project by Graydon Hoare at Mozilla Research in 2006. Hoare's motivation stemmed from the"
+            "text": "Rust originated as a personal project by Graydon Hoare at Mozilla Research in 2006. Hoare's motivation stemmed from frustrations"
           }
         }
       ]

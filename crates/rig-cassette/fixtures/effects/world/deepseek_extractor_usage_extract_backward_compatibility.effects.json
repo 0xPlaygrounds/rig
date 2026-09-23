@@ -113,7 +113,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Let me extract the structured data from the text:\n\n- Name: John Doe\n- Age: 30\n- Profession: software engineer\n\nI'll submit this using the submit function."
+                    "text": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit."
                   }
                 }
               ],
@@ -123,10 +123,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_SgewdJKcqwzsfe6l5NSP9539"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_SgewdJKcqwzsfe6l5NSP9539"
               },
               "function": {
                 "name": "submit",
@@ -141,17 +141,17 @@
             }
           ],
           "usage": {
-            "input_tokens": 433,
-            "output_tokens": 115,
-            "total_tokens": 548,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 37
+            "input_tokens": 448,
+            "output_tokens": 112,
+            "total_tokens": 560,
+            "cached_input_tokens": 256,
+            "reasoning_tokens": 40
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "94a6a107-2a96-46af-866a-cd59898befa3",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -160,7 +160,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "Let me extract the structured data from the text:\n\n- Name: John Doe\n- Age: 30\n- Profession: software engineer\n\nI'll submit this using the submit function.",
+                  "reasoning_content": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -168,7 +168,7 @@
                         "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_SgewdJKcqwzsfe6l5NSP9539",
                       "index": 0,
                       "type": "function"
                     }
@@ -177,22 +177,22 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
-            "model": "deepseek-v4-flash",
+            "id": "94a6a107-2a96-46af-866a-cd59898befa3",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 115,
+              "completion_tokens": 112,
               "completion_tokens_details": {
-                "reasoning_tokens": 37
+                "reasoning_tokens": 40
               },
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 49,
-              "prompt_tokens": 433,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 192,
+              "prompt_tokens": 448,
               "prompt_tokens_details": {
-                "cached_tokens": 384
+                "cached_tokens": 256
               },
-              "total_tokens": 548
+              "total_tokens": 560
             }
           }
         }

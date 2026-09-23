@@ -353,7 +353,7 @@ where
 {
     let mut fold = <W::Op as Operation>::fold(&request);
     let mut request = request;
-    <W::Op as Operation>::scope_to_wire(&mut request, wire.name());
+    scope_to_wire(wire, &mut request);
     let Encoded {
         requests,
         framing,
@@ -550,7 +550,7 @@ where
     let span =
         <W::Op as Operation>::span(wire.name(), wire.model(), wire.telemetry(true), &request);
     let mut request = request;
-    <W::Op as Operation>::scope_to_wire(&mut request, wire.name());
+    scope_to_wire(wire, &mut request);
     let Encoded {
         requests,
         framing,
@@ -702,6 +702,15 @@ fn stamped<W: Wire>(
             Err(error)
         }
     }
+}
+
+/// Drop request content no issuer this wire accepts for the request's model
+/// can interpret.
+fn scope_to_wire<W: Wire>(wire: &W, request: &mut Request<W>) {
+    let model = <W::Op as Operation>::request_model(request).or(wire.model());
+    let issuers = wire.replay_issuers(model);
+    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+    <W::Op as Operation>::scope_to_wire(request, &issuers);
 }
 
 /// Record the transport request id on the call's span, success or failure.

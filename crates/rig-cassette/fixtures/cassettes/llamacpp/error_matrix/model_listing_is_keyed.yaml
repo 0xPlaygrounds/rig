@@ -1,0 +1,16 @@
+when:
+  path: /v1/models
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":401,"message":"Invalid API Key","type":"authentication_error"}}'

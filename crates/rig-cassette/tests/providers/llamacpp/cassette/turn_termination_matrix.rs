@@ -7,7 +7,7 @@
 //! whole vocabulary is reachable without asking a model to misbehave.
 //!
 //! **Server**: the competent tier — `unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10499-6d05498. The
+//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10964-b29c606e2. The
 //! tool cells need a model that reliably calls; the rest would run on the
 //! smoke tier but stay here so one server records the whole matrix.
 //!

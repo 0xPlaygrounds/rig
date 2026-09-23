@@ -30,35 +30,35 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 12,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 17,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -361,16 +361,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll run the production-readiness scenario step by step.\n\n**Step 1:** ping_empty with empty JSON object."
+              "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
             },
             {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
               },
               "function": {
                 "name": "ping_empty",
@@ -381,16 +381,16 @@
             }
           ],
           "usage": {
-            "input_tokens": 771,
-            "output_tokens": 51,
-            "total_tokens": 822,
+            "input_tokens": 762,
+            "output_tokens": 43,
+            "total_tokens": 805,
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "bcdaf1ea-a9aa-43be-9644-ad1b90f306a5",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -398,7 +398,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "I'll run the production-readiness scenario step by step.\n\n**Step 1:** ping_empty with empty JSON object.",
+                  "content": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -406,7 +406,7 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836",
                       "index": 0,
                       "type": "function"
                     }
@@ -415,19 +415,19 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
-            "model": "deepseek-v4-flash",
+            "id": "bcdaf1ea-a9aa-43be-9644-ad1b90f306a5",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 51,
+              "completion_tokens": 43,
               "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 771,
-              "prompt_tokens": 771,
+              "prompt_cache_miss_tokens": 762,
+              "prompt_tokens": 762,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 822
+              "total_tokens": 805
             }
           }
         }
@@ -487,16 +487,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the production-readiness scenario step by step.\n\n**Step 1:** ping_empty with empty JSON object."
+                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -514,10 +514,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -652,16 +652,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "**Step 2:** inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user."
+              "text": "**Step 2: inspect_manifest**"
             },
             {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -689,16 +689,16 @@
             }
           ],
           "usage": {
-            "input_tokens": 838,
-            "output_tokens": 188,
-            "total_tokens": 1026,
-            "cached_input_tokens": 768
+            "input_tokens": 822,
+            "output_tokens": 148,
+            "total_tokens": 970,
+            "cached_input_tokens": 640
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "5c3177f0-6f7d-43fd-9409-9366c98505f6",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -706,7 +706,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "**Step 2:** inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user.",
+                  "content": "**Step 2: inspect_manifest**",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -714,7 +714,7 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_REDACTED_2",
+                      "id": "call_00_YsNjCpJakpFiG7aOuLvc1775",
                       "index": 0,
                       "type": "function"
                     }
@@ -723,19 +723,19 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
-            "model": "deepseek-v4-flash",
+            "id": "5c3177f0-6f7d-43fd-9409-9366c98505f6",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 188,
-              "prompt_cache_hit_tokens": 768,
-              "prompt_cache_miss_tokens": 70,
-              "prompt_tokens": 838,
+              "completion_tokens": 148,
+              "prompt_cache_hit_tokens": 640,
+              "prompt_cache_miss_tokens": 182,
+              "prompt_tokens": 822,
               "prompt_tokens_details": {
-                "cached_tokens": 768
+                "cached_tokens": 640
               },
-              "total_tokens": 1026
+              "total_tokens": 970
             }
           }
         }
@@ -795,16 +795,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the production-readiness scenario step by step.\n\n**Step 1:** ping_empty with empty JSON object."
+                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -822,10 +822,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -843,16 +843,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "**Step 2:** inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user."
+                  "text": "**Step 2: inspect_manifest**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -887,10 +887,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1025,16 +1025,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "**Step 3:** join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |."
+              "text": "**Step 3: join_labels**"
             },
             {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
               },
               "provider": {
-                "call_id": "call_REDACTED_3"
+                "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
               },
               "function": {
                 "name": "join_labels",
@@ -1053,16 +1053,16 @@
             }
           ],
           "usage": {
-            "input_tokens": 1047,
-            "output_tokens": 106,
-            "total_tokens": 1153,
+            "input_tokens": 1000,
+            "output_tokens": 80,
+            "total_tokens": 1080,
             "cached_input_tokens": 768
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "4290c972-c894-4512-ba88-0c03aa8061cd",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1070,7 +1070,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "**Step 3:** join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.",
+                  "content": "**Step 3: join_labels**",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1078,7 +1078,7 @@
                         "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_REDACTED_3",
+                      "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878",
                       "index": 0,
                       "type": "function"
                     }
@@ -1087,19 +1087,19 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
-            "model": "deepseek-v4-flash",
+            "id": "4290c972-c894-4512-ba88-0c03aa8061cd",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 106,
+              "completion_tokens": 80,
               "prompt_cache_hit_tokens": 768,
-              "prompt_cache_miss_tokens": 279,
-              "prompt_tokens": 1047,
+              "prompt_cache_miss_tokens": 232,
+              "prompt_tokens": 1000,
               "prompt_tokens_details": {
                 "cached_tokens": 768
               },
-              "total_tokens": 1153
+              "total_tokens": 1080
             }
           }
         }
@@ -1159,16 +1159,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the production-readiness scenario step by step.\n\n**Step 1:** ping_empty with empty JSON object."
+                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1186,10 +1186,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1207,16 +1207,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "**Step 2:** inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user."
+                  "text": "**Step 2: inspect_manifest**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1251,10 +1251,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1272,16 +1272,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "**Step 3:** join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |."
+                  "text": "**Step 3: join_labels**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1307,10 +1307,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1445,16 +1445,16 @@
           "choice": [
             {
               "type": "text",
-              "text": "**Step 4:** escape_echo with the exact escaped text from the user."
+              "text": "**Step 4: escape_echo**"
             },
             {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
               },
               "provider": {
-                "call_id": "call_REDACTED_4"
+                "call_id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
               },
               "function": {
                 "name": "escape_echo",
@@ -1467,16 +1467,16 @@
             }
           ],
           "usage": {
-            "input_tokens": 1179,
-            "output_tokens": 78,
-            "total_tokens": 1257,
-            "cached_input_tokens": 1024
+            "input_tokens": 1109,
+            "output_tokens": 64,
+            "total_tokens": 1173,
+            "cached_input_tokens": 896
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "3766153e-5c05-4716-84a9-97182779ae3d",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1484,7 +1484,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "**Step 4:** escape_echo with the exact escaped text from the user.",
+                  "content": "**Step 4: escape_echo**",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1492,7 +1492,7 @@
                         "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_REDACTED_4",
+                      "id": "call_00_Ft8AgicjfZRAxAC68BDu7542",
                       "index": 0,
                       "type": "function"
                     }
@@ -1501,19 +1501,19 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_4",
-            "model": "deepseek-v4-flash",
+            "id": "3766153e-5c05-4716-84a9-97182779ae3d",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 78,
-              "prompt_cache_hit_tokens": 1024,
-              "prompt_cache_miss_tokens": 155,
-              "prompt_tokens": 1179,
+              "completion_tokens": 64,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 213,
+              "prompt_tokens": 1109,
               "prompt_tokens_details": {
-                "cached_tokens": 1024
+                "cached_tokens": 896
               },
-              "total_tokens": 1257
+              "total_tokens": 1173
             }
           }
         }
@@ -1573,16 +1573,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the production-readiness scenario step by step.\n\n**Step 1:** ping_empty with empty JSON object."
+                  "text": "I'll run the scenario step by step, one tool at a time.\n\n**Step 1: ping_empty**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1600,10 +1600,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_iF1nLiHq9rZZ16mKWVdU3836"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1621,16 +1621,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "**Step 2:** inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user."
+                  "text": "**Step 2: inspect_manifest**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1665,10 +1665,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_00_YsNjCpJakpFiG7aOuLvc1775"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1686,16 +1686,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "**Step 3:** join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |."
+                  "text": "**Step 3: join_labels**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1721,10 +1721,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_00_6lLBcwmtIjxlTP3wPxCs3878"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1742,16 +1742,16 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "**Step 4:** escape_echo with the exact escaped text from the user."
+                  "text": "**Step 4: escape_echo**"
                 },
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4"
+                    "call_id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -1771,10 +1771,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4"
+                    "call_id": "call_00_Ft8AgicjfZRAxAC68BDu7542"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -1909,20 +1909,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "All tool calls completed: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+              "text": "All four tools succeeded: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           ],
           "usage": {
-            "input_tokens": 1293,
+            "input_tokens": 1209,
             "output_tokens": 27,
-            "total_tokens": 1320,
-            "cached_input_tokens": 1152
+            "total_tokens": 1236,
+            "cached_input_tokens": 1024
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_5",
+          "response_id": "12fecbaf-3093-4660-b4d1-09bed8017755",
           "finish_reason": "stop",
           "provider": "deepseek",
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -1930,25 +1930,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "All tool calls completed: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+                  "content": "All four tools succeeded: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_5",
-            "model": "deepseek-v4-flash",
+            "id": "12fecbaf-3093-4660-b4d1-09bed8017755",
+            "model": "deepseek-flash",
             "object": "chat.completion",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 27,
-              "prompt_cache_hit_tokens": 1152,
-              "prompt_cache_miss_tokens": 141,
-              "prompt_tokens": 1293,
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 185,
+              "prompt_tokens": 1209,
               "prompt_tokens_details": {
-                "cached_tokens": 1152
+                "cached_tokens": 1024
               },
-              "total_tokens": 1320
+              "total_tokens": 1236
             }
           }
         }

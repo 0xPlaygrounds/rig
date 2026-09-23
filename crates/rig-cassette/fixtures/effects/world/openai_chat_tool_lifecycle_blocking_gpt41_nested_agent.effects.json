@@ -2,14 +2,14 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -162,10 +162,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_4rfrRfvcWeW1gIT5uIKyiQXp"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_4rfrRfvcWeW1gIT5uIKyiQXp"
               },
               "function": {
                 "name": "record_payload",
@@ -193,8 +193,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDAvKef2kiqfS8HBAYRYNOykmDY7",
+          "provider_request_id": "req_0120055ef73544739df03b4b78bc861a",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
@@ -215,7 +215,7 @@
                         "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
                         "name": "record_payload"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_4rfrRfvcWeW1gIT5uIKyiQXp",
                       "type": "function"
                     }
                   ]
@@ -223,11 +223,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDAvKef2kiqfS8HBAYRYNOykmDY7",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_dc7caa3f28",
             "usage": {
               "completion_tokens": 30,
               "completion_tokens_details": {

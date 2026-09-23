@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"result = 13 * 13\nprint(f''{result=}'')\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"result=169\n"}},{"text":"The number is 169."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":25,"promptTokenCount":20,"promptTokensDetails":[{"modality":"TEXT","tokenCount":20}],"serviceTier":"standard","thoughtsTokenCount":35,"toolUsePromptTokenCount":79,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":79}],"totalTokenCount":159}}'
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"result = 13 * 13\nprint(f''{result=}'')\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"result=169\n"}},{"text":"The number is 169."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"kHizasKhO4DcqtsPz8-qwAY","usageMetadata":{"candidatesTokenCount":25,"promptTokenCount":20,"promptTokensDetails":[{"modality":"TEXT","tokenCount":20}],"serviceTier":"standard","thoughtsTokenCount":35,"toolUsePromptTokenCount":79,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":79}],"totalTokenCount":159}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(169 * 2)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"338\n"}},{"text":"The result of doubling 169 is 338."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":23,"promptTokenCount":39,"promptTokensDetails":[{"modality":"TEXT","tokenCount":39}],"serviceTier":"standard","thoughtsTokenCount":41,"toolUsePromptTokenCount":94,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":94}],"totalTokenCount":197}}'
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(169 * 2)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"338\n"}},{"text":"The result of doubling 169 is 338."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"knizauimBbC0qtsP5bHOkQc","usageMetadata":{"candidatesTokenCount":23,"promptTokenCount":39,"promptTokensDetails":[{"modality":"TEXT","tokenCount":39}],"serviceTier":"standard","thoughtsTokenCount":41,"toolUsePromptTokenCount":94,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":94}],"totalTokenCount":197}}'

@@ -2,64 +2,56 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
-        "batch": 8,
-        "id": 1,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 8,
-        "id": 2,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 14,
-        "id": 3,
+        "batch": 9,
+        "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 15,
-        "id": 3,
+        "batch": 10,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 16,
-        "id": 3,
+        "batch": 10,
+        "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 2
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 11,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 11,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
         }
       },
       {
@@ -83,7 +75,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -91,7 +83,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -99,7 +91,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -107,7 +99,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -119,7 +111,79 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 24,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 30,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 33,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -243,10 +307,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "d9OZ4OREy"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "d9OZ4OREy"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -259,10 +323,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "FXIdTB3kk"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "FXIdTB3kk"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -278,7 +342,7 @@
             "total_tokens": 1170
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-R1raUF5NXRtAaOSoAwNNMIPL",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -289,7 +353,7 @@
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-R1raUF5NXRtAaOSoAwNNMIPL",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -385,10 +449,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "d9OZ4OREy"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "d9OZ4OREy"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -401,10 +465,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "FXIdTB3kk"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "FXIdTB3kk"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -422,10 +486,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "d9OZ4OREy"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "d9OZ4OREy"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -439,10 +503,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "FXIdTB3kk"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "FXIdTB3kk"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -490,27 +554,27 @@
           "choice": [
             {
               "type": "text",
-              "text": "The current signals are crimson-harbor and silver-orchard."
+              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1214,
-            "output_tokens": 15,
-            "total_tokens": 1229
+            "input_tokens": 1212,
+            "output_tokens": 20,
+            "total_tokens": 1232
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RsJ2S4jJrZ9dk3fkRrA0rpeo",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1214,
-              "completion_tokens": 15,
-              "total_tokens": 1229
+              "prompt_tokens": 1212,
+              "completion_tokens": 20,
+              "total_tokens": 1232
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RsJ2S4jJrZ9dk3fkRrA0rpeo",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -518,7 +582,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00011756249999999999
+                "usd": 0.000118625
               }
             }
           }

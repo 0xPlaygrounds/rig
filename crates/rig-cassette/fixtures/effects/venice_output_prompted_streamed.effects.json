@@ -75,7 +75,7 @@
             "total_tokens": 1100
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -86,7 +86,7 @@
               "total_tokens": 1100
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -337,7 +337,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "A"
+            "text": "A gathering of"
           }
         },
         {
@@ -345,31 +345,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " gathering"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " programming"
+            "text": " Rust programming"
           }
         },
         {
@@ -401,15 +377,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " Seattle"
+            "text": " in Seattle"
           }
         },
         {
@@ -509,7 +477,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
@@ -519,7 +487,7 @@
               "total_tokens": 1100
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,

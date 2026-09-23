@@ -14,13 +14,11 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   body: |+
-    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"reasoning_encrypted":false,"role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk","prompt_token_ids":null}
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-b34c4d18153f4b32ffbd14d08e808180","model":"qwen3-5-9b","object":"chat.completion.chunk","prompt_text":null,"prompt_token_ids":null}
 
-    data: {"choices":[{"delta":{"content":"pong","reasoning_content":null,"reasoning_encrypted":false},"finish_reason":null,"index":0,"logprobs":null,"token_ids":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk"}
+    data: {"choices":[{"delta":{"content":"pong","reasoning_content":null},"finish_reason":"stop","index":0,"logprobs":null,"stop_reason":null,"token_ids":null}],"created":0,"id":"chatcmpl-b34c4d18153f4b32ffbd14d08e808180","model":"qwen3-5-9b","object":"chat.completion.chunk"}
 
-    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"reasoning_encrypted":false},"finish_reason":"stop","index":0,"logprobs":null,"stop_reason":null,"token_ids":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk"}
-
-    data: {"choices":[],"cost":{"diem":0,"usd":0.00015780000000000001},"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk","usage":{"completion_tokens":2,"prompt_tokens":1575,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":1577}}
+    data: {"choices":[],"cost":{"diem":0,"usd":0.00015780000000000001},"created":0,"id":"chatcmpl-b34c4d18153f4b32ffbd14d08e808180","model":"qwen3-5-9b","object":"chat.completion.chunk","usage":{"completion_tokens":2,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":1575,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":1577}}
 
     data: [DONE]
 

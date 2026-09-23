@@ -10,7 +10,7 @@ then:
   - name: content-type
     value: text/plain
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_02dbb372008a431ba5a12d4ff117bef6
   body: '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-inval************************-key. You can find your API key at https://platform.openai.com/account/api-keys.","param":null,"type":"invalid_request_error"},"status":401}'
 ---
 when:
@@ -29,5 +29,5 @@ then:
   - name: content-type
     value: text/plain
   - name: x-request-id
-    value: req_REDACTED_2
+    value: req_7f5c0345fc6c4338a5cca599b7088698
   body: '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-inval************************-key. You can find your API key at https://platform.openai.com/account/api-keys.","param":null,"type":"invalid_request_error"},"status":401}'

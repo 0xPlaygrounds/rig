@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Calculate the Square**\\n\\nI've determined the square of 17. The solution requires multiplication of 17 by itself, which yields 289. I understand the user's need for a numerical-only answer. The calculation is complete, and I am ready to provide the result.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"6mKzaq64NazpqtsP5OHg0A0\",\"usageMetadata\":{\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":49,\"totalTokenCount\":63}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"289\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"6mKzaq64NazpqtsP5OHg0A0\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":49,\"totalTokenCount\":65}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"},{"parts":[{"text":"**Calculate the Square**\n\nI''ve determined the square of 17. The solution requires multiplication of 17 by itself, which yields 289. I understand the user''s need for a numerical-only answer. The calculation is complete, and I am ready to provide the result.\n\n\n","thought":true},{"text":"289","thought":false}],"role":"model"},{"parts":[{"text":"Add one to that number. Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Calculating the Result**\\n\\nI've taken the previous value, 289, and increased it by one. The new total is 290, fulfilling the user's request.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"7GKzao-zBq3dqtsP-7rNqQs\",\"usageMetadata\":{\"promptTokenCount\":95,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":95}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":33,\"totalTokenCount\":128}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"290\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"7GKzao-zBq3dqtsP-7rNqQs\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":95,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":95}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":33,\"totalTokenCount\":130}}\r\n\r\n"

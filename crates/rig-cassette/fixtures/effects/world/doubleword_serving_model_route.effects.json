@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -154,10 +154,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_d39ce89883f943708442d533"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_d39ce89883f943708442d533"
               },
               "function": {
                 "name": "add",
@@ -179,7 +179,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_e2c1f142-0fbb-430f-87fc-85cf5f4d2bc2",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -197,7 +197,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "call_d39ce89883f943708442d533",
                       "type": "function"
                     }
                   ]
@@ -205,7 +205,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_e2c1f142-0fbb-430f-87fc-85cf5f4d2bc2",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -291,10 +291,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_d39ce89883f943708442d533"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_d39ce89883f943708442d533"
                   },
                   "function": {
                     "name": "add",
@@ -315,10 +315,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_d39ce89883f943708442d533"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_d39ce89883f943708442d533"
                   },
                   "name": "add",
                   "content": [
@@ -375,14 +375,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 402,
+            "input_tokens": 406,
             "output_tokens": 3,
-            "total_tokens": 405,
+            "total_tokens": 409,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_dbff2126-e852-442f-a0b2-36fc07409c34",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -399,7 +400,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_dbff2126-e852-442f-a0b2-36fc07409c34",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
             "usage": {
@@ -412,13 +413,18 @@
               "cache_read_input_tokens": 0,
               "completion_tokens": 3,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 402,
+              "prompt_tokens": 406,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
               },
-              "total_tokens": 405
+              "total_tokens": 409
             }
           }
         }

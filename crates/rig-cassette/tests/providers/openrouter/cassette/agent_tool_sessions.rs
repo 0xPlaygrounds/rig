@@ -27,6 +27,7 @@ use crate::support::{
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette_result};
 
 pub(super) const SESSION_MODEL: &str = TOOL_MODEL;
+const SESSION_MAX_TOKENS: Option<u64> = None;
 pub(super) const STRUCTURED_MODEL: &str = "google/gemini-2.5-flash";
 
 pub(super) const COMPLEX_SESSION_PREAMBLE: &str = "\

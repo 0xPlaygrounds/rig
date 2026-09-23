@@ -77,6 +77,24 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
          patch drops every tool on the second turn",
     ),
     (
+        "openrouter/upstream_switch_matrix/switch_streamed.yaml",
+        "the upstream-switch matrix: Claude's signed reasoning is withheld while \
+         the conversation runs on a Gemini model and returns when it switches \
+         back, so the prefix moves by design",
+    ),
+    (
+        "openrouter/upstream_switch_matrix/switch_unary.yaml",
+        "the same matrix, unary",
+    ),
+    (
+        "openrouter/upstream_switch_matrix/responses_switch_streamed.yaml",
+        "the same matrix on the Responses route, streamed",
+    ),
+    (
+        "openrouter/upstream_switch_matrix/responses_switch_unary.yaml",
+        "the same matrix on the Responses route, unary",
+    ),
+    (
         "openai/corpus_matrix_chat/shaping_preamble_second_turn.yaml",
         "the ECS contract matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",

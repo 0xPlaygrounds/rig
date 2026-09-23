@@ -15,7 +15,7 @@ then:
     value: text/event-stream
   body: |+
     event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"1bbe60bc-652f-42a7-b446-223df4f51019","type":"message-start"}
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"c3bdedbf-d3f7-4086-a1ca-26a4e464a742","type":"message-start"}
 
     event: tool-plan-delta
     data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
@@ -60,7 +60,7 @@ then:
     data: {"delta":{"message":{"tool_plan":" answer"}},"type":"tool-plan-delta"}
 
     event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"call_REDACTED_1","type":"function"}}},"index":0,"type":"tool-call-start"}
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"subtract_svvapmyyf2nd","type":"function"}}},"index":0,"type":"tool-call-start"}
 
     event: tool-call-delta
     data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}

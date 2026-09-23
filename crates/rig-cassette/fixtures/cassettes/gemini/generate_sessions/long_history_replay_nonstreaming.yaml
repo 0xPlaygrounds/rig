@@ -15,4 +15,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"Your favorite color is teal, and the harbor label I looked up earlier was crimson-harbor."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":149,"promptTokensDetails":[{"modality":"TEXT","tokenCount":149}],"serviceTier":"standard","totalTokenCount":169}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"Your favorite color is teal, and the harbor label I looked up earlier was crimson-harbor."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"qnizaoOhMIDcqtsPz8-qwAY","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":149,"promptTokensDetails":[{"modality":"TEXT","tokenCount":149}],"serviceTier":"standard","totalTokenCount":169}}'

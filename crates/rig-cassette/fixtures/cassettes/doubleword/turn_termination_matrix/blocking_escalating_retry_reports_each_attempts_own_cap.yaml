@@ -13,9 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of","refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":16,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":52}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of","refusal":null,"role":"assistant"}}],"created":0,"id":"resp_de3a5f98-a09c-430a-9ead-f43b27ce1252","model":"Qwen/Qwen3.5-9B","object":"chat.completion","system_fingerprint":"vllm-0.23.0-ed3ef83f","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":16,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"prompt_tokens":36,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":52}}'
 ---
 when:
   path: /v1/chat/completions
@@ -32,6 +30,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  - name: x-request-id
-    value: req_REDACTED_2
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They produce sweet sap that is harvested to create the popular syrup enjoyed around the world.","refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":44,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":80}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.","refusal":null,"role":"assistant"}}],"created":0,"id":"resp_d9d633ea-6172-4135-a12b-9dcaacb2f834","model":"Qwen/Qwen3.5-9B","object":"chat.completion","system_fingerprint":"vllm-0.23.0-ed3ef83f","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":49,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"prompt_tokens":36,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":85}}'

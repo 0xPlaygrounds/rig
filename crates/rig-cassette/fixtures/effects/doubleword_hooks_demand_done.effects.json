@@ -82,7 +82,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_3bf785c2-7444-4647-9c3e-ef71364a4423",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -99,7 +99,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_3bf785c2-7444-4647-9c3e-ef71364a4423",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -189,19 +189,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed to provide high performance and reliability by enforcing strict memory safety guarantees at compile time without needing a garbage collector. Memory safety matters because it prevents critical vulnerabilities like buffer overflows and use-after-free errors, which are common causes of software crashes and security exploits. DONE"
+              "text": "Rust is a systems programming language designed to provide high performance and reliability by enforcing strict memory safety guarantees at compile time without needing a garbage collector. Memory safety matters because it prevents critical vulnerabilities like buffer overflows and use-after-free errors, which are common causes of software crashes and security exploits in languages like C and C++. DONE"
             }
           ],
           "usage": {
             "input_tokens": 126,
-            "output_tokens": 60,
-            "total_tokens": 186,
+            "output_tokens": 66,
+            "total_tokens": 192,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_fee76657-f2af-4ecd-ba71-eae3464151ac",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -211,14 +211,14 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "Rust is a systems programming language designed to provide high performance and reliability by enforcing strict memory safety guarantees at compile time without needing a garbage collector. Memory safety matters because it prevents critical vulnerabilities like buffer overflows and use-after-free errors, which are common causes of software crashes and security exploits. DONE",
+                  "content": "Rust is a systems programming language designed to provide high performance and reliability by enforcing strict memory safety guarantees at compile time without needing a garbage collector. Memory safety matters because it prevents critical vulnerabilities like buffer overflows and use-after-free errors, which are common causes of software crashes and security exploits in languages like C and C++. DONE",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_fee76657-f2af-4ecd-ba71-eae3464151ac",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -229,7 +229,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 60,
+              "completion_tokens": 66,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -242,7 +242,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 186
+              "total_tokens": 192
             }
           }
         }

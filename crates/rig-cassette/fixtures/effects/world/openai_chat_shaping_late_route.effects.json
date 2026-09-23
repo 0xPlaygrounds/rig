@@ -150,10 +150,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi"
               },
               "function": {
                 "name": "add",
@@ -168,14 +168,14 @@
           ],
           "usage": {
             "input_tokens": 185,
-            "output_tokens": 90,
-            "total_tokens": 275,
+            "output_tokens": 282,
+            "total_tokens": 467,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 64
+            "reasoning_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCryzH84weIeSLxGYXuFjLLJpwA",
+          "provider_request_id": "req_55e064525a2141a68adc7e98b6767d58",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-nano-2025-08-07",
@@ -195,7 +195,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi",
                       "type": "function"
                     }
                   ]
@@ -203,17 +203,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDCryzH84weIeSLxGYXuFjLLJpwA",
             "model": "gpt-5-nano-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 90,
+              "completion_tokens": 282,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 64,
+                "reasoning_tokens": 256,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 185,
@@ -221,7 +221,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 275
+              "total_tokens": 467
             }
           }
         }
@@ -283,10 +283,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi"
                   },
                   "function": {
                     "name": "add",
@@ -307,10 +307,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_tEUw5C2Nufn1VR0RwWuZ3WKi"
                   },
                   "name": "add",
                   "content": [
@@ -372,8 +372,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "chatcmpl-ERDCuGNMyrkP1mzZTwg6SLID7rGCl",
+          "provider_request_id": "req_21865053031948fa93e88ed481d59cdb",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-nano-2025-08-07",
@@ -391,7 +391,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-ERDCuGNMyrkP1mzZTwg6SLID7rGCl",
             "model": "gpt-5-nano-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",

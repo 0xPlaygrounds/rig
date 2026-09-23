@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"OK","reasoning":"The user says \"Reply with the single word OK.\" So we just respond with OK.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-oss-20b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.035957526,"completion_tokens":29,"completion_tokens_details":{"reasoning_tokens":19},"prompt_time":0.00365479,"prompt_tokens":78,"queue_time":0.171170941,"total_time":0.039612316,"total_tokens":107},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":1727098444}}'
+    value: req_01m36h5pcvensrnvb81cpv1pnb
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"OK","reasoning":"The user wants a single word \"OK\". Just output OK.","role":"assistant"}}],"created":0,"id":"chatcmpl-711588cd-2be4-4e94-a545-6888280c9185","model":"openai/gpt-oss-20b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_976a85d17a","usage":{"completion_time":0.024091798,"completion_tokens":24,"completion_tokens_details":{"reasoning_tokens":14},"prompt_time":0.004233099,"prompt_tokens":78,"queue_time":0.115155967,"total_time":0.028324897,"total_tokens":102},"usage_breakdown":null,"x_groq":{"id":"req_01m36h5pcvensrnvb81cpv1pnb","seed":780107356}}'

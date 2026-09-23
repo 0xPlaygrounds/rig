@@ -242,7 +242,15 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 if content.parts.is_empty() {
                     tracing::trace!(reason = ?self.final_finish_reason, "There is no part in the streaming content");
                 }
+                // Parts within one document are distinct parts; text chunks
+                // across stream events continue one part.
+                let mut previous_text = false;
                 for part in content.parts {
+                    let text = matches!(part.part, PartKind::Text(_)) && part.thought != Some(true);
+                    if text && previous_text {
+                        out.end_active_text();
+                    }
+                    previous_text = text;
                     self.interpret_part(part, out);
                 }
             }
@@ -425,6 +433,7 @@ impl GenerateContentDecoder {
                         reasoning: Some(text),
                         reasoning_signature: thought_signature,
                         text: None,
+                        text_meta: None,
                         tool_events: Vec::new(),
                     },
                     out,
@@ -435,27 +444,28 @@ impl GenerateContentDecoder {
                 thought_signature,
                 ..
             } => {
-                // Signatures can accompany text without a thought flag and are required
-                // for replay. Emit text first so its trailing signature keeps wire order.
+                // A signature on answer text belongs to that text part, and
+                // must return on it: it rides on the text block's extras. A
+                // signature on its own empty part keeps its own part, and a
+                // signed part ends there.
+                let signed = thought_signature.is_some();
+                if signed && text.is_empty() {
+                    out.end_active_text();
+                }
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: None,
                         reasoning_signature: None,
                         text: Some(text),
+                        text_meta: thought_signature.and_then(|signature| {
+                            super::text_signature_extras(super::GEMINI_TEXT_EXTRAS_KEY, signature)
+                        }),
                         tool_events: Vec::new(),
                     },
                     out,
                 );
-                if let Some(signature) = thought_signature {
-                    self.reasoning.emit_chunk(
-                        crate::providers::internal::chunk_lifecycle::ChunkParts {
-                            reasoning: None,
-                            reasoning_signature: Some(signature),
-                            text: None,
-                            tool_events: Vec::new(),
-                        },
-                        out,
-                    );
+                if signed {
+                    out.end_active_text();
                 }
             }
             Part {
@@ -470,6 +480,7 @@ impl GenerateContentDecoder {
                         reasoning: None,
                         reasoning_signature: None,
                         text: None,
+                        text_meta: None,
                         tool_events: shared_parts::function_call(
                             function_call.name,
                             function_call.args,
@@ -522,6 +533,7 @@ impl GenerateContentDecoder {
                         reasoning: None,
                         reasoning_signature: None,
                         text: None,
+                        text_meta: None,
                         tool_events: events,
                     },
                     out,

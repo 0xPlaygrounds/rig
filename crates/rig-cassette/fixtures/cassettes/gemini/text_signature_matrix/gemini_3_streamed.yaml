@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"289\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"4mKzaqOLFIuUmtkP9ezVmAU\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":95,\"totalTokenCount\":112}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EvcCCvQCAWkUfRNGFWZKw9zBxIB3Yc+cuTtjOpOwFgPbuwUqLJggQb1opi8YzMmpgKuZHjlDk427mVLTZJ6XMDTgDqpdnSbtuRk6eKAWaq+C7OgVfcemwjoXtwTrF2jVeryotz+Xtz2Wrg7BxPPA6S3AYAbw3J45a/D2lCLwWlmWR7p2LB6GfeyIqhZNklXhNg6kRtaiBVxGXRuJnypVj4fNlduoHTwaEbjk7Oss0TOeCHRh870NHzbXZwKDc8AHtIPx7T6uoxJY3cFx2DzafIIXYVx6JnZzOBPnDMtYkQqfMcbM4g3CoiTM0GS7T1rt5mFId1xozbPPA+fRrgTZ0VM3jQK2sFy1gfaZScJqUVuyvRRs7eVGoeeAH7ud3sbpXqF2G//p9uEC6FT1sVQ+jMSlMzRMVXrIen6LWz3iqPW3KCGFcNuQFw0Yj9ojouRsoZnlxCmaUEhCRNMn6R+7wVof84+DXJvQIsKnG4JG3ZHY9oNX3DXYXH8R\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"4mKzaqOLFIuUmtkP9ezVmAU\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":95,\"totalTokenCount\":112}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"},{"parts":[{"text":"289","thought":false},{"text":"","thought":false,"thoughtSignature":"EvcCCvQCAWkUfRNGFWZKw9zBxIB3Yc+cuTtjOpOwFgPbuwUqLJggQb1opi8YzMmpgKuZHjlDk427mVLTZJ6XMDTgDqpdnSbtuRk6eKAWaq+C7OgVfcemwjoXtwTrF2jVeryotz+Xtz2Wrg7BxPPA6S3AYAbw3J45a/D2lCLwWlmWR7p2LB6GfeyIqhZNklXhNg6kRtaiBVxGXRuJnypVj4fNlduoHTwaEbjk7Oss0TOeCHRh870NHzbXZwKDc8AHtIPx7T6uoxJY3cFx2DzafIIXYVx6JnZzOBPnDMtYkQqfMcbM4g3CoiTM0GS7T1rt5mFId1xozbPPA+fRrgTZ0VM3jQK2sFy1gfaZScJqUVuyvRRs7eVGoeeAH7ud3sbpXqF2G//p9uEC6FT1sVQ+jMSlMzRMVXrIen6LWz3iqPW3KCGFcNuQFw0Yj9ojouRsoZnlxCmaUEhCRNMn6R+7wVof84+DXJvQIsKnG4JG3ZHY9oNX3DXYXH8R"}],"role":"model"},{"parts":[{"text":"Add one to that number. Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"290\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"42KzatPkJLD9qtsPvKPY4Qg\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":31,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":31}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":67,\"totalTokenCount\":101}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"EtcCCtQCAWkUfRPfZTRyNkrutjjffM8zg8C5QWgAZ0x7Frcezs86LqpgJoHdzD6tuvFP3S4pFkFUP3pZ+xfrFZCKYNiA/15mNsDYF36fcVeaQ40xomBQ9rbgB/7Pp9Ct0WLcmDnH4axu77tj8727+SAVK9CbRyNPmKkKJ+LmZJQrPglThPP8fCGbh+ZBcjsAQuoTAslyF83UaiEDipOIrwBNWSn7dXW2HKMHhfUnr7LTbN6Q6wpVH/YrZc0XTgO3UEB9mOc6yQJJsi2275p3VQkqLqyTuBnVxyGblah+951Od6ERWaNLMpbpJFXreIN/zsnMSbwI/A4AHSZogiEspYKsZ5365Up0JXe51CRDkYc42sdJ+xxPIwEYPEZgV8wNiEN4rxeUoWDb41uqMRDXNdpha9HJ6hmMd/6LotZTEfbk3lPS0jyCnvcad8oj8O7jqhVHqqjaeD4pDA==\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"42KzatPkJLD9qtsPvKPY4Qg\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":31,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":31}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":67,\"totalTokenCount\":101}}\r\n\r\n"

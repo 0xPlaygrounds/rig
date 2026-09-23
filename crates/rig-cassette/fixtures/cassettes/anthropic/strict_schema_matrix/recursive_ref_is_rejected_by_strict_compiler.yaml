@@ -15,4 +15,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"error":{"message":"tools.0.custom: Invalid schema: Circular reference detected in schema definitions: Node -> Node. Self-referencing or mutually-referencing definitions are not supported.","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'
+  - name: request-id
+    value: req_011CfLczLy9ZuMsZt6m7xATD
+  body: '{"error":{"message":"tools.0.custom: Invalid schema: Circular reference detected in schema definitions: Node -> Node. Self-referencing or mutually-referencing definitions are not supported.","type":"invalid_request_error"},"request_id":"req_011CfLczLy9ZuMsZt6m7xATD","type":"error"}'

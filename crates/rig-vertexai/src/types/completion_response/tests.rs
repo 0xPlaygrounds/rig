@@ -477,3 +477,39 @@ fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
         ]
     );
 }
+
+/// A signature on answer text stays on that text and replays on it; before,
+/// the decoder dropped it.
+#[test]
+fn answer_text_signature_is_kept_and_replayed_on_its_part() {
+    let raw = b"\x00\x01answer-sig\xff";
+    let part = vertexai::model::Part::new()
+        .set_text("the answer".to_string())
+        .set_thought_signature(raw.to_vec());
+    let content = vertexai::model::Content::new()
+        .set_role("model")
+        .set_parts([part]);
+    let candidate = vertexai::model::Candidate::new().set_content(content);
+    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
+    let response: CompletionResponse = VertexGenerateContentOutput(response).try_into().unwrap();
+
+    let Some(AssistantContent::Text(text)) = response.choice.first() else {
+        panic!("the answer text: {:?}", response.choice);
+    };
+    let encoded = BASE64.encode(raw);
+    assert_eq!(
+        rig_core::providers::gemini::text_signature_at(text, super::VERTEX_TEXT_EXTRAS_KEY),
+        Some(encoded.as_str())
+    );
+
+    let replayed: vertexai::model::Content =
+        crate::types::message::RigMessage(rig_core::message::Message::Assistant {
+            id: None,
+            content: response.choice.clone(),
+        })
+        .try_into()
+        .expect("the turn replays");
+    assert_eq!(replayed.parts.len(), 1);
+    assert_eq!(replayed.parts[0].thought_signature.to_vec(), raw.to_vec());
+    assert!(!replayed.parts[0].thought);
+}

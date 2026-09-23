@@ -1603,7 +1603,7 @@
             },
             "provider": "openai",
             "model": "text-embedding-3-small",
-            "provider_request_id": "req_REDACTED_1",
+            "provider_request_id": "req_6b87d94db35045fd878ca4a910c39841",
             "raw": {
               "data": [
                 {
@@ -3209,9 +3209,9 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+          "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
+          "provider_request_id": "req_475dd217ebaa46b4a2b097b103cd11f6",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -3233,8 +3233,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+            "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -3242,14 +3242,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
           "delta": {
             "delta": "text",
             "text": "Ready"
@@ -3257,7 +3257,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
           "delta": {
             "delta": "text",
             "text": "."
@@ -3265,7 +3265,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
           "kind": {
             "kind": "message"
           }
@@ -3280,9 +3280,9 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+          "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
+          "provider_request_id": "req_475dd217ebaa46b4a2b097b103cd11f6",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -3303,8 +3303,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+            "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
             "model": "gpt-4o-2024-08-06"
           }
         }

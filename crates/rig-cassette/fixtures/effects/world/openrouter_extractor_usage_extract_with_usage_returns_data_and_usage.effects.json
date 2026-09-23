@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -110,10 +110,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_X53mIIO8nUn0JjIJqoJs1x0O"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_X53mIIO8nUn0JjIJqoJs1x0O"
               },
               "function": {
                 "name": "submit",
@@ -136,7 +136,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790152493-mcjos55neEeBmmBt0KMu",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o-mini",
@@ -157,7 +157,7 @@
                         "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
                         "name": "submit"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_X53mIIO8nUn0JjIJqoJs1x0O",
                       "index": 0,
                       "type": "function"
                     }
@@ -167,12 +167,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "gen-1790152493-mcjos55neEeBmmBt0KMu",
             "model": "openai/gpt-4o-mini",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_1e58d0ce9b",
             "usage": {
               "completion_tokens": 23,
               "completion_tokens_details": {

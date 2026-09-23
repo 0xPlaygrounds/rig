@@ -102,7 +102,7 @@
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -118,7 +118,7 @@
               "prompt_cache_miss_tokens": 22
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -154,7 +154,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
@@ -169,7 +169,7 @@
               "prompt_cache_miss_tokens": 22
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

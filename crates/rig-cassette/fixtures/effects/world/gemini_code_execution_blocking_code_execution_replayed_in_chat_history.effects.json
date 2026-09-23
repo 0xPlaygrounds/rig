@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -105,7 +105,7 @@
             "reasoning_tokens": 35
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "kHizasKhO4DcqtsPz8-qwAY",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -137,7 +137,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "kHizasKhO4DcqtsPz8-qwAY",
             "usageMetadata": {
               "candidatesTokenCount": 25,
               "promptTokenCount": 20,
@@ -238,7 +238,7 @@
             "reasoning_tokens": 41
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "knizauimBbC0qtsP5bHOkQc",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -270,7 +270,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_2",
+            "responseId": "knizauimBbC0qtsP5bHOkQc",
             "usageMetadata": {
               "candidatesTokenCount": 23,
               "promptTokenCount": 39,

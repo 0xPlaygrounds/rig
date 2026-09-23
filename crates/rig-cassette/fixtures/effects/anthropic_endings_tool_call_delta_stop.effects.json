@@ -121,14 +121,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BSMczbffLFfKZSqxrFCv3j",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01BSMczbffLFfKZSqxrFCv3j",
           "delta": {
             "delta": "tool_name",
             "name": "write_note"

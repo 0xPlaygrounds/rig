@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":3,\"y\":4}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5-nano-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":154,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":160,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":314}}'
+    value: req_3b2dbc86ba80426fa653d686438681f9
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":3,\"y\":4}","name":"add"},"id":"call_wEAAX6bOUIwy1Dkpp0Nzt5DG","type":"function"}]}}],"created":0,"id":"chatcmpl-ERDEVv3QkUPvvdP8JdZfM4dsBYS8G","model":"gpt-5-nano-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":154,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":160,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":314}}'
 ---
 when:
   path: /v1/chat/completions
@@ -26,12 +26,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_completion_tokens":4096,"messages":[{"content":[{"text":"Use the add tool to answer arithmetic questions.","type":"text"}],"role":"system"},{"content":"What is 3 + 4?","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":3,\"y\":4}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"7","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"gpt-5-nano","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"max_completion_tokens":4096,"messages":[{"content":[{"text":"Use the add tool to answer arithmetic questions.","type":"text"}],"role":"system"},{"content":"What is 3 + 4?","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":3,\"y\":4}","name":"add"},"id":"call_wEAAX6bOUIwy1Dkpp0Nzt5DG","type":"function"}]},{"content":"7","role":"tool","tool_call_id":"call_wEAAX6bOUIwy1Dkpp0Nzt5DG"}],"model":"gpt-5-nano","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_2
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"7","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-5-nano-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":191,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":195}}'
+    value: req_0767110f40fe4945965dff750c19e282
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"7","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDEXe0RF0Ny7c4VNqhlC4x592RJn","model":"gpt-5-nano-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":74,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":191,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":265}}'

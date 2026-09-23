@@ -99,7 +99,7 @@
             "total_tokens": 977
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RCOuBGMk6xlPgtU5C6Deu9Cv",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -123,7 +123,7 @@
               "usd": 0.00009190625
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-RCOuBGMk6xlPgtU5C6Deu9Cv",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",

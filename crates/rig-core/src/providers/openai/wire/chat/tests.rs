@@ -115,19 +115,58 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     )
     .await;
 
-    assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
 
     // The unary body delivers the call whole and the stream delivers it in
     // two fragments, so equality here is the synthesis working rather than
-    // two copies of one mapping agreeing.
-    let Some(AssistantContent::ToolCall(call)) = buffered.choice.first() else {
-        panic!("the recorded turn is a tool call: {:?}", buffered.choice);
+    // two copies of one mapping agreeing. Each recording mints its own call
+    // id, so the ids are checked against their own bytes instead.
+    let ([AssistantContent::ToolCall(call)], [AssistantContent::ToolCall(streamed_call)]) =
+        (buffered.choice.as_slice(), streamed.choice.as_slice())
+    else {
+        panic!(
+            "each recorded turn is one tool call: {:?} / {:?}",
+            buffered.choice, streamed.choice
+        );
     };
+    assert_eq!(call.function, streamed_call.function);
+    assert_eq!(call.signature, streamed_call.signature);
+    assert_eq!(
+        call.provider.as_ref().map(|provider| &provider.item_id),
+        streamed_call
+            .provider
+            .as_ref()
+            .map(|provider| &provider.item_id)
+    );
+    assert_eq!(call.additional_params, streamed_call.additional_params);
+    for (call, cassette) in [
+        (
+            call,
+            "raw_capture_matrix/chat_tool_call_raw_round_trips_typed.yaml",
+        ),
+        (
+            streamed_call,
+            "raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed.yaml",
+        ),
+    ] {
+        let id = call
+            .id
+            .explicit()
+            .expect("the call keeps the provider's id");
+        assert!(
+            recorded("then", cassette).contains(&format!("\"id\":\"{id}\"")),
+            "{cassette}: the call id {id} is the recorded one"
+        );
+        assert_eq!(
+            call.provider
+                .as_ref()
+                .map(|provider| provider.call_id.as_str()),
+            Some(id)
+        );
+    }
     assert_eq!(call.function.name, "ping");
     assert_eq!(call.function.arguments, serde_json::json!({}));
-    assert_eq!(call.id.explicit(), Some("call_REDACTED_1"));
     assert_eq!(buffered.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(buffered.usage.output_tokens, Some(10));
 }
@@ -404,7 +443,10 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     assert_eq!(usage.openai.completion_tokens, Some(1));
     assert_eq!(usage.openai.total_tokens, 16);
     assert_eq!(record.model.as_deref(), Some("gpt-4.1-nano-2025-04-14"));
-    assert_eq!(record.response_id.as_deref(), Some("chatcmpl-REDACTED_1"));
+    assert_eq!(
+        record.response_id.as_deref(),
+        Some(recorded_chunk_field("id").as_str())
+    );
 
     // The provider-native fields the wire does not normalize reach the caller
     // here, which is why `raw` is the record and not the parse.
@@ -413,7 +455,10 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
         .expect("the chunks carried provider metadata");
     let additional = serde_json::Value::from(additional);
     assert_eq!(additional["service_tier"], "default");
-    assert_eq!(additional["system_fingerprint"], "fp_REDACTED_1");
+    assert_eq!(
+        additional["system_fingerprint"],
+        recorded_chunk_field("system_fingerprint")
+    );
 
     // And the normalized view agrees with it.
     assert_eq!(folded.usage.input_tokens, Some(15));
@@ -531,7 +576,10 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
         "`object` is on every chunk of the fixture and must survive: {additional}"
     );
     assert_eq!(additional["service_tier"], "default");
-    assert_eq!(additional["system_fingerprint"], "fp_REDACTED_1");
+    assert_eq!(
+        additional["system_fingerprint"],
+        recorded_chunk_field("system_fingerprint")
+    );
 }
 
 /// A dialect that streams a full `message` on every chunk beside its `delta`
@@ -1011,4 +1059,23 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
 
     let deepseek = assistant(&DEEPSEEK);
     assert_eq!(deepseek["reasoning_content"], "private chain");
+}
+
+/// The last value of a top-level `field` across the recorded text stream's
+/// chunks, so an assertion follows the fixture's own bytes.
+fn recorded_chunk_field(field: &str) -> String {
+    recorded(
+        "then",
+        "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
+    )
+    .lines()
+    .filter_map(|line| line.trim().strip_prefix("data:"))
+    .filter_map(|data| serde_json::from_str::<serde_json::Value>(data.trim()).ok())
+    .filter_map(|chunk| {
+        chunk
+            .get(field)
+            .and_then(|value| value.as_str().map(str::to_owned))
+    })
+    .next_back()
+    .expect("the recorded chunks carry the field")
 }

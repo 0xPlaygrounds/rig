@@ -117,10 +117,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "uzi3BKHz4"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "uzi3BKHz4"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -133,10 +133,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "9iiYxegyT"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "9iiYxegyT"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -152,7 +152,7 @@
             "total_tokens": 1170
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RwlnmBNbQUiuRLNxcTTCY7Ih",
           "finish_reason": "tool_calls",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
@@ -163,7 +163,7 @@
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-RwlnmBNbQUiuRLNxcTTCY7Ih",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -256,10 +256,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "uzi3BKHz4"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "uzi3BKHz4"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -272,10 +272,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "9iiYxegyT"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "9iiYxegyT"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -293,10 +293,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "uzi3BKHz4"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "uzi3BKHz4"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -310,10 +310,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "9iiYxegyT"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "9iiYxegyT"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -361,27 +361,27 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1220,
-            "output_tokens": 20,
-            "total_tokens": 1240
+            "input_tokens": 1214,
+            "output_tokens": 15,
+            "total_tokens": 1229
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "chatcmpl-RHaWk8dw2j4kr2bFT35PuB2o",
           "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1220,
-              "completion_tokens": 20,
-              "total_tokens": 1240
+              "prompt_tokens": 1214,
+              "completion_tokens": 15,
+              "total_tokens": 1229
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "chatcmpl-RHaWk8dw2j4kr2bFT35PuB2o",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -389,7 +389,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.000119375
+                "usd": 0.00011756249999999999
               }
             }
           }

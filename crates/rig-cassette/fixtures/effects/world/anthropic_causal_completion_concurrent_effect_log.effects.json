@@ -145,10 +145,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01UM56fJxTxTtSdMakoaBMK9"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01UM56fJxTxTtSdMakoaBMK9"
               },
               "function": {
                 "name": "lookup",
@@ -167,19 +167,20 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcVXyskfsVpHoLJVNwm",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcVWvshQjLRVj9BB9wK",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01UM56fJxTxTtSdMakoaBMK9",
                 "input": {
                   "q": "What is the capital of France?"
                 },
@@ -187,7 +188,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcVXyskfsVpHoLJVNwm",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -285,20 +286,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcVsnVxu6QWg7qBES1L",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcVsMSzqFSXUHr1px2V",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "Paris",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcVsnVxu6QWg7qBES1L",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -347,16 +349,16 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcVXyskfsVpHoLJVNwm",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01UM56fJxTxTtSdMakoaBMK9"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01UM56fJxTxTtSdMakoaBMK9"
                   },
                   "function": {
                     "name": "lookup",
@@ -376,10 +378,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01UM56fJxTxTtSdMakoaBMK9"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01UM56fJxTxTtSdMakoaBMK9"
                   },
                   "name": "lookup",
                   "content": [
@@ -439,20 +441,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_3",
+          "message_id": "msg_011CfLcWAWpv31a239Si5qhd",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_3",
+          "provider_request_id": "req_011CfLcWA5mxu8MyYgkQ7HMm",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "Paris",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_3",
+            "id": "msg_011CfLcWAWpv31a239Si5qhd",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

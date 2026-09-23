@@ -51,6 +51,41 @@ pub const API_KEY_ENV: &str = "GEMINI_API_KEY";
 /// This preserves image data that the normalized block vocabulary cannot represent.
 pub const GEMINI_RAW_CONTENT_KEY: &str = "gemini_content";
 
+/// The text-block `AdditionalParams` key holding Gemini API extras for that
+/// text, today its `thoughtSignature`. Gemini may sign an answer text part,
+/// and a signature returns on the part that carried it, so it rides on the
+/// text rather than on reasoning. Only the Gemini API codecs (REST and gRPC)
+/// read it, which keeps the signature with its issuer.
+pub const GEMINI_TEXT_EXTRAS_KEY: &str = "gemini";
+
+const THOUGHT_SIGNATURE: &str = "thoughtSignature";
+
+/// The signature Gemini put on this answer text part, if any.
+pub fn text_thought_signature(text: &crate::message::Text) -> Option<&str> {
+    text_signature_at(text, GEMINI_TEXT_EXTRAS_KEY)
+}
+
+/// Extras recording `signature` for an answer text part under `extras_key`.
+pub fn text_signature_extras(
+    extras_key: &str,
+    signature: String,
+) -> Option<crate::message::AdditionalParams> {
+    crate::message::AdditionalParams::from_entries(Some((
+        extras_key,
+        serde_json::json!({ THOUGHT_SIGNATURE: signature }),
+    )))
+}
+
+/// The signature recorded on `text` under `extras_key`, for codecs of other
+/// Gemini-model services that keep their own key.
+pub fn text_signature_at<'a>(text: &'a crate::message::Text, extras_key: &str) -> Option<&'a str> {
+    text.additional_params
+        .as_ref()
+        .and_then(|params| params.wire_extras(extras_key))
+        .and_then(|extras| extras.get(THOUGHT_SIGNATURE))
+        .and_then(serde_json::Value::as_str)
+}
+
 /// Shared configuration for Gemini's GenerateContent and Interactions APIs.
 /// Endpoint wires place the key in a query parameter or header as required.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

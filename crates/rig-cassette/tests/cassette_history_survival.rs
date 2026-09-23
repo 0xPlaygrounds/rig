@@ -34,7 +34,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use rig_test_support::history_survival::{
-    Dialect, TOKEN_KINDS, Token, continues, legacy_tokens, lost_tokens, text_signature_on_thought,
+    Dialect, TOKEN_KINDS, Token, continues, legacy_tokens, lost_tokens,
     unpaired_normalized_tool_calls, unpaired_tool_calls,
 };
 
@@ -43,7 +43,12 @@ use rig_test_support::history_survival::{
 /// `(cassette path suffix, token kind, reason)`. The reason must cite the
 /// provider behavior; an entry that stops matching a real loss is reported
 /// as stale so exemptions cannot outlive the behavior they excuse.
-const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[];
+const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[(
+    "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
+    "tool_call_id",
+    "the cell's repair hook renames the call from `sum_values` to `add` by design, \
+     so the id returns on a call whose name no longer anchors it",
+)];
 
 /// Scenarios whose recorded requests deliberately carry unpaired calls.
 const PAIRING_EXEMPT: &[(&str, &str)] = &[];
@@ -207,13 +212,16 @@ fn delivered_opaque_fields_reach_the_next_request() {
     let mut used: BTreeSet<(&str, &str)> = BTreeSet::new();
     let mut compared = 0usize;
     let mut legacy = 0usize;
-    let mut misplaced: Vec<String> = Vec::new();
+    let mut legacy_by_scenario: BTreeMap<String, usize> = BTreeMap::new();
     let mut legacy_absent: Vec<String> = Vec::new();
 
     for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
         compared += 1;
         let placeholders = legacy_tokens(earlier.dialect, &earlier.response);
         legacy += placeholders.len();
+        if !placeholders.is_empty() {
+            *legacy_by_scenario.entry(scenario.to_string()).or_default() += placeholders.len();
+        }
         // A placeholder cannot prove its slot, but its absence is still worth
         // reporting.
         let carried = rig_test_support::history_survival::string_values(&later.request);
@@ -228,14 +236,20 @@ fn delivered_opaque_fields_reach_the_next_request() {
                     )
                 }),
         );
-        let lost: Vec<Token> = lost_tokens(earlier.dialect, &earlier.response, &later.request);
+        // Only a gateway relays several families under one wire; elsewhere a
+        // model change is no family switch and every value is judged.
+        let switched = scenario.starts_with("openrouter/")
+            && rig_test_support::history_survival::switches_reasoning_family(
+                &earlier.request,
+                &earlier.response,
+                &later.request,
+            );
+        let lost: Vec<Token> = lost_tokens(earlier.dialect, &earlier.response, &later.request)
+            .into_iter()
+            // A switch to another model family carries tool ids, not reasoning.
+            .filter(|token| !switched || token.kind == "tool_call_id")
+            .collect();
         for token in lost {
-            // A known misplacement, reported rather than failed: see
-            // `text_signature_on_thought`. Any other misplacement fails.
-            if text_signature_on_thought(&token, &later.request) {
-                misplaced.push(format!("{scenario} exchange {index}"));
-                continue;
-            }
             if let Some((suffix, kind, _)) = SURVIVAL_EXEMPT
                 .iter()
                 .find(|(suffix, kind, _)| scenario.ends_with(suffix) && *kind == token.kind)
@@ -259,15 +273,19 @@ fn delivered_opaque_fields_reach_the_next_request() {
     assert!(compared > 0, "no continuation pairs found in the corpus");
     // Legacy placeholders cannot prove a slot; they are counted, not judged.
     eprintln!("continuation pairs: {compared}; legacy placeholder values not judged: {legacy}");
+    let mut legacy_by_provider: BTreeMap<&str, usize> = BTreeMap::new();
+    for (scenario, count) in &legacy_by_scenario {
+        let provider = scenario.split('/').next().unwrap_or_default();
+        *legacy_by_provider.entry(provider).or_default() += count;
+    }
+    eprintln!("legacy placeholder values by provider: {legacy_by_provider:?}");
+    for (scenario, count) in &legacy_by_scenario {
+        eprintln!("  {scenario}: {count}");
+    }
     eprintln!(
         "legacy placeholder values absent from the next request (reported, not judged): {}\n{}",
         legacy_absent.len(),
         legacy_absent.join("\n")
-    );
-    eprintln!(
-        "Gemini text-part signatures replayed on a thought part: {}\n{}",
-        misplaced.len(),
-        misplaced.join("\n")
     );
     assert!(
         losses.is_empty() && stale.is_empty(),

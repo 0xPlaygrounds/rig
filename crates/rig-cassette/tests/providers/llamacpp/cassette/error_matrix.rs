@@ -17,8 +17,8 @@
 //! | [`an_unknown_model_is_ignored_rather_than_rejected`] | default | **200** | — | llama.cpp never reads `model` for routing |
 //! | [`a_missing_api_key_is_a_401_the_caller_can_read`] | `--api-key` | 401 | `authentication_error` | |
 //! | [`the_api_key_the_provider_sends_is_accepted`] | `--api-key` | 200 | — | the paired positive; impossible before this PR |
-//! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `verify_path` is `/props`, not the public `/models` |
-//! | [`the_model_listing_is_public_even_on_a_keyed_server`] | `--api-key` | **200** | — | the measurement that justifies the row above |
+//! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `verify_path` is `/props` |
+//! | [`the_model_listing_requires_the_key_on_a_keyed_server`] | `--api-key` | 401 | `authentication_error` | `/v1/models` was public on b10499 |
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
 //! | [`embeddings_on_a_causal_lm_return_pooled_numbers`] | causal LM + `--pooling mean` | 200 | — | the answer to "did the old embeddings cells mean anything" |
@@ -41,7 +41,7 @@
 //!
 //! * **A syntactically malformed request body.** llama.cpp answers
 //!   `500 server_error` carrying the nlohmann/json parse error (verified by
-//!   hand against b10499-6d05498). rig cannot produce one: every request body
+//!   hand against b10964-b29c606e2). rig cannot produce one: every request body
 //!   it emits is serialized from typed values, and `additional_params` is a
 //!   `serde_json::Value`, which is valid JSON by construction. The reachable
 //!   neighbour — a field of the wrong *type* — is
@@ -53,7 +53,7 @@
 //! * **A streaming 401.** The API-key middleware runs before the handler, so a
 //!   `stream: true` request without the key answers the same `401` body before
 //!   any event stream opens — byte-identical to the blocking cell above
-//!   (verified by hand against b10499-6d05498). The streaming-error path is
+//!   (verified by hand against b10964-b29c606e2). The streaming-error path is
 //!   already covered where it differs: `context_overflow_streaming` records a
 //!   400 that must survive rig's SSE funnel rather than the unary one.
 
@@ -362,11 +362,10 @@ async fn the_api_key_the_provider_sends_is_accepted() {
 /// `verify()` on a keyed server distinguishes a good credential from a bad one.
 ///
 /// This is why the `LLAMACPP` dialect's `verify_path` quirk is `/props`
-/// rather than the `/models` its predecessor used: `GET /v1/models` and
-/// `GET /health` are the only two routes llama.cpp serves *without* the
-/// API-key check, so verifying against `/models` returns 200 for every key
-/// including a wrong one, which is the exact opposite of what verification
-/// means.
+/// rather than the `/models` its predecessor used: llama.cpp b10499 served
+/// `GET /v1/models` without the API-key check, so verifying against it
+/// returned 200 for every key. `/props` is keyed on every build this suite
+/// has recorded.
 #[tokio::test]
 async fn verify_fails_without_the_key_and_succeeds_with_it() {
     with_llamacpp_missing_api_key_cassette(
@@ -408,55 +407,40 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
     );
 }
 
-/// The claim the `verify_path` quirk rests on, recorded: `GET /v1/models`
-/// answers **200 without a credential** on a server that rejects everything
-/// else.
+/// `GET /v1/models` checks the API key on a keyed server.
 ///
-/// The cell above explains why `/props` replaced `/models`; this is the half
-/// that makes it a measurement. Against the *same* `--api-key` server and the
-/// *same* unkeyed client, the model listing succeeds while a completion 401s —
-/// so a provider verifying against `/models`, as the predecessor did, reports
-/// a healthy credential for a server that will reject every real request.
+/// llama.cpp b10499 served the listing without the key, which is why
+/// `verify_path` moved to `/props`; b10964 keys it like every other route
+/// except `/health`.
 #[tokio::test]
-async fn the_model_listing_is_public_even_on_a_keyed_server() {
+async fn the_model_listing_requires_the_key_on_a_keyed_server() {
     with_llamacpp_missing_api_key_cassette(
-        "error_matrix/model_listing_is_public",
+        "error_matrix/model_listing_is_keyed",
         |client| async move {
-            let models = client
+            let error = client
                 .models()
                 .list_all()
                 .await
-                .expect("`/v1/models` is served without the API-key check");
+                .expect_err("`/v1/models` must refuse an unkeyed client");
             assert!(
-                !models.data.is_empty(),
-                "and it really answers, rather than returning an empty list: \
-                 {models:#?}"
+                matches!(
+                    error,
+                    rig::model::ModelListingError::ApiError {
+                        status_code: 401,
+                        ..
+                    }
+                ),
+                "the refusal is a readable 401: {error:?}"
             );
         },
     )
     .await;
 
-    let recorded = recorded_statuses_and_bodies("llamacpp", "error_matrix/model_listing_is_public");
+    let recorded = recorded_statuses_and_bodies("llamacpp", "error_matrix/model_listing_is_keyed");
+    assert_eq!(recorded[0].0, 401);
     assert_eq!(
-        recorded[0].0, 200,
-        "no credential, and a 200 — on the same server whose completions 401"
-    );
-    assert_eq!(
-        crate::cassettes::recorded_request_paths(
-            "llamacpp",
-            "error_matrix/model_listing_is_public"
-        ),
+        crate::cassettes::recorded_request_paths("llamacpp", "error_matrix/model_listing_is_keyed"),
         vec!["/v1/models".to_string()]
-    );
-
-    // The contrast, from the sibling scenario's own bytes: the same client
-    // against the same server gets a 401 the moment it asks for anything else.
-    let refused = recorded_statuses_and_bodies("llamacpp", "error_matrix/missing_api_key_is_401");
-    assert_eq!(
-        refused.last().expect("an interaction").0,
-        401,
-        "the server does reject an unkeyed request — otherwise `/models` \
-         answering is unremarkable"
     );
 }
 

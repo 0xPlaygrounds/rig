@@ -15,4 +15,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"{\"title\":\"Rust Seattle June\",\"location\":{\"city\":\"Seattle\",\"venue\":\"Fremont Hall\"},\"attendees\":[\"Alice\",\"Bob\"],\"note\":\"\"}"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":32,"promptTokenCount":38,"promptTokensDetails":[{"modality":"TEXT","tokenCount":38}],"serviceTier":"standard","thoughtsTokenCount":143,"totalTokenCount":213}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"{\"title\":\"Rust Seattle June\",\"location\":{\"city\":\"Seattle\",\"venue\":\"Fremont Hall\"},\"attendees\":[\"Alice\",\"Bob\"],\"note\":\"\"}"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"qnizatncI42MmtkPtcmy0Qw","usageMetadata":{"candidatesTokenCount":32,"promptTokenCount":38,"promptTokensDetails":[{"modality":"TEXT","tokenCount":38}],"serviceTier":"standard","thoughtsTokenCount":115,"totalTokenCount":185}}'

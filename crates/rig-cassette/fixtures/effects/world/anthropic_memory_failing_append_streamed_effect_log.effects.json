@@ -9,38 +9,30 @@
         }
       },
       {
-        "batch": 8,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 12,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 10,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -151,9 +143,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcbNrrwoY3ZZXAi1sti",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcbNNLjgyAPfL7N4qJv",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -169,7 +161,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcbNrrwoY3ZZXAi1sti",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -200,9 +192,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcbNrrwoY3ZZXAi1sti",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcbNNLjgyAPfL7N4qJv",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -217,7 +209,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcbNrrwoY3ZZXAi1sti",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -245,7 +237,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLcbNrrwoY3ZZXAi1sti",
               "content": [
                 {
                   "type": "text",

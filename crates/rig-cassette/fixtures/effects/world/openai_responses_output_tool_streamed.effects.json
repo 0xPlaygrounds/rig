@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,35 +10,11 @@
         }
       },
       {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -70,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -78,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -102,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -110,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -142,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -182,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -190,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -198,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -238,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -246,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -254,7 +230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -270,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -286,7 +262,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -302,19 +278,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 48,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 62,
+        "batch": 58,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -322,7 +290,7 @@
         }
       },
       {
-        "batch": 62,
+        "batch": 58,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -421,18 +389,18 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_smewKkzEg9vHkYrDlNpbRFlv"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
+                "item_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
                   "category": "Technology",
-                  "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community."
+                  "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
                 }
               },
               "signature": null,
@@ -441,14 +409,14 @@
           ],
           "usage": {
             "input_tokens": 138,
-            "output_tokens": 68,
-            "total_tokens": 206,
+            "output_tokens": 66,
+            "total_tokens": 204,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+          "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -458,11 +426,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 68,
+              "output_tokens": 66,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 206
+              "total_tokens": 204
             },
             "reasoning_metadata": {
               "context": null,
@@ -470,7 +438,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "resp_REDACTED_1",
+            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -478,14 +446,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_name",
             "name": "final_result"
@@ -493,7 +461,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -501,7 +469,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "title"
@@ -509,7 +477,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -517,7 +485,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "Seattle"
@@ -525,7 +493,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Rust"
@@ -533,7 +501,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Meetup"
@@ -541,7 +509,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\",\""
@@ -549,7 +517,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "category"
@@ -557,7 +525,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -565,7 +533,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "Technology"
@@ -573,7 +541,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\",\""
@@ -581,7 +549,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "summary"
@@ -589,7 +557,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -597,7 +565,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "Join"
@@ -605,7 +573,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " fellow"
@@ -613,7 +581,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Rust"
@@ -621,7 +589,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " enthusiasts"
@@ -629,7 +597,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " in"
@@ -637,7 +605,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Seattle"
@@ -645,7 +613,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " for"
@@ -653,7 +621,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " an"
@@ -661,7 +629,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " evening"
@@ -669,7 +637,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " of"
@@ -677,7 +645,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " networking"
@@ -685,7 +653,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -693,7 +661,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " discussions"
@@ -701,7 +669,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -709,7 +677,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " and"
@@ -717,7 +685,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " presentations"
@@ -725,7 +693,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " on"
@@ -733,7 +701,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Rust"
@@ -741,7 +709,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " programming"
@@ -749,7 +717,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "."
@@ -757,7 +725,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Whether"
@@ -765,7 +733,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " you're"
@@ -773,7 +741,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " a"
@@ -781,23 +749,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " seasoned"
+            "arguments": " beginner"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " developer"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " or"
@@ -805,31 +765,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " new"
+            "arguments": " an"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " to"
+            "arguments": " expert"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -837,7 +789,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " this"
@@ -845,7 +797,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " meetup"
@@ -853,15 +805,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " offers"
+            "arguments": " is"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " a"
@@ -869,7 +821,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " great"
@@ -877,7 +829,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " opportunity"
@@ -885,7 +837,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " to"
@@ -893,7 +845,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " learn"
@@ -901,7 +853,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " and"
@@ -909,39 +861,39 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " connect"
+            "arguments": " share"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " with"
+            "arguments": " knowledge"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " the"
+            "arguments": " about"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " community"
+            "arguments": " Rust"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ".\""
@@ -949,7 +901,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -957,35 +909,35 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_REDACTED_1",
+          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_REDACTED_1",
+            "tool_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
             "name": "final_result",
             "arguments": {
               "title": "Seattle Rust Meetup",
               "category": "Technology",
-              "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community."
+              "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
             },
-            "call_id": "call_REDACTED_1",
+            "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_smewKkzEg9vHkYrDlNpbRFlv"
             },
             "provider": {
-              "call_id": "call_REDACTED_1",
-              "item_id": "fc_REDACTED_1"
+              "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
+              "item_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71"
             },
             "function": {
               "name": "final_result",
               "arguments": {
                 "title": "Seattle Rust Meetup",
                 "category": "Technology",
-                "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community."
+                "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
               }
             },
             "signature": null,
@@ -996,15 +948,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 138,
-            "output_tokens": 68,
-            "total_tokens": 206,
+            "output_tokens": 66,
+            "total_tokens": 204,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+          "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -1013,11 +965,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 68,
+              "output_tokens": 66,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 206
+              "total_tokens": 204
             },
             "reasoning_metadata": {
               "context": null,
@@ -1025,7 +977,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "resp_REDACTED_1",
+            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
             "model": "gpt-4o-2024-08-06"
           }
         }

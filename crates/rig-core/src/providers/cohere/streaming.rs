@@ -198,6 +198,7 @@ impl ChatDecoder {
                         reasoning: content.thinking.clone(),
                         reasoning_signature: None,
                         text: content.text.clone(),
+                        text_meta: None,
                         tool_events: Vec::new(),
                     },
                     out,
@@ -251,6 +252,7 @@ impl ChatDecoder {
                         reasoning: None,
                         reasoning_signature: None,
                         text: None,
+                        text_meta: None,
                         tool_events: tool_events
                             .into_items()
                             .into_iter()

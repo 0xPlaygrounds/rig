@@ -186,20 +186,22 @@ pub struct Reasoning {
     pub provider: Option<String>,
 }
 
-/// Drop reasoning `issuer` did not issue from `history`, before a request to
-/// `issuer` is encoded. Signatures, encrypted and redacted payloads and
-/// reasoning ids only mean something to the service that issued them.
-/// Reasoning of unknown provenance is kept. An assistant turn that held
-/// nothing else is dropped with it rather than sent empty, which leaves the
-/// user turns around it adjacent.
-pub fn retain_replayable_reasoning(history: &mut Vec<Message>, issuer: &str) {
+/// Drop reasoning none of `issuers` issued from `history`, before a request
+/// that accepts reasoning from `issuers` is encoded. Signatures, encrypted
+/// and redacted payloads and reasoning ids only mean something to the
+/// service that issued them. Reasoning of unknown provenance is kept. An
+/// assistant turn that held nothing else is dropped with it rather than sent
+/// empty, which leaves the user turns around it adjacent.
+pub fn retain_replayable_reasoning(history: &mut Vec<Message>, issuers: &[&str]) {
     history.retain_mut(|message| {
         let Message::Assistant { content, .. } = message else {
             return true;
         };
         let before = content.len();
         content.retain(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.replayable_to(issuer),
+            AssistantContent::Reasoning(reasoning) => {
+                issuers.iter().any(|issuer| reasoning.replayable_to(issuer))
+            }
             _ => true,
         });
         before == 0 || !content.is_empty()
@@ -231,11 +233,13 @@ impl Reasoning {
     }
 
     /// Whether this reasoning may be replayed to `issuer`: it was issued
-    /// there, or its provenance is unknown.
+    /// there, or its provenance is unknown. An `issuer` ending in `/` names a
+    /// family and accepts every issuer under it (`openrouter/` accepts
+    /// `openrouter/openai`).
     pub fn replayable_to(&self, issuer: &str) -> bool {
-        self.provider
-            .as_deref()
-            .is_none_or(|provider| provider == issuer)
+        self.provider.as_deref().is_none_or(|provider| {
+            provider == issuer || (issuer.ends_with('/') && provider.starts_with(issuer))
+        })
     }
 
     /// Set a provider reasoning ID.

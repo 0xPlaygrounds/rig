@@ -329,21 +329,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EnEKbwFpFH0TFdziIX+maqU88GLX+ycLwGcBisi9mHQ/fyAGYYyd+ama4w7Cs4uqk/n7GewQUddFwzNlIbEZrGw7cHKoFlcSnPzSXPZUTu5dNw3ADrHYHFEE0SGRRUHi5MVupqQIlwFeww0ryDFMlGS1ow=="
-                  }
+              "text": "42",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EnEKbwFpFH0TFdziIX+maqU88GLX+ycLwGcBisi9mHQ/fyAGYYyd+ama4w7Cs4uqk/n7GewQUddFwzNlIbEZrGw7cHKoFlcSnPzSXPZUTu5dNw3ADrHYHFEE0SGRRUHi5MVupqQIlwFeww0ryDFMlGS1ow=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

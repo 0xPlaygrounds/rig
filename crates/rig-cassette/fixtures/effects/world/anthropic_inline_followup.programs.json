@@ -335,7 +335,7 @@
                 "text": "The dominant non-background color is **bright red**."
               }
             ],
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcZQYGizyS5wVLcCVAo",
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -366,9 +366,9 @@
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
-              "message_id": "msg_REDACTED_1",
+              "message_id": "msg_011CfLcZQYGizyS5wVLcCVAo",
               "response_id": null,
-              "provider_request_id": "req_REDACTED_1",
+              "provider_request_id": "req_011CfLcZQ4V2tug7PHG73GAn",
               "finish_reason": "stop",
               "provider": "anthropic",
               "model": "claude-sonnet-4-6",
@@ -380,7 +380,7 @@
                     "type": "text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_011CfLcZQYGizyS5wVLcCVAo",
                 "model": "claude-sonnet-4-6",
                 "role": "assistant",
                 "stop_details": null,
@@ -410,7 +410,7 @@
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_REDACTED_1"
+          "rig_ecs::agent::content::parts::MessageId": "msg_011CfLcZQYGizyS5wVLcCVAo"
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 10,

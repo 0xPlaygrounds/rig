@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -128,14 +128,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01FbqukWEQfd1v4vjRfnRZW4",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:toolu_REDACTED_1",
+          "id": "wire:toolu_01FbqukWEQfd1v4vjRfnRZW4",
           "delta": {
             "delta": "tool_name",
             "name": "write_note"

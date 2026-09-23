@@ -68,27 +68,27 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that delivers C-like performance and fine-grained control while ensuring memory and thread safety through its ownership, borrowing, and type system rather than a garbage collector. Memory safety matters because it prevents common, hard-to-find bugs (use-after-free, buffer overflows, data races) that cause crashes, security vulnerabilities, and unpredictable behavior."
+              "text": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities."
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 146,
-            "total_tokens": 183,
+            "output_tokens": 136,
+            "total_tokens": 173,
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+          "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 37,
-              "completion_tokens": 146,
-              "total_tokens": 183,
+              "completion_tokens": 136,
+              "total_tokens": 173,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
@@ -97,11 +97,11 @@
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_66",
+              "obfuscation": "2EN",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -146,14 +146,6 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " modern"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
             "text": " systems"
           }
         },
@@ -186,7 +178,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " delivers"
+            "text": " combines"
           }
         },
         {
@@ -202,7 +194,31 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "-like"
+            "text": "/C"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "++"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "level"
           }
         },
         {
@@ -218,7 +234,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " and"
+            "text": " with"
           }
         },
         {
@@ -226,7 +242,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " fine"
+            "text": " a"
           }
         },
         {
@@ -234,7 +250,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "-gr"
+            "text": " strong"
           }
         },
         {
@@ -242,119 +258,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "ained"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " control"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " while"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " ensuring"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " memory"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " thread"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " safety"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " through"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " its"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " ownership"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " borrowing"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " and"
+            "text": " static"
           }
         },
         {
@@ -378,7 +282,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " rather"
+            "text": " and"
           }
         },
         {
@@ -386,7 +290,79 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " than"
+            "text": " an"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " ownership"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "/"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "borrow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " checker"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " guarantee"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " without"
           }
         },
         {
@@ -442,71 +418,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " matters"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " because"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " it"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
             "text": " prevents"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " common"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " hard"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "-to"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "-find"
           }
         },
         {
@@ -522,7 +434,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " ("
+            "text": " like"
           }
         },
         {
@@ -530,7 +442,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "use"
+            "text": " use"
           }
         },
         {
@@ -562,7 +474,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " buffer"
+            "text": " null"
           }
         },
         {
@@ -570,7 +482,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " over"
+            "text": "/d"
           }
         },
         {
@@ -578,7 +490,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "flows"
+            "text": "ang"
           }
         },
         {
@@ -586,7 +498,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": ","
+            "text": "ling"
           }
         },
         {
@@ -594,7 +506,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " data"
+            "text": " pointer"
           }
         },
         {
@@ -602,7 +514,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " races"
+            "text": " dere"
           }
         },
         {
@@ -610,55 +522,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": ")"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " that"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " cause"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " crashes"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " security"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " vulnerabilities"
+            "text": "ferences"
           }
         },
         {
@@ -682,7 +546,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " unpredictable"
+            "text": " data"
           }
         },
         {
@@ -690,7 +554,63 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " behavior"
+            "text": " races"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " which"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " reduces"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " vulnerabilities"
           }
         },
         {
@@ -705,22 +625,22 @@
           "event": "final",
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 146,
-            "total_tokens": 183,
+            "output_tokens": 136,
+            "total_tokens": 173,
             "cached_input_tokens": 0,
             "reasoning_tokens": 64
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
+          "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 37,
-              "completion_tokens": 146,
-              "total_tokens": 183,
+              "completion_tokens": 136,
+              "total_tokens": 173,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
@@ -729,11 +649,11 @@
               }
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_66",
+              "obfuscation": "2EN",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null

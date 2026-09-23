@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 6
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 8
+          "items": 10
         }
       },
       {
@@ -22,11 +22,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +34,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -117,10 +117,11 @@
             "output_tokens": 16,
             "total_tokens": 52,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf",
           "finish_reason": "length",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -130,7 +131,8 @@
               "completion_tokens": 16,
               "total_tokens": 52,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -144,11 +146,12 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
             }
           }
         }
@@ -296,11 +299,12 @@
             "output_tokens": 16,
             "total_tokens": 52,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "length",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
           "raw": {
@@ -309,7 +313,8 @@
               "completion_tokens": 16,
               "total_tokens": 52,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -323,11 +328,12 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "length",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
             }
           }
         }

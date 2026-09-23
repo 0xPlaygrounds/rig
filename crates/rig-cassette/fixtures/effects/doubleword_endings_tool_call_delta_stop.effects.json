@@ -123,7 +123,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_ceb2f9a1fbe147df99e5bfd2",
           "delta": {
             "delta": "tool_name",
             "name": "write_note"

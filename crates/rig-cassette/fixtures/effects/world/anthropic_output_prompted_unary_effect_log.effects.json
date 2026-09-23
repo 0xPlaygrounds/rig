@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -75,7 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering of Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}"
             }
           ],
           "usage": {
@@ -85,20 +85,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLccTMGk8tT2Rpzr7K5M",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLccSrVqg2nWJD3B5z3x",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering of Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
+                "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLccTMGk8tT2Rpzr7K5M",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

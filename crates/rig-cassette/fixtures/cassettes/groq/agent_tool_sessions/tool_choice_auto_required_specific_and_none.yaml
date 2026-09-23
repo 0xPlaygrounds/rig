@@ -7,13 +7,15 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object.","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":"auto","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":512,"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object.","role":"user"}],"model":"qwen/qwen3.8-27b","tool_choice":"auto","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.021927912,"completion_tokens":13,"prompt_time":0.014274497,"prompt_tokens":223,"queue_time":0.174977728,"total_time":0.036202409,"total_tokens":236},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":2001603573}}'
+  - name: x-request-id
+    value: req_01m36jz8sye9sa4nmfsjg69pf5
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"x3zhgr0dm","type":"function"}]}}],"created":0,"id":"chatcmpl-822f0988-befd-44bc-a5c7-5e1f9c1f8e18","model":"qwen/qwen3.8-27b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_57c7e760a9","usage":{"completion_time":0.03729819,"completion_tokens":18,"prompt_time":0.021746716,"prompt_tokens":274,"queue_time":0.024733853,"total_time":0.059044906,"total_tokens":292},"usage_breakdown":null,"x_groq":{"id":"req_01m36jz8sye9sa4nmfsjg69pf5","seed":2135950543}}'
 ---
 when:
   path: /openai/v1/chat/completions
@@ -24,13 +26,15 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":"required","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":512,"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"qwen/qwen3.8-27b","tool_choice":"required","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_2","usage":{"completion_time":0.016424491,"completion_tokens":10,"prompt_time":0.124405994,"prompt_tokens":245,"queue_time":0.174998454,"total_time":0.140830485,"total_tokens":255},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_2","seed":1078942677}}'
+  - name: x-request-id
+    value: req_01m36jz8ypehnb4g0fp440a5ah
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"yb0yeahxt","type":"function"}]}}],"created":0,"id":"chatcmpl-260e4a9a-5afa-4533-8796-a322dc0b9a01","model":"qwen/qwen3.8-27b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_1944680867","usage":{"completion_time":0.035144809,"completion_tokens":18,"prompt_time":0.019032885,"prompt_tokens":280,"queue_time":0.052088629,"total_time":0.054177694,"total_tokens":298},"usage_breakdown":null,"x_groq":{"id":"req_01m36jz8ypehnb4g0fp440a5ah","seed":1407198902}}'
 ---
 when:
   path: /openai/v1/chat/completions
@@ -41,13 +45,15 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call the orchard-label tool exactly once with an empty object and do not call any other tool.","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":{"function":{"name":"lookup_orchard_label"},"type":"function"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":512,"messages":[{"content":"Call the orchard-label tool exactly once with an empty object and do not call any other tool.","role":"user"}],"model":"qwen/qwen3.8-27b","tool_choice":{"function":{"name":"lookup_orchard_label"},"type":"function"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_3","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_3","usage":{"completion_time":0.027099985,"completion_tokens":5,"prompt_time":0.017971389,"prompt_tokens":304,"queue_time":0.070917625,"total_time":0.045071374,"total_tokens":309},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_3","seed":1013582742}}'
+  - name: x-request-id
+    value: req_01m36jz93ves7a7ghdwjmgz1m2
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"p0hsmxdcq","type":"function"}]}}],"created":0,"id":"chatcmpl-60ea88b0-a3c9-40b2-9446-e762bc5dfb5f","model":"qwen/qwen3.8-27b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_57c7e760a9","usage":{"completion_time":0.036208933,"completion_tokens":18,"prompt_time":0.026487987,"prompt_tokens":329,"queue_time":0.032257048,"total_time":0.06269692,"total_tokens":347},"usage_breakdown":null,"x_groq":{"id":"req_01m36jz93ves7a7ghdwjmgz1m2","seed":1506086341}}'
 ---
 when:
   path: /openai/v1/chat/completions
@@ -58,10 +64,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Do not call tools. Reply with exactly this phrase: no-tool-answer","role":"user"}],"model":"llama-3.3-70b-versatile","tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":512,"messages":[{"content":"Do not call tools. Reply with exactly this phrase: no-tool-answer","role":"user"}],"model":"openai/gpt-oss-120b","tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"no-tool-answer","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.009857455,"completion_tokens":4,"prompt_time":0.003658059,"prompt_tokens":76,"queue_time":0.174900047,"total_time":0.013515514,"total_tokens":80},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_4","seed":626683360}}'
+  - name: x-request-id
+    value: req_01m36jz98medsaqv6asjnftm6r
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"no-tool-answer","reasoning":"The user says: \"Do not call tools. Reply with exactly this phrase: no-tool-answer\". So we must output exactly that phrase, no extra text. Ensure not to call any tools. Just output \"no-tool-answer\".","role":"assistant"}}],"created":0,"id":"chatcmpl-3b0df125-9fa2-48e9-bf7a-cdf15577e779","model":"openai/gpt-oss-120b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_64b2f1c926","usage":{"completion_time":0.125074783,"completion_tokens":59,"completion_tokens_details":{"reasoning_tokens":47},"prompt_time":0.029083472,"prompt_tokens":132,"queue_time":0.279884311,"total_time":0.154158255,"total_tokens":191},"usage_breakdown":null,"x_groq":{"id":"req_01m36jz98medsaqv6asjnftm6r","seed":1574522375}}'

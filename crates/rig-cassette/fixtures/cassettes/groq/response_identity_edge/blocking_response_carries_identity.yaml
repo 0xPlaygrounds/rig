@@ -7,12 +7,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"llama-3.3-70b-versatile"}'
+  body: '{"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"openai/gpt-oss-120b"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"identity probe","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.016334219,"completion_tokens":3,"prompt_time":0.001184671,"prompt_tokens":41,"queue_time":0.178216706,"total_time":0.01751889,"total_tokens":44},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":879685251}}'
+    value: req_01m36hc7npe7mr86pmjxm3e69v
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"identity probe","reasoning":"The user wants the assistant to reply with exactly: \"identity probe\". The instruction says \"Reply with exactly: identity probe\". So we should output exactly that text, nothing else.","role":"assistant"}}],"created":0,"id":"chatcmpl-321191bd-60b9-46fa-8c54-84a471fa8644","model":"openai/gpt-oss-120b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_df9620fe21","usage":{"completion_time":0.099442329,"completion_tokens":48,"completion_tokens_details":{"reasoning_tokens":37},"prompt_time":0.005687416,"prompt_tokens":77,"queue_time":0.004900655,"total_time":0.105129745,"total_tokens":125},"usage_breakdown":null,"x_groq":{"id":"req_01m36hc7npe7mr86pmjxm3e69v","seed":101718373}}'

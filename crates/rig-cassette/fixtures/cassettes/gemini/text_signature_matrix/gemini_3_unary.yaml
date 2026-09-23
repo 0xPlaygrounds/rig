@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Here''s my thought process, distilled:\n\n**Calculating a Square**\n\nOkay, here''s a quick mental calculation. The question is, what''s 17 squared? The constraint is that I need to provide only the numerical answer. Alright, straightforward. 17 squared, which is 17 multiplied by itself. Let''s break this down to make it easier to manage mentally. First, 17 times 10 is 170. Now I need to do 17 times 7. Well, that’s 70 plus 49, which equals 119. So now, I add 170 and 119. That''s 289. Therefore, the answer, conforming to the constraint is 289.\n\n\n","thought":true},{"text":"289","thoughtSignature":"ErECCq4CAWkUfRPIZNBDqRlrindhJmHUNTJM6dKntKbEnrMawaWyIyEEWBK99l0J4o+WQ9vbvwfDDCKEyWJs7Q7Vju+F8B7YmTt6y4ymL8xGJS8nNd+l2Dt+H+YEHNR5JJo5mim3J5GB0TzYoTZoTnj5DwAB/7/QfObUXfaPoFCrb4By1D80t2syeh1otvUFn/rDXH7KjHz+ZRcEPl95G7tTQkhNV9674w99eG2wKx8/9ZNyQ29eMU17zuPfWuDwCtYfjwhI2pIKh8DSUaNq2La77I752lybHOepzXBMZ6FeVuHKuqkLiG/chDrV4TWQqY7S4R5ITM8fnH/jDLgb/ODNbQ8wZ5wIceDf7MgnDhfNHMNm7Cl+Ll0OFoXkKh93MbBFhHcaFIYiT5pW5VKqirneDfY="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"3GKzaonVCN79qtsP7LbTUQ","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":96,"totalTokenCount":113}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"},{"parts":[{"text":"Here''s my thought process, distilled:\n\n**Calculating a Square**\n\nOkay, here''s a quick mental calculation. The question is, what''s 17 squared? The constraint is that I need to provide only the numerical answer. Alright, straightforward. 17 squared, which is 17 multiplied by itself. Let''s break this down to make it easier to manage mentally. First, 17 times 10 is 170. Now I need to do 17 times 7. Well, that’s 70 plus 49, which equals 119. So now, I add 170 and 119. That''s 289. Therefore, the answer, conforming to the constraint is 289.\n\n\n","thought":true},{"text":"289","thought":false,"thoughtSignature":"ErECCq4CAWkUfRPIZNBDqRlrindhJmHUNTJM6dKntKbEnrMawaWyIyEEWBK99l0J4o+WQ9vbvwfDDCKEyWJs7Q7Vju+F8B7YmTt6y4ymL8xGJS8nNd+l2Dt+H+YEHNR5JJo5mim3J5GB0TzYoTZoTnj5DwAB/7/QfObUXfaPoFCrb4By1D80t2syeh1otvUFn/rDXH7KjHz+ZRcEPl95G7tTQkhNV9674w99eG2wKx8/9ZNyQ29eMU17zuPfWuDwCtYfjwhI2pIKh8DSUaNq2La77I752lybHOepzXBMZ6FeVuHKuqkLiG/chDrV4TWQqY7S4R5ITM8fnH/jDLgb/ODNbQ8wZ5wIceDf7MgnDhfNHMNm7Cl+Ll0OFoXkKh93MbBFhHcaFIYiT5pW5VKqirneDfY="}],"role":"model"},{"parts":[{"text":"Add one to that number. Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s my breakdown of that simple calculation, seen from my perspective:\n\n**Calculations & Response Logic**\n\nAlright, I''ve got this. The input is clear: \"Add one to that number. Answer with the number only.\" The \"that number\" refers to the prior context. Hmm, let me see... Ah, yes, previously it was established that 17 squared equals 289. So, it''s a straightforward addition. I need to take 289 and add 1. That''s simple arithmetic - 289 + 1 equals 290. Now, the final crucial part. The request specifies \"the number only.\" No extra commentary, no preamble, just the numerical answer. Therefore, the response must be 290.\n\n\n","thought":true},{"text":"290","thoughtSignature":"EroCCrcCAWkUfRNjR5Hc4kbHT5FZQOAUeEFRUgMl5zp/z4b0nTzelhmptsqr/iuwXhlmvfbntV8jd9O4JY5yoBsz5LxSAWqDgAVE3aicMZcuqDszuVeHnKDx8y7jlN6bd96B6It48bHWh2K/HLPRGcsOSeII9bSu6hM4z+kZ1lZI+ZH3NGo+KFP7vpVUAG6UV7r6nG7bM+Eqe52VMEKLOPgBxHAfIABf2XPvjLTzCIhswf3ZOWs5CSHudG9s7jDLmWKvqfDR6sPje9UdWRgt/4+K5F49M55qy7rGy9EnMOrPIYQt8MgwXM4H+wFeFI0cZuafbIcbjROmF1J4u8ivf79TKyEJqU3eW3o8sUFFevpvvKJmIYszmL8ZgZyFV//tE5S65MBrKLUQX37rk6wX3RZePLkYBs+fOgDeIX4="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"3mKzatmLE7H9qtsPwoKFyA8","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":200,"promptTokensDetails":[{"modality":"TEXT","tokenCount":200}],"serviceTier":"standard","thoughtsTokenCount":76,"totalTokenCount":279}}'

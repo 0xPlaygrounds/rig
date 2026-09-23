@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"annotations":[],"content":"","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5.1-2025-11-13","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":16,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":16,"rejected_prediction_tokens":0},"prompt_tokens":16,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":32}}'
+    value: req_c83bfd6896e54900bc11e3329de312e3
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"annotations":[],"content":"","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDFKkrNx7dwyzTZ6iU0cndoAB4NR","model":"gpt-5.1-2025-11-13","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":16,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":16,"rejected_prediction_tokens":0},"prompt_tokens":16,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":32}}'

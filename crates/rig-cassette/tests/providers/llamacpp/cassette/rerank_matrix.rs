@@ -2,7 +2,7 @@
 //!
 //! **Server**: `--embeddings --pooling rank --reranking` on
 //! `gpustack/bge-reranker-v2-m3-GGUF` Q4_K_M, `--seed 42 --temp 0 -c 2048`,
-//! `llama-server` b10499-6d05498. A cross-encoder is not optional: a causal LM
+//! `llama-server` b10964-b29c606e2. A cross-encoder is not optional: a causal LM
 //! has no rank pooling head and `llama-server` refuses to start with
 //! `--pooling rank` at all, so there is no "rerank with the wrong model"
 //! degraded path to record.
@@ -27,7 +27,7 @@
 //!
 //! [`RerankResult::relevance_score`](rig::rerank::RerankResult::relevance_score)
 //! is documented as "between 0 and 1". llama.cpp returns the cross-encoder's
-//! **raw logit**: measured on b10499-6d05498, ranking three documents against
+//! **raw logit**: measured on b10964-b29c606e2, ranking three documents against
 //! "What is a panda?" gives `0.8225`, `-4.7583` and `-8.3761`. The ordering is
 //! meaningful and is what a reranker is for; the magnitude is not a
 //! probability and negative values are normal. That mismatch is a defect in

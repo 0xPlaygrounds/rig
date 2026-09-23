@@ -94,17 +94,17 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
+              "text": "Ada."
             }
           ],
           "usage": {
             "input_tokens": 38,
-            "output_tokens": 1,
-            "total_tokens": 39,
+            "output_tokens": 2,
+            "total_tokens": 40,
             "cached_input_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "aae8c69b-ac59-423f-b255-17abd706e7d1",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -115,25 +115,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "Ada",
+                  "content": "Ada.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "aae8c69b-ac59-423f-b255-17abd706e7d1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 1,
+              "completion_tokens": 2,
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 38,
               "prompt_tokens": 38,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 39
+              "total_tokens": 40
             }
           }
         }

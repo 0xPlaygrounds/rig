@@ -457,21 +457,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The `add` tool computed 14 + 6 = 20. The `subtract` tool is offline, so I cannot compute 40 - 9."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CqsCAWkUfRNbcHVyEY88tugEFa/OKi8vScgpYZ0LL4h82/aPbh3FOfrEpvlAVOCb3PLcAG8u0weZ7iZ91qCqB5KLPyOSUOjzzK10mURqX9gFbN1vYjbm4nz4Hfms/a9cs/nFHJJXdEUuMSTV4Aio/Zu2LhXEEpCz7zyKjW7N7zrf7tsO5TVt1muL7oU3cr7S3JwP5f19Tagiz7c9FRxqcFvPUCY32uAqTYdrRdlnCS7RF28stJLETyFmqWw5a6Ev+E9U9iYxmJGbafq/ejBTPccuvZl2d4sZKFlwXqZDDy/6vMtO1e6LuX4jOMFHTV48wJr9R9qmTv1cdhjoCbmhOjW3WhZCJOHWdfCAtkjI4hBQOTtDVoeUmGurD385A3DWv2K39Bzs/PtwjCEqPeI="
-                  }
+              "text": "The `add` tool computed 14 + 6 = 20. The `subtract` tool is offline, so I cannot compute 40 - 9.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CqsCAWkUfRNbcHVyEY88tugEFa/OKi8vScgpYZ0LL4h82/aPbh3FOfrEpvlAVOCb3PLcAG8u0weZ7iZ91qCqB5KLPyOSUOjzzK10mURqX9gFbN1vYjbm4nz4Hfms/a9cs/nFHJJXdEUuMSTV4Aio/Zu2LhXEEpCz7zyKjW7N7zrf7tsO5TVt1muL7oU3cr7S3JwP5f19Tagiz7c9FRxqcFvPUCY32uAqTYdrRdlnCS7RF28stJLETyFmqWw5a6Ev+E9U9iYxmJGbafq/ejBTPccuvZl2d4sZKFlwXqZDDy/6vMtO1e6LuX4jOMFHTV48wJr9R9qmTv1cdhjoCbmhOjW3WhZCJOHWdfCAtkjI4hBQOTtDVoeUmGurD385A3DWv2K39Bzs/PtwjCEqPeI="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

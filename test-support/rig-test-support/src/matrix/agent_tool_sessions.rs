@@ -1,4 +1,21 @@
 //! Shared agent tool sessions bodies; each wire supplies explicit scenario rows.
+//!
+//! The invoking module defines `SESSION_MODEL` and `SESSION_MAX_TOKENS`, an
+//! `Option<u64>` output cap for wires whose rate limiter rejects the default.
+
+/// The session agent for `client`: `SESSION_MODEL`, capped at
+/// `SESSION_MAX_TOKENS` when the invoking wire sets one.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! session_agent {
+    ($client:expr) => {{
+        let agent = $client.agent(SESSION_MODEL);
+        match SESSION_MAX_TOKENS {
+            Some(max_tokens) => agent.max_tokens(max_tokens),
+            None => agent,
+        }
+    }};
+}
 
 /// Emit registered test rows with the shared execution body.
 #[macro_export]
@@ -9,8 +26,7 @@ macro_rules! agent_tool_sessions_case {
             $wrapper($scenario, |client| async move {
                 let log = Arc::new(Mutex::new(Vec::new()));
                 let (ping, manifest, labels, echo) = complex_tools(&log);
-                let agent = client
-                    .agent(SESSION_MODEL)
+                let agent = $crate::matrix::session_agent!(client)
                     .preamble(COMPLEX_SESSION_PREAMBLE)
                     .tool(ping)
                     .tool(manifest)
@@ -46,8 +62,7 @@ macro_rules! agent_tool_sessions_case {
             $wrapper($scenario, |client| async move {
                 let log = Arc::new(Mutex::new(Vec::new()));
                 let (ping, manifest, labels, optional, echo) = complex_tools(&log);
-                let agent = client
-                    .agent(SESSION_MODEL)
+                let agent = $crate::matrix::session_agent!(client)
                     .preamble(COMPLEX_SESSION_PREAMBLE)
                     .tool(ping)
                     .tool(manifest)
@@ -91,8 +106,7 @@ macro_rules! agent_tool_sessions_case {
             $wrapper($scenario, |client| async move {
                 let log = Arc::new(Mutex::new(Vec::new()));
                 let (ping, manifest, labels, optional, echo) = complex_tools(&log);
-                let agent = client
-                    .agent(SESSION_MODEL)
+                let agent = $crate::matrix::session_agent!(client)
                     .preamble(COMPLEX_SESSION_PREAMBLE)
                     .tool(ping)
                     .tool(manifest)
@@ -152,8 +166,7 @@ macro_rules! agent_tool_sessions_case {
         $(#[$attribute])*
         async fn $name() -> Result<()> {
             $wrapper($scenario, |client| async move {
-                let agent = client
-                    .agent(SESSION_MODEL)
+                let agent = $crate::matrix::session_agent!(client)
                     .preamble(TWO_TOOL_STREAM_PREAMBLE)
                     .tool(AlphaSignal)
                     .tool(BetaSignal)
@@ -194,8 +207,7 @@ macro_rules! agent_tool_sessions_case {
         $(#[$attribute])*
         async fn $name() -> Result<()> {
             $wrapper($scenario, |client| async move {
-                let agent = client
-                    .agent(SESSION_MODEL)
+                let agent = $crate::matrix::session_agent!(client)
                     .preamble(TWO_TOOL_STREAM_PREAMBLE)
                     .tool(AlphaSignal)
                     .tool(BetaSignal)
@@ -216,9 +228,10 @@ macro_rules! agent_tool_sessions_case {
     ($(#[$attribute:meta])* $name:ident, $wrapper:path, $scenario:literal, long_history_replay_with_tool_result_continuation_5) => {
         $(#[$attribute])*
         async fn $name() -> Result<()> {
-            $wrapper ($scenario , | client | async move { let model = client . completion (SESSION_MODEL) ; let tool_call_id = "call_REDACTED_1" ; let request = model . completion_request ("Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools." ,) . preamble ("You are concise and should rely on the provided chat history." . to_string ()) . message (Message :: user ("My favorite color is teal. Please remember it.")) . message (Message :: assistant ("Noted: your favorite color is teal.")) . message (Message :: user ("For this release, use the canary lane.")) . message (Message :: assistant ("Understood: the release lane is canary.")) . message (Message :: user ("Look up the harbor label with the tool.")) . message (Message :: Assistant { id : None , content : vec ! [AssistantContent :: tool_call (tool_call_id , AlphaSignal :: NAME , json ! ({ }) ,)] , }) . message (Message :: tool_result (tool_call_id , AlphaSignal :: NAME , ALPHA_SIGNAL_OUTPUT ,)) . message (Message :: assistant ("The harbor label is crimson-harbor.")) . tool (rig :: tool :: tool_definition (& AlphaSignal)) . tool_choice (ToolChoice :: None) . build () ; let (raw , response) = raw_and_normalized_completion (& model , request) . await ? ; let text = assistant_text_response (& response . choice) . ok_or_else (| | anyhow :: anyhow ! ("response should include assistant text")) ? ; assert_contains_all_case_insensitive (& text , & ["teal" , ALPHA_SIGNAL_OUTPUT , "canary"]) ; assert_response_metadata (& response , & raw) ; Ok (()) } ,) . await
+            $wrapper ($scenario , | client | async move { let model = client . completion (SESSION_MODEL) ; let tool_call_id = "call_REDACTED_1" ; let request = model . completion_request ("Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools." ,) . preamble ("You are concise and should rely on the provided chat history." . to_string ()) . message (Message :: user ("My favorite color is teal. Please remember it.")) . message (Message :: assistant ("Noted: your favorite color is teal.")) . message (Message :: user ("For this release, use the canary lane.")) . message (Message :: assistant ("Understood: the release lane is canary.")) . message (Message :: user ("Look up the harbor label with the tool.")) . message (Message :: Assistant { id : None , content : vec ! [AssistantContent :: tool_call (tool_call_id , AlphaSignal :: NAME , json ! ({ }) ,)] , }) . message (Message :: tool_result (tool_call_id , AlphaSignal :: NAME , ALPHA_SIGNAL_OUTPUT ,)) . message (Message :: assistant ("The harbor label is crimson-harbor.")) . tool (rig :: tool :: tool_definition (& AlphaSignal)) . tool_choice (ToolChoice :: None) . max_tokens (SESSION_MAX_TOKENS) . build () ; let (raw , response) = raw_and_normalized_completion (& model , request) . await ? ; let text = assistant_text_response (& response . choice) . ok_or_else (| | anyhow :: anyhow ! ("response should include assistant text")) ? ; assert_contains_all_case_insensitive (& text , & ["teal" , ALPHA_SIGNAL_OUTPUT , "canary"]) ; assert_response_metadata (& response , & raw) ; Ok (()) } ,) . await
         }
     };
 }
 
 pub use agent_tool_sessions_case;
+pub use session_agent;

@@ -94,20 +94,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLccsxMhXXfdFJmG3qJE",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLccsUqJwc1C8kR99bMi",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLccsxMhXXfdFJmG3qJE",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 7
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 3
         }
       },
       {
@@ -14,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -30,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -38,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -46,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -70,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -78,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -86,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -94,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -118,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -134,73 +142,33 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 24,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 27,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 22,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 33,
+        "batch": 26,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -208,7 +176,15 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 28,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -339,7 +315,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "We need answer. Need use add tool. Need call add x 17 y 25. Then reply just number. Need perhaps tool call then final. Let's do."
+                    "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
                   }
                 }
               ],
@@ -349,10 +325,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
               },
               "function": {
                 "name": "add",
@@ -367,32 +343,32 @@
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 88,
-            "total_tokens": 449,
+            "output_tokens": 73,
+            "total_tokens": 434,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 35
+            "reasoning_tokens": 20
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 361,
-              "completion_tokens": 88,
-              "total_tokens": 449,
+              "completion_tokens": 73,
+              "total_tokens": 434,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 35
+                "reasoning_tokens": 20
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -455,7 +431,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " use"
+            "text": " call"
           }
         },
         {
@@ -487,7 +463,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Need"
+            "text": " Must"
           }
         },
         {
@@ -495,79 +471,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " call"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " add"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " x"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "17"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " y"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "25"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " Then"
+            "text": " then"
           }
         },
         {
@@ -576,6 +480,14 @@
           "delta": {
             "delta": "reasoning",
             "text": " reply"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
           }
         },
         {
@@ -607,62 +519,6 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Need"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " perhaps"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " tool"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " call"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " then"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " final"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
             "text": " Let"
           }
         },
@@ -679,7 +535,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " do"
+            "text": " call"
           }
         },
         {
@@ -700,7 +556,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -708,7 +564,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{"
@@ -716,7 +572,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -724,7 +580,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -732,7 +588,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -740,7 +596,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -748,7 +604,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "17"
@@ -756,7 +612,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ", "
@@ -764,7 +620,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -772,7 +628,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -780,7 +636,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -788,7 +644,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -796,7 +652,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "25"
@@ -804,7 +660,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -812,20 +668,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
             },
             "function": {
               "name": "add",
@@ -842,32 +698,32 @@
           "event": "final",
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 88,
-            "total_tokens": 449,
+            "output_tokens": 73,
+            "total_tokens": 434,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 35
+            "reasoning_tokens": 20
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 361,
-              "completion_tokens": 88,
-              "total_tokens": 449,
+              "completion_tokens": 73,
+              "total_tokens": 434,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 35
+                "reasoning_tokens": 20
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -937,7 +793,7 @@
                     {
                       "type": "text",
                       "content": {
-                        "text": "We need answer. Need use add tool. Need call add x 17 y 25. Then reply just number. Need perhaps tool call then final. Let's do."
+                        "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
                       }
                     }
                   ],
@@ -947,10 +803,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
                   },
                   "function": {
                     "name": "add",
@@ -971,10 +827,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
                   },
                   "name": "add",
                   "content": [
@@ -1028,38 +884,51 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "42"
+                  }
+                }
+              ],
+              "provider": "deepseek"
+            },
+            {
               "type": "text",
               "text": "42"
             }
           ],
           "usage": {
-            "input_tokens": 462,
-            "output_tokens": 2,
-            "total_tokens": 464,
+            "input_tokens": 447,
+            "output_tokens": 3,
+            "total_tokens": 450,
             "cached_input_tokens": 256,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 1
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 462,
-              "completion_tokens": 2,
-              "total_tokens": 464,
+              "prompt_tokens": 447,
+              "completion_tokens": 3,
+              "total_tokens": 450,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 0
+                "reasoning_tokens": 1
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 206
+              "prompt_cache_miss_tokens": 191
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -1070,6 +939,29 @@
         }
       },
       "events": [
+        {
+          "event": "block_start",
+          "id": "minted:reasoning:0",
+          "kind": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "42"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "wire_sent": false
+          }
+        },
         {
           "event": "block_start",
           "id": "minted:text:0",
@@ -1088,33 +980,33 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 462,
-            "output_tokens": 2,
-            "total_tokens": 464,
+            "input_tokens": 447,
+            "output_tokens": 3,
+            "total_tokens": 450,
             "cached_input_tokens": 256,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 1
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 462,
-              "completion_tokens": 2,
-              "total_tokens": 464,
+              "prompt_tokens": 447,
+              "completion_tokens": 3,
+              "total_tokens": 450,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 0
+                "reasoning_tokens": 1
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 206
+              "prompt_cache_miss_tokens": 191
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

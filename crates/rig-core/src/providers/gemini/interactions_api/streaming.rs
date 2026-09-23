@@ -169,6 +169,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                                 reasoning: Some(text.text),
                                 reasoning_signature: None,
                                 text: None,
+                                text_meta: None,
                                 tool_events: Vec::new(),
                             },
                             out,
@@ -182,6 +183,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                             reasoning: None,
                             reasoning_signature: Some(signature),
                             text: None,
+                            text_meta: None,
                             tool_events: Vec::new(),
                         },
                         out,
@@ -232,6 +234,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                             reasoning: None,
                             reasoning_signature: None,
                             text: None,
+                            text_meta: None,
                             tool_events,
                         },
                         out,
@@ -353,6 +356,7 @@ fn function_call_parts(
         reasoning: None,
         reasoning_signature: None,
         text: None,
+        text_meta: None,
         tool_events: shared_parts::function_call(
             name,
             arguments.unwrap_or(Value::Object(Map::new())),
@@ -369,6 +373,7 @@ fn text_parts(text: String) -> ChunkParts {
         reasoning: None,
         reasoning_signature: None,
         text: Some(text),
+        text_meta: None,
         tool_events: Vec::new(),
     }
 }
@@ -421,6 +426,7 @@ fn content_to_parts(
                 reasoning: (!reasoning.is_empty()).then_some(reasoning),
                 reasoning_signature: signature,
                 text: None,
+                text_meta: None,
                 tool_events: Vec::new(),
             })
         }
@@ -448,6 +454,7 @@ fn raw_content_parts(
         reasoning: None,
         reasoning_signature: None,
         text: None,
+        text_meta: None,
         tool_events: vec![
             streaming::StreamEvent::BlockStart {
                 id: id.clone(),

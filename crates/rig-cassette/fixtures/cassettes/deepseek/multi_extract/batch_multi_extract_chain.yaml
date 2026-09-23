@@ -7,64 +7,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me extract the name from this text. The text mentions \"Ada Lovelace\" who is a person with a name.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": [\"Ada Lovelace\"]}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":74,"completion_tokens_details":{"reasoning_tokens":26},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":421,"prompt_tokens":421,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":495}}'
----
-when:
-  path: /chat/completions
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"I need to extract names from the text. The text says \"I''m going to the store to buy milk and bread.\" This doesn''t contain any names of people. I should submit an empty array.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": []}","name":"submit"},"id":"call_REDACTED_2","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":84,"completion_tokens_details":{"reasoning_tokens":41},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":422,"prompt_tokens":422,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":506}}'
----
-when:
-  path: /chat/completions
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","role":"system"},{"content":"I love my dog, but I hate rainy weather.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The text expresses feelings about two things: loving their dog and hating rainy weather. So the topics would be \"dog\" and \"rainy weather\" (or \"weather\"). Let me extract these topics.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"dog\", \"rainy weather\"]}","name":"submit"},"id":"call_REDACTED_3","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":93,"completion_tokens_details":{"reasoning_tokens":42},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":423,"prompt_tokens":423,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":516}}'
----
-when:
-  path: /chat/completions
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"I need to extract topics from the given text. The text is: \"Ada Lovelace discussed analytical engines and early programming.\"\n\nLet me identify the main topics mentioned:\n\n1. Ada Lovelace - This is a person, but could be considered a topic\n2. Analytical engines - A specific topic\n3. Early programming - A topic\n\nLet me extract these as topics.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"Ada Lovelace\", \"analytical engines\", \"early programming\"]}","name":"submit"},"id":"call_REDACTED_4","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":135,"completion_tokens_details":{"reasoning_tokens":77},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":423,"prompt_tokens":423,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":558}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The text is neutral - just a statement about going to the store. Sentiment should be around 0 (neutral), confidence high.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0, \"confidence\": 0.9}","name":"submit"},"id":"call_00_7b2HpbsMKIFUiDPmYXwv7012","index":0,"type":"function"}]}}],"created":0,"id":"7409107f-57e8-4b3b-8ec7-29f1cdc0097e","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":83,"completion_tokens_details":{"reasoning_tokens":27},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":456,"prompt_tokens":456,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":539}}'
 ---
 when:
   path: /chat/completions
@@ -81,7 +30,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"From the text \"I love my dog, but I hate rainy weather,\" there are no names (person names, place names, or proper nouns) to extract.","reasoning_content":"The user wants me to extract names from the given text. Let me look at the text: \"I love my dog, but I hate rainy weather.\"\n\nThere are no names of people or named entities in this text. \"dog\" and \"rainy weather\" are not names. So I should submit an empty array.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": []}","name":"submit"},"id":"call_REDACTED_5","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_5","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":140,"completion_tokens_details":{"reasoning_tokens":65},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":421,"prompt_tokens":421,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":561}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants me to extract names from the text. The text: \"I love my dog, but I hate rainy weather.\" There are no names here. So names should be an empty array.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": []}","name":"submit"},"id":"call_00_TEnHNTp7WWxreh0MtjVv1336","index":0,"type":"function"}]}}],"created":0,"id":"7b39d89d-2fbf-41fb-8e8d-b783a4ab3266","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":77,"completion_tokens_details":{"reasoning_tokens":40},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":436,"prompt_tokens":436,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":513}}'
 ---
 when:
   path: /chat/completions
@@ -92,13 +41,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user is going to the store to buy milk and bread. I need to extract topics from this text. The topics could be \"milk\", \"bread\", \"store\", \"shopping\", etc. Let me think about what the main topics are.\n\nFrom the text \"I''m going to the store to buy milk and bread\", the clear topics mentioned are:\n- store (going to the store)\n- milk (buying milk)\n- bread (buying bread)\n- shopping (the activity)\n\nLet me extract these as topics.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"shopping\", \"store\", \"milk\", \"bread\"]}","name":"submit"},"id":"call_REDACTED_6","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_6","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":166,"completion_tokens_details":{"reasoning_tokens":109},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":424,"prompt_tokens":424,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":590}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants me to extract names from the text: \"Ada Lovelace discussed analytical engines and early programming.\"\n\nThe name here is \"Ada Lovelace\".\n\nI should call the submit function with the names array.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": [\"Ada Lovelace\"]}","name":"submit"},"id":"call_00_pPoWUzYPyIM2ONEpBTVT9536","index":0,"type":"function"}]}}],"created":0,"id":"03985853-eead-4fd0-89cd-193d871f149e","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":86,"completion_tokens_details":{"reasoning_tokens":44},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":436,"prompt_tokens":436,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":522}}'
 ---
 when:
   path: /chat/completions
@@ -109,13 +58,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user''s text is \"I''m going to the store to buy milk and bread.\" This text seems fairly neutral - it''s a simple statement about going to the store. Let me analyze the sentiment:\n\nThe statement is factual and neutral. There''s no strong positive or negative emotion expressed. I''d give it a sentiment close to 0 (neutral).\n\nFor confidence, since the text is straightforward and clearly neutral, I''d say high confidence.\n\nLet me assign:\n- sentiment: 0.0 (neutral)\n- confidence: 0.9 (high confidence it''s neutral)","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.0, \"confidence\": 0.9}","name":"submit"},"id":"call_REDACTED_7","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_7","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":181,"completion_tokens_details":{"reasoning_tokens":117},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":441,"prompt_tokens":441,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":622}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The text has no names. Submit empty array.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": []}","name":"submit"},"id":"call_00_MTTHqgoMMOSjIsdNiC5a8894","index":0,"type":"function"}]}}],"created":0,"id":"d9cbeb40-629a-4a89-8ad6-1653e6f36352","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":47,"completion_tokens_details":{"reasoning_tokens":10},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":437,"prompt_tokens":437,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":484}}'
 ---
 when:
   path: /chat/completions
@@ -132,7 +81,58 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"The text is a neutral, factual statement about Ada Lovelace''s discussions on analytical engines and early programming. It carries no strong positive or negative sentiment.","reasoning_content":"The text is about Ada Lovelace, who is known for her work on Charles Babbage''s early mechanical general-purpose computer, the Analytical Engine. The text seems factual and neutral in tone, simply stating that she discussed analytical engines and early programming. \n\nLet me determine:\n- Sentiment: This seems neutral, so around 0 (or slightly positive since it''s acknowledging her contributions). Let''s say 0.2 for slightly positive.\n- Confidence: The text is straightforward and factual, so high confidence. Let''s say 0.9.\n\nActually, let me think more carefully. The text is \"Ada Lovelace discussed analytical engines and early programming.\" This is a neutral factual statement. Sentiment should be around 0 (neutral). I''ll give it 0.0 for neutral sentiment with high confidence 0.95.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.0, \"confidence\": 0.95}","name":"submit"},"id":"call_REDACTED_8","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_8","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":264,"completion_tokens_details":{"reasoning_tokens":170},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":440,"prompt_tokens":440,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":704}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The text is about Ada Lovelace discussing analytical engines and early programming. This is a neutral factual statement. Sentiment should be near neutral, maybe slightly positive. Confidence — how confident am I in the sentiment classification. Let''s say sentiment 0.0 (neutral), confidence 0.8.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.0, \"confidence\": 0.8}","name":"submit"},"id":"call_00_hA9zXKNa5gZRBzfnYpuj6202","index":0,"type":"function"}]}}],"created":0,"id":"c5ff6615-2ba9-4a15-abfe-dbc297f51df2","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":119,"completion_tokens_details":{"reasoning_tokens":61},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":455,"prompt_tokens":455,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":574}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants me to extract topics from the text: \"Ada Lovelace discussed analytical engines and early programming.\"\n\nLet me extract the topics.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"Ada Lovelace\", \"analytical engines\", \"early programming\"]}","name":"submit"},"id":"call_00_0yD2AyYkL2GXOjCIHhfG9892","index":0,"type":"function"}]}}],"created":0,"id":"57713f69-e1df-4194-b1bf-87509fb8c47b","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":81,"completion_tokens_details":{"reasoning_tokens":29},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":438,"prompt_tokens":438,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":519}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants me to extract topics from the text. The text is \"I''m going to the store to buy milk and bread.\"\n\nTopics: shopping, groceries, milk, bread. Let me submit.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"shopping\", \"groceries\", \"milk\", \"bread\"]}","name":"submit"},"id":"call_00_NjPDFxs40oYKWNIJRys18232","index":0,"type":"function"}]}}],"created":0,"id":"1447fda0-3db9-44e9-b228-6ffc556c7091","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":94,"completion_tokens_details":{"reasoning_tokens":41},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":439,"prompt_tokens":439,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":533}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","role":"system"},{"content":"I love my dog, but I hate rainy weather.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants me to extract topics from the text \"I love my dog, but I hate rainy weather.\" Topics could be: dogs, rainy weather, pets, weather. Let me submit.\n\nI should call submit with topics.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"dogs\", \"pets\", \"rainy weather\", \"weather\"]}","name":"submit"},"id":"call_00_EZGpuQatCzverRpIBqxC9904","index":0,"type":"function"}]}}],"created":0,"id":"16a4ccf3-a8ff-447d-8c11-a750dac283d7","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":98,"completion_tokens_details":{"reasoning_tokens":46},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":438,"prompt_tokens":438,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":536}}'
 ---
 when:
   path: /chat/completions
@@ -149,4 +149,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me analyze the text to extract sentiment and confidence.\n\nThe text says: \"I love my dog, but I hate rainy weather.\"\n\nThis text contains mixed sentiments - positive (\"I love my dog\") and negative (\"I hate rainy weather\"). Overall, the sentiment is somewhat neutral or slightly negative due to the \"but\" clause.\n\nLet me think about this more carefully:\n- \"I love my dog\" - very positive\n- \"but I hate rainy weather\" - very negative\n- The word \"but\" gives more weight to the second clause\n\nOverall sentiment: somewhere around neutral, maybe slightly negative. Let''s say -0.2 on a scale from -1 (very negative) to +1 (very positive).\n\nConfidence: The sentiment is mixed, so confidence isn''t very high. Maybe 0.5 to 0.6.\n\nLet me go with sentiment around -0.3 and confidence around 0.6.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": -0.3, \"confidence\": 0.6}","name":"submit"},"id":"call_REDACTED_9","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_9","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":255,"completion_tokens_details":{"reasoning_tokens":190},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":440,"prompt_tokens":440,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":695}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The text has mixed sentiment: \"I love my dog\" (positive) but \"I hate rainy weather\" (negative). Overall, slightly mixed. Sentiment score on a scale, say -1 to 1. The positive and negative roughly balance, maybe slightly negative or neutral.\n\nLet me give sentiment around 0.0 or slightly positive/negative. I''ll go with 0.0. Confidence moderate, maybe 0.6.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.0, \"confidence\": 0.6}","name":"submit"},"id":"call_00_8AbN25ndRzLylk82sNWc9949","index":0,"type":"function"}]}}],"created":0,"id":"13cde20c-72cc-4709-a600-01d48e8e7fc9","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":148,"completion_tokens_details":{"reasoning_tokens":90},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":455,"prompt_tokens":455,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":603}}'

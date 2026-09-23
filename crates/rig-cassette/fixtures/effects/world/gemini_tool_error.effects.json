@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -346,21 +346,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "the adder is broken"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "ErQCCrECAWkUfROSTT72sczpF4G0kwBUB3xeLMig4386S4pRfPxwsNmDnuhCflYa7x+KYIrbQ2rUYzv2KdMR3YB/kuSTAwEogMp7KqITXcfyx87xZwzydDOwJFJzkARXOEduhIncYwPkjZCO5wpaSuFgzT+wdvvsHzl9OXtPBYs+6VS5di6iD91J2ozkOaIvu2baVYBS20EQZ+z1lWTevzNobav1boPseGgUbpUJtErLpb0GCD5mHXGrUF6N9/YPfgOOURFKatMpFjTSgO6ZTfCN2JGxyuKoQHMo113b6OfIW9kLydhjS4q5Li2zKkT/mMtGb6KyARvMd8mNra7ReWWgsfKcDBqbU0NWUqkX616YS27V0zd6CBNlK1QqajEpIblO5xAMVAmExHVuV5KhuRqMt3dWurw="
-                  }
+              "text": "the adder is broken",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "ErQCCrECAWkUfROSTT72sczpF4G0kwBUB3xeLMig4386S4pRfPxwsNmDnuhCflYa7x+KYIrbQ2rUYzv2KdMR3YB/kuSTAwEogMp7KqITXcfyx87xZwzydDOwJFJzkARXOEduhIncYwPkjZCO5wpaSuFgzT+wdvvsHzl9OXtPBYs+6VS5di6iD91J2ozkOaIvu2baVYBS20EQZ+z1lWTevzNobav1boPseGgUbpUJtErLpb0GCD5mHXGrUF6N9/YPfgOOURFKatMpFjTSgO6ZTfCN2JGxyuKoQHMo113b6OfIW9kLydhjS4q5Li2zKkT/mMtGb6KyARvMd8mNra7ReWWgsfKcDBqbU0NWUqkX616YS27V0zd6CBNlK1QqajEpIblO5xAMVAmExHVuV5KhuRqMt3dWurw="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

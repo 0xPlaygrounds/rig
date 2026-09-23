@@ -84,9 +84,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -102,7 +102,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -165,9 +165,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -182,7 +182,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
             "model": "claude-sonnet-4-6"
           }
         }

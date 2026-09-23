@@ -56,8 +56,12 @@ impl Operation for Completion {
 
     /// Reasoning another wire issued is omitted; see
     /// [`crate::message::retain_replayable_reasoning`].
-    fn scope_to_wire(request: &mut Self::Request, wire: &str) {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, wire);
+    fn scope_to_wire(request: &mut Self::Request, issuers: &[&str]) {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, issuers);
+    }
+
+    fn request_model(request: &Self::Request) -> Option<&str> {
+        request.model.as_deref()
     }
 
     fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
@@ -501,6 +505,15 @@ impl AdapterOutput {
             end: BlockClose::Text,
             block: None,
         }));
+    }
+
+    /// Close the active text block, if any: the next text opens a new one.
+    /// For wires whose part boundaries matter, such as a signed part that
+    /// must return on its own.
+    pub fn end_active_text(&mut self) {
+        if let Some(id) = self.active_text.clone() {
+            self.text_end(id);
+        }
     }
 
     fn active_text_id(&mut self) -> BlockId {

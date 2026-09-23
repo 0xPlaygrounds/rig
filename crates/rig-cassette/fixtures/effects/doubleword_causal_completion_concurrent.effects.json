@@ -112,10 +112,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_d344dec1864846f18b0e8f0e"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_d344dec1864846f18b0e8f0e"
               },
               "function": {
                 "name": "lookup",
@@ -136,7 +136,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_b6cb484c-1479-403c-9a35-f23322e3ba7e",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -154,7 +154,7 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "call_d344dec1864846f18b0e8f0e",
                       "type": "function"
                     }
                   ]
@@ -162,7 +162,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_b6cb484c-1479-403c-9a35-f23322e3ba7e",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -268,7 +268,7 @@
             },
             {
               "type": "text",
-              "text": "\n\nParis"
+              "text": "Paris"
             }
           ],
           "usage": {
@@ -277,10 +277,10 @@
             "total_tokens": 169,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 138
+            "reasoning_tokens": 119
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_f7ddc373-9da4-4863-b5c9-fe5ed11264ea",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -290,7 +290,7 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "\n\nParis",
+                  "content": "Paris",
                   "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
                   "reasoning_details": [
                     {
@@ -306,7 +306,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_f7ddc373-9da4-4863-b5c9-fe5ed11264ea",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -321,7 +321,7 @@
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 138
+                "reasoning_tokens": 119
               },
               "prompt_tokens": 27,
               "prompt_tokens_details": {
@@ -367,10 +367,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_d344dec1864846f18b0e8f0e"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_d344dec1864846f18b0e8f0e"
                   },
                   "function": {
                     "name": "lookup",
@@ -390,10 +390,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_d344dec1864846f18b0e8f0e"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_d344dec1864846f18b0e8f0e"
                   },
                   "name": "lookup",
                   "content": [
@@ -457,7 +457,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_3",
+          "response_id": "resp_f6321732-6ebd-47e5-8bfa-8a00017e6a8c",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -474,7 +474,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_3",
+            "id": "resp_f6321732-6ebd-47e5-8bfa-8a00017e6a8c",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {

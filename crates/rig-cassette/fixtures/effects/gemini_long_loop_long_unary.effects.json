@@ -4252,21 +4252,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "done"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CpMBAWkUfRN3TXEjHTlb2hpEfkTlcVlK5JSmFPg5cravwJn5D8Bd8R32/dChapjagU0+JFEerCvHg1AmjyytjdWL49iaIBT+8A2LcHig4mKsRkdDff+YklgwNiz196R5YzlOohoiNNHa8txJhqt55rsYbbTheRRRTLVnskyMO+2dQp5tkWI/UJqJ71QzzSsEMzp8t+A+"
-                  }
+              "text": "done",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CpMBAWkUfRN3TXEjHTlb2hpEfkTlcVlK5JSmFPg5cravwJn5D8Bd8R32/dChapjagU0+JFEerCvHg1AmjyytjdWL49iaIBT+8A2LcHig4mKsRkdDff+YklgwNiz196R5YzlOohoiNNHa8txJhqt55rsYbbTheRRRTLVnskyMO+2dQp5tkWI/UJqJ71QzzSsEMzp8t+A+"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

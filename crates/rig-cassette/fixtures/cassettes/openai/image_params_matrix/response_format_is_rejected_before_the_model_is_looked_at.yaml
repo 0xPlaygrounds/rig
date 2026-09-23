@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_94e1d3471dc14df3910e82ea21190209
   body: '{"error":{"code":"unknown_parameter","message":"Unknown parameter: ''response_format''.","param":"response_format","type":"invalid_request_error"}}'

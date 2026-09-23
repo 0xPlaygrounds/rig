@@ -75,30 +75,31 @@
           "choice": [
             {
               "type": "text",
-              "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin' by crashes and villainous exploits!"
+              "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like a ship with holes — it'll sink ye with crashes, vulnerabilities, and plunderin' bugs!"
             }
           ],
           "usage": {
             "input_tokens": 39,
-            "output_tokens": 58,
-            "total_tokens": 97,
+            "output_tokens": 57,
+            "total_tokens": 96,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcYDTEuVYZwe4S3a69S",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcYDCc5Cj5KTwczLjDp",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin' by crashes and villainous exploits!",
+                "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like a ship with holes — it'll sink ye with crashes, vulnerabilities, and plunderin' bugs!",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcYDTEuVYZwe4S3a69S",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -114,7 +115,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 39,
-              "output_tokens": 58,
+              "output_tokens": 57,
               "service_tier": "standard"
             }
           }

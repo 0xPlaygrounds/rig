@@ -2,63 +2,63 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 16,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 20,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 21,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 26,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -360,10 +360,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
               },
               "function": {
                 "name": "ping_empty",
@@ -382,7 +382,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -403,7 +403,7 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5",
                       "index": 0,
                       "type": "function"
                     }
@@ -413,12 +413,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_38255cd5f6",
             "usage": {
               "completion_tokens": 11,
               "completion_tokens_details": {
@@ -502,10 +502,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -523,10 +523,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -660,10 +660,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_WjBIpS8cb6V85xQdajiTm502"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -699,7 +699,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -720,7 +720,7 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_REDACTED_2",
+                      "id": "call_WjBIpS8cb6V85xQdajiTm502",
                       "index": 0,
                       "type": "function"
                     }
@@ -730,12 +730,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_38255cd5f6",
             "usage": {
               "completion_tokens": 67,
               "completion_tokens_details": {
@@ -819,10 +819,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -840,10 +840,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -863,10 +863,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -901,10 +901,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1038,10 +1038,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_jGcVnNB5MuX16G2mNcEmhquG"
               },
               "provider": {
-                "call_id": "call_REDACTED_3"
+                "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
               },
               "function": {
                 "name": "join_labels",
@@ -1068,7 +1068,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -1089,7 +1089,7 @@
                         "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_REDACTED_3",
+                      "id": "call_jGcVnNB5MuX16G2mNcEmhquG",
                       "index": 0,
                       "type": "function"
                     }
@@ -1099,12 +1099,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
+            "id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_38255cd5f6",
             "usage": {
               "completion_tokens": 31,
               "completion_tokens_details": {
@@ -1188,10 +1188,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1209,10 +1209,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1232,10 +1232,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1270,10 +1270,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1293,10 +1293,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1322,10 +1322,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1459,10 +1459,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
               },
               "provider": {
-                "call_id": "call_REDACTED_4"
+                "call_id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
               },
               "function": {
                 "name": "escape_echo",
@@ -1483,7 +1483,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
           "finish_reason": "tool_calls",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -1504,7 +1504,7 @@
                         "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_REDACTED_4",
+                      "id": "call_C6b8yTvrR6vo9pqiRomnds4Y",
                       "index": 0,
                       "type": "function"
                     }
@@ -1514,12 +1514,12 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_4",
+            "id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_38255cd5f6",
             "usage": {
               "completion_tokens": 31,
               "completion_tokens_details": {
@@ -1603,10 +1603,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1624,10 +1624,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_OodHSAuE3XEjBGUXa0Ncd2i5"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1647,10 +1647,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1685,10 +1685,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_WjBIpS8cb6V85xQdajiTm502"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1708,10 +1708,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1737,10 +1737,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_jGcVnNB5MuX16G2mNcEmhquG"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1760,10 +1760,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4"
+                    "call_id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -1783,10 +1783,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4"
+                    "call_id": "call_C6b8yTvrR6vo9pqiRomnds4Y"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -1918,19 +1918,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK."
+              "text": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           ],
           "usage": {
             "input_tokens": 580,
-            "output_tokens": 20,
-            "total_tokens": 600,
+            "output_tokens": 25,
+            "total_tokens": 605,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_5",
+          "response_id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
           "finish_reason": "stop",
           "provider": "openrouter",
           "model": "openai/gpt-4o",
@@ -1941,7 +1941,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.",
+                  "content": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
                   "reasoning": null,
                   "refusal": null,
                   "role": "assistant"
@@ -1950,23 +1950,23 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_5",
+            "id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
             "model": "openai/gpt-4o",
             "object": "chat.completion",
             "provider": "OpenAI",
             "service_tier": null,
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_38255cd5f6",
             "usage": {
-              "completion_tokens": 20,
+              "completion_tokens": 25,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.00165,
+              "cost": 0.0017,
               "cost_details": {
-                "upstream_inference_completions_cost": 0.0002,
-                "upstream_inference_cost": 0.00165,
+                "upstream_inference_completions_cost": 0.00025,
+                "upstream_inference_cost": 0.0017,
                 "upstream_inference_prompt_cost": 0.00145
               },
               "is_byok": false,
@@ -1977,7 +1977,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 600
+              "total_tokens": 605
             }
           }
         }

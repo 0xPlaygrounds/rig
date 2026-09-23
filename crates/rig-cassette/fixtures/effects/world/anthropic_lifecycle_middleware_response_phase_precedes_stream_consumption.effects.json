@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
         "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -14,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -22,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -38,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -46,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -54,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -62,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -70,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -78,11 +86,91 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 16,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -155,25 +243,25 @@
           "choice": [
             {
               "type": "text",
-              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, blocking some or all of the Sun's light from reaching Earth. During a total solar eclipse, the Moon completely covers the Sun's disk, briefly turning day into an eerie darkness and allowing the Sun's outer atmosphere, called the corona, to become visible. A partial eclipse occurs when only a portion of the Sun is obscured, while an annular eclipse happens when the Moon is slightly farther from Earth and appears smaller, leaving a bright ring of sunlight visible around its edges. Solar eclipses can only happen during a new moon and are only visible from specific locations on Earth's surface."
+              "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette."
             }
           ],
           "usage": {
             "input_tokens": 33,
-            "output_tokens": 140,
-            "total_tokens": 173,
+            "output_tokens": 127,
+            "total_tokens": 160,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcfFkqgdatP3YWCyFcy",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 140,
+              "output_tokens": 127,
               "input_tokens": 33,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -183,7 +271,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -225,7 +313,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " between the Earth"
+            "text": " between the"
           }
         },
         {
@@ -233,7 +321,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " and the Sun, blocking"
+            "text": " Earth"
           }
         },
         {
@@ -241,7 +329,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " some or all of the Sun's light from reaching Earth. During a total solar eclipse, the Moon completely covers the Sun's disk, briefly turning day into an e"
+            "text": " and the Sun, temporarily"
           }
         },
         {
@@ -249,7 +337,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": "erie darkness and allowing the Sun's outer atmosphere, called the corona, to become visible. A partial eclipse occurs when only a"
+            "text": " blocking the Sun's light"
           }
         },
         {
@@ -257,7 +345,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " portion of the Sun is obscured, while an annular eclipse happens when the Moon is slightly farther from Earth and appears smaller, leaving"
+            "text": " from"
           }
         },
         {
@@ -265,7 +353,7 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " a bright ring of sunlight visible around its edges. Solar eclipses can only happen during a new moon and"
+            "text": " reaching certain"
           }
         },
         {
@@ -273,27 +361,403 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": " are only visible from specific locations on Earth's surface."
+            "text": " parts of Earth's"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " surface. During"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " a total"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " solar eclipse, the Moon completely"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " covers the Sun's disk, casting"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " shadow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " on Earth and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " briefly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " turning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " day"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " into an"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " e"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "erie twilight,"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " allowing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " observers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " path"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " of totality to see the Sun"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "'s outer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " atmosphere,"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " called"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " the corona."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " Partial"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " ann"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "ular eclipses occur when the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " alignment"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " not"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " perfect"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": ", resulting"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " in only"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " a portion"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " of the Sun being"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " covered or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " ring"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " of sun"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "light"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " remaining"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " visible"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " around"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " the Moon"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " sil"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": "houette."
           }
         },
         {
           "event": "final",
           "usage": {
             "input_tokens": 33,
-            "output_tokens": 140,
-            "total_tokens": 173,
+            "output_tokens": 127,
+            "total_tokens": 160,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcfFkqgdatP3YWCyFcy",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
-              "output_tokens": 140,
+              "output_tokens": 127,
               "input_tokens": 33,
               "cache_creation_input_tokens": 0,
               "cache_creation": {
@@ -303,7 +767,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
             "model": "claude-sonnet-4-6"
           }
         }

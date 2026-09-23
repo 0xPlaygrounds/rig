@@ -15,4 +15,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"value":"chosen"},"name":"strict_second","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":730,"output_tokens":54,"service_tier":"standard"}}'
+  - name: request-id
+    value: req_011CfLcviZoxVcTMujfo97Ya
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01V6NuN1Xjhj7ePEdr7b4bKB","input":{"value":"chosen"},"name":"strict_second","type":"tool_use"}],"id":"msg_011CfLcvj2b83nuMLYuYnog6","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":730,"output_tokens":33,"service_tier":"standard"}}'

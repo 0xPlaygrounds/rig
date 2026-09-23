@@ -10,7 +10,7 @@ use rig::completion::CompletionModel;
 
 use super::support::with_groq_cassette_result;
 
-const MODEL: &str = "llama-3.3-70b-versatile";
+const MODEL: &str = "openai/gpt-oss-120b";
 
 #[tokio::test]
 async fn blocking_response_carries_identity() -> Result<()> {

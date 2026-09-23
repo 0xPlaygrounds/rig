@@ -13,7 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"cached","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":900,"prompt_tokens":900,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":902}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"cached","role":"assistant"}}],"created":0,"id":"f60874e7-e5ab-4dd0-96d2-4d5fe4817989","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":900,"prompt_tokens":900,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":902}}'
 ---
 when:
   path: /chat/completions
@@ -30,4 +30,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"cached","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":896,"prompt_cache_miss_tokens":4,"prompt_tokens":900,"prompt_tokens_details":{"cached_tokens":896},"total_tokens":902}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"cached","role":"assistant"}}],"created":0,"id":"7218aca9-6b8b-4a58-bdef-8c7be72d8e55","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":766,"prompt_cache_miss_tokens":134,"prompt_tokens":900,"prompt_tokens_details":{"cached_tokens":766},"total_tokens":902}}'

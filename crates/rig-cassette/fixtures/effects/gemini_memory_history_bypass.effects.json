@@ -92,21 +92,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "EsACCr0CAWkUfRMZBfI/QzwIjMg7klVTgLruSDrKIkQtlg/fwlrrgRi5/1K0DGqbxHOJfAKHHRnpw2FiPcqEzbZQE3oqBxc1DNZS7pHM8AacTEJLPkD1qGzGA2bwiDd5RgF3zNGzspbZKjy2wJgjN81bNlKfVQNgfLNrgEeMTjnYsskPWdlGwU53W3s5O70XYx2E1bQ2q5/1DXvDJyulxc8LNp47WtJZGtbTIuK6Pu0Brb3tyThtV+0tJM3DojdC1PM3dywtNjjAfBPUUgdzpQwTocnVAP3ehKiSumnSO1KFp34lHBHq9D/vNVymEvoc8O1tRhMSD1usLMSM9EQH/0+Pqi3LceCgQE1XQjVeqRxaNIlvR8+zRv0z5nWlRQXGQkGhjtyWVVqMwmAr6EQ3pYS2SsVDQA4em3fGWf1FgHr/ZHE="
-                  }
+              "text": "Ada",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "EsACCr0CAWkUfRMZBfI/QzwIjMg7klVTgLruSDrKIkQtlg/fwlrrgRi5/1K0DGqbxHOJfAKHHRnpw2FiPcqEzbZQE3oqBxc1DNZS7pHM8AacTEJLPkD1qGzGA2bwiDd5RgF3zNGzspbZKjy2wJgjN81bNlKfVQNgfLNrgEeMTjnYsskPWdlGwU53W3s5O70XYx2E1bQ2q5/1DXvDJyulxc8LNp47WtJZGtbTIuK6Pu0Brb3tyThtV+0tJM3DojdC1PM3dywtNjjAfBPUUgdzpQwTocnVAP3ehKiSumnSO1KFp34lHBHq9D/vNVymEvoc8O1tRhMSD1usLMSM9EQH/0+Pqi3LceCgQE1XQjVeqRxaNIlvR8+zRv0z5nWlRQXGQkGhjtyWVVqMwmAr6EQ3pYS2SsVDQA4em3fGWf1FgHr/ZHE="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

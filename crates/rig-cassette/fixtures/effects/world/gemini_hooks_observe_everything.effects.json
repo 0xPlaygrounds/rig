@@ -30,7 +30,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 12,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -386,21 +386,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "Eq0BCqoBAWkUfROJzua3leQmWFrjTiByo7QZ2jMfF6DXbHS6sQiVG/21TXPzoxQ5venJPWp3RzPOb6J+hQY34Jac2QSgOXm25VZwHvc4hsZEBlWR+EMckO6dwP/tClaa77LPihCEFW1uubbetg8JNWBrtlEPexDIJ6ycWCnmIC3i/OGWOjrRl+gT3dvz+tNe0/Z/La4SJ7wl3uywzszlbxNtIKDRERY1r/ndLgLY3Ig="
-                  }
+              "text": "42",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Eq0BCqoBAWkUfROJzua3leQmWFrjTiByo7QZ2jMfF6DXbHS6sQiVG/21TXPzoxQ5venJPWp3RzPOb6J+hQY34Jac2QSgOXm25VZwHvc4hsZEBlWR+EMckO6dwP/tClaa77LPihCEFW1uubbetg8JNWBrtlEPexDIJ6ycWCnmIC3i/OGWOjrRl+gT3dvz+tNe0/Z/La4SJ7wl3uywzszlbxNtIKDRERY1r/ndLgLY3Ig="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
@@ -522,21 +513,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "42"
-                },
-                {
-                  "type": "reasoning",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "",
-                        "signature": "Eq0BCqoBAWkUfROJzua3leQmWFrjTiByo7QZ2jMfF6DXbHS6sQiVG/21TXPzoxQ5venJPWp3RzPOb6J+hQY34Jac2QSgOXm25VZwHvc4hsZEBlWR+EMckO6dwP/tClaa77LPihCEFW1uubbetg8JNWBrtlEPexDIJ6ycWCnmIC3i/OGWOjrRl+gT3dvz+tNe0/Z/La4SJ7wl3uywzszlbxNtIKDRERY1r/ndLgLY3Ig="
-                      }
+                  "text": "42",
+                  "additional_params": {
+                    "gemini": {
+                      "thoughtSignature": "Eq0BCqoBAWkUfROJzua3leQmWFrjTiByo7QZ2jMfF6DXbHS6sQiVG/21TXPzoxQ5venJPWp3RzPOb6J+hQY34Jac2QSgOXm25VZwHvc4hsZEBlWR+EMckO6dwP/tClaa77LPihCEFW1uubbetg8JNWBrtlEPexDIJ6ycWCnmIC3i/OGWOjrRl+gT3dvz+tNe0/Z/La4SJ7wl3uywzszlbxNtIKDRERY1r/ndLgLY3Ig="
                     }
-                  ],
-                  "provider": "gcp.gemini"
+                  }
                 }
               ]
             }

@@ -15,36 +15,47 @@ then:
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfLckdjp66giYewF6APxT
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":913,"output_tokens":5,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLckeELLh2y2eDCD35CU","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":913,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"get_weather","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"thinking":"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"ci","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":"ty\":","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":" \"Toky","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":"o\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"signature":"EpUCCpABCBIYAipAHCAt0WPyU/2SqWH0zefvt/TpO4bHmGkCQGjOoprBYOXE9sBHscGGYyYC5/tmnw209Tz6OF73rb8We3S/mqO43jIPY2xhdWRlLW9wdXMtNC03OABCCHRoaW5raW5nWiQ3MjhkY2FhOS04YWY2LTQzYTItOTM5Ny0yNWRhMzdiOWMzOWSoAcbjz9UGEgwAXLh1mOAifSRrIU8aDKz4amBQ9DToRGbp3CIwqH+ZPG9goXXbzCHExjNmcqdiZVOhRh0JqB6nAg/MEq98M4IxcpWEcMymxqkd9ph8KjLUlyyk0vsjgqaY6OKOlJkpHp/uXgruPqhkOmeDGKkLMm447kkJFfobhKxMCMiXay3WcxgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_0151WCD7ATd74AxYKpgmEX3X","input":{},"name":"get_weather","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"city\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":": \"Toky","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"o\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":913,"output_tokens":68}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":913,"output_tokens":97,"output_tokens_details":{"thinking_tokens":27}}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -61,15 +72,17 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":16384,"messages":[{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"city":"Tokyo"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-opus-4-7","stream":true,"system":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"thinking":{"type":"adaptive"},"tool_choice":{"type":"auto"},"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"name":"get_weather"}]}'
+  body: '{"max_tokens":16384,"messages":[{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"text"}],"role":"user"},{"content":[{"signature":"EpUCCpABCBIYAipAHCAt0WPyU/2SqWH0zefvt/TpO4bHmGkCQGjOoprBYOXE9sBHscGGYyYC5/tmnw209Tz6OF73rb8We3S/mqO43jIPY2xhdWRlLW9wdXMtNC03OABCCHRoaW5raW5nWiQ3MjhkY2FhOS04YWY2LTQzYTItOTM5Ny0yNWRhMzdiOWMzOWSoAcbjz9UGEgwAXLh1mOAifSRrIU8aDKz4amBQ9DToRGbp3CIwqH+ZPG9goXXbzCHExjNmcqdiZVOhRh0JqB6nAg/MEq98M4IxcpWEcMymxqkd9ph8KjLUlyyk0vsjgqaY6OKOlJkpHp/uXgruPqhkOmeDGKkLMm447kkJFfobhKxMCMiXay3WcxgB","thinking":"","type":"thinking"},{"id":"toolu_0151WCD7ATd74AxYKpgmEX3X","input":{"city":"Tokyo"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","type":"text"}],"tool_use_id":"toolu_0151WCD7ATd74AxYKpgmEX3X","type":"tool_result"}],"role":"user"}],"model":"claude-opus-4-7","stream":true,"system":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"thinking":{"type":"adaptive"},"tool_choice":{"type":"auto"},"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"name":"get_weather"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfLckm94Fkif28deqUJzK
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1036,"output_tokens":9,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"id":"msg_011CfLckmar3Upufv85Bo5fq","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1064,"output_tokens":9,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -81,25 +94,145 @@ then:
     data: {"delta":{"text":"Here's the current weather in","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" Tokyo, Japan:\n\n- **Temperature:** 72°F (22°C)\n- **Conditions:** Sunny with light clouds\n- **Humidity:** 45%\n- **Wind:","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" Tokyo, Japan","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"** 8 mph NW\n\n**Recommendation:** Pack **sunscreen**! 🌞 With sunny skies,","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":":\n\n- **Temperature","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" mild temperatures, and low humidity, you won't need an umbrella. The UV exposure from","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":":** 72°F (22","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" the sun makes sunscreen the smarter choice for your","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"°C)\n- **Con","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" trip. Enjoy Tokyo!","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"ditions:** Sunny","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" with light clouds\n- **","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Humidity:** 45","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"%\n- **Wind:","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"** 8 mph NW","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\n**Pack","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ing recommendation:**","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Defin","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"itely pack the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" **sunscreen**","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"! ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"☀️ With sunny","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" sk","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ies,","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" m","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ild temperatures, and low","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" humidity, you won","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"'t need an umbrella.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" It","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"'s be","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"autiful weather for ex","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ploring","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Tokyo, but","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" sun ex","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"posure means","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" sunscreen is a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" smart call","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" — especially if you'","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ll be out","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" s","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ightseeing for","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ext","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ended periods. You","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" might","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" also consider s","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"unglasses and","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" a light","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" lay","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"er for the bre","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"eze.","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1036,"output_tokens":179}}
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1064,"output_tokens":223,"output_tokens_details":{"thinking_tokens":0}}}
 
     event: message_stop
     data: {"type":"message_stop"}

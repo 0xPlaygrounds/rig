@@ -92,17 +92,17 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_TPhKfdv0JBZz64kdgR7pYGou"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_TPhKfdv0JBZz64kdgR7pYGou"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup — Monthly",
-                  "category": "Tech / Programming Meetup",
-                  "summary": "When: 2nd Tuesday of each month, 7:00–9:00 PM. Where: Impact Hub Seattle (220 2nd Ave S) — community room. Format: 15 min check-in, 45 min featured talk, ~20 min lightning talks/announcements, then open help & networking. Audience: Rust developers and learners of all levels. Bring laptop; having Rust installed is recommended. Cost: free (donation welcome). RSVP/Info: meetup.com/seattle-rust or seattle-rust@community.org."
+                  "category": "Meetup",
+                  "summary": "Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org."
                 }
               },
               "signature": null,
@@ -111,35 +111,35 @@
           ],
           "usage": {
             "input_tokens": 224,
-            "output_tokens": 661,
-            "total_tokens": 885,
+            "output_tokens": 565,
+            "total_tokens": 789,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 512
+            "reasoning_tokens": 448
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
+          "provider_request_id": "req_54014dcf423e4d2b929bc3300f9eaf11",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 224,
-              "completion_tokens": 661,
-              "total_tokens": 885,
+              "completion_tokens": 565,
+              "total_tokens": 789,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 512
+                "reasoning_tokens": 448
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_134",
+              "obfuscation": "R",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -150,7 +150,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_name",
             "name": "final_result"
@@ -158,7 +158,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\""
@@ -166,7 +166,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "title"
@@ -174,7 +174,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -182,7 +182,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "Seattle"
@@ -190,7 +190,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Rust"
@@ -198,7 +198,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Meetup"
@@ -206,7 +206,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " —"
@@ -214,7 +214,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Monthly"
@@ -222,7 +222,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\",\""
@@ -230,7 +230,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "category"
@@ -238,7 +238,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -246,39 +246,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "Tech"
+            "arguments": "Meet"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " /"
+            "arguments": "up"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Programming"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Meetup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\",\""
@@ -286,7 +270,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "summary"
@@ -294,7 +278,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\":\""
@@ -302,199 +286,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "When"
+            "arguments": "Monthly"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "nd"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Tuesday"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " each"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " month"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "7"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "00"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "–"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "9"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "00"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " PM"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Where"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Impact"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Hub"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " Seattle"
@@ -502,71 +302,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " ("
+            "arguments": " Rust"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "220"
+            "arguments": " Meetup"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "nd"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Ave"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " S"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ")"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " —"
@@ -574,47 +326,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " community"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " room"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Format"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " "
@@ -622,39 +334,31 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "15"
+            "arguments": "2"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " min"
+            "arguments": "nd"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " check"
+            "arguments": " Wednesday"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ","
@@ -662,7 +366,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " "
@@ -670,175 +374,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "45"
+            "arguments": "6"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " min"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " featured"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " talk"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " ~"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "20"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " min"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " lightning"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " talks"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ann"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ouncements"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " then"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " open"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " help"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " &"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " networking"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Audience"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ":"
@@ -846,151 +390,31 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " Rust"
+            "arguments": "30"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " developers"
+            "arguments": "–"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " and"
+            "arguments": "8"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " learners"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " all"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " levels"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Bring"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " laptop"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ";"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " having"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " installed"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " recommended"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Cost"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ":"
@@ -998,15 +422,55 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " free"
+            "arguments": "30"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " PM"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " Impact"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " Hub"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " Seattle"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " ("
@@ -1014,63 +478,87 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "don"
+            "arguments": "P"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "ation"
+            "arguments": "ioneer"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " welcome"
+            "arguments": " Square"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": ")."
+            "arguments": ")"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": " RSVP"
+            "arguments": " with"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "/"
+            "arguments": " hybrid"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "Info"
+            "arguments": " Zoom"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " option"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " Agenda"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ":"
@@ -1078,7 +566,263 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "15"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "‑"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "minute"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " lightning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " talks"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " one"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "45"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "‑"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "minute"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " deep"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "‑"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "d"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ive"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " talk"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " open"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " help"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " desk"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " networking"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " Open"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " all"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " developers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ";"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " RSVP"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " meetup"
@@ -1086,7 +830,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ".com"
@@ -1094,7 +838,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "/se"
@@ -1102,7 +846,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "attle"
@@ -1110,7 +854,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "-r"
@@ -1118,7 +862,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "ust"
@@ -1126,7 +870,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " or"
@@ -1134,7 +878,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " email"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": " se"
@@ -1142,7 +894,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "attle"
@@ -1150,7 +902,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "-r"
@@ -1158,7 +910,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "ust"
@@ -1166,23 +918,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "@"
+            "arguments": "@example"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "community"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ".org"
@@ -1190,7 +934,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ".\""
@@ -1198,7 +942,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -1206,27 +950,27 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_TPhKfdv0JBZz64kdgR7pYGou",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_TPhKfdv0JBZz64kdgR7pYGou",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_TPhKfdv0JBZz64kdgR7pYGou"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_TPhKfdv0JBZz64kdgR7pYGou"
             },
             "function": {
               "name": "final_result",
               "arguments": {
                 "title": "Seattle Rust Meetup — Monthly",
-                "category": "Tech / Programming Meetup",
-                "summary": "When: 2nd Tuesday of each month, 7:00–9:00 PM. Where: Impact Hub Seattle (220 2nd Ave S) — community room. Format: 15 min check-in, 45 min featured talk, ~20 min lightning talks/announcements, then open help & networking. Audience: Rust developers and learners of all levels. Bring laptop; having Rust installed is recommended. Cost: free (donation welcome). RSVP/Info: meetup.com/seattle-rust or seattle-rust@community.org."
+                "category": "Meetup",
+                "summary": "Monthly Seattle Rust Meetup — 2nd Wednesday, 6:30–8:30 PM at Impact Hub Seattle (Pioneer Square) with hybrid Zoom option. Agenda: 15‑minute lightning talks, one 45‑minute deep‑dive talk, open help desk and networking. Open to all Rust developers; RSVP at meetup.com/seattle-rust or email seattle-rust@example.org."
               }
             },
             "signature": null,
@@ -1237,35 +981,35 @@
           "event": "final",
           "usage": {
             "input_tokens": 224,
-            "output_tokens": 661,
-            "total_tokens": 885,
+            "output_tokens": 565,
+            "total_tokens": 789,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 512
+            "reasoning_tokens": 448
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
+          "provider_request_id": "req_54014dcf423e4d2b929bc3300f9eaf11",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
               "prompt_tokens": 224,
-              "completion_tokens": 661,
-              "total_tokens": 885,
+              "completion_tokens": 565,
+              "total_tokens": 789,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 512
+                "reasoning_tokens": 448
               }
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "obfuscation_REDACTED_134",
+              "obfuscation": "R",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null

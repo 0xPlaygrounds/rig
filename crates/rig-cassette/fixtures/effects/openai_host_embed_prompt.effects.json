@@ -1603,7 +1603,7 @@
             },
             "provider": "openai",
             "model": "text-embedding-3-small",
-            "provider_request_id": "req_REDACTED_1",
+            "provider_request_id": "req_731fb43ae00546b2a793a5bca5a3370d",
             "raw": {
               "data": [
                 {
@@ -3209,13 +3209,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_01372c9d33b010e1006ab395fc45f487d0a1ead8d9cb4b215d",
+          "response_id": "resp_01372c9d33b010e1006ab395fbc36087d09632754522963eb4",
+          "provider_request_id": "req_850242aec5824de1af7b410deafb5f85",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -3224,7 +3225,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_01372c9d33b010e1006ab395fbc36087d09632754522963eb4",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -3243,7 +3244,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_01372c9d33b010e1006ab395fc45f487d0a1ead8d9cb4b215d",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"

@@ -1,7 +1,7 @@
 //! The tool-calling matrix.
 //!
 //! **Server**: the competent tier — `unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10499-6d05498 —
+//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10964-b29c606e2 —
 //! unless a cell says otherwise. The escalation is deliberate and is the rule
 //! stated in `cassette_support`: a 1.7B model declines tool calls often enough
 //! that a red cell would be a coin flip on the model rather than a finding

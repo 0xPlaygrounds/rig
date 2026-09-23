@@ -16,8 +16,8 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_1
-  body: '{"content":[{"text":"cache probe ready","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":5343,"inference_geo":"global","input_tokens":3,"output_tokens":6,"service_tier":"standard"}}'
+    value: req_011CfLco9BvV1bRxE9GXDvbe
+  body: '{"container":null,"content":[{"text":"cache probe ready","type":"text"}],"id":"msg_011CfLco9fCWRiZawNw2orFj","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":5343},"cache_creation_input_tokens":5343,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":3,"output_tokens":6,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -37,8 +37,8 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_2
-  body: '{"content":[{"text":"cache probe ready","type":"text"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":5343,"inference_geo":"global","input_tokens":3,"output_tokens":6,"service_tier":"standard"}}'
+    value: req_011CfLcoK4zGybMxkjcbr9wT
+  body: '{"container":null,"content":[{"text":"cache probe ready","type":"text"}],"id":"msg_011CfLcoKJdPXAjXibXu5FyT","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":5343,"inference_geo":"global","input_tokens":3,"output_tokens":6,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -58,5 +58,5 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_REDACTED_3
-  body: '{"content":[{"text":"probe still ready","type":"text"}],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":5368,"inference_geo":"global","input_tokens":3,"output_tokens":6,"service_tier":"standard"}}'
+    value: req_011CfLcoRAbzaEuhNu8vhj24
+  body: '{"container":null,"content":[{"text":"probe still ready","type":"text"}],"id":"msg_011CfLcoRSUMkAxDMWeEaf1v","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":25},"cache_creation_input_tokens":25,"cache_read_input_tokens":5343,"inference_geo":"global","input_tokens":3,"output_tokens":6,"service_tier":"standard"}}'

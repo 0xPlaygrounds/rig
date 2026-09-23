@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -114,9 +114,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLce6YvUqeEo95pZ95RQ",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
@@ -132,7 +132,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -158,7 +158,23 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
-            "text": "larb-glarb is an ancient farming tool from planet Jiro."
+            "text": "larb-glarb is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " an ancient farming tool from planet"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "text",
+            "text": " Jiro."
           }
         },
         {
@@ -171,9 +187,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLce6YvUqeEo95pZ95RQ",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
@@ -188,7 +204,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
             "model": "claude-sonnet-4-6"
           }
         }

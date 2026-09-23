@@ -222,7 +222,7 @@
                 "text": "Ready."
               }
             ],
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -253,13 +253,14 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": "msg_REDACTED_1",
-              "response_id": "resp_REDACTED_1",
-              "provider_request_id": "req_REDACTED_1",
+              "message_id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
+              "response_id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
+              "provider_request_id": "req_45d8e4e342154bcc94b0eaa3e5794043",
               "finish_reason": "stop",
               "provider": "openai",
               "model": "gpt-4o-2024-08-06",
               "raw": {
+                "access_programs": null,
                 "background": false,
                 "billing": {
                   "payer": "developer"
@@ -268,7 +269,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_REDACTED_1",
+                "id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
                 "incomplete_details": null,
                 "instructions": "You are a concise assistant. Answer directly.",
                 "max_output_tokens": null,
@@ -287,7 +288,7 @@
                         "type": "output_text"
                       }
                     ],
-                    "id": "msg_REDACTED_1",
+                    "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
                     "role": "assistant",
                     "status": "completed",
                     "type": "message"
@@ -361,7 +362,7 @@
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_REDACTED_1"
+          "rig_ecs::agent::content::parts::MessageId": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee"
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,

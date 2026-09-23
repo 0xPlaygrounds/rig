@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -101,17 +101,17 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_k0y6hswwYu6H4cxUiK8toxnH"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_k0y6hswwYu6H4cxUiK8toxnH"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
-                  "title": "Seattle Rust Meetup",
-                  "category": "Tech Meetup",
-                  "summary": "Monthly Rust meetup for Seattle developers. Next session: Thu, Sep 24, 2026 — 6:30–8:30 PM at Impact Hub Seattle (505 1st Ave S). Short talks, lightning demos, coding help, and networking; all experience levels welcome. RSVP on the Seattle Rust Meetup page."
+                  "title": "Seattle Rust Meetup — Monthly Networking & Talks",
+                  "category": "Tech Meetup / Rust",
+                  "summary": "Monthly Rust meetup in Seattle for developers of all levels. Regular schedule: 2nd Tuesday, 6:30–8:30 PM. Format: quick community announcements, two 20–30 minute talks (or one longer), lightning talks, followed by open Q&A and informal networking. Venue: central Seattle (venue announced per event). Suggested items to bring: laptop, a project to demo, and willingness to help others. RSVP required — contact organizer for time/room details."
                 }
               },
               "signature": null,
@@ -120,14 +120,14 @@
           ],
           "usage": {
             "input_tokens": 224,
-            "output_tokens": 547,
-            "total_tokens": 771,
+            "output_tokens": 458,
+            "total_tokens": 682,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 448
+            "reasoning_tokens": 320
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDCQ22zQWqjh2pd0NEtVIbg6JjSD",
+          "provider_request_id": "req_671d2f71edae47a482c681eb9c27f5b5",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
@@ -144,10 +144,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Rust meetup for Seattle developers. Next session: Thu, Sep 24, 2026 — 6:30–8:30 PM at Impact Hub Seattle (505 1st Ave S). Short talks, lightning demos, coding help, and networking; all experience levels welcome. RSVP on the Seattle Rust Meetup page.\"}",
+                        "arguments": "{\"title\":\"Seattle Rust Meetup — Monthly Networking & Talks\",\"category\":\"Tech Meetup / Rust\",\"summary\":\"Monthly Rust meetup in Seattle for developers of all levels. Regular schedule: 2nd Tuesday, 6:30–8:30 PM. Format: quick community announcements, two 20–30 minute talks (or one longer), lightning talks, followed by open Q&A and informal networking. Venue: central Seattle (venue announced per event). Suggested items to bring: laptop, a project to demo, and willingness to help others. RSVP required — contact organizer for time/room details.\"}",
                         "name": "final_result"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_k0y6hswwYu6H4cxUiK8toxnH",
                       "type": "function"
                     }
                   ]
@@ -155,17 +155,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDCQ22zQWqjh2pd0NEtVIbg6JjSD",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 547,
+              "completion_tokens": 458,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 448,
+                "reasoning_tokens": 320,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 224,
@@ -173,7 +173,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 771
+              "total_tokens": 682
             }
           }
         }

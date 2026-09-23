@@ -2,22 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
@@ -26,14 +10,30 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -159,10 +159,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_273c91818ed44a4481da6548"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_273c91818ed44a4481da6548"
               },
               "function": {
                 "name": "add",
@@ -184,7 +184,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146006-0iGIDZccgI7nLUzj2CaX",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -209,7 +209,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146006-0iGIDZccgI7nLUzj2CaX",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -221,7 +221,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_273c91818ed44a4481da6548",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -229,44 +229,28 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_273c91818ed44a4481da6548",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "{\"x\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "17, \"y\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "25}"
+            "arguments": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_273c91818ed44a4481da6548",
           "end": {
             "close": "tool_call",
-            "tool_id": "chatcmpl-REDACTED_1",
+            "tool_id": "call_273c91818ed44a4481da6548",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "chatcmpl-REDACTED_1"
+              "id": "call_273c91818ed44a4481da6548"
             },
             "provider": {
-              "call_id": "chatcmpl-REDACTED_1"
+              "call_id": "call_273c91818ed44a4481da6548"
             },
             "function": {
               "name": "add",
@@ -291,7 +275,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146006-0iGIDZccgI7nLUzj2CaX",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
@@ -315,7 +299,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146006-0iGIDZccgI7nLUzj2CaX",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

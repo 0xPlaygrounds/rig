@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"slot":0},"name":"checkpoint_batch"}},{"functionCall":{"args":{"slot":1},"name":"checkpoint_batch"}},{"functionCall":{"args":{"slot":2},"name":"checkpoint_batch"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":45,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","totalTokenCount":189}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"slot":0},"name":"checkpoint_batch"}},{"functionCall":{"args":{"slot":1},"name":"checkpoint_batch"}},{"functionCall":{"args":{"slot":2},"name":"checkpoint_batch"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"n3izaqH-JeSi6dkPv4mNmQk","usageMetadata":{"candidatesTokenCount":45,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","totalTokenCount":189}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash-lite:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"checkpoint-complete"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":240,"promptTokensDetails":[{"modality":"TEXT","tokenCount":240}],"serviceTier":"standard","totalTokenCount":243}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"checkpoint-complete"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"n3izat_IO__jqtsP0Yzr8AY","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":240,"promptTokensDetails":[{"modality":"TEXT","tokenCount":240}],"serviceTier":"standard","totalTokenCount":243}}'

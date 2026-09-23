@@ -9,7 +9,7 @@
 //!
 //! **Server**: the `--mmproj` vision configuration —
 //! `ggml-org/Qwen3-VL-2B-Instruct-GGUF` Q8_0 with its `mmproj`,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498. The
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2. The
 //! subject and its control were recorded in one run so the negative half
 //! cannot be explained away by a bad image or a blind model.
 //!

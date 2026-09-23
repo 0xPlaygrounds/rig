@@ -139,7 +139,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -147,7 +147,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{"
@@ -155,7 +155,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -163,7 +163,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "x"
@@ -171,7 +171,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -179,7 +179,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -187,7 +187,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "17"
@@ -195,7 +195,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ", "
@@ -203,7 +203,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -211,7 +211,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "y"
@@ -219,7 +219,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "\""
@@ -227,7 +227,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": ": "
@@ -235,7 +235,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "25"
@@ -243,7 +243,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "}"
@@ -251,20 +251,20 @@
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:call_00_cohQbNRa5q0pdN8XNCJ39397",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "call_00_cohQbNRa5q0pdN8XNCJ39397",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "call_00_cohQbNRa5q0pdN8XNCJ39397"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "call_00_cohQbNRa5q0pdN8XNCJ39397"
             },
             "function": {
               "name": "add",

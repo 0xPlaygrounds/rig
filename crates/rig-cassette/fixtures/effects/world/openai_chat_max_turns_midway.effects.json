@@ -264,10 +264,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
               },
               "function": {
                 "name": "list_files",
@@ -285,8 +285,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "chatcmpl-ERDDJwLpMU9HcJJjo9xugYME8umdo",
+          "provider_request_id": "req_15aa8099432c472c939f1e8e2f078634",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
@@ -307,7 +307,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_REDACTED_1",
+                      "id": "call_PgwAIIcyndAGhnCWXD2OIOGe",
                       "type": "function"
                     }
                   ]
@@ -315,11 +315,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-ERDDJwLpMU9HcJJjo9xugYME8umdo",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_eb9b0343ec",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -395,10 +395,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "function": {
                     "name": "list_files",
@@ -416,10 +416,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "name": "list_files",
                   "content": [
@@ -508,10 +508,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_20qKD8FubdpRaWWyGiW9KCXa"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_20qKD8FubdpRaWWyGiW9KCXa"
               },
               "function": {
                 "name": "read_file",
@@ -526,10 +526,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_3"
+                "id": "call_VD4gRvT8WStB8ARvXi1b6eLZ"
               },
               "provider": {
-                "call_id": "call_REDACTED_3"
+                "call_id": "call_VD4gRvT8WStB8ARvXi1b6eLZ"
               },
               "function": {
                 "name": "read_file",
@@ -544,10 +544,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_4"
+                "id": "call_Qy9cHxb6hMeyeehwtlv8opH6"
               },
               "provider": {
-                "call_id": "call_REDACTED_4"
+                "call_id": "call_Qy9cHxb6hMeyeehwtlv8opH6"
               },
               "function": {
                 "name": "read_file",
@@ -567,8 +567,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "chatcmpl-ERDDKOkxKx62hc24SEKCg2nh5vVOz",
+          "provider_request_id": "req_3ac6703af2844068b6a184857ba1b2d2",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
@@ -589,7 +589,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_REDACTED_2",
+                      "id": "call_20qKD8FubdpRaWWyGiW9KCXa",
                       "type": "function"
                     },
                     {
@@ -597,7 +597,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_REDACTED_3",
+                      "id": "call_VD4gRvT8WStB8ARvXi1b6eLZ",
                       "type": "function"
                     },
                     {
@@ -605,7 +605,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_REDACTED_4",
+                      "id": "call_Qy9cHxb6hMeyeehwtlv8opH6",
                       "type": "function"
                     }
                   ]
@@ -613,11 +613,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_2",
+            "id": "chatcmpl-ERDDKOkxKx62hc24SEKCg2nh5vVOz",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_eb9b0343ec",
             "usage": {
               "completion_tokens": 63,
               "completion_tokens_details": {
@@ -743,10 +743,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "function": {
                     "name": "list_files",
@@ -764,10 +764,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_PgwAIIcyndAGhnCWXD2OIOGe"
                   },
                   "name": "list_files",
                   "content": [
@@ -787,10 +787,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_20qKD8FubdpRaWWyGiW9KCXa"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_20qKD8FubdpRaWWyGiW9KCXa"
                   },
                   "function": {
                     "name": "read_file",
@@ -805,10 +805,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_VD4gRvT8WStB8ARvXi1b6eLZ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_VD4gRvT8WStB8ARvXi1b6eLZ"
                   },
                   "function": {
                     "name": "read_file",
@@ -823,10 +823,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_Qy9cHxb6hMeyeehwtlv8opH6"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4"
+                    "call_id": "call_Qy9cHxb6hMeyeehwtlv8opH6"
                   },
                   "function": {
                     "name": "read_file",
@@ -846,10 +846,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_20qKD8FubdpRaWWyGiW9KCXa"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_20qKD8FubdpRaWWyGiW9KCXa"
                   },
                   "name": "read_file",
                   "content": [
@@ -863,10 +863,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_3"
+                    "id": "call_VD4gRvT8WStB8ARvXi1b6eLZ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_3"
+                    "call_id": "call_VD4gRvT8WStB8ARvXi1b6eLZ"
                   },
                   "name": "read_file",
                   "content": [
@@ -880,10 +880,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_4"
+                    "id": "call_Qy9cHxb6hMeyeehwtlv8opH6"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_4"
+                    "call_id": "call_Qy9cHxb6hMeyeehwtlv8opH6"
                   },
                   "name": "read_file",
                   "content": [
@@ -972,10 +972,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_5"
+                "id": "call_HLdXsBNmF8HJ2ygDCMR6HOMu"
               },
               "provider": {
-                "call_id": "call_REDACTED_5"
+                "call_id": "call_HLdXsBNmF8HJ2ygDCMR6HOMu"
               },
               "function": {
                 "name": "run_tests",
@@ -993,8 +993,8 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
-          "provider_request_id": "req_REDACTED_3",
+          "response_id": "chatcmpl-ERDDL1qizUD0qnJukL0HZumbZvlJS",
+          "provider_request_id": "req_48404a630a364aa4a45cc53e14570a39",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
@@ -1015,7 +1015,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_REDACTED_5",
+                      "id": "call_HLdXsBNmF8HJ2ygDCMR6HOMu",
                       "type": "function"
                     }
                   ]
@@ -1023,11 +1023,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-REDACTED_3",
+            "id": "chatcmpl-ERDDL1qizUD0qnJukL0HZumbZvlJS",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_REDACTED_1",
+            "system_fingerprint": "fp_eb9b0343ec",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {

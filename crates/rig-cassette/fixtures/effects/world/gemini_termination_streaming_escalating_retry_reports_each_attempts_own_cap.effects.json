@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,14 +26,14 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -41,7 +41,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 18,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -49,7 +49,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -57,7 +57,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -136,7 +136,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were"
+              "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
             }
           ],
           "usage": {
@@ -145,7 +145,7 @@
             "total_tokens": 46
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "qXizatDVBpeBqtsPh9GKUA",
           "finish_reason": "length",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -163,7 +163,7 @@
             },
             "finish_reason": "MAX_TOKENS",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "qXizatDVBpeBqtsPh9GKUA"
           }
         }
       },
@@ -196,7 +196,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " His days were"
+            "text": " He found a"
           }
         },
         {
@@ -208,7 +208,7 @@
           },
           "finish_reason": "length",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "qXizatDVBpeBqtsPh9GKUA",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -225,7 +225,7 @@
             },
             "finish_reason": "MAX_TOKENS",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_1"
+            "response_id": "qXizatDVBpeBqtsPh9GKUA"
           }
         }
       ],
@@ -285,7 +285,7 @@
             "total_tokens": 68
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "qXizar_mL5KjqtsPwqGPkAk",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -303,7 +303,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "qXizar_mL5KjqtsPwqGPkAk"
           }
         }
       },
@@ -348,7 +348,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "qXizar_mL5KjqtsPwqGPkAk",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
@@ -365,7 +365,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "id_REDACTED_2"
+            "response_id": "qXizar_mL5KjqtsPwqGPkAk"
           }
         }
       ],

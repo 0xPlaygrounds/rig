@@ -89,44 +89,28 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "toolcall",
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_1"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_1"
-              },
-              "function": {
-                "name": "final_result",
-                "arguments": {
-                  "title": "Seattle Rust Meetup",
-                  "category": "Technology",
-                  "summary": "A local gathering for Rust programming language enthusiasts in Seattle, featuring talks, discussions, and networking opportunities for developers."
-                }
-              },
-              "signature": null,
-              "additional_params": null
+              "type": "text",
+              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
             }
           ],
           "usage": {
             "input_tokens": 1131,
-            "output_tokens": 50,
-            "total_tokens": 1181
+            "output_tokens": 48,
+            "total_tokens": 1179
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "finish_reason": "tool_calls",
+          "response_id": "chatcmpl-RO9bJkOQ46g6G4tXVaF6rVTo",
+          "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1131,
-              "completion_tokens": 50,
-              "total_tokens": 1181
+              "completion_tokens": 48,
+              "total_tokens": 1179
             },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-RO9bJkOQ46g6G4tXVaF6rVTo",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -134,7 +118,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00011853125000000001
+                "usd": 0.00011803125
               }
             }
           }
@@ -142,70 +126,408 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
-          "delta": {
-            "delta": "tool_name",
-            "name": "final_result"
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "minted:text:0",
           "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A local gathering for Rust programming language enthusiasts in Seattle, featuring talks, discussions, and networking opportunities for developers.\"}"
+            "delta": "text",
+            "text": "I"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_REDACTED_1",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_REDACTED_1"
-            },
-            "provider": {
-              "call_id": "call_REDACTED_1"
-            },
-            "function": {
-              "name": "final_result",
-              "arguments": {
-                "title": "Seattle Rust Meetup",
-                "category": "Technology",
-                "summary": "A local gathering for Rust programming language enthusiasts in Seattle, featuring talks, discussions, and networking opportunities for developers."
-              }
-            },
-            "signature": null,
-            "additional_params": null
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "'m"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " sorry"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " but"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " don"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "'t"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " have"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " capability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " provide"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " real"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-time"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " event"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " information"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " create"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " event"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " objects"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " However"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " I"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " can"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " suggest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " you"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " check"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " local"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " event"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " platforms"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " community"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " websites"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " latest"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " information"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " meet"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "ups"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " in"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " Seattle"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
           }
         },
         {
           "event": "final",
           "usage": {
             "input_tokens": 1131,
-            "output_tokens": 50,
-            "total_tokens": 1181
+            "output_tokens": 48,
+            "total_tokens": 1179
           },
-          "finish_reason": "tool_calls",
+          "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "chatcmpl-RO9bJkOQ46g6G4tXVaF6rVTo",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
               "prompt_tokens": 1131,
-              "completion_tokens": 50,
-              "total_tokens": 1181
+              "completion_tokens": 48,
+              "total_tokens": 1179
             },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-RO9bJkOQ46g6G4tXVaF6rVTo",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -213,7 +535,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00011853125000000001
+                "usd": 0.00011803125
               }
             }
           }

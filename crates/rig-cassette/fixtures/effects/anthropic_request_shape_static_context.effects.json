@@ -85,20 +85,21 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcdTwG9zbZ2pRRzaKUw",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcdTVUfLLTfd65rvXb4",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "Based on the provided document, a **glarb-glarb** is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
                 "type": "text"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLcdTwG9zbZ2pRRzaKUw",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

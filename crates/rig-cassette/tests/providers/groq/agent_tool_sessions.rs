@@ -28,9 +28,16 @@ use crate::support::{
 
 use super::support::with_groq_cassette_result;
 
-const SESSION_MODEL: &str = "llama-3.3-70b-versatile";
-const JSON_OBJECT_MODEL: &str = "llama-3.3-70b-versatile";
+const SESSION_MODEL: &str = "qwen/qwen3.8-27b";
+/// Groq rejects `qwen/qwen3.8-27b` requests whose output cap exceeds its
+/// 1,000-token-per-minute limit, and an unset cap counts as 2,048.
+const SESSION_MAX_TOKENS: Option<u64> = Some(512);
+const JSON_OBJECT_MODEL: &str = "qwen/qwen3.8-27b";
 const JSON_SCHEMA_MODEL: &str = "openai/gpt-oss-20b";
+/// `qwen/qwen3.8-27b` refuses the verbatim-phrase prompt about one time in
+/// five, while `gpt-oss` fills empty tool arguments with `{"": {}}`, so the
+/// no-tool step alone runs on `gpt-oss`.
+const TOOL_CHOICE_NONE_MODEL: &str = "openai/gpt-oss-120b";
 
 const COMPLEX_SESSION_PREAMBLE: &str = "\
 You are a deterministic Groq tool orchestration test harness. Use the tools instead of inventing values. \
@@ -565,6 +572,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
+                .max_tokens(SESSION_MAX_TOKENS)
                 .build();
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
@@ -607,6 +615,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                         .completion_request("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
+                        .max_tokens(SESSION_MAX_TOKENS)
                         .build(),
                 )
                 .await?;
@@ -626,6 +635,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                         .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
+                        .max_tokens(SESSION_MAX_TOKENS)
                         .build(),
                 )
                 .await?;
@@ -648,6 +658,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
+                        .max_tokens(SESSION_MAX_TOKENS)
                         .build(),
                 )
                 .await?;
@@ -664,12 +675,14 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
-            let none = model
+            let none_model = client.completion(TOOL_CHOICE_NONE_MODEL);
+            let none = none_model
                 .completion(
-                    model
+                    none_model
                         .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
+                        .max_tokens(SESSION_MAX_TOKENS)
                         .build(),
                 )
                 .await?;

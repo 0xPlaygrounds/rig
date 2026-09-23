@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 3
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 30
         }
       },
       {
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -54,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -78,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 14
+          "items": 2
         }
       },
       {
@@ -86,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 36
+          "items": 1
         }
       },
       {
@@ -94,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -102,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -110,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -118,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -126,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -150,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -190,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -214,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -222,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -238,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -250,7 +250,175 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 36,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 41,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 43,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 45,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 46,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 49,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 50,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 51,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 17
+        }
+      },
+      {
+        "batch": 55,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 56,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -332,7 +500,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Keep concise. Need maybe mention ownership/borrow checker prevents memory errors. One or two sentences. We can do two sentences. Ensure no extra."
+                    "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
                   }
                 }
               ],
@@ -340,37 +508,37 @@
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that uses a compile-time ownership and borrowing system to guarantee memory safety without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that can cause crashes, security vulnerabilities, and undefined behavior."
+              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
             }
           ],
           "usage": {
             "input_tokens": 57,
-            "output_tokens": 104,
-            "total_tokens": 161,
+            "output_tokens": 123,
+            "total_tokens": 180,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 47
+            "reasoning_tokens": 64
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "b086fc78-93d3-4756-9565-517280ec2936",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 57,
-              "completion_tokens": 104,
-              "total_tokens": 161,
+              "completion_tokens": 123,
+              "total_tokens": 180,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 47
+                "reasoning_tokens": 64
               },
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 57
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "b086fc78-93d3-4756-9565-517280ec2936",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -529,7 +697,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Keep"
+            "text": " Conc"
           }
         },
         {
@@ -537,7 +705,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " concise"
+            "text": "ise"
           }
         },
         {
@@ -553,15 +721,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " Need"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " maybe"
+            "text": " Could"
           }
         },
         {
@@ -570,6 +730,62 @@
           "delta": {
             "delta": "reasoning",
             "text": " mention"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " with"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " compile"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-time"
           }
         },
         {
@@ -617,7 +833,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " prevents"
+            "text": " preventing"
           }
         },
         {
@@ -649,7 +865,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " One"
+            "text": " Memory"
           }
         },
         {
@@ -657,7 +873,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " or"
+            "text": " safety"
           }
         },
         {
@@ -665,7 +881,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " two"
+            "text": " matters"
           }
         },
         {
@@ -673,7 +889,127 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " sentences"
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-after"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-free"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " lead"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "/"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
           }
         },
         {
@@ -689,31 +1025,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " We"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " can"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " do"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " two"
+            "text": " Two"
           }
         },
         {
@@ -745,15 +1057,7 @@
           "id": "minted:reasoning:0",
           "delta": {
             "delta": "reasoning",
-            "text": " no"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
-            "text": " extra"
+            "text": " accurate"
           }
         },
         {
@@ -856,14 +1160,6 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
             "text": " compile"
           }
         },
@@ -904,7 +1200,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " system"
+            "text": " rules"
           }
         },
         {
@@ -1016,23 +1312,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " it"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " prevents"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " bugs"
+            "text": " flaws"
           }
         },
         {
@@ -1041,38 +1321,6 @@
           "delta": {
             "delta": "text",
             "text": " like"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " buffer"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " over"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "flows"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": ","
           }
         },
         {
@@ -1112,6 +1360,38 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": " double"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " f"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "rees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
             "text": " and"
           }
         },
@@ -1120,7 +1400,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " data"
+            "text": " buffer"
           }
         },
         {
@@ -1128,7 +1408,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " races"
+            "text": " over"
           }
         },
         {
@@ -1136,15 +1416,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " that"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " can"
+            "text": "flows"
           }
         },
         {
@@ -1168,7 +1440,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": ","
+            "text": " and"
           }
         },
         {
@@ -1200,7 +1472,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " and"
+            "text": " which"
           }
         },
         {
@@ -1208,7 +1480,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " undefined"
+            "text": " Rust"
           }
         },
         {
@@ -1216,7 +1488,55 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": " behavior"
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " catching"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " them"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " at"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " compile"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " time"
           }
         },
         {
@@ -1231,32 +1551,32 @@
           "event": "final",
           "usage": {
             "input_tokens": 57,
-            "output_tokens": 104,
-            "total_tokens": 161,
+            "output_tokens": 123,
+            "total_tokens": 180,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 47
+            "reasoning_tokens": 64
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "b086fc78-93d3-4756-9565-517280ec2936",
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
             "usage": {
               "prompt_tokens": 57,
-              "completion_tokens": 104,
-              "total_tokens": 161,
+              "completion_tokens": 123,
+              "total_tokens": 180,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
               "completion_tokens_details": {
-                "reasoning_tokens": 47
+                "reasoning_tokens": 64
               },
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 57
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "b086fc78-93d3-4756-9565-517280ec2936",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -113,9 +113,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcgGsMAXEZWekUxTM8j",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcgGPKavDsLJh8gCUhK",
           "finish_reason": "stop",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -132,7 +132,7 @@
             },
             "stop_reason": "stop_sequence",
             "stop_sequence": "charlie",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcgGsMAXEZWekUxTM8j",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -179,9 +179,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcgGsMAXEZWekUxTM8j",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcgGPKavDsLJh8gCUhK",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
@@ -197,7 +197,7 @@
             },
             "stop_reason": "stop_sequence",
             "stop_sequence": "charlie",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcgGsMAXEZWekUxTM8j",
             "model": "claude-haiku-4-5-20251001"
           }
         }

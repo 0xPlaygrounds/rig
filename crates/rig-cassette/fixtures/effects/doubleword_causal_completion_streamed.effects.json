@@ -112,10 +112,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_e0f5342e68af417fbeb6ece2"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_e0f5342e68af417fbeb6ece2"
               },
               "function": {
                 "name": "lookup",
@@ -136,7 +136,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -161,7 +161,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -173,7 +173,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_e0f5342e68af417fbeb6ece2",
           "delta": {
             "delta": "tool_name",
             "name": "lookup"
@@ -181,92 +181,28 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_e0f5342e68af417fbeb6ece2",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "{\"q\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "What"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " capital"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " France"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "?"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
+            "arguments": "{\"q\": \"What is the capital of France?\"}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_e0f5342e68af417fbeb6ece2",
           "end": {
             "close": "tool_call",
-            "tool_id": "chatcmpl-REDACTED_1",
+            "tool_id": "call_e0f5342e68af417fbeb6ece2",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "chatcmpl-REDACTED_1"
+              "id": "call_e0f5342e68af417fbeb6ece2"
             },
             "provider": {
-              "call_id": "chatcmpl-REDACTED_1"
+              "call_id": "call_e0f5342e68af417fbeb6ece2"
             },
             "function": {
               "name": "lookup",
@@ -290,7 +226,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
@@ -314,7 +250,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790145994-VXwV432uZT85xsXpNrxY",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -392,7 +328,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Review:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n"
+                    "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n"
                   }
                 }
               ],
@@ -400,7 +336,7 @@
             },
             {
               "type": "text",
-              "text": "\n\nParis"
+              "text": "Paris"
             }
           ],
           "usage": {
@@ -409,10 +345,10 @@
             "total_tokens": 169,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 138
+            "reasoning_tokens": 119
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_3ec6939c-5216-483d-a82e-b7acb9ccf7d8",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -422,13 +358,13 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "\n\nParis",
-                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Review:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
+                  "content": "Paris",
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Review:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
+                      "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -438,7 +374,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_3ec6939c-5216-483d-a82e-b7acb9ccf7d8",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -453,7 +389,7 @@
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 138
+                "reasoning_tokens": 119
               },
               "prompt_tokens": 27,
               "prompt_tokens_details": {
@@ -499,10 +435,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_e0f5342e68af417fbeb6ece2"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_e0f5342e68af417fbeb6ece2"
                   },
                   "function": {
                     "name": "lookup",
@@ -522,10 +458,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_e0f5342e68af417fbeb6ece2"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_e0f5342e68af417fbeb6ece2"
                   },
                   "name": "lookup",
                   "content": [
@@ -589,7 +525,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -614,7 +550,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_3",
+            "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -651,7 +587,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_3",
+          "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
@@ -675,7 +611,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_3",
+            "response_id": "gen-1790145998-MzWvfzu7BBIqpjkkElj7",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

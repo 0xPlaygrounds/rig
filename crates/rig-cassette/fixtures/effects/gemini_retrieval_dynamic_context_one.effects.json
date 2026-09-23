@@ -122,7 +122,7 @@
             "reasoning_tokens": 80
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "oXizaoHIJ7yCz7IPvIfHuAM",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
@@ -142,7 +142,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "id_REDACTED_1",
+            "responseId": "oXizaoHIJ7yCz7IPvIfHuAM",
             "usageMetadata": {
               "candidatesTokenCount": 27,
               "promptTokenCount": 68,

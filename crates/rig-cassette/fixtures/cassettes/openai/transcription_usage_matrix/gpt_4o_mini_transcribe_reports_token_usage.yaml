@@ -6,7 +6,7 @@ when:
   - name: accept
     value: '*/*'
   - name: content-type
-    value: multipart/form-data; boundary=114d746014509731-247692fe23cbfc8b-5fd5857ee352df69-622cb9d96bb242a6
+    value: multipart/form-data; boundary=6ca78a8afbc1015b-6524a3bc70aa8ddd-3781937e308bd8dc-8b93de8a8ba5c7af
   body: null
 then:
   status: 200
@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_8692af0468d541268fc28ea0aece127e
   body: '{"text":"The sun was setting slowly, casting long shadows across the empty field.","usage":{"input_token_details":{"audio_tokens":54,"text_tokens":0},"input_tokens":54,"output_tokens":16,"total_tokens":70,"type":"tokens"}}'

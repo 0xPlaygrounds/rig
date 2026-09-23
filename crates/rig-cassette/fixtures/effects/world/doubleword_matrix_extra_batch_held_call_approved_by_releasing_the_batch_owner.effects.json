@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -14,44 +22,44 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 11,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 12,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
         }
       },
       {
@@ -59,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -67,11 +75,19 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
         "batch": 15,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -83,11 +99,43 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 18,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 17,
+        "batch": 22,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 22,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -213,10 +261,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_1561a07f2a8241c083b96d26"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_1561a07f2a8241c083b96d26"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -229,10 +277,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_3"
+                "id": "call_082cc7fa9bba42afad2ca173"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_3"
+                "call_id": "call_082cc7fa9bba42afad2ca173"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -251,7 +299,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146069-Iu5QKbd897L5gYy9iQsZ",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -276,7 +324,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146069-Iu5QKbd897L5gYy9iQsZ",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -367,10 +415,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_1561a07f2a8241c083b96d26"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_1561a07f2a8241c083b96d26"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -383,10 +431,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_082cc7fa9bba42afad2ca173"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_082cc7fa9bba42afad2ca173"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -404,10 +452,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_1561a07f2a8241c083b96d26"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_1561a07f2a8241c083b96d26"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -421,10 +469,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_082cc7fa9bba42afad2ca173"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_082cc7fa9bba42afad2ca173"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -474,27 +522,27 @@
           "choice": [
             {
               "type": "text",
-              "text": "The labels are crimson-harbor and silver-orchard."
+              "text": "The exact tool outputs are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
             "input_tokens": 477,
-            "output_tokens": 14,
-            "total_tokens": 491,
+            "output_tokens": 16,
+            "total_tokens": 493,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "gen-1790146070-AqKP9hOy4peOdoA4Z8lf",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 477,
-              "completion_tokens": 14,
-              "total_tokens": 491,
+              "completion_tokens": 16,
+              "total_tokens": 493,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -511,7 +559,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_4",
+            "response_id": "gen-1790146070-AqKP9hOy4peOdoA4Z8lf",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

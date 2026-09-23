@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -142,10 +142,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_e1e77aa2e0fb4378b534fcde"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_e1e77aa2e0fb4378b534fcde"
               },
               "function": {
                 "name": "add",
@@ -167,7 +167,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_a4f2d4d2-fc9d-449f-9876-23ae462719b1",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -185,7 +185,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "call_e1e77aa2e0fb4378b534fcde",
                       "type": "function"
                     }
                   ]
@@ -193,7 +193,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_a4f2d4d2-fc9d-449f-9876-23ae462719b1",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -279,10 +279,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_e1e77aa2e0fb4378b534fcde"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_e1e77aa2e0fb4378b534fcde"
                   },
                   "function": {
                     "name": "add",
@@ -303,10 +303,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_e1e77aa2e0fb4378b534fcde"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_e1e77aa2e0fb4378b534fcde"
                   },
                   "name": "add",
                   "content": [
@@ -364,7 +364,7 @@
                 {
                   "type": "text",
                   "content": {
-                    "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive the Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Check:\n- Use add tool? Yes (done).\n- Add 17 and 25? Yes (done).\n- Reply with just the number? Yes (need to ensure no extra text).\n\nPlan: Output \"42\".\n"
+                    "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n"
                   }
                 }
               ],
@@ -372,19 +372,19 @@
             },
             {
               "type": "text",
-              "text": "\n\n42"
+              "text": "42"
             }
           ],
           "usage": {
             "input_tokens": 400,
-            "output_tokens": 186,
-            "total_tokens": 586,
+            "output_tokens": 167,
+            "total_tokens": 567,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 181
+            "reasoning_tokens": 140
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
+          "response_id": "resp_77de1f07-3f75-4e52-9e12-35678cd21d19",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -394,13 +394,13 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "\n\n42",
-                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive the Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Check:\n- Use add tool? Yes (done).\n- Add 17 and 25? Yes (done).\n- Reply with just the number? Yes (need to ensure no extra text).\n\nPlan: Output \"42\".\n",
+                  "content": "42",
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive the Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Check:\n- Use add tool? Yes (done).\n- Add 17 and 25? Yes (done).\n- Reply with just the number? Yes (need to ensure no extra text).\n\nPlan: Output \"42\".\n",
+                      "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I need to call the `add` function with `x=17` and `y=25`.\n3.  **Process the Output:** The tool returned `42`.\n4.  **Format the Response:** The user explicitly requested \"just the number\".\n5.  **Final Output:** 42.\n\n*Self-Correction/Constraint Check:* The instruction says \"reply with just the number\". I should avoid any explanatory text.\n\n*Action:* Output \"42\".\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -410,7 +410,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_77de1f07-3f75-4e52-9e12-35678cd21d19",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -421,11 +421,11 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 186,
+              "completion_tokens": 167,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 181
+                "reasoning_tokens": 140
               },
               "prompt_tokens": 400,
               "prompt_tokens_details": {
@@ -434,7 +434,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 586
+              "total_tokens": 567
             }
           }
         }

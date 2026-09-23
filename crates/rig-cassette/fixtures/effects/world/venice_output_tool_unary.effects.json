@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -98,73 +98,48 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "toolcall",
-              "id": {
-                "origin": "explicit",
-                "id": "call_REDACTED_1"
-              },
-              "provider": {
-                "call_id": "call_REDACTED_1"
-              },
-              "function": {
-                "name": "final_result",
-                "arguments": {
-                  "title": "Seattle Rust Meetup",
-                  "category": "Technology",
-                  "summary": "A local gathering for Rust programmers in Seattle to discuss new features, best practices, and projects. Typically held monthly with presentations and networking."
-                }
-              },
-              "signature": null,
-              "additional_params": null
+              "type": "text",
+              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
             }
           ],
           "usage": {
             "input_tokens": 1131,
-            "output_tokens": 54,
-            "total_tokens": 1185
+            "output_tokens": 48,
+            "total_tokens": 1179
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
-          "finish_reason": "tool_calls",
+          "response_id": "chatcmpl-Rygo0oRk1gT2ymeHCcViaQ7F",
+          "finish_reason": "stop",
           "provider": "venice",
           "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
-                "finish_reason": "tool_calls",
+                "finish_reason": "stop",
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "",
+                  "content": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle.",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A local gathering for Rust programmers in Seattle to discuss new features, best practices, and projects. Typically held monthly with presentations and networking.\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_REDACTED_1",
-                      "type": "function"
-                    }
-                  ]
+                  "tool_calls": []
                 }
               }
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00011953125000000001
+              "usd": 0.00011803125
             },
             "created": 0,
-            "id": "chatcmpl-REDACTED_1",
+            "id": "chatcmpl-Rygo0oRk1gT2ymeHCcViaQ7F",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 54,
+              "completion_tokens": 48,
               "prompt_tokens": 1131,
-              "total_tokens": 1185
+              "total_tokens": 1179
             },
             "venice_parameters": {
               "disable_thinking": false,

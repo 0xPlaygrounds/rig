@@ -387,12 +387,10 @@ fn text_response_skips_thought_parts() {
     );
 }
 
-/// The wire hangs a `thoughtSignature` on a trailing part with no
-/// `thought` flag. This crate's streaming adapter has always kept it; the
-/// unary mapper dropped it, the same asymmetry the REST wire carried. The
-/// signature belongs to the chain-of-thought block that precedes it.
+/// A signature on answer text stays on that text: Gemini's rules return a
+/// signature inside the part that carried it, never merged into another.
 #[test]
-fn a_trailing_thought_signature_signs_the_reasoning_before_it() {
+fn a_signature_on_answer_text_stays_on_that_text() {
     let response = proto::GenerateContentResponse {
         candidates: vec![proto::Candidate {
             content: Some(proto::Content {
@@ -418,23 +416,58 @@ fn a_trailing_thought_signature_signs_the_reasoning_before_it() {
 
     let normalized: completion::CompletionResponse =
         response.try_into().expect("payload should normalize");
-    assert_eq!(
-        normalized.choice.len(),
-        2,
-        "no empty sibling; got {:?}",
-        normalized.choice
-    );
+    assert_eq!(normalized.choice.len(), 2, "{:?}", normalized.choice);
     assert!(
         matches!(
             normalized.choice.first(),
             Some(completion::AssistantContent::Reasoning(reasoning))
-                if matches!(reasoning.content.first(),
-                    Some(message::ReasoningContent::Text { text, signature })
-                        if text == "the chain" && signature.is_some())
+                if reasoning.first_signature().is_none()
         ),
-        "the reasoning block must carry the trailing signature, got {:?}",
+        "the reasoning stays unsigned: {:?}",
         normalized.choice
     );
+    let signature = match normalized.choice.get(1) {
+        Some(completion::AssistantContent::Text(text)) => {
+            rig_core::providers::gemini::text_thought_signature(text)
+        }
+        _ => None,
+    }
+    .expect("the answer text carries its signature");
+
+    // It replays on the answer part.
+    let request = create_grpc_request(
+        "gemini-3-flash-preview",
+        CompletionRequest {
+            model: None,
+            chat_history: vec![
+                message::Message::user("q"),
+                message::Message::Assistant {
+                    id: None,
+                    content: normalized.choice.clone(),
+                },
+                message::Message::user("again"),
+            ],
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        },
+    )
+    .expect("request build");
+    let answer = request
+        .contents
+        .get(1)
+        .expect("the assistant turn")
+        .parts
+        .iter()
+        .find(|part| matches!(&part.data, Some(proto::part::Data::Text(text)) if text == "answer"))
+        .expect("the answer part");
+    assert_eq!(answer.thought_signature, b"sig-bytes".to_vec());
+    assert!(!signature.is_empty());
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` for the

@@ -4228,21 +4228,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "done"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CoUBAWkUfRPain+ejOCQAfGoFqBNDZIiLSDaFoHrlr4HYCDJI1Kc7/5e6zLZSfie2ZLlR+5v64RND7uBtgkiV7b7kvIEDuRiEaDkxWAUwJ9+g+uvhzOPlTsXgBT6e0gXdyEs/LNzJYoLbsHRFVb1q4iwi0fgmMGfYnoZg+7GAhr1KGi5cTLJIg=="
-                  }
+              "text": "done",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CoUBAWkUfRPain+ejOCQAfGoFqBNDZIiLSDaFoHrlr4HYCDJI1Kc7/5e6zLZSfie2ZLlR+5v64RND7uBtgkiV7b7kvIEDuRiEaDkxWAUwJ9+g+uvhzOPlTsXgBT6e0gXdyEs/LNzJYoLbsHRFVb1q4iwi0fgmMGfYnoZg+7GAhr1KGi5cTLJIg=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

@@ -42,6 +42,7 @@ mod cassette {
     mod tool_truncation_contract_matrix;
     mod transcription;
     mod typed_prompt_tools;
+    mod upstream_switch_matrix;
 }
 
 mod audio_generation;

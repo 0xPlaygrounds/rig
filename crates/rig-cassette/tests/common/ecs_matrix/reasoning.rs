@@ -234,14 +234,21 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                     }));
                 }
                 ThinkingWire::Gemini => {
-                    // Function-call signatures belong to ToolCall.signature;
-                    // text/thought signatures belong to the reasoning block.
+                    // A signature stays on the part that carried it: a call's
+                    // on ToolCall.signature, a thought's on its reasoning
+                    // block, an answer's on its text.
                     assert!(
                         reasoning
                             .iter()
                             .any(|block| block.first_signature().is_some())
-                            || parts.iter().any(|part| matches!(part,
-                            AssistantContent::ToolCall(call) if call.signature.is_some())),
+                            || parts.iter().any(|part| match part {
+                                AssistantContent::ToolCall(call) => call.signature.is_some(),
+                                AssistantContent::Text(text) => {
+                                    rig_core::providers::gemini::text_thought_signature(text)
+                                        .is_some()
+                                }
+                                _ => false,
+                            }),
                         "{}: the Gemini signature is preserved",
                         cell.name
                     );

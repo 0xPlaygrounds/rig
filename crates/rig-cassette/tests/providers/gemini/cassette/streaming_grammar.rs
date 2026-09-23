@@ -304,37 +304,24 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                 "signed restatement must not duplicate the thinking text;\naggregated: {aggregated:?}"
             );
             // The wire attaches `thoughtSignature` to a trailing part with no
-            // `thought` flag (recorded: `{"text":"","thoughtSignature":"…"}`),
-            // so a `thought: true`-gated signature path never sees it. The
-            // signature is replay-required provider state — Gemini rejects a
-            // replayed turn missing it — so it must reach the aggregated
-            // reasoning.
-            let signatures: Vec<&str> = run
+            // `thought` flag (recorded: `{"text":"","thoughtSignature":"…"}`).
+            // The signature is replay-required provider state, and Gemini
+            // requires it back inside the part that carried it, never merged
+            // into another: it stays on that trailing text, and signs no
+            // reasoning block.
+            let text_signatures: Vec<&str> = run
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|part| match part {
-                    ReasoningContent::Text {
-                        signature: Some(signature),
-                        ..
-                    } => Some(signature.as_str()),
+                    AssistantContent::Text(text) => gemini::text_thought_signature(text),
                     _ => None,
                 })
                 .collect();
             assert!(
-                signatures.iter().any(|signature| !signature.is_empty()),
-                "the recorded thought_signature must survive onto the aggregated reasoning, got {:?}",
+                text_signatures.iter().any(|signature| !signature.is_empty()),
+                "the recorded thought_signature must survive on its text part, got {:?}",
                 run.choice
             );
-            // And it must sign the block that HOLDS the chain-of-thought —
-            // an empty signature-only sibling appended after the answer
-            // satisfies the assertion above while the real thinking replays
-            // unsigned (#2258 B4). Every reasoning part must carry text, and
-            // the part carrying the streamed thinking must be the signed one.
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
                     let text: String = reasoning
@@ -350,17 +337,11 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                         "no empty (signature-only) reasoning sibling may exist: {:?}",
                         run.choice
                     );
-                    if text.contains(run.reasoning_delta.trim()) {
-                        assert!(
-                            reasoning.content.iter().any(|part| matches!(
-                                part,
-                                ReasoningContent::Text { signature: Some(signature), .. }
-                                    if !signature.is_empty()
-                            )),
-                            "the signature must land on the block carrying the thinking text: {:?}",
-                            run.choice
-                        );
-                    }
+                    assert!(
+                        reasoning.first_signature().is_none(),
+                        "the answer's signature must not move onto reasoning: {:?}",
+                        run.choice
+                    );
                 }
             }
         },

@@ -14,11 +14,11 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   body: |+
-    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion.chunk","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":null}
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"aa0ce3b8-9e41-4a00-b467-aaf07fd94194","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":"abcdef"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[97,98,99,100,101,102],"logprob":-0.12717707,"token":"abcdef","top_logprobs":[]}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion.chunk","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":null}
+    data: {"choices":[{"delta":{"content":"ABCD"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[65,66,67,68],"logprob":-0.017877162,"token":"ABCD","top_logprobs":[]}]}}],"created":0,"id":"aa0ce3b8-9e41-4a00-b467-aaf07fd94194","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":""},"finish_reason":"length","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion.chunk","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":13,"prompt_tokens":13,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":14}}
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"length","index":0,"logprobs":null}],"created":0,"id":"aa0ce3b8-9e41-4a00-b467-aaf07fd94194","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":13,"prompt_tokens":13,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":14}}
 
     data: [DONE]
 

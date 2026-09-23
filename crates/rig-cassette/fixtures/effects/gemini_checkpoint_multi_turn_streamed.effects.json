@@ -125,7 +125,7 @@
             "total_tokens": 156
           },
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "nnizatmcBYHUz7IPh6yT4QU",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -144,7 +144,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_1"
+            "response_id": "nnizatmcBYHUz7IPh6yT4QU"
           }
         }
       },
@@ -192,7 +192,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_1",
+          "response_id": "nnizatmcBYHUz7IPh6yT4QU",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -210,7 +210,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_1"
+            "response_id": "nnizatmcBYHUz7IPh6yT4QU"
           }
         }
       ]
@@ -363,7 +363,7 @@
             "total_tokens": 210
           },
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "nnizarv4HNjQz7IPh4SA0Ac",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -382,7 +382,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_2"
+            "response_id": "nnizarv4HNjQz7IPh4SA0Ac"
           }
         }
       },
@@ -430,7 +430,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_2",
+          "response_id": "nnizarv4HNjQz7IPh4SA0Ac",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -448,7 +448,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_2"
+            "response_id": "nnizarv4HNjQz7IPh4SA0Ac"
           }
         }
       ]
@@ -645,7 +645,7 @@
             "total_tokens": 264
           },
           "message_id": null,
-          "response_id": "id_REDACTED_3",
+          "response_id": "nnizariKM4_Xz7IPt4-28QE",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -664,7 +664,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_3"
+            "response_id": "nnizariKM4_Xz7IPt4-28QE"
           }
         }
       },
@@ -712,7 +712,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_3",
+          "response_id": "nnizariKM4_Xz7IPt4-28QE",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -730,7 +730,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_3"
+            "response_id": "nnizariKM4_Xz7IPt4-28QE"
           }
         }
       ]
@@ -971,7 +971,7 @@
             "total_tokens": 318
           },
           "message_id": null,
-          "response_id": "id_REDACTED_4",
+          "response_id": "n3izas-eCqOez7IPveCJ8QQ",
           "finish_reason": "tool_calls",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -990,7 +990,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_4"
+            "response_id": "n3izas-eCqOez7IPveCJ8QQ"
           }
         }
       },
@@ -1038,7 +1038,7 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "id_REDACTED_4",
+          "response_id": "n3izas-eCqOez7IPveCJ8QQ",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -1056,7 +1056,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_4"
+            "response_id": "n3izas-eCqOez7IPveCJ8QQ"
           }
         }
       ]
@@ -1330,7 +1330,7 @@
             "total_tokens": 351
           },
           "message_id": null,
-          "response_id": "id_REDACTED_5",
+          "response_id": "n3izapeoI7rVz7IPgKTO0Qc",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
@@ -1348,7 +1348,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_5"
+            "response_id": "n3izapeoI7rVz7IPgKTO0Qc"
           }
         }
       },
@@ -1377,7 +1377,7 @@
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "id_REDACTED_5",
+          "response_id": "n3izapeoI7rVz7IPgKTO0Qc",
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
@@ -1394,7 +1394,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "id_REDACTED_5"
+            "response_id": "n3izapeoI7rVz7IPgKTO0Qc"
           }
         }
       ]

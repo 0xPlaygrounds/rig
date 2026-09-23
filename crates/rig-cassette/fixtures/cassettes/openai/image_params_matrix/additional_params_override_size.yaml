@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_a71e75a1472d4b279de04475ccc077e7
   body: '{"error":{"code":"invalid_value","message":"Invalid size ''3x3''. Supported sizes are 1024x1024, 1024x1536, 1536x1024, and auto.","param":"size","type":"image_generation_user_error"}}'

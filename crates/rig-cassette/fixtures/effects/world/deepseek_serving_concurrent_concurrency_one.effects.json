@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -30,44 +22,44 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 3
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 12,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 14,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -75,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -83,7 +75,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -91,7 +83,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -107,7 +99,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -131,59 +123,11 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 8
         }
       },
       {
-        "batch": 24,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 25,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 27,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 30,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
+        "batch": 23,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -311,10 +255,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_00_dIG0GPlayWpBGm61iMkD6218"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "call_00_dIG0GPlayWpBGm61iMkD6218"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -327,10 +271,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_01_w8nIAxpjBRq6P2eCOx1D8108"
               },
               "provider": {
-                "call_id": "call_REDACTED_2"
+                "call_id": "call_01_w8nIAxpjBRq6P2eCOx1D8108"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -347,7 +291,7 @@
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "a515db8b-f507-4dcd-b478-a9253a881866",
           "finish_reason": "tool_calls",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -363,7 +307,7 @@
               "prompt_cache_miss_tokens": 139
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "a515db8b-f507-4dcd-b478-a9253a881866",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -459,10 +403,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_dIG0GPlayWpBGm61iMkD6218"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_dIG0GPlayWpBGm61iMkD6218"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -475,10 +419,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_w8nIAxpjBRq6P2eCOx1D8108"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_w8nIAxpjBRq6P2eCOx1D8108"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -496,10 +440,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_00_dIG0GPlayWpBGm61iMkD6218"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "call_00_dIG0GPlayWpBGm61iMkD6218"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -513,10 +457,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_01_w8nIAxpjBRq6P2eCOx1D8108"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2"
+                    "call_id": "call_01_w8nIAxpjBRq6P2eCOx1D8108"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -564,7 +508,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
+              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
             }
           ],
           "usage": {
@@ -574,7 +518,7 @@
             "cached_input_tokens": 256
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "fb9a7d86-e089-4990-82fb-6151d163d64e",
           "finish_reason": "stop",
           "provider": "deepseek",
           "model": "deepseek-flash",
@@ -590,7 +534,7 @@
               "prompt_cache_miss_tokens": 215
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "fb9a7d86-e089-4990-82fb-6151d163d64e",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

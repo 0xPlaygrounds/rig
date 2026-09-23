@@ -6,7 +6,7 @@ when:
   - name: accept
     value: '*/*'
   - name: content-type
-    value: multipart/form-data; boundary=51f36dedf9981abd-5c9b347d49b324bd-c6f4b4d84350d05f-a790e9439e3943da
+    value: multipart/form-data; boundary=03b0b3b00b76fc3c-81f7028414b60151-a1a9aea4cd3222fa-31e792aab9b976d2
   body: null
 then:
   status: 200
@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"duration":5.489999771118164,"language":"english","segments":[{"avg_logprob":-0.3874194622039795,"compression_ratio":0.9863013625144958,"end":4.800000190734863,"id":0,"no_speech_prob":0.0003172428405378014,"seek":0,"start":0.0,"temperature":0.0,"text":" The sun was setting slowly, casting long shadows across the empty field.","tokens":[50364,440,3295,390,3287,5692,11,17301,938,14740,2108,264,6707,2519,13,50604]}],"task":"transcribe","text":"The sun was setting slowly, casting long shadows across the empty field.","usage":{"seconds":6,"type":"duration"}}'
+    value: req_14b7451dffdb43f99d1cb4a45f78d1b3
+  body: '{"duration":5.489999771118164,"language":"english","segments":[{"avg_logprob":-0.3867301046848297,"compression_ratio":0.9863013625144958,"end":4.800000190734863,"id":0,"no_speech_prob":0.0003172529104631394,"seek":0,"start":0.0,"temperature":0.0,"text":" The sun was setting slowly, casting long shadows across the empty field.","tokens":[50364,440,3295,390,3287,5692,11,17301,938,14740,2108,264,6707,2519,13,50604]}],"task":"transcribe","text":"The sun was setting slowly, casting long shadows across the empty field.","usage":{"seconds":6,"type":"duration"}}'

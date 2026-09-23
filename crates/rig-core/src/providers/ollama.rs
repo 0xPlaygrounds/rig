@@ -424,6 +424,7 @@ impl OllamaDecoder {
                     reasoning,
                     reasoning_signature: None,
                     text: Some(text),
+                    text_meta: None,
                     tool_events: tool_events
                         .into_items()
                         .into_iter()

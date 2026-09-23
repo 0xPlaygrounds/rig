@@ -60,7 +60,7 @@
           "retrieved": "scored",
           "results": [
             [
-              0.6055084039461189,
+              0.6055214996736475,
               "doc1",
               "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
             ]
@@ -122,9 +122,9 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_3",
+          "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+          "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+          "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -146,8 +146,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -155,14 +155,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "A"
@@ -170,7 +170,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " gl"
@@ -178,7 +178,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "arb"
@@ -186,7 +186,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "-g"
@@ -194,7 +194,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "lar"
@@ -202,7 +202,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "b"
@@ -210,7 +210,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " is"
@@ -218,7 +218,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " an"
@@ -226,7 +226,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " ancient"
@@ -234,7 +234,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " farming"
@@ -242,7 +242,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " tool"
@@ -250,7 +250,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " used"
@@ -258,7 +258,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " by"
@@ -266,7 +266,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " the"
@@ -274,7 +274,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " ancestors"
@@ -282,7 +282,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " of"
@@ -290,7 +290,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " the"
@@ -298,7 +298,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " inhabitants"
@@ -306,7 +306,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " of"
@@ -314,7 +314,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " planet"
@@ -322,7 +322,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": " J"
@@ -330,7 +330,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "iro"
@@ -338,7 +338,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "delta": {
             "delta": "text",
             "text": "."
@@ -346,7 +346,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
           "kind": {
             "kind": "message"
           }
@@ -361,9 +361,9 @@
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_3",
+          "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+          "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+          "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -384,8 +384,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
             "model": "gpt-4o-2024-08-06"
           }
         }

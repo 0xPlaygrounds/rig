@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"The dominant non-background color is bright red.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":82,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":37,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":119}}'
+    value: req_5051bd1ae4734be2bc43d62fd48ff072
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"The dominant non-background color is bright red.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDDAce2DyMQqEJNYks9xHRHwFj4Y","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":82,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":37,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":119}}'
 ---
 when:
   path: /v1/chat/completions
@@ -33,5 +33,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_2
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"The image contained a red square.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":80,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":72,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":152}}'
+    value: req_a09a0095115b43248254f1bcfc820911
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"The image contained a red square.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDDCCMeDjsAUQHNcIn3mBQHYfI99","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":144,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":72,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":216}}'

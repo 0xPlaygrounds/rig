@@ -14,5 +14,5 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_REDACTED_1
+    value: req_cf1398c1d89d417a9fda36dd64e5ff7c
   body: '{"error":{"code":"decimal_above_max_value","message":"Invalid ''temperature'': decimal above maximum value. Expected a value <= 2, but got 99.0 instead.","param":"temperature","type":"invalid_request_error"}}'

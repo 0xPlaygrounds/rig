@@ -216,6 +216,13 @@ impl Wire for Responses {
         Some(&self.model)
     }
 
+    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
+        crate::providers::openai::wire::replay_issuers(
+            &self.provider.dialect,
+            model.unwrap_or(&self.model),
+        )
+    }
+
     fn route(&self) -> Option<&str> {
         Some(self.provider.dialect.quirks.responses.path)
     }
@@ -243,6 +250,9 @@ impl Wire for Responses {
             // bookkeeping; elsewhere an envelope-less frame is a defect
             // worth surfacing rather than salvaging.
             decoder = decoder.with_envelope_repair();
+        }
+        if self.provider.dialect.quirks.upstream_reasoning_issuer {
+            decoder = decoder.with_upstream_reasoning_issuer();
         }
         decoder
     }

@@ -1,6 +1,8 @@
 //! Native output-mode counterparts using original assertions and provider cassettes.
 use super::super::support::with_anthropic_corpus_output_cassette;
-use super::corpus_output::{SUM_EVENT_PROMPT, assert_event, request_at, tool_names};
+use super::corpus_output::{
+    SUM_EVENT_PROMPT, assert_event, assert_prompted_event, request_at, tool_names,
+};
 use crate::ecs_agent::EcsAgent;
 use crate::goldens::{event_schema, families};
 use crate::support::{Adder, BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT, TOOLS_PREAMBLE};
@@ -246,7 +248,7 @@ async fn prompted_with_real_tool_effect_log() {
                 let output = ecs
                     .prompt_with_max_turns(SUM_EVENT_PROMPT, false, Some(3))
                     .await;
-                assert_event(&output);
+                assert_prompted_event(&output);
                 let log = ecs.effect_log();
                 crate::goldens::world_golden_effects(
                     "anthropic_output_prompted_with_real_tool_effect_log",

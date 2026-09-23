@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -101,18 +101,18 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3ZTEQUxCkcujJ2deuvPVC75n"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3ZTEQUxCkcujJ2deuvPVC75n",
+                "item_id": "fc_0bb0da40ca78b3a0006ab3968d295887d08b2f25282afe30a2"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
                   "category": "Technology",
-                  "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
+                  "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community."
                 }
               },
               "signature": null,
@@ -121,18 +121,19 @@
           ],
           "usage": {
             "input_tokens": 138,
-            "output_tokens": 66,
-            "total_tokens": 204,
+            "output_tokens": 68,
+            "total_tokens": 206,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0bb0da40ca78b3a0006ab3968c63b087d0b5caa90f8a44db7b",
+          "provider_request_id": "req_c7527a793efb433a9cec6ba1aa2f5df4",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -141,7 +142,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0bb0da40ca78b3a0006ab3968c63b087d0b5caa90f8a44db7b",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
             "max_output_tokens": null,
@@ -152,9 +153,9 @@
             "object": "response",
             "output": [
               {
-                "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust.\"}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community.\"}",
+                "call_id": "call_3ZTEQUxCkcujJ2deuvPVC75n",
+                "id": "fc_0bb0da40ca78b3a0006ab3968d295887d08b2f25282afe30a2",
                 "name": "final_result",
                 "status": "completed",
                 "type": "function_call"
@@ -206,7 +207,6 @@
                 "name": "final_result",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "category": {
                       "type": "string"
@@ -225,7 +225,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -238,11 +238,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 66,
+              "output_tokens": 68,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 204
+              "total_tokens": 206
             },
             "user": null
           }

@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 11,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -116,11 +116,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
               },
               "function": {
                 "name": "checkpoint_large",
@@ -138,12 +138,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0d89c97b8630415c006ab39667f60c87d0be91cdab09d498ff",
+          "provider_request_id": "req_2b56293af2694273bcbc26236b045b73",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -152,7 +153,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0d89c97b8630415c006ab39667f60c87d0be91cdab09d498ff",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
@@ -164,8 +165,8 @@
             "output": [
               {
                 "arguments": "{}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                "id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2",
                 "name": "checkpoint_large",
                 "status": "completed",
                 "type": "function_call"
@@ -219,10 +220,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -302,11 +302,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                    "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
                   },
                   "function": {
                     "name": "checkpoint_large",
@@ -324,11 +324,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                    "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
                   },
                   "name": "checkpoint_large",
                   "content": [
@@ -377,13 +377,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "message_id": "msg_0d89c97b8630415c006ab39669559487d0a0f11a4be7421ed7",
+          "response_id": "resp_0d89c97b8630415c006ab39668b19487d0a89098eee379808e",
+          "provider_request_id": "req_8b4cfbd1d65049618225b8f7f16d4bda",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -392,7 +393,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_0d89c97b8630415c006ab39668b19487d0a89098eee379808e",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
@@ -411,7 +412,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_0d89c97b8630415c006ab39669559487d0a0f11a4be7421ed7",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -465,10 +466,9 @@
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
-                  "required": [],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

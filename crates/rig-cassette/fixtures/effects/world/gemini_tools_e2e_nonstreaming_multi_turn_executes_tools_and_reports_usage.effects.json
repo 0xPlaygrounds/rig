@@ -23,14 +23,14 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 12,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -675,21 +675,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "37"
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "CnMBaRR9E5bFalh//sdM08WlMmALVH6a/rdEdQchtxLEwBw1avx2ehpH2O0zSe3F6YQlnL++SBf7XcN/a+zerr2CkEAldwLYIvGiheRAY1EtbgA07a8ez4oEAbqqF6uH7i1RBCfC95G/r65Z32QN9hnjxqhu"
-                  }
+              "text": "37",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CnMBaRR9E5bFalh//sdM08WlMmALVH6a/rdEdQchtxLEwBw1avx2ehpH2O0zSe3F6YQlnL++SBf7XcN/a+zerr2CkEAldwLYIvGiheRAY1EtbgA07a8ez4oEAbqqF6uH7i1RBCfC95G/r65Z32QN9hnjxqhu"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {

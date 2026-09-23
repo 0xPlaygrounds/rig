@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -125,11 +125,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_7WcyMezOVARdQc2x7WzCZ5WC"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_7WcyMezOVARdQc2x7WzCZ5WC",
+                "item_id": "fc_07afd8598d1db429006ab395f4b56c87d08afbdfa542e335e4"
               },
               "function": {
                 "name": "add",
@@ -150,12 +150,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_07afd8598d1db429006ab395f4192487d0b420b46b2eb8f46b",
+          "provider_request_id": "req_4d22ddd9327245a1b37015549b247fc3",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -164,7 +165,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_07afd8598d1db429006ab395f4192487d0b420b46b2eb8f46b",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
@@ -176,8 +177,8 @@
             "output": [
               {
                 "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_7WcyMezOVARdQc2x7WzCZ5WC",
+                "id": "fc_07afd8598d1db429006ab395f4b56c87d08afbdfa542e335e4",
                 "name": "add",
                 "status": "completed",
                 "type": "function_call"
@@ -229,7 +230,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -246,7 +246,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

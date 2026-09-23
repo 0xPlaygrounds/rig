@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -26,14 +26,22 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -44,11 +52,43 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 9
+          "items": 2
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -174,16 +214,16 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "chatcmpl-tool-a5d5de59cd0a6912"
               },
               "provider": {
-                "call_id": "call_REDACTED_1"
+                "call_id": "chatcmpl-tool-a5d5de59cd0a6912"
               },
               "function": {
                 "name": "add",
                 "arguments": {
-                  "y": 3,
-                  "x": 2
+                  "x": 2,
+                  "y": 3
                 }
               },
               "signature": null,
@@ -195,10 +235,11 @@
             "output_tokens": 35,
             "total_tokens": 352,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146094-jDjVoGgOrlziLkTxCVJu",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -208,7 +249,8 @@
               "completion_tokens": 35,
               "total_tokens": 352,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -222,7 +264,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146094-jDjVoGgOrlziLkTxCVJu",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
@@ -234,7 +276,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:chatcmpl-tool-a5d5de59cd0a6912",
           "delta": {
             "delta": "tool_name",
             "name": "add"
@@ -242,34 +284,50 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:chatcmpl-tool-a5d5de59cd0a6912",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "{\"y\":3,\"x\":2}"
+            "arguments": "{\"x\": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:chatcmpl-tool-a5d5de59cd0a6912",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "2, \"y\": "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:chatcmpl-tool-a5d5de59cd0a6912",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "3}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:call_REDACTED_1",
+          "id": "wire:chatcmpl-tool-a5d5de59cd0a6912",
           "end": {
             "close": "tool_call",
-            "tool_id": "call_REDACTED_1",
+            "tool_id": "chatcmpl-tool-a5d5de59cd0a6912",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call_REDACTED_1"
+              "id": "chatcmpl-tool-a5d5de59cd0a6912"
             },
             "provider": {
-              "call_id": "call_REDACTED_1"
+              "call_id": "chatcmpl-tool-a5d5de59cd0a6912"
             },
             "function": {
               "name": "add",
               "arguments": {
-                "y": 3,
-                "x": 2
+                "x": 2,
+                "y": 3
               }
             },
             "signature": null,
@@ -283,11 +341,12 @@
             "output_tokens": 35,
             "total_tokens": 352,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "response_id": "gen-1790146094-jDjVoGgOrlziLkTxCVJu",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
           "raw": {
@@ -296,7 +355,8 @@
               "completion_tokens": 35,
               "total_tokens": 352,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -310,7 +370,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_1",
+            "response_id": "gen-1790146094-jDjVoGgOrlziLkTxCVJu",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
@@ -328,7 +388,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "add",
-        "args": "{\"y\":3,\"x\":2}"
+        "args": "{\"x\":2,\"y\":3}"
       },
       "outcome": {
         "Ok": {
@@ -376,16 +436,16 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "chatcmpl-tool-a5d5de59cd0a6912"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "chatcmpl-tool-a5d5de59cd0a6912"
                   },
                   "function": {
                     "name": "add",
                     "arguments": {
-                      "y": 3,
-                      "x": 2
+                      "x": 2,
+                      "y": 3
                     }
                   },
                   "signature": null,
@@ -400,10 +460,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "chatcmpl-tool-a5d5de59cd0a6912"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "call_id": "chatcmpl-tool-a5d5de59cd0a6912"
                   },
                   "name": "add",
                   "content": [
@@ -464,10 +524,11 @@
             "output_tokens": 8,
             "total_tokens": 378,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146095-4P2Nx2lYlH1n91G3Fai2",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
@@ -477,7 +538,8 @@
               "completion_tokens": 8,
               "total_tokens": 378,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -491,7 +553,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146095-4P2Nx2lYlH1n91G3Fai2",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
@@ -571,11 +633,12 @@
             "output_tokens": 8,
             "total_tokens": 378,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146095-4P2Nx2lYlH1n91G3Fai2",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-9B",
           "raw": {
@@ -584,7 +647,8 @@
               "completion_tokens": 8,
               "total_tokens": 378,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -598,7 +662,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146095-4P2Nx2lYlH1n91G3Fai2",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,

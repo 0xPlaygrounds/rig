@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-19T01:32:55.422504Z","displayName":"rig-active-tools","expireTime":"2026-08-19T01:35:54.995577631Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-19T01:32:55.422504Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-09-23T06:58:17.971981Z","displayName":"rig-active-tools","expireTime":"2026-09-23T07:01:17.450996973Z","model":"models/gemini-2.5-flash","name":"cachedContents/yu4hexd2kppxlza8bi4bcaqh3jwc9w4fzbvk5keu","updateTime":"2026-09-23T06:58:17.971981Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -28,16 +28,16 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"cachedContent":"cachedContents/cached-REDACTED_1","contents":[{"parts":[{"text":"Reply with exactly: suppressed","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+  body: '{"cachedContent":"cachedContents/yu4hexd2kppxlza8bi4bcaqh3jwc9w4fzbvk5keu","contents":[{"parts":[{"text":"Reply with exactly: suppressed","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"suppressed"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":1081}],"cachedContentTokenCount":1081,"candidatesTokenCount":2,"promptTokenCount":1087,"promptTokensDetails":[{"modality":"TEXT","tokenCount":1087}],"serviceTier":"standard","thoughtsTokenCount":21,"totalTokenCount":1110}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"suppressed"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"inizarjSBOD_qtsPt-LOuQY","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":1081}],"cachedContentTokenCount":1081,"candidatesTokenCount":2,"promptTokenCount":1087,"promptTokensDetails":[{"modality":"TEXT","tokenCount":1087}],"serviceTier":"standard","thoughtsTokenCount":17,"totalTokenCount":1106}}'
 ---
 when:
-  path: /v1beta/cachedContents/cached-REDACTED_1
+  path: /v1beta/cachedContents/yu4hexd2kppxlza8bi4bcaqh3jwc9w4fzbvk5keu
   method: DELETE
   query_param:
   - name: key

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,11 +108,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_REDACTED_1",
+              "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The task is to extract structured data from the provided text: \"Jane Smith is a 45 year old data scientist.\"\n"
+                  "content": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function."
                 }
               ],
               "provider": "xai"
@@ -121,11 +121,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
+                "item_id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0"
               },
               "function": {
                 "name": "submit",
@@ -140,15 +140,15 @@
             }
           ],
           "usage": {
-            "input_tokens": 432,
-            "output_tokens": 222,
-            "total_tokens": 654,
+            "input_tokens": 408,
+            "output_tokens": 269,
+            "total_tokens": 677,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 199
+            "reasoning_tokens": 250
           },
           "message_id": null,
-          "response_id": "req_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "4d909b70-9a22-9434-8254-23a700f02443",
+          "provider_request_id": "4d909b70-9a22-9434-8254-23a700f02443",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -158,23 +158,23 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "req_REDACTED_1",
+            "id": "4d909b70-9a22-9434-8254-23a700f02443",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
             "max_tool_calls": null,
             "metadata": {
-              "system_fingerprint": "fp_REDACTED_1"
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
             },
             "model": "grok-4.3",
             "object": "response",
             "output": [
               {
-                "id": "rs_REDACTED_1",
+                "id": "rs_4d909b70-9a22-9434-8254-23a700f02443",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "The task is to extract structured data from the provided text: \"Jane Smith is a 45 year old data scientist.\"\n",
+                    "text": "Extracting structured data from the text.\n\nExtracted name, age, and profession. Preparing to call the submit function.",
                     "type": "summary_text"
                   }
                 ],
@@ -182,8 +182,8 @@
               },
               {
                 "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call-7275ae8a-12b6-485e-886a-b1e47a4e4f7a-0",
+                "id": "fc_4d909b70-9a22-9434-8254-23a700f02443_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -249,21 +249,21 @@
             "truncation": "disabled",
             "usage": {
               "context_details": {
-                "input_tokens": 432,
-                "output_tokens": 222
+                "input_tokens": 408,
+                "output_tokens": 273
               },
-              "cost_in_usd_ticks": 8934000,
-              "input_tokens": 432,
+              "cost_in_usd_ticks": 9809000,
+              "input_tokens": 408,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 222,
+              "output_tokens": 269,
               "output_tokens_details": {
-                "reasoning_tokens": 199
+                "reasoning_tokens": 250
               },
-              "total_tokens": 654
+              "total_tokens": 677
             },
             "user": null
           }

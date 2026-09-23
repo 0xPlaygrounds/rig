@@ -68,21 +68,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "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"
-                  }
+              "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "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"
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
@@ -92,7 +83,7 @@
             "reasoning_tokens": 282
           },
           "message_id": null,
-          "response_id": "UqyyapaaE-flqtsPscLH6QQ",
+          "response_id": "V2GzatOpA7fpz7IPnvD3gAg",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -103,7 +94,7 @@
                   "parts": [
                     {
                       "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes.",
-                      "thoughtSignature": "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"
+                      "thoughtSignature": "EtoMCtcMAWkUfRPhPEWRqR0GNoamk1ngk5+4n2N3TCIm8CxO+0AE9bI6xDN96FgHc3+HkegM4hA2ak3SjcXLV2wd8GOn2jqvKwiKIFPA3VUiFfRNph84Sqc4iGStF7RODwG41aPhTucncmbweSCpYzgPFQXEsbnuTt7jpCkQ/hDt6LHVCvNznNhCQav8tWZijPbrpTp6ju8eqMq/RrUSUXVKDRoTeeMwsTGx+3LYuBN53drc1EZLsn5/nNjkg91GQ+kJoNOBYnDBXMprCSlOCKD5mvTFkL+Z9wQPEu9OWytoJCfcSi6ZWNl91sIfJp5s1c7M8lcNev65kn7X/VotmbqWwK+CVIM/7JpePdcDhKb/ptQHd8dDjG8ZZGNWgMekFMQgvkuFhPY0MCcs6n4cQ1qvHY3CGutfKYtPSAmwAUPLetqMZ+Mab+WV1qMqfBhKOPd0NQ7SBdXHUvgW9GxnJUj+26oo/3cD0JqlfbkCwh//sPYxRlywAg3xzJO8dPLj68quFtR+Dr1FfNCIGeXVNujNIfVxUl6CZ+EQscCWzIIsV3udYe9An5s9iJDqfnMkylej0r91LJez7EShxOSTFe4PuTGIwxCrMYQdb2/bEdO6WHqPqC372BiI7QIpfbquFTtlgXzg9+JieUukStBHR9MbfMlfPisMDq0Cm5WyyCT4x3/FmN3jiYJMEM3+ehHKank7VZR3GWFEYpoQ8wYpXbF2icY55nSJP+imWSKaWOSym8DCnVcf8xPWGWo4lA5oBaqsWa4jy4K7lBAB50LoA9bdJVLW8QFanivqO1Lds4QApVVJyhNtMLRL8oSKvNTkh5LHyBNLmBQuq0pBhLyEVUhuAJsAL3wgGGrdJl+th6VyEn75JUVlvB0sbCm07xZzZsYuwbQrIYqFAPBQeu4mlepJCZI91B3IOP3MCDqqdqcQz39deBZtu5BlCZjIV8DtP4tXg1lMtuLKRN4KDSVa520G6OcUFBazito4ThTxUYfpLRdeRBXZMWFSqKz20NFmSq+g9OayT0yZpDAKRqmoKOIFdw3kxGfSiTFWkkXbll4lXhAMMAZwg01MaDMmPz241sUSIc8L+pTtogVQEkG5ONUL+ZHUhEG8xXfkgqRanSBaak4EDVivyMghss5aywUprjr5+0JNiugHjpZn+uZ+HJDKvOJc5opQUw2s+eln+KbieMBjSvMmGuFUuRgwjtuoV4Z8AeWHqPRqLEtZ0nJ05yEbtvrY2pzJzlfuecOOpWEY1OJgrRPEkFakeceNzklmb5+6RBGbzI8Bsc14c+A68al5SKaH3i4MXlls9Qb90SL79JkjK3LAipe/A9lrY8y66rEhis8sceWSwI6u7XFU0otegn3OtmlaCr+J/GsL3jnInMWipe00DLuVN+YYqeTaYrBOLPqXbLiwQ8zF3kd5rjy7RYVmhbb3Bf0FDromqpSiiF8FbgeUjFEPn0W8ZEIJ37nBNZYdzUvT7tA/MLeBGm3hV1Mfv7kj/G+OL9fURRFLFeYucpqRbLIxdaEO0fo7U+uR24eenQaJP6M8Ty9j5odhG/Xki3trRP7WQ35FZzSbg3l2McZHrJC7vHe9Hn7GHtln2AznpDoYtdeLMosqfulyOHlO83czYwRqVd5fSw6BGdvvav8xilUn787WbEvnfQLHFnfjug2pOgiJhl9WPyR4oL269t55DRoqNpeii516NpfIVeWOPtiR/hR0sjmoJZ0h/YPSoyHm8G+9CvZw0Laa2HVKW+ajgxqXEue0xUOTyfsJWLbkfNgKaeMWL2ts8ALH7xPVF2IfcjwgkJcdbVojUQC67YR1354aTX1TMMsuzo+wdMwkdHcw3eNXDDYIiXAYjUyYVqOIoOozaEiRTfRLCc0NwtzEpJfJyl3IgW27fpPj3A47R42Tqr5vRUyf3ayhs54vcxqN+NuBfoyLLWoC/lsS7HqTqIYI17icGvkDnOngZxlH4654E/tjWc5cSqS2LImEYNYz+3V09VaqNNHZuIAHlUdu7aVSDDySagoy6wnFk2vrCa5/WoW4jEeOFLrBQL0Ex1KJu7HpdmW6D0mGFvkJK3KYTUMHVwvlhSrTcJyFjVfOtGNOcrP5HMBeaChIwaTKwrbRpA7JtTREBPQ+bPf3giSxAFBF+bCS+F/VwOHRFyudKC/BjJpT"
                     }
                   ],
                   "role": "model"
@@ -113,7 +104,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "UqyyapaaE-flqtsPscLH6QQ",
+            "responseId": "V2GzatOpA7fpz7IPnvD3gAg",
             "usageMetadata": {
               "candidatesTokenCount": 52,
               "promptTokenCount": 29,
@@ -159,21 +150,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
-                },
-                {
-                  "type": "reasoning",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "",
-                        "signature": "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"
-                      }
+                  "text": "Rust is a systems programming language designed for performance and safety, using a unique ownership model to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes.",
+                  "additional_params": {
+                    "gemini": {
+                      "thoughtSignature": "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"
                     }
-                  ],
-                  "provider": "gcp.gemini"
+                  }
                 }
               ]
             },
@@ -203,31 +185,22 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that provides high performance while guaranteeing memory safety through a unique ownership model. Memory safety is essential because it prevents common bugs like buffer overflows and dangling pointers, which cause the majority of security vulnerabilities and crashes. DONE."
-            },
-            {
-              "type": "reasoning",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "",
-                    "signature": "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"
-                  }
+              "text": "Rust is a systems programming language that achieves high performance and memory safety through a unique ownership system without requiring a garbage collector. Memory safety is essential because it prevents common vulnerabilities like buffer overflows and dangling pointers, which are primary causes of security breaches and system crashes. DONE.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Ev0HCvoHAWkUfROJWTEXDLIEXXcB5g2T0OL9fmJOfvgDw1WX4oyCbeOiaE3WHF87cLOTFVQFZT1wK+LzdQcu6pXcwtjUvNYycYSShQqWVPo1gnhgv/RvczgtCBl5D/7Oj9b4Ha+evrHViI5zl5Q4caE1ZwWe0KRxw2IKLBPRv/FOKM0x0pUy2XVxnZkW03KZg1dT0EZyJnOm7fBwI1N5cDXyNP8vwy1Gaf+eK8DNODSc0GgcNykD39y5KVHMmgbeG1yBGw0w8+VEdn8HdtR7YubpRQ+Ob0F/PP8cKroeoWO+OJgbv7A90FMg9ve8rcSQQk3oZPFHxYWhq0096KM6MQshsd/vvr4rTOWad6VuP0O8eY3/v8EZBYsTokFLMnRITlzxhHSiKCEStUTlH7JHTij/+QcjdvBt8oVte0cxl0LobHArUR/mO4mv9RvnKtVItEJ1WrPSFcL8Di6SxrN52ohQo2Q/Ry5BPMO3M7OqrNmtGE4Seyt2DMOD6CJlGQUY/nri+RTB+LXmyd7VJi61a8pimQ+Rr9ApsBfPSUuDiuSAXpvobmicJG54SolT4IGJl3iu+AM870goN1XEXvpE4UNMVRUFIB/6BI+K7gNRtfIwpVthpyRCi+qKYfuWU32DnHn/LEIneTNq4AgiJO5d1TiiZqqfk/zbqFluUgBAPAhRT9TeOBmOLa+zrnTG+ac3DHa3rE5rLYULRm/HXVwspDqAeMAnGPUFChbvebBy/inbhhKo+tYLhR5QgyCAQZJ4Btn2QkUHNpyn2GOC3BPp1JQ4w4ukE9ZEzfrozDyMP1dS5qHDhJFBylHIj1hof9dbuxw1Jy9Z01z2YLfTKAZPJsXa19in0x/jPwIcmHyp5c7ugFad3pYyaMRVps79uCTVPCP0LDl2k2XzaHEP91yDViYQmsA1rx4LPpSqw0h2HgKdtNjui+rluSo5oZAFEfqWBPyMBsXdl5m4DLRafKqcAlkla4iyHO7x01+jpGYk+Dc7LtuoWIC3K5Al9mHg23q/Wwe3/F/Z4N+f8BFQE3yfzhrPXXIRp7q9qHXgjdP1jOS9Z8h8cPkh5XBN2aJsnrJmE0KkOS8AAcpdANX+1iUqQDz2aNYqwFv8d1eki7nUMofs2b/5RMi3WRk4fXCflJ+FZi9DNIJgPk7rrUguOOuL6HoGoEhrEVkWi4SBc93e5vqzaq6WyO37t1fo0Mo7taQcWG34tc6vDsXGJpdAi7ZJuH2MHcxdkW8dNJ/L54zJ4IKACxV3lmF9jxAPypFYB/tNQpB0phXx0ZHMl4JgH8LnDp2Y4b4neEY6gmLHWNXKZBbQe7aU/JxccwARBh+aEvA/4DFncR/UmV1/wOkR9q2Hgg=="
                 }
-              ],
-              "provider": "gcp.gemini"
+              }
             }
           ],
           "usage": {
             "input_tokens": 91,
-            "output_tokens": 48,
-            "total_tokens": 452,
-            "reasoning_tokens": 313
+            "output_tokens": 53,
+            "total_tokens": 351,
+            "reasoning_tokens": 207
           },
           "message_id": null,
-          "response_id": "VKyyasCEKZqHqtsP_LCdwAQ",
+          "response_id": "WWGzaqmAF4HUz7IPh6yT4QU",
           "finish_reason": "stop",
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
@@ -237,8 +210,8 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "Rust is a systems programming language that provides high performance while guaranteeing memory safety through a unique ownership model. Memory safety is essential because it prevents common bugs like buffer overflows and dangling pointers, which cause the majority of security vulnerabilities and crashes. DONE.",
-                      "thoughtSignature": "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"
+                      "text": "Rust is a systems programming language that achieves high performance and memory safety through a unique ownership system without requiring a garbage collector. Memory safety is essential because it prevents common vulnerabilities like buffer overflows and dangling pointers, which are primary causes of security breaches and system crashes. DONE.",
+                      "thoughtSignature": "Ev0HCvoHAWkUfROJWTEXDLIEXXcB5g2T0OL9fmJOfvgDw1WX4oyCbeOiaE3WHF87cLOTFVQFZT1wK+LzdQcu6pXcwtjUvNYycYSShQqWVPo1gnhgv/RvczgtCBl5D/7Oj9b4Ha+evrHViI5zl5Q4caE1ZwWe0KRxw2IKLBPRv/FOKM0x0pUy2XVxnZkW03KZg1dT0EZyJnOm7fBwI1N5cDXyNP8vwy1Gaf+eK8DNODSc0GgcNykD39y5KVHMmgbeG1yBGw0w8+VEdn8HdtR7YubpRQ+Ob0F/PP8cKroeoWO+OJgbv7A90FMg9ve8rcSQQk3oZPFHxYWhq0096KM6MQshsd/vvr4rTOWad6VuP0O8eY3/v8EZBYsTokFLMnRITlzxhHSiKCEStUTlH7JHTij/+QcjdvBt8oVte0cxl0LobHArUR/mO4mv9RvnKtVItEJ1WrPSFcL8Di6SxrN52ohQo2Q/Ry5BPMO3M7OqrNmtGE4Seyt2DMOD6CJlGQUY/nri+RTB+LXmyd7VJi61a8pimQ+Rr9ApsBfPSUuDiuSAXpvobmicJG54SolT4IGJl3iu+AM870goN1XEXvpE4UNMVRUFIB/6BI+K7gNRtfIwpVthpyRCi+qKYfuWU32DnHn/LEIneTNq4AgiJO5d1TiiZqqfk/zbqFluUgBAPAhRT9TeOBmOLa+zrnTG+ac3DHa3rE5rLYULRm/HXVwspDqAeMAnGPUFChbvebBy/inbhhKo+tYLhR5QgyCAQZJ4Btn2QkUHNpyn2GOC3BPp1JQ4w4ukE9ZEzfrozDyMP1dS5qHDhJFBylHIj1hof9dbuxw1Jy9Z01z2YLfTKAZPJsXa19in0x/jPwIcmHyp5c7ugFad3pYyaMRVps79uCTVPCP0LDl2k2XzaHEP91yDViYQmsA1rx4LPpSqw0h2HgKdtNjui+rluSo5oZAFEfqWBPyMBsXdl5m4DLRafKqcAlkla4iyHO7x01+jpGYk+Dc7LtuoWIC3K5Al9mHg23q/Wwe3/F/Z4N+f8BFQE3yfzhrPXXIRp7q9qHXgjdP1jOS9Z8h8cPkh5XBN2aJsnrJmE0KkOS8AAcpdANX+1iUqQDz2aNYqwFv8d1eki7nUMofs2b/5RMi3WRk4fXCflJ+FZi9DNIJgPk7rrUguOOuL6HoGoEhrEVkWi4SBc93e5vqzaq6WyO37t1fo0Mo7taQcWG34tc6vDsXGJpdAi7ZJuH2MHcxdkW8dNJ/L54zJ4IKACxV3lmF9jxAPypFYB/tNQpB0phXx0ZHMl4JgH8LnDp2Y4b4neEY6gmLHWNXKZBbQe7aU/JxccwARBh+aEvA/4DFncR/UmV1/wOkR9q2Hgg=="
                     }
                   ],
                   "role": "model"
@@ -248,9 +221,9 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "VKyyasCEKZqHqtsP_LCdwAQ",
+            "responseId": "WWGzaqmAF4HUz7IPh6yT4QU",
             "usageMetadata": {
-              "candidatesTokenCount": 48,
+              "candidatesTokenCount": 53,
               "promptTokenCount": 91,
               "promptTokensDetails": [
                 {
@@ -259,8 +232,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 313,
-              "totalTokenCount": 452
+              "thoughtsTokenCount": 207,
+              "totalTokenCount": 351
             }
           }
         }

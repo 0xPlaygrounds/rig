@@ -2,51 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -54,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -62,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 5
         }
       },
       {
@@ -70,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 5
         }
       },
       {
@@ -78,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -86,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -94,11 +54,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 5
         }
       },
       {
         "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -187,18 +155,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the western United States, Central America, and South America."
+              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
             }
           ],
           "usage": {
             "input_tokens": 28,
-            "output_tokens": 38,
-            "total_tokens": 66,
+            "output_tokens": 29,
+            "total_tokens": 57,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
+          "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+          "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
@@ -208,11 +177,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 38,
+              "output_tokens": 29,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 66
+              "total_tokens": 57
             },
             "reasoning_metadata": {
               "context": null,
@@ -220,8 +189,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
             "model": "gpt-4o-2024-08-06"
           }
         }
@@ -229,14 +198,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": "The"
@@ -244,7 +213,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " next"
@@ -252,7 +221,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " solar"
@@ -260,7 +229,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " eclipse"
@@ -268,7 +237,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " is"
@@ -276,31 +245,31 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
-            "text": " an"
+            "text": " a"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
-            "text": " ann"
+            "text": " partial"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
-            "text": "ular"
+            "text": " solar"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " eclipse"
@@ -308,7 +277,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " on"
@@ -316,7 +285,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " October"
@@ -324,7 +293,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " "
@@ -332,7 +301,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": "14"
@@ -340,7 +309,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": ","
@@ -348,7 +317,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " "
@@ -356,7 +325,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": "202"
@@ -364,7 +333,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": "3"
@@ -372,7 +341,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": "."
@@ -380,7 +349,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " It"
@@ -388,7 +357,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " will"
@@ -396,7 +365,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " be"
@@ -404,7 +373,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " visible"
@@ -412,15 +381,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
-            "text": " across"
+            "text": " in"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " parts"
@@ -428,7 +397,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " of"
@@ -436,7 +405,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": " the"
@@ -444,87 +413,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
-            "text": " western"
+            "text": " Americas"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " United"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " States"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " Central"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " America"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " South"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
-          "delta": {
-            "delta": "text",
-            "text": " America"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "delta": {
             "delta": "text",
             "text": "."
@@ -532,7 +429,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_REDACTED_1",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "kind": {
             "kind": "message"
           }
@@ -541,14 +438,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 28,
-            "output_tokens": 38,
-            "total_tokens": 66,
+            "output_tokens": 29,
+            "total_tokens": 57,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_1",
+          "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+          "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
@@ -557,11 +455,11 @@
               "input_tokens_details": {
                 "cached_tokens": 0
               },
-              "output_tokens": 38,
+              "output_tokens": 29,
               "output_tokens_details": {
                 "reasoning_tokens": 0
               },
-              "total_tokens": 66
+              "total_tokens": 57
             },
             "reasoning_metadata": {
               "context": null,
@@ -569,8 +467,8 @@
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_REDACTED_1",
-            "response_id": "resp_REDACTED_1",
+            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
             "model": "gpt-4o-2024-08-06"
           }
         }

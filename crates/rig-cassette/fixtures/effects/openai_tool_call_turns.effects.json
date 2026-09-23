@@ -165,11 +165,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_1"
+                "id": "call_BCSdE0NKteNPZiGj3yadzqJJ"
               },
               "provider": {
-                "call_id": "call_REDACTED_1",
-                "item_id": "fc_REDACTED_1"
+                "call_id": "call_BCSdE0NKteNPZiGj3yadzqJJ",
+                "item_id": "fc_0166b22c3cb2a055006ab39696e4fc87d0821d4b1b445bab35"
               },
               "function": {
                 "name": "add",
@@ -190,12 +190,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
-          "provider_request_id": "req_REDACTED_1",
+          "response_id": "resp_0166b22c3cb2a055006ab3969611b887d099b83e7a61d75734",
+          "provider_request_id": "req_4d5e5cb1345f47d497d1cd913f1f12bf",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -204,7 +205,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_0166b22c3cb2a055006ab3969611b887d099b83e7a61d75734",
             "incomplete_details": null,
             "instructions": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text.",
             "max_output_tokens": null,
@@ -216,8 +217,8 @@
             "output": [
               {
                 "arguments": "{\"x\":20,\"y\":5}",
-                "call_id": "call_REDACTED_1",
-                "id": "fc_REDACTED_1",
+                "call_id": "call_BCSdE0NKteNPZiGj3yadzqJJ",
+                "id": "fc_0166b22c3cb2a055006ab39696e4fc87d0821d4b1b445bab35",
                 "name": "add",
                 "status": "completed",
                 "type": "function_call"
@@ -269,7 +270,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -286,7 +286,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -294,7 +294,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The number to subtract from",
@@ -311,7 +310,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -389,11 +388,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_BCSdE0NKteNPZiGj3yadzqJJ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_BCSdE0NKteNPZiGj3yadzqJJ",
+                    "item_id": "fc_0166b22c3cb2a055006ab39696e4fc87d0821d4b1b445bab35"
                   },
                   "function": {
                     "name": "add",
@@ -414,11 +413,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_BCSdE0NKteNPZiGj3yadzqJJ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_BCSdE0NKteNPZiGj3yadzqJJ",
+                    "item_id": "fc_0166b22c3cb2a055006ab39696e4fc87d0821d4b1b445bab35"
                   },
                   "name": "add",
                   "content": [
@@ -492,11 +491,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call_REDACTED_2"
+                "id": "call_rO99ZoMcg7dESddXQTWLubE2"
               },
               "provider": {
-                "call_id": "call_REDACTED_2",
-                "item_id": "fc_REDACTED_2"
+                "call_id": "call_rO99ZoMcg7dESddXQTWLubE2",
+                "item_id": "fc_0166b22c3cb2a055006ab396980dd887d0b699245b36c73e32"
               },
               "function": {
                 "name": "subtract",
@@ -517,12 +516,13 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_2",
-          "provider_request_id": "req_REDACTED_2",
+          "response_id": "resp_0166b22c3cb2a055006ab396977fb487d0b51d9d60dc237ced",
+          "provider_request_id": "req_38fb666648a348319e40828b6e97b312",
           "finish_reason": "tool_calls",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -531,7 +531,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_2",
+            "id": "resp_0166b22c3cb2a055006ab396977fb487d0b51d9d60dc237ced",
             "incomplete_details": null,
             "instructions": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text.",
             "max_output_tokens": null,
@@ -543,8 +543,8 @@
             "output": [
               {
                 "arguments": "{\"x\":25,\"y\":4}",
-                "call_id": "call_REDACTED_2",
-                "id": "fc_REDACTED_2",
+                "call_id": "call_rO99ZoMcg7dESddXQTWLubE2",
+                "id": "fc_0166b22c3cb2a055006ab396980dd887d0b699245b36c73e32",
                 "name": "subtract",
                 "status": "completed",
                 "type": "function_call"
@@ -596,7 +596,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -613,7 +612,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -621,7 +620,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The number to subtract from",
@@ -638,7 +636,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],
@@ -716,11 +714,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_BCSdE0NKteNPZiGj3yadzqJJ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_BCSdE0NKteNPZiGj3yadzqJJ",
+                    "item_id": "fc_0166b22c3cb2a055006ab39696e4fc87d0821d4b1b445bab35"
                   },
                   "function": {
                     "name": "add",
@@ -741,11 +739,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_1"
+                    "id": "call_BCSdE0NKteNPZiGj3yadzqJJ"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_1",
-                    "item_id": "fc_REDACTED_1"
+                    "call_id": "call_BCSdE0NKteNPZiGj3yadzqJJ",
+                    "item_id": "fc_0166b22c3cb2a055006ab39696e4fc87d0821d4b1b445bab35"
                   },
                   "name": "add",
                   "content": [
@@ -765,11 +763,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_rO99ZoMcg7dESddXQTWLubE2"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_rO99ZoMcg7dESddXQTWLubE2",
+                    "item_id": "fc_0166b22c3cb2a055006ab396980dd887d0b699245b36c73e32"
                   },
                   "function": {
                     "name": "subtract",
@@ -790,11 +788,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call_REDACTED_2"
+                    "id": "call_rO99ZoMcg7dESddXQTWLubE2"
                   },
                   "provider": {
-                    "call_id": "call_REDACTED_2",
-                    "item_id": "fc_REDACTED_2"
+                    "call_id": "call_rO99ZoMcg7dESddXQTWLubE2",
+                    "item_id": "fc_0166b22c3cb2a055006ab396980dd887d0b699245b36c73e32"
                   },
                   "name": "subtract",
                   "content": [
@@ -876,13 +874,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
-          "response_id": "resp_REDACTED_3",
-          "provider_request_id": "req_REDACTED_3",
+          "message_id": "msg_0166b22c3cb2a055006ab39699563487d0953bdbf31a9dfbe1",
+          "response_id": "resp_0166b22c3cb2a055006ab39698d01087d0a70a59cac9e039af",
+          "provider_request_id": "req_636f12f041634c00a94e822d1a3aaf2c",
           "finish_reason": "stop",
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -891,7 +890,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_REDACTED_3",
+            "id": "resp_0166b22c3cb2a055006ab39698d01087d0a70a59cac9e039af",
             "incomplete_details": null,
             "instructions": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text.",
             "max_output_tokens": null,
@@ -910,7 +909,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_REDACTED_1",
+                "id": "msg_0166b22c3cb2a055006ab39699563487d0953bdbf31a9dfbe1",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -962,7 +961,6 @@
                 "name": "add",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The first number to add",
@@ -979,7 +977,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               },
               {
@@ -987,7 +985,6 @@
                 "name": "subtract",
                 "output_schema": null,
                 "parameters": {
-                  "additionalProperties": false,
                   "properties": {
                     "x": {
                       "description": "The number to subtract from",
@@ -1004,7 +1001,7 @@
                   ],
                   "type": "object"
                 },
-                "strict": true,
+                "strict": false,
                 "type": "function"
               }
             ],

@@ -119,10 +119,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_3bbe883962ac48469d8a9da4"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_3bbe883962ac48469d8a9da4"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -135,10 +135,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_3"
+                "id": "call_ccfb5570df7c457fae60f73a"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_3"
+                "call_id": "call_ccfb5570df7c457fae60f73a"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -157,7 +157,7 @@
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146070-4eniUr02QOSd2PLKbsbT",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -182,7 +182,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146070-4eniUr02QOSd2PLKbsbT",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -270,10 +270,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_3bbe883962ac48469d8a9da4"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_3bbe883962ac48469d8a9da4"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -286,10 +286,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_ccfb5570df7c457fae60f73a"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_ccfb5570df7c457fae60f73a"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -307,10 +307,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_1"
+                    "id": "call_3bbe883962ac48469d8a9da4"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_1"
+                    "call_id": "call_3bbe883962ac48469d8a9da4"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -324,10 +324,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "chatcmpl-REDACTED_3"
+                    "id": "call_ccfb5570df7c457fae60f73a"
                   },
                   "provider": {
-                    "call_id": "chatcmpl-REDACTED_3"
+                    "call_id": "call_ccfb5570df7c457fae60f73a"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -377,27 +377,27 @@
           "choice": [
             {
               "type": "text",
-              "text": "The outputs are crimson-harbor and silver-orchard."
+              "text": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard."
             }
           ],
           "usage": {
             "input_tokens": 477,
-            "output_tokens": 14,
-            "total_tokens": 491,
+            "output_tokens": 21,
+            "total_tokens": 498,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_4",
+          "response_id": "gen-1790146071-gE2rdEVHdEmVdOGUzcMs",
           "finish_reason": "stop",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 477,
-              "completion_tokens": 14,
-              "total_tokens": 491,
+              "completion_tokens": 21,
+              "total_tokens": 498,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -414,7 +414,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-REDACTED_4",
+            "response_id": "gen-1790146071-gE2rdEVHdEmVdOGUzcMs",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,

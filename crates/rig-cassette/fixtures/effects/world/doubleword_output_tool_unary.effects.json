@@ -103,17 +103,17 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_6cc40b408bab44cd911a20d3"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_6cc40b408bab44cd911a20d3"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
                   "category": "Technology",
-                  "summary": "A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding sessions."
+                  "summary": "A monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network."
                 }
               },
               "signature": null,
@@ -122,14 +122,14 @@
           ],
           "usage": {
             "input_tokens": 384,
-            "output_tokens": 70,
-            "total_tokens": 454,
+            "output_tokens": 72,
+            "total_tokens": 456,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "resp_REDACTED_1",
+          "response_id": "resp_945d74d3-1eab-4c7e-82fa-afa153fb61c3",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
@@ -144,10 +144,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding sessions.\"}",
+                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network.\"}",
                         "name": "final_result"
                       },
-                      "id": "chatcmpl-REDACTED_1",
+                      "id": "call_6cc40b408bab44cd911a20d3",
                       "type": "function"
                     }
                   ]
@@ -155,7 +155,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_REDACTED_1",
+            "id": "resp_945d74d3-1eab-4c7e-82fa-afa153fb61c3",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -166,7 +166,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 70,
+              "completion_tokens": 72,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -179,7 +179,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 454
+              "total_tokens": 456
             }
           }
         }

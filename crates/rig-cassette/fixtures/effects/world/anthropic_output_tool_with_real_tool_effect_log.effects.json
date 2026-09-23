@@ -2,21 +2,21 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -167,10 +167,10 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_1"
+                "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_1"
+                "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
               },
               "function": {
                 "name": "add",
@@ -190,13 +190,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLccy7AYfDUTRuHYpPfP",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLccxfsioTM2D1NB6X9U",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "I'll start by adding 17 and 25 using the add tool!",
@@ -206,7 +207,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_1",
+                "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -215,7 +216,7 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_1",
+            "id": "msg_011CfLccy7AYfDUTRuHYpPfP",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -288,7 +289,7 @@
             },
             {
               "role": "assistant",
-              "id": "msg_REDACTED_1",
+              "id": "msg_011CfLccy7AYfDUTRuHYpPfP",
               "content": [
                 {
                   "type": "text",
@@ -298,10 +299,10 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
                   },
                   "function": {
                     "name": "add",
@@ -322,10 +323,10 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "toolu_REDACTED_1"
+                    "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
                   },
                   "provider": {
-                    "call_id": "toolu_REDACTED_1"
+                    "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
                   },
                   "name": "add",
                   "content": [
@@ -405,16 +406,16 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "toolu_REDACTED_2"
+                "id": "toolu_01CVpPhS4MGTznXKiKs8uRBo"
               },
               "provider": {
-                "call_id": "toolu_REDACTED_2"
+                "call_id": "toolu_01CVpPhS4MGTznXKiKs8uRBo"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology / Programming",
-                  "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! Tonight we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything — while diving into talks, demos, and discussions about the Rust programming language.",
+                  "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! This month we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything Rust. Come share projects, discuss ownership and borrowing, and connect with the local systems-programming community.",
                   "title": "Rust Meetup – Seattle"
                 }
               },
@@ -424,18 +425,19 @@
           ],
           "usage": {
             "input_tokens": 894,
-            "output_tokens": 173,
-            "total_tokens": 1067,
+            "output_tokens": 180,
+            "total_tokens": 1074,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_2",
+          "message_id": "msg_011CfLcd7FKTds86giEYNgRw",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_2",
+          "provider_request_id": "req_011CfLcd6nXrd9XjDNBqor6P",
           "finish_reason": "tool_calls",
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
                 "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
@@ -445,17 +447,17 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_REDACTED_2",
+                "id": "toolu_01CVpPhS4MGTznXKiKs8uRBo",
                 "input": {
                   "category": "Technology / Programming",
-                  "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! Tonight we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything — while diving into talks, demos, and discussions about the Rust programming language.",
+                  "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! This month we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything Rust. Come share projects, discuss ownership and borrowing, and connect with the local systems-programming community.",
                   "title": "Rust Meetup – Seattle"
                 },
                 "name": "final_result",
                 "type": "tool_use"
               }
             ],
-            "id": "msg_REDACTED_2",
+            "id": "msg_011CfLcd7FKTds86giEYNgRw",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -471,7 +473,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 894,
-              "output_tokens": 173,
+              "output_tokens": 180,
               "service_tier": "standard"
             }
           }

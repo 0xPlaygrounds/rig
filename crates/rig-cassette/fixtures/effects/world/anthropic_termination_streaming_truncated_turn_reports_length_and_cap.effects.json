@@ -109,9 +109,9 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcgVBWGwo2XNRaensrm",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcgUjy1YBYoyzs2rBUv",
           "finish_reason": "length",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
@@ -127,7 +127,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "max_tokens",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcgVBWGwo2XNRaensrm",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -166,9 +166,9 @@
             "cache_creation_input_tokens": 0
           },
           "finish_reason": "length",
-          "message_id": "msg_REDACTED_1",
+          "message_id": "msg_011CfLcgVBWGwo2XNRaensrm",
           "response_id": null,
-          "provider_request_id": "req_REDACTED_1",
+          "provider_request_id": "req_011CfLcgUjy1YBYoyzs2rBUv",
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
@@ -183,7 +183,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "max_tokens",
-            "message_id": "msg_REDACTED_1",
+            "message_id": "msg_011CfLcgVBWGwo2XNRaensrm",
             "model": "claude-haiku-4-5-20251001"
           }
         }

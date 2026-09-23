@@ -2,35 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -38,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -54,75 +30,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -223,17 +135,17 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "chatcmpl-REDACTED_1"
+                "id": "call_1d73a8081f114cc294e6302f"
               },
               "provider": {
-                "call_id": "chatcmpl-REDACTED_1"
+                "call_id": "call_1d73a8081f114cc294e6302f"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
                   "category": "Technology",
-                  "summary": "A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding."
+                  "summary": "A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding sessions."
                 }
               },
               "signature": null,
@@ -242,22 +154,22 @@
           ],
           "usage": {
             "input_tokens": 384,
-            "output_tokens": 69,
-            "total_tokens": 453,
+            "output_tokens": 70,
+            "total_tokens": 454,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146048-xq0R5lQ8YJnwR55Y62A6",
           "finish_reason": "tool_calls",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 384,
-              "completion_tokens": 69,
-              "total_tokens": 453,
+              "completion_tokens": 70,
+              "total_tokens": 454,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -274,7 +186,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146048-xq0R5lQ8YJnwR55Y62A6",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -286,7 +198,7 @@
       "events": [
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_1d73a8081f114cc294e6302f",
           "delta": {
             "delta": "tool_name",
             "name": "final_result"
@@ -294,235 +206,35 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_1d73a8081f114cc294e6302f",
           "delta": {
             "delta": "tool_arguments",
-            "arguments": "{\"title\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Seattle"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Meet"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "up"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\", \"category\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Technology"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\", \"summary\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "A"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " monthly"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " gathering"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " developers"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Seattle"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " for"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " talks"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " networking"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " collaborative"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " coding"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-REDACTED_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
+            "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding sessions.\"}"
           }
         },
         {
           "event": "block_end",
-          "id": "wire:chatcmpl-REDACTED_1",
+          "id": "wire:call_1d73a8081f114cc294e6302f",
           "end": {
             "close": "tool_call",
-            "tool_id": "chatcmpl-REDACTED_1",
+            "tool_id": "call_1d73a8081f114cc294e6302f",
             "on_unparseable": "error"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "chatcmpl-REDACTED_1"
+              "id": "call_1d73a8081f114cc294e6302f"
             },
             "provider": {
-              "call_id": "chatcmpl-REDACTED_1"
+              "call_id": "call_1d73a8081f114cc294e6302f"
             },
             "function": {
               "name": "final_result",
               "arguments": {
                 "title": "Seattle Rust Meetup",
                 "category": "Technology",
-                "summary": "A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding."
+                "summary": "A monthly gathering of Rust developers in Seattle for talks, networking, and collaborative coding sessions."
               }
             },
             "signature": null,
@@ -533,22 +245,22 @@
           "event": "final",
           "usage": {
             "input_tokens": 384,
-            "output_tokens": 69,
-            "total_tokens": 453,
+            "output_tokens": 70,
+            "total_tokens": 454,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "response_id": "gen-1790146048-xq0R5lQ8YJnwR55Y62A6",
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
               "prompt_tokens": 384,
-              "completion_tokens": 69,
-              "total_tokens": 453,
+              "completion_tokens": 70,
+              "total_tokens": 454,
               "prompt_tokens_details": {
                 "cached_tokens": 0,
                 "cache_write_tokens": 0
@@ -565,7 +277,7 @@
               "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-REDACTED_2",
+            "response_id": "gen-1790146048-xq0R5lQ8YJnwR55Y62A6",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
