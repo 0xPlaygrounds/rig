@@ -40,6 +40,17 @@ pub(super) fn assert_event(output: &str) {
     );
 }
 
+/// A `Prompted` answer: the mode returns the final text verbatim and leaves
+/// extracting the JSON to the caller, since prose may surround it.
+pub(super) fn assert_prompted_event(output: &str) {
+    let object = output
+        .find('{')
+        .zip(output.rfind('}'))
+        .and_then(|(start, end)| output.get(start..=end))
+        .unwrap_or_else(|| panic!("the answer holds a JSON object: {output}"));
+    assert_event(object);
+}
+
 pub(super) fn tool_names(request: &rig::completion::CompletionRequest) -> Vec<&str> {
     request
         .tools
@@ -144,7 +155,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
             .expect("the agent answers");
-        assert_event(&response.output);
+        assert_prompted_event(&response.output);
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         let request = request_at(&log, 0);
@@ -178,7 +189,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
         let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
-        assert_event(&output);
+        assert_prompted_event(&output);
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(log.records[0].events.is_some(), "events are kept");
@@ -250,7 +261,7 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
                 .max_turns(3)
                 .await
                 .expect("the agent answers");
-            assert_event(&response.output);
+            assert_prompted_event(&response.output);
             let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
