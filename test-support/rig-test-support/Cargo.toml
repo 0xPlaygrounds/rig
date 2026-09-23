@@ -23,6 +23,8 @@ bevy_ecs.workspace = true
 bevy_tasks.workspace = true
 futures.workspace = true
 http.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
 schemars.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }

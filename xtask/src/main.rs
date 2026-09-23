@@ -16,9 +16,11 @@
 //! cargo xtask check-packaging     # fail on stowaways, bloat and unused deps
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
+//! cargo xtask cassette record …   # re-record fixtures by owning test
 //! ```
 
 mod bevy;
+mod cassette;
 mod packaging;
 mod test_layout;
 mod verify;
@@ -36,8 +38,12 @@ fn main() -> ExitCode {
         Some("check-packaging") => packaging::check(&workspace_root()),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
-        Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
-        None => Err(format!("no task given\n{USAGE}")),
+        Some("cassette") => cassette::run(&workspace_root(), args.collect()),
+        Some(other) => Err(format!(
+            "unknown task {other:?}\n{USAGE}{}",
+            cassette::USAGE
+        )),
+        None => Err(format!("no task given\n{USAGE}{}", cassette::USAGE)),
     };
 
     match result {
