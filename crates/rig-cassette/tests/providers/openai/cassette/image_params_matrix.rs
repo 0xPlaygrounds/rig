@@ -104,8 +104,7 @@ async fn unlisted_model_generates_without_response_format() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "low" }))
@@ -133,8 +132,7 @@ async fn allowlisted_model_still_generates() {
             let model = client.openai.image_generation(openai::GPT_IMAGE_1);
 
             let response = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "low" }))
@@ -160,8 +158,7 @@ async fn retired_model_reaches_model_validation() {
             let model = client.openai.image_generation(openai::DALL_E_3);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .send()
@@ -194,8 +191,7 @@ async fn additional_params_quality_reaches_the_api() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "low", "background": "opaque" }))
@@ -222,8 +218,7 @@ async fn additional_params_output_format_reaches_the_api() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "low", "output_format": "jpeg" }))
@@ -259,8 +254,7 @@ async fn completions_client_shares_the_fixed_body() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "low" }))
@@ -287,8 +281,7 @@ async fn additional_params_invalid_background_is_rejected() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "background": "rig-invalid" }))
@@ -315,8 +308,7 @@ async fn additional_params_invalid_output_format_is_rejected() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "output_format": "rig-invalid" }))
@@ -342,8 +334,7 @@ async fn additional_params_invalid_quality_is_rejected() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "rig-invalid" }))
@@ -370,8 +361,7 @@ async fn additional_params_override_size() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "size": "3x3" }))
@@ -397,8 +387,7 @@ async fn additional_params_override_model() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "model": "rig-nonexistent-image-model" }))
@@ -424,8 +413,7 @@ async fn additional_params_override_prompt() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "prompt": "" }))
@@ -454,8 +442,7 @@ async fn caller_can_reinstate_response_format() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "response_format": "b64_json" }))
@@ -483,8 +470,7 @@ async fn unlisted_dated_snapshot_reaches_its_own_validation() {
             let model = client.openai.image_generation("gpt-image-2-2026-04-21");
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "size": "3x3" }))
@@ -514,8 +500,7 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
             let model = client.openai.image_generation("chatgpt-image-latest");
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "quality": "rig-invalid" }))
@@ -553,8 +538,7 @@ async fn response_format_is_rejected_before_the_model_is_looked_at() {
                 .image_generation("rig-nonexistent-image-model");
 
             let error = model
-                .image_generation_request()
-                .prompt(PROMPT)
+                .image_generation_request(PROMPT)
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!({ "response_format": "b64_json" }))
@@ -586,8 +570,7 @@ async fn non_object_additional_params_are_a_no_op() {
             let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
-                .image_generation_request()
-                .prompt("")
+                .image_generation_request("")
                 .width(SIDE)
                 .height(SIDE)
                 .additional_params(json!("not-an-object"))

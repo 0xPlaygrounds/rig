@@ -17,9 +17,7 @@ async fn audio_generation_smoke() {
     let model = client.audio_generation(openai::TTS_1);
 
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("alloy")
+        .audio_generation_request(AUDIO_TEXT, "alloy")
         .send()
         .await
         .expect("audio generation should succeed");

@@ -61,7 +61,7 @@ pub async fn generate<G>(generator: &G, side: Option<u32>, params: Option<Value>
 where
     G: ImageGenerationModel + Clone,
 {
-    let mut builder = generator.image_generation_request().prompt(PROMPT);
+    let mut builder = generator.image_generation_request(PROMPT);
     if let Some(side) = side {
         builder = builder.width(side).height(side);
     }

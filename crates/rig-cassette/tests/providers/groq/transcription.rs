@@ -3,7 +3,7 @@
 use rig::prelude::*;
 use rig::providers::groq;
 use rig::providers::openai::wire::{GROQ, OpenAI};
-use rig::transcription::TranscriptionModel;
+use rig::transcription::TranscriptionRequestBuilder;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
@@ -15,9 +15,7 @@ async fn transcription_smoke() {
         .bound()
         .expect("transport should build");
     let model = bound.transcription(groq::WHISPER_LARGE_V3);
-    let response = model
-        .transcription_request()
-        .load_file(AUDIO_FIXTURE_PATH)
+    let response = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
         .expect("should be able to load audio fixture")
         .send()
         .await

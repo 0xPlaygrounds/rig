@@ -12,8 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = Client::from_env()?;
     let image_generation_model = client.image_generation(AMAZON_NOVA_CANVAS);
     let response = image_generation_model
-        .image_generation_request()
-        .prompt("A castle sitting upon a large mountain, overlooking the water.")
+        .image_generation_request("A castle sitting upon a large mountain, overlooking the water.")
         .width(512)
         .height(512)
         .send()

@@ -104,7 +104,7 @@ use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
-use rig::transcription::TranscriptionModel;
+use rig::transcription::TranscriptionRequestBuilder;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -223,9 +223,7 @@ async fn transcription_body(
     expected_words: Option<&'static str>,
 ) {
     let model = client.transcription(model_id);
-    let mut request = model
-        .transcription_request()
-        .load_file(AUDIO_FIXTURE_PATH)
+    let mut request = TranscriptionRequestBuilder::from_file(model, AUDIO_FIXTURE_PATH)
         .expect("audio fixture should load");
     if let Some(params) = params {
         request = request.additional_params(params);

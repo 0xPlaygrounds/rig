@@ -17,9 +17,7 @@ async fn audio_generation_smoke() {
         .expect("transport should build");
     let model = bound.audio_generation(openrouter::GPT_4O_MINI_TTS);
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("alloy")
+        .audio_generation_request(AUDIO_TEXT, "alloy")
         .send()
         .await
         .expect("audio generation should succeed");

@@ -4,15 +4,14 @@
 //! use rig_core::image_generation::{ImageGenerationModel, ImageGenerationRequestBuilder};
 //!
 //! # async fn example(model: impl ImageGenerationModel) -> Result<(), Box<dyn std::error::Error>> {
-//! let response = ImageGenerationRequestBuilder::new(model)
-//!     .prompt("A mountain lake").width(1024).height(1024).send().await?;
+//! let response = ImageGenerationRequestBuilder::new(model, "A mountain lake")
+//!     .width(1024).height(1024).send().await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -89,11 +88,15 @@ pub trait ImageGenerationModel: WasmCompatSend + WasmCompatSync {
         request: ImageGenerationRequest,
     ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend;
 
-    fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self, Missing>
+    /// Creates a request builder for `prompt`.
+    fn image_generation_request(
+        &self,
+        prompt: impl Into<String>,
+    ) -> ImageGenerationRequestBuilder<Self>
     where
         Self: Sized + Clone,
     {
-        ImageGenerationRequestBuilder::new(self.clone())
+        ImageGenerationRequestBuilder::new(self.clone(), prompt)
     }
 }
 
@@ -117,97 +120,60 @@ pub struct ImageGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-/// Builds image requests after a prompt is supplied. Defaults to 256 by 256
-/// pixels; supported dimensions depend on the provider.
-pub struct ImageGenerationRequestBuilder<M, P = Missing> {
+/// Builds an image request for a prompt. Defaults to 256 by 256 pixels;
+/// supported dimensions depend on the provider.
+pub struct ImageGenerationRequestBuilder<M> {
     model: M,
-    prompt: P,
-    width: u32,
-    height: u32,
-    additional_params: Option<Value>,
+    request: ImageGenerationRequest,
 }
 
-impl<M> ImageGenerationRequestBuilder<M, Missing>
-where
-    M: ImageGenerationModel,
-{
-    pub fn new(model: M) -> Self {
+impl<M> ImageGenerationRequestBuilder<M> {
+    /// A request for `prompt`.
+    pub fn new(model: M, prompt: impl Into<String>) -> Self {
         Self {
             model,
-            prompt: Missing,
-            height: 256,
-            width: 256,
-            additional_params: None,
-        }
-    }
-}
-
-impl<M, P> ImageGenerationRequestBuilder<M, P>
-where
-    M: ImageGenerationModel,
-{
-    /// Sets the prompt for the image generation request
-    pub fn prompt(self, prompt: &str) -> ImageGenerationRequestBuilder<M, Provided<String>> {
-        ImageGenerationRequestBuilder {
-            model: self.model,
-            prompt: Provided(prompt.to_string()),
-            width: self.width,
-            height: self.height,
-            additional_params: self.additional_params,
-        }
-    }
-
-    /// The width of the generated image
-    pub fn width(mut self, width: u32) -> Self {
-        self.width = width;
-        self
-    }
-
-    /// The height of the generated image
-    pub fn height(mut self, height: u32) -> Self {
-        self.height = height;
-        self
-    }
-
-    /// Replaces provider-specific request parameters.
-    pub fn additional_params(mut self, params: Value) -> Self {
-        self.additional_params = Some(params);
-        self
-    }
-}
-
-impl<M> ImageGenerationRequestBuilder<M, Provided<String>>
-where
-    M: ImageGenerationModel,
-{
-    pub fn build(self) -> ImageGenerationRequest {
-        self.into_parts().1
-    }
-
-    fn into_parts(self) -> (M, ImageGenerationRequest) {
-        let Self {
-            model,
-            prompt,
-            width,
-            height,
-            additional_params,
-        } = self;
-        (
-            model,
-            ImageGenerationRequest {
-                prompt: prompt.0,
-                width,
-                height,
-                additional_params,
+            request: ImageGenerationRequest {
+                prompt: prompt.into(),
+                width: 256,
+                height: 256,
+                additional_params: None,
             },
-        )
+        }
     }
 
-    pub async fn send(self) -> Result<ImageGenerationResponse, ProviderError> {
-        let (model, request) = self.into_parts();
-        model.image_generation(request).await
+    /// The width of the generated image.
+    pub fn width(mut self, width: u32) -> Self {
+        self.request.width = width;
+        self
+    }
+
+    /// The height of the generated image.
+    pub fn height(mut self, height: u32) -> Self {
+        self.request.height = height;
+        self
+    }
+
+    /// Merges provider-specific parameters; `None` clears existing parameters.
+    pub fn additional_params(mut self, params: impl Into<Option<Value>>) -> Self {
+        self.request.additional_params =
+            crate::json_utils::merge_params(self.request.additional_params.take(), params.into());
+        self
+    }
+
+    /// Builds the image generation request.
+    pub fn build(self) -> ImageGenerationRequest {
+        self.request
     }
 }
 
+impl<M: ImageGenerationModel> ImageGenerationRequestBuilder<M> {
+    /// Sends the request to the model and returns the generated image.
+    pub async fn send(self) -> Result<ImageGenerationResponse, ProviderError> {
+        self.model.image_generation(self.request).await
+    }
+}
+
+#[cfg(test)]
+mod builder_tests;
 #[cfg(test)]
 mod provider_response_tests;

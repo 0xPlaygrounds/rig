@@ -9,8 +9,9 @@ async fn main() -> Result<()> {
     let model = client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE);
 
     let response = model
-        .image_generation_request()
-        .prompt("Generate a simple flat icon of a yellow banana on a white background.")
+        .image_generation_request(
+            "Generate a simple flat icon of a yellow banana on a white background.",
+        )
         .width(512)
         .height(512)
         .send()
