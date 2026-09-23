@@ -1636,6 +1636,112 @@ fn compatible_response_decodes_reasoning_content_beside_text() {
     ));
 }
 
+/// A gateway relaying a DeepSeek-dialect upstream sends the same reasoning
+/// under both `reasoning` and `reasoning_content`. The message must decode,
+/// with its tool calls intact, instead of failing the whole response.
+#[test]
+fn assistant_message_with_both_reasoning_keys_decodes() {
+    let body = r#"
+        {
+            "id": "gen_1",
+            "object": "chat.completion",
+            "created": 1790192865,
+            "model": "deepseek-v4.1-flash",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "reasoning": "Let me search.",
+                        "reasoning_content": "Let me search.",
+                        "reasoning_details": [
+                            {"format": "unknown", "index": 0, "text": "Let me search.", "type": "reasoning.text"}
+                        ],
+                        "tool_calls": [
+                            {
+                                "id": "call_00",
+                                "type": "function",
+                                "function": {"name": "search", "arguments": "{\"query\": \"x\"}"}
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        }
+        "#;
+    let response: CompletionResponse =
+        serde_json::from_str(body).expect("both reasoning keys should decode");
+
+    let Message::Assistant {
+        reasoning,
+        tool_calls,
+        reasoning_details,
+        ..
+    } = &response.choices[0].message
+    else {
+        panic!("expected assistant message");
+    };
+    assert_eq!(reasoning.as_deref(), Some("Let me search."));
+    assert_eq!(tool_calls.len(), 1);
+    assert_eq!(tool_calls[0].function.name, "search");
+    assert_eq!(reasoning_details.len(), 1);
+}
+
+/// `reasoning_content` wins when the two keys disagree, matching the
+/// streaming delta; `reasoning` alone is still accepted.
+#[test]
+fn assistant_reasoning_key_precedence() {
+    let decode = |message: serde_json::Value| -> Option<String> {
+        match serde_json::from_value::<Message>(message).expect("assistant message decodes") {
+            Message::Assistant { reasoning, .. } => reasoning,
+            other => panic!("expected assistant message, got {other:?}"),
+        }
+    };
+
+    assert_eq!(
+        decode(serde_json::json!({
+            "role": "assistant",
+            "content": "a",
+            "reasoning": "from reasoning",
+            "reasoning_content": "from reasoning_content"
+        }))
+        .as_deref(),
+        Some("from reasoning_content")
+    );
+    assert_eq!(
+        decode(serde_json::json!({"role": "assistant", "content": "a", "reasoning": "only"}))
+            .as_deref(),
+        Some("only")
+    );
+    assert_eq!(
+        decode(serde_json::json!({"role": "assistant", "content": "a"})),
+        None
+    );
+}
+
+/// Serialization still writes the single `reasoning_content` key.
+#[test]
+fn assistant_reasoning_serializes_as_reasoning_content() {
+    let message = Message::Assistant {
+        content: vec![AssistantContent::Text {
+            text: "answer".to_string(),
+        }],
+        reasoning: Some("thinking".to_string()),
+        refusal: None,
+        name: None,
+        tool_calls: vec![],
+        reasoning_details: vec![],
+    };
+    let value = serde_json::to_value(&message).expect("assistant message serializes");
+    assert_eq!(value["reasoning_content"], "thinking");
+    assert!(value.get("reasoning").is_none());
+    let round_trip: Message = serde_json::from_value(value).expect("round trip decodes");
+    assert_eq!(round_trip, message);
+}
+
 #[test]
 fn pdf_base64_document_serializes_as_file_content_part() {
     let doc = message::UserContent::Document(message::Document {
