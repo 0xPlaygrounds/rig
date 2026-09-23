@@ -2230,9 +2230,8 @@ pub(crate) const STORING_RESPONSES_PROVIDERS: &[&str] = &["openai", "xai"];
 
 /// The stored responses a cassette for `provider` creates and never deletes:
 /// each successful Responses request without `store: false` whose response
-/// id no successful `DELETE` in the same cassette removes. Only
-/// [`STORING_RESPONSES_PROVIDERS`] store. Panics if the cassette cannot be
-/// parsed.
+/// id no successful `DELETE` in the same cassette removes. Only `openai` and
+/// `xai` store. Panics if the cassette cannot be parsed.
 pub fn cassette_stored_state(provider: &str, contents: &str) -> Vec<String> {
     if !STORING_RESPONSES_PROVIDERS.contains(&provider) {
         return Vec::new();
