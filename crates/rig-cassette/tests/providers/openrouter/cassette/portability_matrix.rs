@@ -2,10 +2,12 @@
 //! wires produced: Anthropic-signed, OpenAI-encrypted and Gemini-signed
 //! reasoning beside a tool exchange.
 //!
-//! Every row carries reasoning another wire issued. Rig omits it on the
-//! way out (it only means something to its issuer, and Anthropic rejects
-//! OpenAI ciphertext replayed as `redacted_thinking`), so each target
-//! continues from the tool exchange and text alone.
+//! Rig replays reasoning only to its issuer. Claude through OpenRouter
+//! shares the Anthropic issuer, so the Anthropic row replays its signed
+//! thinking; the other rows carry reasoning another issuer produced, which
+//! Rig omits (Anthropic rejects OpenAI ciphertext replayed as
+//! `redacted_thinking`), so those targets continue from the tool exchange
+//! and text alone.
 
 use rig::completion::CompletionModel;
 

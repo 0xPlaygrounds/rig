@@ -188,6 +188,14 @@ pub struct Cell {
     pub source: Source,
 }
 
+/// Whether the source's reasoning issuer is the target model's own: direct
+/// Anthropic reasoning continued on Claude through OpenRouter.
+pub fn shares_issuer(cell: Cell) -> bool {
+    cell.source == Source::Anthropic
+        && cell.provider == "openrouter"
+        && cell.model.starts_with("anthropic/")
+}
+
 /// What the continuation produced.
 #[derive(Clone, Debug)]
 pub struct Observation {
@@ -302,18 +310,29 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
         .collect();
     forwarded.sort();
     forwarded.dedup();
-    // Reasoning state is only meaningful to the wire that issued it: none of
-    // it may reach another wire. Tool-call ids are correlation, not state.
+    // Reasoning state is only meaningful to its issuer: none of it may reach
+    // another issuer's model. Tool-call ids are correlation, not state. Claude
+    // through OpenRouter shares the Anthropic issuer (its thinking signatures
+    // verified valid between OpenRouter and the Claude API both ways), so
+    // there the signature must arrive.
+    let shared = shares_issuer(cell);
     let leaked: Vec<&str> = forwarded
         .iter()
         .copied()
-        .filter(|kind| *kind != "tool_call_id")
+        .filter(|kind| *kind != "tool_call_id" && !(shared && *kind == "signature"))
         .collect();
     assert!(
         leaked.is_empty(),
         "[{provider} from {}] foreign reasoning state reached the target request: {leaked:?}",
         cell.source.provider()
     );
+    if shared {
+        assert!(
+            forwarded.contains(&"signature"),
+            "[{provider} from {}] the shared issuer's signature reaches the target",
+            cell.source.provider()
+        );
+    }
     let report = Forwarded {
         delivered,
         forwarded,

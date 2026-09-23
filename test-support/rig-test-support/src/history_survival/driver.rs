@@ -19,10 +19,7 @@ use rig_core::message::{
 };
 use rig_core::tool::{Tool, ToolOutput};
 
-use super::{
-    Dialect, Token, continues, lost_tokens, response_tokens, text_signature_on_thought,
-    unpaired_tool_calls,
-};
+use super::{Dialect, Token, continues, lost_tokens, response_tokens, unpaired_tool_calls};
 
 /// The alpha record's code.
 pub const ALPHA_CODE: &str = "alpha-code-7431";
@@ -85,6 +82,13 @@ impl Expect {
     pub const SIGNED: Self = Self {
         signed: true,
         ..Self::REASONING
+    };
+    /// Provider signatures without required reasoning text: Gemini 3 may
+    /// sign every turn and still return no thought summary, so only the
+    /// signatures are a stable expectation.
+    pub const SIGNATURES: Self = Self {
+        signed: true,
+        ..Self::TOOLS_ONLY
     };
     /// Encrypted reasoning.
     pub const ENCRYPTED: Self = Self {
@@ -374,6 +378,8 @@ fn reasoning_blocks(history: &[Message]) -> Vec<&ReasoningContent> {
         .collect()
 }
 
+/// Signatures outside reasoning blocks: on tool calls, and on Gemini answer
+/// text.
 fn tool_call_signatures(history: &[Message]) -> usize {
     history
         .iter()
@@ -382,8 +388,12 @@ fn tool_call_signatures(history: &[Message]) -> usize {
             _ => None,
         })
         .flatten()
-        .filter(|content| {
-            matches!(content, AssistantContent::ToolCall(call) if call.signature.is_some())
+        .filter(|content| match content {
+            AssistantContent::ToolCall(call) => call.signature.is_some(),
+            AssistantContent::Text(text) => {
+                rig_core::providers::gemini::text_thought_signature(text).is_some()
+            }
+            _ => false,
         })
         .count()
 }
@@ -571,10 +581,6 @@ pub fn assert_recorded(cell: Cell, scenario: &str) {
                 continue;
             }
             for token in lost_tokens(*dialect, response, later_request) {
-                // Reported by the corpus sweep; see `text_signature_on_thought`.
-                if text_signature_on_thought(&token, later_request) {
-                    continue;
-                }
                 failures.push(format!(
                     "response {earlier_index} delivered {} {:?}; request {later_index} lacks it",
                     token.kind, token.value

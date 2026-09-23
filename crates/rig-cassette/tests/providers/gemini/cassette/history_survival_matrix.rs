@@ -46,5 +46,5 @@ crate::matrix::case_matrix! {
     #[tokio::test]
     streaming: ("history_survival_matrix/streaming", configured, cell(Transport::Streaming, Expect::SIGNED));
     #[tokio::test]
-    unary_image_tool_result: ("history_survival_matrix/unary_image_tool_result", configured, image_cell(Transport::Unary, Expect::SIGNED.with_image()));
+    unary_image_tool_result: ("history_survival_matrix/unary_image_tool_result", configured, image_cell(Transport::Unary, Expect::SIGNATURES.with_image()));
 }

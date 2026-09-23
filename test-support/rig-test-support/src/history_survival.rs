@@ -196,7 +196,14 @@ fn collect_tokens(value: &Value, complete: bool, tokens: &mut Vec<Token>) {
                 .then(|| object.get("thinking").and_then(Value::as_str))
                 .flatten()
                 .map(str::to_owned);
-            push("signature", "signature", thinking);
+            // A Responses reasoning item (OpenRouter relaying Claude) carries
+            // its signature beside its text, owned by the item's id.
+            let signature_anchor = if kind_of == Some("reasoning") {
+                object.get("id").and_then(Value::as_str).map(str::to_owned)
+            } else {
+                thinking
+            };
+            push("signature", "signature", signature_anchor);
             push("thought_signature", "thoughtSignature", part_anchor(object));
             push(
                 "encrypted_content",
@@ -344,17 +351,41 @@ pub fn lost_tokens(dialect: Dialect, response_body: &str, next_request: &Value) 
         .collect()
 }
 
-/// Whether a lost `token` is a Gemini thought signature the response put on
-/// an answer text part and the request carries on a thought part instead.
-/// Rig's `Text` has no signature slot, so the Gemini codecs move a text
-/// part's signature onto reasoning: the value survives, its slot does not.
-pub fn text_signature_on_thought(token: &Token, next_request: &Value) -> bool {
-    token.kind == "thought_signature"
-        && token.anchor.as_deref() == Some("text")
-        && request_slots(next_request)
-            .get(&(token.kind, Leg::Call))
-            .and_then(|values| values.get(&token.value))
-            .is_some_and(|anchors| anchors.contains(&Some("thought".to_owned())))
+/// Whether `later` addresses a different reasoning family than the model
+/// that answered `earlier`: both name a gateway model (`vendor/name`) and the
+/// vendors differ. The earlier family is the model `earlier_response` names,
+/// since reasoning belongs to the upstream that produced it, falling back to
+/// the earlier request's model. Reasoning is not expected to carry across
+/// such a switch; tool-call ids still are. A later router or preset
+/// (`openrouter/auto`, `@preset/name`) names no family and replays every one,
+/// so it is no switch.
+pub fn switches_reasoning_family(earlier: &Value, earlier_response: &str, later: &Value) -> bool {
+    fn vendor(model: &str) -> Option<String> {
+        if model.starts_with('@') {
+            return None;
+        }
+        let (vendor, _) = model.split_once('/')?;
+        let vendor = vendor.trim_start_matches('~');
+        (vendor != "openrouter").then(|| vendor.to_owned())
+    }
+    let served = response_documents(earlier_response)
+        .into_iter()
+        .find_map(|document| {
+            [&document["model"], &document["response"]["model"]]
+                .into_iter()
+                .find_map(Value::as_str)
+                .map(str::to_owned)
+        });
+    let earlier = served
+        .or_else(|| {
+            earlier
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .and_then(|model| vendor(&model));
+    let later = later.get("model").and_then(Value::as_str).and_then(vendor);
+    matches!((earlier, later), (Some(a), Some(b)) if a != b)
 }
 
 /// The tokens a response delivered as legacy placeholders: recorded before
@@ -435,6 +466,7 @@ fn collect_slots(parent_key: Option<&str>, value: &Value, slots: &mut Slots) {
                 // OpenAI Responses reasoning input items.
                 Some("reasoning") => {
                     put("reasoning_id", Leg::Call, "id", vec![None]);
+                    put("signature", Leg::Call, "signature", vec![id.clone()]);
                     put(
                         "encrypted_content",
                         Leg::Call,

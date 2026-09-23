@@ -382,3 +382,63 @@ fn openrouter_encrypted_details_must_return_on_their_own_item() {
         [("encrypted_content", "cipher-1")]
     );
 }
+
+#[test]
+fn a_responses_reasoning_signature_must_return_on_its_own_item() {
+    let body = json!({ "object": "response", "output": [
+        { "type": "reasoning", "id": "rs_1", "summary": [], "signature": "claude-sig",
+          "content": [{ "type": "reasoning_text", "text": "t" }] },
+    ]})
+    .to_string();
+    assert_eq!(
+        kinds(&response_tokens(Dialect::OpenAiResponses, &body)),
+        [("reasoning_id", "rs_1"), ("signature", "claude-sig")]
+    );
+    let next = |id: &str| json!({ "input": [{ "type": "reasoning", "id": id, "summary": [], "signature": "claude-sig" }] });
+    assert!(lost_tokens(Dialect::OpenAiResponses, &body, &next("rs_1")).is_empty());
+    assert_eq!(
+        kinds(&lost_tokens(Dialect::OpenAiResponses, &body, &next("rs_2"))),
+        [("reasoning_id", "rs_1"), ("signature", "claude-sig")]
+    );
+}
+
+#[test]
+fn a_gateway_model_switch_changes_the_reasoning_family() {
+    let request = |model: &str| json!({ "model": model });
+    let served = |model: &str| json!({ "model": model }).to_string();
+    let switches = |earlier: &str, reply: &str, later: &str| {
+        switches_reasoning_family(&request(earlier), reply, &request(later))
+    };
+    assert!(switches(
+        "anthropic/claude-haiku-4.5",
+        "",
+        "google/gemini-3-flash-preview"
+    ));
+    assert!(!switches(
+        "anthropic/claude-haiku-4.5",
+        "",
+        "anthropic/claude-sonnet-4.6"
+    ));
+    assert!(!switches("gpt-5-mini", "", "gpt-5.2"));
+    assert!(!switches_reasoning_family(
+        &json!({}),
+        "",
+        &request("openai/gpt-5-mini")
+    ));
+    for router in ["openrouter/auto", "@preset/fast"] {
+        // A later router names no family and replays every one.
+        assert!(!switches("anthropic/claude-haiku-4.5", "", router));
+        // An earlier router's reasoning belongs to the model that answered.
+        assert!(switches(
+            router,
+            &served("anthropic/claude-haiku-4.5"),
+            "google/gemini-3-flash-preview"
+        ));
+        assert!(!switches(
+            router,
+            &served("google/gemini-3-flash-preview"),
+            "google/gemini-3-flash-preview"
+        ));
+        assert!(!switches(router, "", "google/gemini-3-flash-preview"));
+    }
+}

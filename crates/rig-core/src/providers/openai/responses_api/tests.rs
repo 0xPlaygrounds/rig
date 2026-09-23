@@ -2423,6 +2423,7 @@ fn output_reasoning_round_trips_value_equal() {
         }],
         content: vec!["private reasoning".to_string()],
         encrypted_content: Some("ENCRYPTED".to_string()),
+        signature: None,
         status: Some(ToolStatus::Completed),
     };
 
@@ -2440,6 +2441,7 @@ fn output_reasoning_conversion_omits_empty_encrypted_content() {
         summary: vec![],
         content: vec!["visible reasoning".to_string()],
         encrypted_content: Some(String::new()),
+        signature: None,
         status: Some(ToolStatus::Completed),
     };
 
@@ -2465,6 +2467,7 @@ fn output_reasoning_conversion_preserves_non_empty_encrypted_content() {
         summary: vec![],
         content: vec![],
         encrypted_content: Some("ciphertext".to_string()),
+        signature: None,
         status: Some(ToolStatus::Completed),
     };
 
@@ -2494,6 +2497,7 @@ fn output_reasoning_none_optionals_serialize_as_explicit_null() {
         summary: vec![],
         content: vec![],
         encrypted_content: None,
+        signature: None,
         status: None,
     })
     .expect("reasoning should serialize");
@@ -2803,4 +2807,52 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         let wire = CompletionRequest::try_from(("test".to_owned(), request.clone())).unwrap();
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
     }
+}
+
+/// A reasoning item a gateway returns with a signature and no text (Gemini
+/// on OpenRouter's Responses route), with or without a summary, keeps the
+/// signature and replays it without inventing reasoning text.
+#[test]
+fn a_signature_only_reasoning_item_round_trips_without_text() {
+    for summary in [Vec::new(), vec![ReasoningSummary::new("a summary")]] {
+        let reasoning = super::streaming::reasoning_from_done_item(
+            Some("rs_1"),
+            summary.clone(),
+            Vec::new(),
+            None,
+            Some("signed".to_owned()),
+        )
+        .expect("the signature is kept");
+        assert_eq!(reasoning.first_signature(), Some("signed"));
+
+        let item = openai_reasoning_from_core(&reasoning).expect("identified reasoning replays");
+        assert_eq!(item.signature.as_deref(), Some("signed"));
+        assert!(item.content.is_empty(), "{item:?}");
+        assert_eq!(item.summary, summary);
+        let json = serde_json::to_value(&item).expect("the item serializes");
+        assert!(json.get("content").is_none(), "{json}");
+    }
+}
+
+/// A reasoning with several signed text blocks replays the last signature,
+/// the one decoding puts on the item's final text.
+#[test]
+fn the_last_text_signature_is_the_items() {
+    let reasoning = crate::message::Reasoning {
+        provider: None,
+        id: Some("rs_1".to_owned()),
+        content: vec![
+            crate::message::ReasoningContent::Text {
+                text: "first".to_owned(),
+                signature: Some("early".to_owned()),
+            },
+            crate::message::ReasoningContent::Text {
+                text: "second".to_owned(),
+                signature: Some("final".to_owned()),
+            },
+        ],
+    };
+    let item = openai_reasoning_from_core(&reasoning).expect("identified reasoning replays");
+    assert_eq!(item.signature.as_deref(), Some("final"));
+    assert_eq!(item.content, ["first", "second"]);
 }

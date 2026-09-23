@@ -172,7 +172,7 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         },
     );
     assert_eq!(request.chat_history.len(), 4);
-    super::Completion::scope_to_wire(&mut request, "anthropic");
+    super::Completion::scope_to_wire(&mut request, &["anthropic"]);
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),
@@ -255,4 +255,314 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
     assert_eq!(rebuilt.reasoning_issuer(), None);
     while rebuilt.next().await.is_some() {}
     assert_eq!(rebuilt.reasoning_issuer(), Some("anthropic"));
+}
+
+#[test]
+fn a_gateway_attributes_reasoning_to_the_upstream_family() {
+    use crate::providers::openai::wire::upstream_reasoning_issuer;
+    assert_eq!(
+        upstream_reasoning_issuer("openrouter", "anthropic/claude-haiku-4.5"),
+        "anthropic"
+    );
+    assert_eq!(
+        upstream_reasoning_issuer("openrouter", "~anthropic/claude-sonnet"),
+        "anthropic"
+    );
+    assert_eq!(
+        upstream_reasoning_issuer("openrouter", "openai/gpt-5-mini"),
+        "openrouter/openai"
+    );
+    assert_eq!(
+        upstream_reasoning_issuer("openrouter", "google/gemini-3-flash-preview"),
+        "openrouter/google"
+    );
+    assert_eq!(
+        upstream_reasoning_issuer("openrouter", "openrouter/auto"),
+        "openrouter/openrouter"
+    );
+}
+
+/// A request to OpenRouter replays only the requested model family's
+/// reasoning, plus reasoning stamped with the gateway alone before issuers
+/// were upstream-scoped, and reasoning of unknown provenance.
+#[tokio::test]
+async fn openrouter_replays_only_the_requested_familys_reasoning() {
+    let issuers = [
+        "anthropic",
+        "openrouter/openai",
+        "openrouter/google",
+        "openrouter",
+        "aws_bedrock",
+    ];
+    let content: Vec<AssistantContent> = issuers
+        .iter()
+        .map(|issuer| {
+            AssistantContent::Reasoning(
+                Reasoning::new_with_signature(issuer, Some(format!("sig-{issuer}")))
+                    .with_provider(*issuer),
+            )
+        })
+        .chain([AssistantContent::Reasoning(Reasoning::new_with_signature(
+            "unknown",
+            Some("sig-unknown".to_owned()),
+        ))])
+        .chain([AssistantContent::text("4")])
+        .collect();
+    // Through the chat wire itself and through the route wrapper
+    // `completion` returns, which must delegate its issuers.
+    async fn send<W: Wire<Op = super::Completion>>(
+        wire: W,
+        content: Vec<AssistantContent>,
+    ) -> String {
+        let mut request = history("unused");
+        request.chat_history[1] = Message::Assistant { id: None, content };
+        let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
+        let _ = crate::driver::call(&wire, &http, request, None).await;
+        let requests = http.requests();
+        String::from_utf8_lossy(&requests[0].body).into_owned()
+    }
+    let body_for = |model: &'static str| {
+        let content: Vec<AssistantContent> = content.clone();
+        async move {
+            let chat = send(
+                OpenAI::with_key(&OPENROUTER, "test-key").chat(model),
+                content.clone(),
+            )
+            .await;
+            let routed = send(
+                OpenAI::with_key(&OPENROUTER, "test-key").completion(model),
+                content,
+            )
+            .await;
+            assert_eq!(chat, routed, "the route wrapper scopes like the chat wire");
+            chat
+        }
+    };
+    let kept = |body: &str| {
+        issuers
+            .iter()
+            .chain(["unknown"].iter())
+            .filter(|issuer| body.contains(&format!("sig-{issuer}")))
+            .copied()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        kept(&body_for("google/gemini-3-flash-preview").await),
+        ["openrouter/google", "openrouter", "unknown"]
+    );
+    assert_eq!(
+        kept(&body_for("anthropic/claude-haiku-4.5").await),
+        ["anthropic", "openrouter", "unknown"]
+    );
+    // A router or preset names no family, so every relayed family replays;
+    // direct-provider reasoning of another service still does not.
+    for router in ["openrouter/auto", "@preset/fast"] {
+        assert_eq!(
+            kept(&body_for(router).await),
+            [
+                "anthropic",
+                "openrouter/openai",
+                "openrouter/google",
+                "openrouter",
+                "unknown"
+            ],
+            "{router}"
+        );
+    }
+}
+
+/// OpenRouter's Responses route scopes replay and records reasoning issuers
+/// the way its chat route does.
+#[tokio::test]
+async fn openrouter_responses_route_scopes_reasoning_by_family() {
+    use crate::completion::CompletionModel as _;
+
+    let issuers = [
+        "anthropic",
+        "openrouter/openai",
+        "openrouter/google",
+        "openrouter",
+        "aws_bedrock",
+    ];
+    let content: Vec<AssistantContent> = issuers
+        .iter()
+        .map(|issuer| {
+            AssistantContent::Reasoning(
+                Reasoning::new(issuer)
+                    .with_id(format!("rs-{issuer}"))
+                    .with_provider(*issuer),
+            )
+        })
+        .chain([
+            AssistantContent::Reasoning(Reasoning::new("unknown").with_id("rs-unknown".to_owned())),
+            AssistantContent::text("4"),
+        ])
+        .collect();
+    let kept = |model: &'static str| {
+        let content = content.clone();
+        async move {
+            let mut request = history("unused");
+            request.chat_history[1] = Message::Assistant { id: None, content };
+            let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
+            let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
+            let _ = crate::driver::call(&wire, &http, request, None).await;
+            let body = String::from_utf8_lossy(&http.requests()[0].body).into_owned();
+            issuers
+                .iter()
+                .chain(["unknown"].iter())
+                .filter(|issuer| body.contains(&format!("\"rs-{issuer}\"")))
+                .copied()
+                .collect::<Vec<_>>()
+        }
+    };
+    assert_eq!(
+        kept("openai/gpt-5-mini").await,
+        ["openrouter/openai", "openrouter", "unknown"]
+    );
+    assert_eq!(
+        kept("anthropic/claude-haiku-4.5").await,
+        ["anthropic", "openrouter", "unknown"]
+    );
+
+    let reply = serde_json::json!({
+        "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
+        "model": "openai/gpt-5-mini",
+        "output": [
+            { "type": "reasoning", "id": "rs_1", "summary": [{ "type": "summary_text", "text": "thinking" }], "encrypted_content": "ciphertext" },
+            { "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+              "content": [{ "type": "output_text", "text": "4", "annotations": [] }] }
+        ],
+        "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
+    });
+    let response = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").responses("openai/gpt-5-mini"),
+        RecordingHttpClient::new(Bytes::from(reply.to_string())),
+    )
+    .completion(history("unused"))
+    .await
+    .expect("the reply decodes");
+    let recorded: Vec<_> = response
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(recorded, ["openrouter/openai"]);
+}
+
+/// OpenRouter's Responses route returns Claude's thinking with a `signature`
+/// beside it; the reasoning keeps it and a continuation sends it back, which
+/// is what makes the thinking reach Claude again.
+#[tokio::test]
+async fn openrouter_responses_route_round_trips_a_claude_signature() {
+    use crate::completion::CompletionModel as _;
+
+    let model = "anthropic/claude-haiku-4.5";
+    let reply = serde_json::json!({
+        "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
+        "model": model,
+        "output": [
+            { "type": "reasoning", "id": "rs_tmp_1", "summary": [],
+              "content": [{ "type": "reasoning_text", "text": "thinking it through" }],
+              "signature": "claude-signature", "format": "anthropic-claude-v1" },
+            { "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+              "content": [{ "type": "output_text", "text": "4", "annotations": [] }] }
+        ],
+        "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
+    });
+    let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
+    let response = crate::driver::Bound::new(
+        wire.clone(),
+        RecordingHttpClient::new(Bytes::from(reply.to_string())),
+    )
+    .completion(history("unused"))
+    .await
+    .expect("the reply decodes");
+    let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
+        panic!("the reply opens with reasoning: {:?}", response.choice);
+    };
+    assert_eq!(reasoning.first_signature(), Some("claude-signature"));
+    assert_eq!(reasoning.provider.as_deref(), Some("anthropic"));
+
+    let mut request = history("unused");
+    request.chat_history[1] = Message::Assistant {
+        id: None,
+        content: response.choice.clone(),
+    };
+    let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
+    let _ = crate::driver::call(&wire, &http, request, None).await;
+    let body: serde_json::Value =
+        serde_json::from_slice(&http.requests()[0].body).expect("a JSON body");
+    let item = body["input"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["type"] == "reasoning"))
+        .expect("the reasoning item is replayed");
+    assert_eq!(item["id"], "rs_tmp_1");
+    assert_eq!(item["signature"], "claude-signature");
+    assert_eq!(item["content"][0]["text"], "thinking it through");
+}
+
+/// OpenRouter's reasoning records the family of the model that produced it,
+/// on a unary reply and on a stream.
+#[tokio::test]
+async fn openrouter_reasoning_records_its_upstream_family() {
+    use crate::completion::CompletionModel as _;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
+
+    let reply = |model: &str| {
+        serde_json::json!({
+            "id": "gen-1", "object": "chat.completion", "created": 0, "model": model,
+            "choices": [{ "index": 0, "finish_reason": "stop", "message": {
+                "role": "assistant", "content": "4",
+                "reasoning_details": [
+                    { "type": "reasoning.text", "text": "thinking", "signature": "sig", "format": "anthropic-claude-v1", "index": 0 }
+                ]
+            }}],
+            "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
+        })
+    };
+    let issuers = |choice: &[AssistantContent]| {
+        choice
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::Reasoning(reasoning) => reasoning.provider.clone(),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    for (model, expected) in [
+        ("anthropic/claude-4.5-haiku-20251001", "anthropic"),
+        ("openai/gpt-5-mini", "openrouter/openai"),
+    ] {
+        let wire = OpenAI::with_key(&OPENROUTER, "test-key").chat(model);
+        let unary = crate::driver::Bound::new(
+            wire.clone(),
+            RecordingHttpClient::new(Bytes::from(reply(model).to_string())),
+        )
+        .completion(history("unused"))
+        .await
+        .expect("the reply decodes");
+        assert_eq!(issuers(&unary.choice), [expected], "unary {model}");
+
+        let mut chunk = reply(model);
+        chunk["object"] = "chat.completion.chunk".into();
+        let message = chunk["choices"][0]["message"].take();
+        chunk["choices"][0]["delta"] = message;
+        let sse = format!("data: {chunk}\n\ndata: [DONE]\n\n");
+        let mut stream = crate::driver::Bound::new(
+            wire,
+            MockStreamingClient {
+                sse_bytes: Bytes::from(sse),
+            },
+        )
+        .stream(history("unused"))
+        .await
+        .expect("the stream opens");
+        while stream.next().await.is_some() {}
+        let streamed = stream.finish().expect("a terminal record");
+        assert_eq!(issuers(&streamed.choice), [expected], "streamed {model}");
+    }
 }

@@ -435,8 +435,13 @@ fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
         },
     ];
     let content = vec!["private reasoning".to_string()];
-    let reasoning =
-        reasoning_from_done_item(Some("rs_1"), summary, content, Some("enc_blob".to_string()));
+    let reasoning = reasoning_from_done_item(
+        Some("rs_1"),
+        summary,
+        content,
+        Some("enc_blob".to_string()),
+        None,
+    );
 
     // ONE restatement carrying every block in wire field order — never a
     // block per entry, which made siblings under one `rs_*` id.
@@ -632,7 +637,7 @@ fn reasoning_done_item_without_encrypted_emits_summary_only() {
     let summary = vec![ReasoningSummary::SummaryText {
         text: "only summary".to_string(),
     }];
-    let reasoning = reasoning_from_done_item(Some("rs_2"), summary, Vec::new(), None);
+    let reasoning = reasoning_from_done_item(Some("rs_2"), summary, Vec::new(), None, None);
 
     let Some(reasoning) = reasoning else {
         panic!("expected one reasoning restatement");
@@ -649,7 +654,7 @@ fn empty_encrypted_reasoning_is_not_emitted() {
     let content = vec!["visible reasoning".to_string()];
 
     let reasoning =
-        reasoning_from_done_item(Some("rs_1"), Vec::new(), content, Some(String::new()));
+        reasoning_from_done_item(Some("rs_1"), Vec::new(), content, Some(String::new()), None);
 
     let Some(reasoning) = reasoning else {
         panic!("expected one reasoning restatement");
@@ -665,8 +670,14 @@ fn empty_encrypted_reasoning_is_not_emitted() {
 
     // An entirely empty done item says nothing at the boundary.
     assert!(
-        reasoning_from_done_item(Some("rs_1"), Vec::new(), Vec::new(), Some(String::new()))
-            .is_none()
+        reasoning_from_done_item(
+            Some("rs_1"),
+            Vec::new(),
+            Vec::new(),
+            Some(String::new()),
+            None
+        )
+        .is_none()
     );
 }
 
@@ -2431,8 +2442,8 @@ fn terminal_record_preserves_an_unknown_incomplete_reason() {
         ..super::StreamingCompletionResponse::new(None)
     };
 
-    let final_response =
-        super::terminal_record("openai", response.clone()).expect("the native record serializes");
+    let final_response = super::terminal_record("openai", false, response.clone())
+        .expect("the native record serializes");
 
     assert_eq!(
         final_response.finish_reason,
