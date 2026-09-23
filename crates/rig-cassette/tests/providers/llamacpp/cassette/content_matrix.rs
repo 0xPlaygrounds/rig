@@ -82,7 +82,7 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
                 .expect_err("rig rejects an empty converted choice");
 
             match &error {
-                rig::completion::CompletionError::ResponseError(message) => assert_eq!(
+                rig::error::ProviderError::Response(message) => assert_eq!(
                     message,
                     rig::message::EMPTY_RESPONSE_ERROR,
                     "the shared empty-response wording, not a provider-specific one"

@@ -168,10 +168,8 @@ async fn cached_content_lifecycle_chain() {
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
             assert!(
-                matches!(
-                    refused,
-                    rig::completion::CompletionError::ProviderResponse(_)
-                ) && report.http_status == Some(403),
+                matches!(refused, rig::error::ProviderError::ProviderResponse(_))
+                    && report.http_status == Some(403),
                 "a deleted handle is refused by the provider as not found or denied: {report:?}"
             );
         },

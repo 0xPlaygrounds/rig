@@ -25,9 +25,7 @@ pub mod model_listing;
 pub mod streaming;
 pub mod transcription;
 
-pub use cached_content::{
-    CacheExpiry, CachedContent, CachedContentError, CachedContents, NewCachedContent,
-};
+pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
 pub use image_generation::GEMINI_2_5_FLASH_IMAGE;

@@ -7,6 +7,7 @@
 //! }
 //! ```
 
+use rig_core::error::ProviderError;
 use rig_core::{
     markers::{Missing, Provided},
     message::Message,
@@ -14,7 +15,7 @@ use rig_core::{
 
 use crate::{
     agent::{Agent, MultiTurnStreamItem},
-    completion::{CompletionError, PromptError, Usage},
+    completion::{PromptError, Usage},
     streaming::{Delta, StreamEvent},
 };
 use rig_core::wasm_compat::WasmCompatSend;
@@ -242,7 +243,7 @@ where
         loop {
             print!("> ");
             stdout.flush().map_err(|e| {
-                PromptError::CompletionError(CompletionError::ResponseError(format!(
+                PromptError::CompletionError(ProviderError::Response(format!(
                     "failed to flush stdout: {e}"
                 )))
             })?;

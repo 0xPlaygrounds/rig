@@ -302,9 +302,7 @@ impl Decoder<Completion> for InteractionsDecoder {
                 // for an in-band failure.
                 self.failed = true;
                 let body = serde_json::to_string(&event).unwrap_or_default();
-                out.push(Err(crate::provider_response::completion_error_from_body(
-                    body,
-                )));
+                out.push(Err(crate::error::ProviderError::from_provider_body(body)));
             }
             InteractionSseEvent::InteractionCreated { .. }
             | InteractionSseEvent::InteractionStatusUpdate { .. } => {}

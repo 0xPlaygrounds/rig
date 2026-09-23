@@ -28,9 +28,8 @@
 pub mod chat;
 pub mod responses;
 
-use rig_core::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-};
+use rig_core::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig_core::error::ProviderError;
 use rig_core::streaming::StreamFinal;
 
 use crate::support::{
@@ -46,7 +45,7 @@ pub async fn capture_completion<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
     sink: Observed<CompletionResponse>,
-) -> Result<(), CompletionError>
+) -> Result<(), ProviderError>
 where
     M: CompletionModel,
 {
@@ -66,7 +65,7 @@ pub async fn capture_completion_pair<M>(
     model: M,
     build: impl Fn(&M) -> CompletionRequest,
     sink: Observed<(CompletionResponse, CompletionResponse)>,
-) -> Result<(), CompletionError>
+) -> Result<(), ProviderError>
 where
     M: CompletionModel,
 {
@@ -82,7 +81,7 @@ pub async fn capture_text_and_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
-) -> Result<(), CompletionError>
+) -> Result<(), ProviderError>
 where
     M: CompletionModel,
 {
@@ -105,7 +104,7 @@ pub async fn capture_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
     sink: Observed<StreamFinal>,
-) -> Result<(), CompletionError>
+) -> Result<(), ProviderError>
 where
     M: CompletionModel,
 {
@@ -120,7 +119,7 @@ pub async fn capture_sole_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
     sink: Observed<StreamFinal>,
-) -> Result<(), CompletionError>
+) -> Result<(), ProviderError>
 where
     M: CompletionModel,
 {
@@ -140,7 +139,7 @@ pub async fn capture_text_and_sole_terminal<M>(
     model: M,
     build: impl FnOnce(&M) -> CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
-) -> Result<(), CompletionError>
+) -> Result<(), ProviderError>
 where
     M: CompletionModel,
 {

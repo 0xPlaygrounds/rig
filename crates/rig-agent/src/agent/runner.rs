@@ -26,10 +26,11 @@ use super::{
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
+use rig_core::error::ProviderError;
 use rig_core::{completion::ModelRef, message::ToolChoice};
 
 use crate::{
-    completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
+    completion::{CompletionModel, Document, Message, PromptError, Usage},
     tool::{ToolContext, server::ToolServerHandle},
 };
 
@@ -579,7 +580,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(CompletionError::ResponseError(
+                PromptError::CompletionError(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })

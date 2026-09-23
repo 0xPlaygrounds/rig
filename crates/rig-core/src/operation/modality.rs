@@ -8,7 +8,8 @@
 //! ```
 
 use super::{One, Take};
-use crate::embeddings::{Embedding as Vector, EmbeddingError};
+use crate::embeddings::Embedding as Vector;
+use crate::error::ProviderError;
 use crate::telemetry::{ModalityOperation, ModalityResponseTelemetry, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply};
 
@@ -44,13 +45,13 @@ impl EmbeddingCapabilities {
         self
     }
 
-    /// Returns [`EmbeddingError::MismatchedDimensions`] for the first width
+    /// Returns [`ProviderError::MismatchedDimensions`] for the first width
     /// differing from a positive caller declaration. Otherwise succeeds.
     pub(crate) fn honour_declaration(
         &self,
         provider: &str,
         widths: impl IntoIterator<Item = usize>,
-    ) -> Result<(), EmbeddingError> {
+    ) -> Result<(), ProviderError> {
         // Zero is rig's sentinel for an unknown width, never a claim about
         // one: a model absent from every table this build knows resolves to
         // it, and treating that as a declaration would fail every reply.
@@ -60,7 +61,7 @@ impl EmbeddingCapabilities {
         let Some(returned) = widths.into_iter().find(|width| *width != requested) else {
             return Ok(());
         };
-        Err(EmbeddingError::MismatchedDimensions {
+        Err(ProviderError::MismatchedDimensions {
             provider: provider.to_owned(),
             requested,
             returned,
@@ -88,7 +89,6 @@ macro_rules! modality_operation {
         $op:ident {
             request: $request:ty,
             response: $response:ty,
-            error: $error:ty,
             capabilities: $capabilities:ty,
             telemetry: $telemetry:ident,
             name: $name:literal,
@@ -104,7 +104,6 @@ macro_rules! modality_operation {
             type Request = $request;
             type Event = $response;
             type Response = $response;
-            type Error = $error;
             type Capabilities = $capabilities;
             type Output = One<Self>;
             type Fold = $fold;
@@ -169,7 +168,6 @@ modality_operation!(
     Embedding {
         request: Vec<String>,
         response: crate::embeddings::EmbeddingResponse,
-        error: crate::embeddings::EmbeddingError,
         capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
         name: "embedding",
@@ -183,7 +181,6 @@ modality_operation!(
     ImageEmbedding {
         request: Vec<Vec<u8>>,
         response: crate::embeddings::ImageEmbeddingResponse,
-        error: crate::embeddings::EmbeddingError,
         capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
         name: "image_embedding",
@@ -199,7 +196,6 @@ modality_operation!(
     Rerank {
         request: RerankRequest,
         response: crate::rerank::RerankResponse,
-        error: crate::rerank::RerankError,
         capabilities: usize,
         telemetry: Rerank,
         name: "rerank",
@@ -213,7 +209,6 @@ modality_operation!(
     Transcription {
         request: crate::transcription::TranscriptionRequest,
         response: crate::transcription::TranscriptionResponse,
-        error: crate::transcription::TranscriptionError,
         capabilities: (),
         telemetry: Transcription,
         name: "transcription",
@@ -228,7 +223,6 @@ modality_operation!(
     ImageGeneration {
         request: crate::image_generation::ImageGenerationRequest,
         response: crate::image_generation::ImageGenerationResponse,
-        error: crate::image_generation::ImageGenerationError,
         capabilities: (),
         telemetry: ImageGeneration,
         name: "image_generation",
@@ -243,7 +237,6 @@ modality_operation!(
     AudioGeneration {
         request: crate::audio_generation::AudioGenerationRequest,
         response: crate::audio_generation::AudioGenerationResponse,
-        error: crate::audio_generation::AudioGenerationError,
         capabilities: (),
         telemetry: AudioGeneration,
         name: "audio_generation",
@@ -295,16 +288,16 @@ impl Embedded {
     }
 
     /// The vectors, paired with the inputs they belong to.
-    fn zipped(self) -> Result<(Vec<Vector>, Metadata, crate::completion::Usage), EmbeddingError> {
+    fn zipped(self) -> Result<(Vec<Vector>, Metadata, crate::completion::Usage), ProviderError> {
         if self.vectors.len() != self.documents.len() {
-            return Err(EmbeddingError::ResponseError(format!(
+            return Err(ProviderError::Response(format!(
                 "provider returned {} embeddings for {} documents",
                 self.vectors.len(),
                 self.documents.len()
             )));
         }
         let Some(metadata) = self.metadata else {
-            return Err(EmbeddingError::ResponseError(
+            return Err(ProviderError::Response(
                 "embedding reply carried no payload".to_owned(),
             ));
         };
@@ -319,10 +312,7 @@ impl Embedded {
 }
 
 impl Fold<Embedding> for Embedded {
-    fn absorb(
-        &mut self,
-        reply: crate::embeddings::EmbeddingResponse,
-    ) -> Result<(), EmbeddingError> {
+    fn absorb(&mut self, reply: crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
         self.absorb_parts(
             reply.embeddings,
             reply.usage,
@@ -337,7 +327,7 @@ impl Fold<Embedding> for Embedded {
         Ok(())
     }
 
-    fn finish(self, reply: Reply) -> Result<crate::embeddings::EmbeddingResponse, EmbeddingError> {
+    fn finish(self, reply: Reply) -> Result<crate::embeddings::EmbeddingResponse, ProviderError> {
         let (embeddings, metadata, usage) = self.zipped()?;
         let mut response = crate::embeddings::EmbeddingResponse {
             embeddings,
@@ -357,7 +347,7 @@ impl Fold<ImageEmbedding> for Embedded {
     fn absorb(
         &mut self,
         reply: crate::embeddings::ImageEmbeddingResponse,
-    ) -> Result<(), EmbeddingError> {
+    ) -> Result<(), ProviderError> {
         self.absorb_parts(
             reply.embeddings,
             reply.usage,
@@ -375,7 +365,7 @@ impl Fold<ImageEmbedding> for Embedded {
     fn finish(
         self,
         reply: Reply,
-    ) -> Result<crate::embeddings::ImageEmbeddingResponse, EmbeddingError> {
+    ) -> Result<crate::embeddings::ImageEmbeddingResponse, ProviderError> {
         let (embeddings, metadata, usage) = self.zipped()?;
         let mut response = crate::embeddings::ImageEmbeddingResponse {
             embeddings,

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::completion::{CompletionResponse, Content, anthropic_usage_totals, map_finish_reason};
-use crate::completion::CompletionError;
+use crate::error::ProviderError;
 use crate::message::ReasoningContent;
 use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
@@ -423,7 +423,7 @@ impl MessagesDecoder {
                         match serde_json::from_str(&server_tool_use.input_json) {
                             Ok(json_value) => json_value,
                             Err(e) => {
-                                out.error(CompletionError::from(e));
+                                out.error(ProviderError::from(e));
                                 return;
                             }
                         }
@@ -478,7 +478,7 @@ impl MessagesDecoder {
         };
         if message.content.is_empty() && !legal_empty_turn {
             self.failed = true;
-            out.error(CompletionError::ResponseError(
+            out.error(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
             return;
@@ -613,7 +613,7 @@ impl Decoder<Completion> for MessagesDecoder {
             StreamingEvent::Error { raw, .. } => {
                 // Preserve the complete error envelope rather than re-encode modeled fields.
                 self.failed = true;
-                out.error(crate::provider_response::completion_error_from_body(raw));
+                out.error(crate::error::ProviderError::from_provider_body(raw));
             }
             event @ (StreamingEvent::ContentBlockStart { .. }
             | StreamingEvent::ContentBlockDelta { .. }
@@ -752,7 +752,7 @@ pub struct StreamingCompletionResponse {
 fn terminal_record(
     provider: &str,
     response: &StreamingCompletionResponse,
-) -> Result<StreamFinal, CompletionError> {
+) -> Result<StreamFinal, ProviderError> {
     Ok(StreamFinal::new(
         provider,
         crate::completion::Usage::from(&response.usage),

@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::CompletionError;
+use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, DocumentSourceKind, Image, ImageMediaType, Message, MimeType, Text,
     ToolResultContent, UserContent,
@@ -11,11 +11,11 @@ use std::collections::HashSet;
 pub struct RigMessage(pub Message);
 
 impl TryFrom<RigMessage> for vertexai::model::Content {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: RigMessage) -> Result<Self, Self::Error> {
         match value.0 {
-            Message::System { .. } => Err(CompletionError::ProviderError(
+            Message::System { .. } => Err(ProviderError::Provider(
                 "System messages must be sent via Vertex AI system_instruction".to_string(),
             )),
             Message::User { content } => {
@@ -83,7 +83,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             Ok(vertexai::model::Part::new()
                                 .set_function_response(function_response))
                         }
-                        _ => Err(CompletionError::ProviderError(format!(
+                        _ => Err(ProviderError::Provider(format!(
                             "Unsupported user content type: {user_content:?}"
                         ))),
                     })
@@ -123,7 +123,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             let serde_json::Value::Object(struct_val) =
                                 tool_call.function.arguments
                             else {
-                                return Err(CompletionError::ProviderError(
+                                return Err(ProviderError::Provider(
                                     "Expected JSON object for Struct conversion".to_string(),
                                 ));
                             };
@@ -203,16 +203,14 @@ fn collect_json_ref_names(value: &serde_json::Value, names: &mut HashSet<String>
 fn vertex_tool_result_image_part(
     image: &Image,
     display_name: &str,
-) -> Result<vertexai::model::FunctionResponsePart, CompletionError> {
+) -> Result<vertexai::model::FunctionResponsePart, ProviderError> {
     let media_type = image.media_type.as_ref().ok_or_else(|| {
-        CompletionError::RequestError(
-            "Media type for tool-result image is required for Vertex AI".into(),
-        )
+        ProviderError::Request("Media type for tool-result image is required for Vertex AI".into())
     })?;
     match media_type {
         ImageMediaType::JPEG | ImageMediaType::PNG | ImageMediaType::WEBP => {}
         unsupported => {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 format!(
                     "Unsupported Vertex AI tool-result image media type {unsupported:?}; \
                      expected JPEG, PNG, or WEBP"
@@ -225,9 +223,7 @@ fn vertex_tool_result_image_part(
 
     let data = match &image.data {
         DocumentSourceKind::Base64(data) => BASE64.decode(data.as_bytes()).map_err(|error| {
-            CompletionError::RequestError(
-                format!("Invalid base64 tool-result image data: {error}").into(),
-            )
+            ProviderError::Request(format!("Invalid base64 tool-result image data: {error}").into())
         })?,
         DocumentSourceKind::Raw(data) => data.clone(),
         DocumentSourceKind::Url(url) => {
@@ -239,7 +235,7 @@ fn vertex_tool_result_image_part(
             ));
         }
         unsupported => {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 format!("Unsupported Vertex AI tool-result image source: {unsupported}").into(),
             ));
         }
@@ -255,11 +251,9 @@ fn vertex_tool_result_image_part(
     )
 }
 
-fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, CompletionError> {
+fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, ProviderError> {
     let media_type = image.media_type.ok_or_else(|| {
-        CompletionError::RequestError(
-            "Media type for assistant image is required for Vertex AI".into(),
-        )
+        ProviderError::Request("Media type for assistant image is required for Vertex AI".into())
     })?;
 
     match media_type {
@@ -269,20 +263,20 @@ fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, Co
         | ImageMediaType::HEIC
         | ImageMediaType::HEIF => {}
         unsupported => {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 format!("Unsupported Vertex AI assistant image media type {unsupported:?}").into(),
             ));
         }
     }
 
     let DocumentSourceKind::Base64(data) = image.data else {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             "Vertex AI assistant images must use base64 data".into(),
         ));
     };
 
     let data = BASE64.decode(data.as_bytes()).map_err(|err| {
-        CompletionError::RequestError(format!("Invalid base64 assistant image data: {err}").into())
+        ProviderError::Request(format!("Invalid base64 assistant image data: {err}").into())
     })?;
 
     Ok(vertexai::model::Part::new().set_inline_data(

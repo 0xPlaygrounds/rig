@@ -34,7 +34,8 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
-use crate::completion::{self, CompletionError, CompletionRequest};
+use crate::completion::{self, CompletionRequest};
+use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
@@ -104,7 +105,7 @@ impl Wire for GenerateContent {
         }
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -129,7 +130,7 @@ impl Wire for GenerateContent {
         let request = http::Request::post(self.provider.uri(&path))
             .header("Content-Type", "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
         // Gemini supplies no transport request-id response header.
         Ok(Encoded::new(request, framing))
     }
@@ -141,7 +142,7 @@ impl Wire for GenerateContent {
 
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
-) -> Result<GenerateContentRequest, CompletionError> {
+) -> Result<GenerateContentRequest, ProviderError> {
     let chat_history = completion_request.chat_history_with_documents();
 
     let CompletionRequest {
@@ -182,7 +183,7 @@ pub(crate) fn create_request_body(
         match value {
             Value::String(name) => smuggled_cached_content.push(name),
             other => {
-                return Err(CompletionError::RequestError(
+                return Err(ProviderError::Request(
                     format!("additional_params.{spelling} should be a string, got {other}").into(),
                 ));
             }
@@ -235,7 +236,7 @@ pub(crate) fn create_request_body(
     };
     // Gemini rejects duplicate system-instruction fields rather than selecting one.
     if let (Some(typed), Some(spelling)) = (&system_instruction, smuggled_system_instruction) {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             format!(
                 "a Gemini request set the system instruction twice — once as a preamble or \
                  system message ({} part(s)) and once through `additional_params.{spelling}`. \
@@ -268,7 +269,7 @@ pub(crate) fn create_request_body(
     if tool_config.is_some()
         && let Some(spelling) = smuggled_tool_config
     {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             format!(
                 "a Gemini request set the tool choice twice — once as `tool_choice` and once \
                  through `additional_params.{spelling}`. Both would reach the wire, and Gemini \
@@ -285,7 +286,7 @@ pub(crate) fn create_request_body(
             .into_iter()
             .map(|msg| {
                 msg.try_into()
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))
+                    .map_err(|e| ProviderError::Request(Box::new(e)))
             })
             .collect::<Result<Vec<_>, _>>()?,
         generation_config,
@@ -346,12 +347,12 @@ fn smuggled_field<'a>(payload: &Value, spellings: &[&'a str]) -> Option<&'a str>
 
 fn extract_tools_from_additional_params(
     additional_params: &mut Value,
-) -> Result<Vec<Value>, CompletionError> {
+) -> Result<Vec<Value>, ProviderError> {
     if let Some(map) = additional_params.as_object_mut()
         && let Some(raw_tools) = map.remove("tools")
     {
         return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
+            ProviderError::Request(
                 format!("Invalid Gemini `additional_params.tools` payload: {err}").into(),
             )
         });
@@ -379,14 +380,14 @@ pub(crate) fn streaming_endpoint(model: &str) -> String {
 }
 
 impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
         let mut function_declarations = Vec::new();
 
         for tool in tools {
             let parameters = tool_parameters_to_schema(tool.parameters).map_err(|e| {
-                CompletionError::ProviderError(format!(
+                ProviderError::Provider(format!(
                     "Tool '{}' could not be converted to a schema: {:?}",
                     tool.name, e,
                 ))
@@ -427,7 +428,7 @@ mod erased_wire {
 /// Content refusals are final; unknown and `OTHER` reasons are transient.
 pub(crate) fn blocked_prompt_error(
     feedback: &gemini_api_types::PromptFeedback,
-) -> Option<CompletionError> {
+) -> Option<ProviderError> {
     let reason = match feedback.block_reason.as_ref()? {
         // Documented as unused: the zero value is never sent, and it names
         // no block if it ever were.
@@ -456,15 +457,13 @@ pub(crate) fn blocked_prompt_error(
         gemini_api_types::BlockReason::Safety
         | gemini_api_types::BlockReason::Blocklist
         | gemini_api_types::BlockReason::ProhibitedContent
-        | gemini_api_types::BlockReason::BlockReasonUnspecified => {
-            CompletionError::ProviderResponse(
-                crate::provider_response::ProviderResponseError::without_status(message)
-                    .with_code(Some(reason.as_wire_str().to_owned()))
-                    .with_refusal(true),
-            )
-        }
+        | gemini_api_types::BlockReason::BlockReasonUnspecified => ProviderError::ProviderResponse(
+            crate::provider_response::ProviderResponseError::without_status(message)
+                .with_code(Some(reason.as_wire_str().to_owned()))
+                .with_refusal(true),
+        ),
         gemini_api_types::BlockReason::Other | gemini_api_types::BlockReason::Unknown(_) => {
-            CompletionError::ProviderResponse(
+            ProviderError::ProviderResponse(
                 crate::provider_response::ProviderResponseError::without_status(message)
                     .with_code(Some(reason.as_wire_str().to_owned()))
                     .with_transient(Some(true)),
@@ -476,7 +475,7 @@ pub(crate) fn blocked_prompt_error(
 pub(crate) fn function_call_finish_reason_error(
     reason: &FinishReason,
     finish_message: Option<&str>,
-) -> Option<CompletionError> {
+) -> Option<ProviderError> {
     match reason {
         FinishReason::MalformedFunctionCall
         | FinishReason::UnexpectedToolCall
@@ -484,7 +483,7 @@ pub(crate) fn function_call_finish_reason_error(
         | FinishReason::TooManyToolCalls
         | FinishReason::MalformedResponse => {
             let message = finish_message.unwrap_or("no finish message provided");
-            Some(CompletionError::ResponseError(format!(
+            Some(ProviderError::Response(format!(
                 "Gemini stopped with finish_reason={reason:?}: {message}"
             )))
         }
@@ -506,6 +505,7 @@ pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
 }
 
 pub mod gemini_api_types {
+    use crate::error::ProviderError;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     use serde::{Deserialize, Serialize};
@@ -513,8 +513,7 @@ pub mod gemini_api_types {
 
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
-        completion::CompletionError,
-        message::{self},
+        message,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
     };
 
@@ -1628,7 +1627,7 @@ pub mod gemini_api_types {
     /// Gemini does not need a `parameters` object for no-argument tools, and it
     /// does not support JSON Schema references, so this helper keeps those
     /// conventions centralized for all Gemini transports.
-    pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Schema>, CompletionError> {
+    pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Schema>, ProviderError> {
         if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
             Ok(None)
         } else {
@@ -1640,7 +1639,7 @@ pub mod gemini_api_types {
     /// Return unchanged input if neither section exists. Return an error for a
     /// non-object definitions section, unsupported reference paths, or missing definitions.
     /// Callers must supply acyclic references.
-    pub fn flatten_schema(mut schema: Value) -> Result<Value, CompletionError> {
+    pub fn flatten_schema(mut schema: Value) -> Result<Value, ProviderError> {
         let defs = schema
             .as_object()
             .and_then(|obj| obj.get("$defs").or_else(|| obj.get("definitions")))
@@ -1651,9 +1650,7 @@ pub mod gemini_api_types {
         };
 
         let Some(defs_obj) = defs_value.as_object() else {
-            return Err(CompletionError::ResponseError(
-                "$defs must be an object".into(),
-            ));
+            return Err(ProviderError::Response("$defs must be an object".into()));
         };
 
         resolve_refs(&mut schema, defs_obj)?;
@@ -1671,7 +1668,7 @@ pub mod gemini_api_types {
     fn resolve_refs(
         value: &mut Value,
         defs: &serde_json::Map<String, Value>,
-    ) -> Result<(), CompletionError> {
+    ) -> Result<(), ProviderError> {
         match value {
             Value::Object(obj) => {
                 if let Some(ref_value) = obj.get("$ref")
@@ -1680,7 +1677,7 @@ pub mod gemini_api_types {
                     let def_name = parse_ref_path(ref_str)?;
 
                     let def = defs.get(&def_name).ok_or_else(|| {
-                        CompletionError::ResponseError(format!("Reference not found: {ref_str}"))
+                        ProviderError::Response(format!("Reference not found: {ref_str}"))
                     })?;
 
                     let mut resolved = def.clone();
@@ -1706,19 +1703,19 @@ pub mod gemini_api_types {
 
     /// Extract the suffix of `#/$defs/` or `#/definitions/`.
     /// Return a response error for any other reference prefix.
-    fn parse_ref_path(ref_str: &str) -> Result<String, CompletionError> {
+    fn parse_ref_path(ref_str: &str) -> Result<String, ProviderError> {
         if let Some(fragment) = ref_str.strip_prefix('#') {
             if let Some(name) = fragment.strip_prefix("/$defs/") {
                 Ok(name.to_string())
             } else if let Some(name) = fragment.strip_prefix("/definitions/") {
                 Ok(name.to_string())
             } else {
-                Err(CompletionError::ResponseError(format!(
+                Err(ProviderError::Response(format!(
                     "Unsupported reference format: {ref_str}"
                 )))
             }
         } else {
-            Err(CompletionError::ResponseError(format!(
+            Err(ProviderError::Response(format!(
                 "Only fragment references (#/...) are supported: {ref_str}"
             )))
         }
@@ -1851,7 +1848,7 @@ pub mod gemini_api_types {
     }
 
     impl TryFrom<Value> for Schema {
-        type Error = CompletionError;
+        type Error = ProviderError;
 
         fn try_from(value: Value) -> Result<Self, Self::Error> {
             let flattened_val = flatten_schema(value)?;
@@ -1946,7 +1943,7 @@ pub mod gemini_api_types {
                     items,
                 })
             } else {
-                Err(CompletionError::ResponseError(
+                Err(ProviderError::Response(
                     "Expected a JSON object for Schema".into(),
                 ))
             }
@@ -2015,7 +2012,7 @@ pub mod gemini_api_types {
     }
 
     impl TryFrom<message::ToolChoice> for FunctionCallingMode {
-        type Error = CompletionError;
+        type Error = ProviderError;
         fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
             let res = match value {
                 message::ToolChoice::Auto => Self::Auto,
@@ -2058,9 +2055,9 @@ impl gemini_api_types::GenerateContentRequest {
     /// Set an explicit cache handle, requiring the `cachedContents/` prefix.
     /// Return a request error for a different existing handle or for system
     /// instructions, tools, or tool configuration in typed or additional fields.
-    pub fn with_cached_content(&mut self, name: &str) -> Result<(), CompletionError> {
+    pub fn with_cached_content(&mut self, name: &str) -> Result<(), ProviderError> {
         if !name.starts_with("cachedContents/") {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 format!(
                     "gemini cached content handle should look like `cachedContents/<id>`, got \
                      `{name}`"
@@ -2073,7 +2070,7 @@ impl gemini_api_types::GenerateContentRequest {
         if let Some(existing) = self.cached_content.as_deref()
             && existing != name
         {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 format!(
                     "a Gemini request set cached content twice, to `{existing}` and `{name}` — \
                      set it one way or the other"
@@ -2133,7 +2130,7 @@ impl gemini_api_types::GenerateContentRequest {
             } else {
                 ""
             };
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 format!(
                     "a Gemini request using cached content `{name}` also set {}. The cached \
                      content already owns the system instruction, tools and tool choice for every \

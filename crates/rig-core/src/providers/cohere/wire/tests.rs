@@ -266,7 +266,7 @@ fn an_image_the_provider_will_not_accept_never_reaches_the_wire() {
     let Err(error) = rejected else {
         panic!("an unsniffable format must be rejected before the request is built");
     };
-    assert!(matches!(error, EmbeddingError::DocumentError(_)));
+    assert!(matches!(error, ProviderError::Request(_)));
 }
 
 /// One `/v1/embed` image reply, shaped as the recorded image cells are:

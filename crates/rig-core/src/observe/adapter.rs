@@ -589,7 +589,7 @@ impl AdapterSlot {
         }
     }
 
-    pub(crate) fn fail<E: crate::wire::WireError>(&self, error: &E) {
+    pub(crate) fn fail(&self, error: &crate::error::ProviderError) {
         if let Some(status) = error.provider_response_status() {
             self.response(status);
         }

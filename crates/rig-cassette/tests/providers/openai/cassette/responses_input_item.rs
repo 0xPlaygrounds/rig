@@ -1,4 +1,5 @@
-use rig::completion::{CompletionError, Message as CompletionMessage};
+use rig::completion::Message as CompletionMessage;
+use rig::error::ProviderError;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
     CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Output, ReasoningSummary,
@@ -341,7 +342,7 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
     let conversion = panic_result.expect("request conversion should not panic");
     assert!(matches!(
         conversion,
-        Err(CompletionError::RequestError(error))
+        Err(ProviderError::Request(error))
             if error
                 .to_string()
                 .contains("OpenAI Responses request input must contain at least one item")
@@ -504,7 +505,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
     let conversion = panic_result.expect("request conversion should not panic");
     assert!(matches!(
         conversion,
-        Err(CompletionError::RequestError(error))
+        Err(ProviderError::Request(error))
             if error
                 .to_string()
                 .contains("Invalid OpenAI Responses additional_params payload")

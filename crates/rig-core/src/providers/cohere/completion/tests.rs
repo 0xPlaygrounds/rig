@@ -331,7 +331,7 @@ fn unsupported_tool_choices_are_rejected_before_the_request_is_sent() {
         let error = CohereToolChoice::try_from(unsupported.clone())
             .expect_err("Cohere has no encoding for this tool choice");
         assert!(
-            matches!(error, CompletionError::RequestError(_)),
+            matches!(error, ProviderError::Request(_)),
             "expected a request error for {unsupported:?}, got {error:?}"
         );
     }
@@ -360,7 +360,7 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
         .await
         .expect_err("REQUIRED without tools should fail locally");
 
-    assert!(matches!(error, CompletionError::RequestError(_)));
+    assert!(matches!(error, ProviderError::Request(_)));
     let message = error.to_string();
     assert!(
         message.contains("at least one tool") && message.contains("REQUIRED"),
@@ -460,7 +460,7 @@ async fn completion_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

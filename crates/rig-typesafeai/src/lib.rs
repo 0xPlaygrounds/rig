@@ -9,18 +9,17 @@
 
 mod decode;
 mod dynamic;
-mod error;
 mod questions;
 pub mod types;
 mod validation;
 mod wire;
 
 pub use dynamic::DynamicQuery;
-pub use error::Error;
 pub use questions::{
     Choice, ChoiceAnswer, DynamicScore, DynamicScoreAnswer, JoinedQuery, MappedQuery, NamedQuery,
     Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
+use rig_core::error::ProviderError;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use rig_core::{
     driver::{Bound, call},
@@ -49,7 +48,7 @@ pub trait Evaluate {
     ///
     /// ```compile_fail
     /// use rig_typesafeai::{Evaluate, EvaluationResult, DynamicScoreAnswer, Noul, Query};
-    /// async fn wrong(client: impl Evaluate) -> Result<(), rig_typesafeai::Error> {
+    /// async fn wrong(client: impl Evaluate) -> Result<(), rig_core::error::ProviderError> {
     ///     let question = Noul::new("Ready?")?.named("ready")?;
     ///     let result: EvaluationResult<DynamicScoreAnswer> = client.evaluate(&"state", question).await?;
     ///     Ok(())
@@ -59,7 +58,8 @@ pub trait Evaluate {
         &self,
         state: &S,
         questions: Q,
-    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, Error>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, ProviderError>>
+    + WasmCompatSend
     where
         S: Serialize + WasmCompatSync,
         Q: Query;
@@ -69,7 +69,7 @@ impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
         &self,
         state: &S,
         questions: Q,
-    ) -> Result<EvaluationResult<Q::Output>, Error>
+    ) -> Result<EvaluationResult<Q::Output>, ProviderError>
     where
         S: Serialize + WasmCompatSync,
         Q: Query,
@@ -87,7 +87,7 @@ impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
         )
         .await?;
         if ids != validation::response_ids(&response.answers)? {
-            return Err(Error::InvalidResponse(
+            return Err(ProviderError::Response(
                 "response question IDs differ from request".into(),
             ));
         }

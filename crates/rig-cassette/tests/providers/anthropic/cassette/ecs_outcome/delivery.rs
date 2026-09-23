@@ -3,11 +3,9 @@
 //! Events are never filtered: releasing the gate resumes the same stream.
 
 use futures::StreamExt;
+use rig::error::ProviderError;
 use rig::{
-    completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-        ProviderCapabilities,
-    },
+    completion::{CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities},
     streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse},
 };
 use std::sync::Arc;
@@ -50,14 +48,14 @@ impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         self.model.completion(request).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let stream = self.model.stream(request).await?;
         let provider = stream.provider().to_owned();
         let message_id = stream.message_id.clone();

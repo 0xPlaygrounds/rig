@@ -12,6 +12,7 @@
 //! # }
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
+use crate::error::ProviderError;
 use crate::json_utils;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -19,20 +20,6 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
 use std::{fs, path::Path};
-
-crate::provider_response::provider_error_enum!(
-    TranscriptionError, "transcription" {
-        #[cfg(not(target_family = "wasm"))]
-        /// Error building the transcription request
-        #[error("RequestError: {0}")]
-        RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-        #[cfg(target_family = "wasm")]
-        /// Error building the transcription request
-        #[error("RequestError: {0}")]
-        RequestError(#[from] Box<dyn std::error::Error + 'static>),
-    }
-);
 
 /// Transcript and normalized provider metadata, with provider-specific data
 /// available through [`Self::raw`].
@@ -95,7 +82,7 @@ crate::provider_response::modality_response_metadata_setters!(TranscriptionRespo
 /// Implementations must attribute the response to the supplied provider name.
 pub trait NormalizeTranscriptionResponse {
     /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<TranscriptionResponse, TranscriptionError>;
+    fn normalize(self, provider: &str) -> Result<TranscriptionResponse, ProviderError>;
 }
 
 /// Transcribes audio into normalized responses. Only
@@ -105,8 +92,7 @@ pub trait TranscriptionModel: WasmCompatSend + WasmCompatSync {
     fn transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, TranscriptionError>>
-    + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend;
 
     /// Creates a request builder without audio data.
     fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing>
@@ -124,8 +110,8 @@ where
     fn transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, TranscriptionError>>
-    + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend
+    {
         (**self).transcription(request)
     }
 }
@@ -296,7 +282,7 @@ where
     }
 
     /// Sends the transcription request to the transcription model provider and returns the transcription response
-    pub async fn send(self) -> Result<TranscriptionResponse, TranscriptionError> {
+    pub async fn send(self) -> Result<TranscriptionResponse, ProviderError> {
         let (model, request) = self.into_parts();
         model.transcription(request).await
     }

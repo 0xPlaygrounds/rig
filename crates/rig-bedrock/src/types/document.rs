@@ -1,8 +1,6 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::{
-    completion::CompletionError,
-    message::{Document, DocumentSourceKind},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{Document, DocumentSourceKind};
 
 pub(crate) use crate::types::media_types::RigDocumentMediaType;
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -14,7 +12,7 @@ use super::converse_output::{DocumentBlock, DocumentSource};
 pub struct RigDocument(pub Document);
 
 impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(
         RigDocument(Document {
@@ -29,7 +27,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             DocumentSourceKind::Base64(blob) => {
                 let bytes = BASE64_STANDARD
                     .decode(blob)
-                    .map_err(|e| CompletionError::RequestError(e.into()))?;
+                    .map_err(|e| ProviderError::Request(e.into()))?;
 
                 aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
             }
@@ -39,7 +37,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
                 aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
             }
             doc => {
-                return Err(CompletionError::RequestError(
+                return Err(ProviderError::Request(
                     format!("Unsupported document kind: {doc}").into(),
                 ));
             }
@@ -51,7 +49,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             .name(document_name)
             .set_format(document_media_type)
             .build()
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
         Ok(result)
     }
 }
@@ -96,7 +94,7 @@ pub(crate) fn disambiguate_document_names(messages: &mut [aws_bedrock::Message])
 }
 
 impl TryFrom<DocumentBlock> for RigDocument {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: DocumentBlock) -> Result<Self, Self::Error> {
         let media_type: RigDocumentMediaType = value.format.try_into()?;
@@ -108,7 +106,7 @@ impl TryFrom<DocumentBlock> for RigDocument {
                 Ok(DocumentSourceKind::Base64(encoded_data))
             }
             Some(DocumentSource::Text(str)) => Ok(DocumentSourceKind::String(str)),
-            doc => Err(CompletionError::ProviderError(format!(
+            doc => Err(ProviderError::Provider(format!(
                 "Unsupported document type: {doc:?}"
             ))),
         }?;

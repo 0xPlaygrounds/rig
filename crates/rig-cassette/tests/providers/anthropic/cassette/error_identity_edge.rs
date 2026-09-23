@@ -4,7 +4,8 @@
 //! contract classification.
 
 use futures::StreamExt;
-use rig::completion::{CompletionError, CompletionModel};
+use rig::completion::CompletionModel;
+use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
@@ -26,7 +27,7 @@ async fn auth_rejection_carries_identity() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, CompletionError::ProviderResponse(_)),
+                matches!(error, ProviderError::ProviderResponse(_)),
                 "contract classification holds on the auth tier: {error:?}"
             );
             assert_eq!(
@@ -60,7 +61,7 @@ async fn validation_error_carries_identity() {
                 .send()
                 .await
                 .expect_err("an impossible temperature must be rejected");
-            assert!(matches!(error, CompletionError::ProviderResponse(_)));
+            assert!(matches!(error, ProviderError::ProviderResponse(_)));
             assert_eq!(
                 error
                     .provider_response_status()

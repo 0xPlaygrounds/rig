@@ -970,7 +970,8 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 // --- 23-25: states a live turn cannot be made to produce ------------------
 
 mod unit {
-    use rig::completion::{CompletionError, CompletionModel, CompletionResponse};
+    use rig::completion::{CompletionModel, CompletionResponse};
+    use rig::error::ProviderError;
     use rig::prelude::*;
     use rig::providers::gemini::Gemini;
     use rig::test_utils::RecordingHttpClient;
@@ -1015,7 +1016,7 @@ mod unit {
     /// These part compositions cannot be produced live, so the bytes are
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
-    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, CompletionError> {
+    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
         let model = Gemini::new("unit-key")
             .bind(RecordingHttpClient::new(reply_with(parts)))
             .completion("gemini-2.5-flash");
@@ -1034,7 +1035,7 @@ mod unit {
             .await
             .expect_err("a turn with no modeled content must not convert to a blank answer");
         assert!(
-            matches!(error, CompletionError::ResponseError(_)),
+            matches!(error, ProviderError::Response(_)),
             "expected the shared empty-response rejection, got {error:?}"
         );
     }
@@ -1093,7 +1094,7 @@ mod unit {
                 .await
                 .expect_err("an unaccountable part must still fail the response");
             assert!(
-                matches!(error, CompletionError::ResponseError(_)),
+                matches!(error, ProviderError::Response(_)),
                 "part {part} should be a ResponseError, got {error:?}"
             );
         }

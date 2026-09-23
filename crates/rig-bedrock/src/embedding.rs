@@ -1,5 +1,6 @@
 use aws_smithy_types::Blob;
-use rig_core::embeddings::{self, Embedding, EmbeddingError};
+use rig_core::embeddings::{self, Embedding};
+use rig_core::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
 use crate::types::assistant_content::PROVIDER_NAME;
@@ -47,8 +48,8 @@ impl EmbeddingModel {
     pub async fn document_to_embeddings(
         &self,
         request: EmbeddingRequest,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
-        let input_document = serde_json::to_string(&request).map_err(EmbeddingError::JsonError)?;
+    ) -> Result<EmbeddingResponse, ProviderError> {
+        let input_document = serde_json::to_string(&request).map_err(ProviderError::Json)?;
 
         let model_response = self
             .client
@@ -64,13 +65,13 @@ impl EmbeddingModel {
 
         let response = model_response
             .map_err(|sdk_error| AwsSdkInvokeModelError(sdk_error).into())
-            .map_err(|e: EmbeddingError| e)?;
+            .map_err(|e: ProviderError| e)?;
 
         let response_str = String::from_utf8(response.body.into_inner())
-            .map_err(|e| EmbeddingError::ResponseError(e.to_string()))?;
+            .map_err(|e| ProviderError::Response(e.to_string()))?;
 
         let result: EmbeddingResponse =
-            serde_json::from_str(&response_str).map_err(EmbeddingError::JsonError)?;
+            serde_json::from_str(&response_str).map_err(ProviderError::Json)?;
 
         Ok(result)
     }
@@ -88,7 +89,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + Send,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
         rig_core::telemetry::instrument_modality(
             PROVIDER_NAME,
             &self.model,
@@ -131,7 +132,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
                         .with_usage(usage)
                         .with_raw(serde_json::Value::Array(raw))),
-                    Some(err) => Err(EmbeddingError::ResponseError(err.to_string())),
+                    Some(err) => Err(ProviderError::Response(err.to_string())),
                 }
             },
         )

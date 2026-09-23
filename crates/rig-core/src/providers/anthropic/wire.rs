@@ -11,8 +11,9 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::completion::{CompletionRequest, ProviderCapabilities};
+use crate::error::ProviderError;
+use crate::model::{Model, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
@@ -450,10 +451,10 @@ impl Messages {
         &self,
         mut request: CompletionRequest,
         mode: Mode,
-    ) -> Result<serde_json::Value, CompletionError> {
+    ) -> Result<serde_json::Value, ProviderError> {
         if request.max_tokens.is_none() {
             let Some(tokens) = self.default_max_tokens else {
-                return Err(CompletionError::RequestError(
+                return Err(ProviderError::Request(
                     "`max_tokens` must be set for Anthropic".into(),
                 ));
             };
@@ -502,7 +503,7 @@ impl Wire for Messages {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
         let body = self.body(request, mode)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -517,7 +518,7 @@ impl Wire for Messages {
             )))
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| CompletionError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         Ok(Encoded::new(
             request,
             match mode {
@@ -553,7 +554,7 @@ impl Wire for Models {
         self.provider.dialect.name
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         Ok(Encoded::new(self.models_request(None)?, Framing::Whole))
     }
 
@@ -567,10 +568,7 @@ impl Wire for Models {
 
 impl Models {
     /// One page's request, after `cursor` when the previous page named one.
-    fn models_request(
-        &self,
-        cursor: Option<&str>,
-    ) -> Result<http::Request<Body>, ModelListingError> {
+    fn models_request(&self, cursor: Option<&str>) -> Result<http::Request<Body>, ProviderError> {
         let uri = match cursor {
             Some(cursor) => format!(
                 "{}{}",
@@ -582,7 +580,7 @@ impl Models {
         self.provider
             .headers(http::Request::get(uri))
             .body(Body::empty())
-            .map_err(|error| ModelListingError::request_error(error.to_string()))
+            .map_err(ProviderError::from)
     }
 }
 
@@ -659,7 +657,7 @@ impl Wire for Verify {
         self.provider.dialect.name
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, crate::client::VerifyError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, crate::error::ProviderError> {
         let request = self
             .provider
             .headers(http::Request::get(format!(
@@ -668,7 +666,7 @@ impl Wire for Verify {
             )))
             .body(Body::empty())
             .map_err(|error| {
-                crate::client::VerifyError::HttpError(crate::http_client::Error::Protocol(error))
+                crate::error::ProviderError::Http(crate::http_client::Error::Protocol(error))
             })?;
         Ok(Encoded::new(request, Framing::Whole))
     }

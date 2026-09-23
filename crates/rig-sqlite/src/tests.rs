@@ -3,7 +3,8 @@ fn query_blob(values: &[f32]) -> Vec<u8> {
     values.iter().flat_map(|x| x.to_le_bytes()).collect()
 }
 use super::*;
-use rig_core::embeddings::{EmbeddingError, EmbeddingResponse};
+use rig_core::embeddings::EmbeddingResponse;
+use rig_core::error::ProviderError;
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use std::cmp::Ordering;
@@ -2953,7 +2954,7 @@ impl EmbeddingModel for TestEmbeddingModel {
     async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         Ok(EmbeddingResponse::new(
             texts
                 .into_iter()

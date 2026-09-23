@@ -54,8 +54,8 @@ fn resource_path_accepts_server_assigned_ids_and_refuses_everything_else() {
     ] {
         match (resource_path(input), expected) {
             (Ok(path), Some(expected)) => assert_eq!(path, expected, "input {input:?}"),
-            (Err(CachedContentError::Invalid(message)), None) => assert!(
-                message.contains(input),
+            (Err(ProviderError::Request(message)), None) => assert!(
+                message.to_string().contains(input),
                 "input {input:?}: the refusal should quote the handle, got {message}"
             ),
             (outcome, _) => panic!("input {input:?}: unexpected {outcome:?}"),

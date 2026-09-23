@@ -19,7 +19,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, EmbeddingError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -49,7 +49,7 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("should fail with provider error envelope");
 
-    let EmbeddingError::ProviderResponse(stored) = &error else {
+    let ProviderError::ProviderResponse(stored) = &error else {
         panic!("expected ProviderResponse, got {error:?}");
     };
     // Byte-equal, not "contains": a preserved reply is the provider's bytes
@@ -103,11 +103,11 @@ fn image_documents_are_stable_without_retaining_image_bytes() {
 fn image_data_url_rejects_unsupported_and_oversized_inputs() {
     assert!(matches!(
         validate_image(b"not an image"),
-        Err(EmbeddingError::DocumentError(_))
+        Err(ProviderError::Request(_))
     ));
     assert!(matches!(
         validate_image(&vec![0; MAX_IMAGE_BYTES + 1]),
-        Err(EmbeddingError::DocumentError(_))
+        Err(ProviderError::Request(_))
     ));
 }
 
@@ -131,7 +131,7 @@ async fn image_batches_are_fully_validated_before_any_request() {
         .await
         .expect_err("invalid batch should fail before transport");
 
-    assert!(matches!(error, EmbeddingError::DocumentError(_)));
+    assert!(matches!(error, ProviderError::Request(_)));
     assert!(http_client.requests().is_empty());
 }
 
@@ -154,7 +154,7 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, EmbeddingError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -182,7 +182,7 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("should fail with provider error envelope");
 
-    let EmbeddingError::ProviderResponse(stored) = &error else {
+    let ProviderError::ProviderResponse(stored) = &error else {
         panic!("expected ProviderResponse, got {error:?}");
     };
     assert_eq!(stored.body, body);

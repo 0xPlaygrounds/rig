@@ -29,7 +29,8 @@
 //! that came back. A handle built without a width is untouched: it reports
 //! whatever the provider's own table says and has nothing to disagree with.
 
-use rig::embeddings::{EmbeddingError, EmbeddingModel};
+use rig::embeddings::EmbeddingModel;
+use rig::error::ProviderError;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
@@ -123,7 +124,7 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
                 .expect_err("llama.cpp cannot resize embeddings");
 
             match error {
-                EmbeddingError::MismatchedDimensions {
+                ProviderError::MismatchedDimensions {
                     provider,
                     requested,
                     returned,

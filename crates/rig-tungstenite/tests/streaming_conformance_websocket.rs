@@ -22,8 +22,9 @@
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
-use rig_core::completion::{CompletionError, CompletionModel as _};
+use rig_core::completion::CompletionModel as _;
 use rig_core::driver::Bound;
+use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 use rig_core::test_utils::RecordingHttpClient;
@@ -36,18 +37,18 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 /// Lower the fixture's byte frames onto ws text messages (one per `data:`
 /// line); an `Err` chunk truncates the script and marks an abrupt abort.
-fn ws_script(chunks: conformance::WireChunks) -> Result<(Vec<String>, bool), CompletionError> {
+fn ws_script(chunks: conformance::WireChunks) -> Result<(Vec<String>, bool), ProviderError> {
     let mut messages = Vec::new();
     for chunk in chunks {
         match chunk {
             Ok(frame) => {
                 let bytes = frame.as_bytes().cloned().ok_or_else(|| {
-                    CompletionError::ProviderError(
+                    ProviderError::Provider(
                         "typed-event frame fed to the websocket driver".to_string(),
                     )
                 })?;
                 let text = std::str::from_utf8(&bytes).map_err(|error| {
-                    CompletionError::ProviderError(format!("non-UTF-8 fixture frame: {error}"))
+                    ProviderError::Provider(format!("non-UTF-8 fixture frame: {error}"))
                 })?;
                 messages.extend(
                     text.lines()
@@ -103,7 +104,7 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
 /// flush-before-terminal-error contract (`RawChoiceAccumulator::flush_tool_calls`).
 async fn drain_openai_responses_websocket_events(
     provider: &'static str,
-    events: Vec<Result<ResponsesWebSocketEvent, CompletionError>>,
+    events: Vec<Result<ResponsesWebSocketEvent, ProviderError>>,
 ) -> conformance::DrainedStream {
     use ResponsesWebSocketEvent;
     use rig_core::operation::AdapterOutput;
@@ -147,7 +148,7 @@ async fn drain_openai_responses_websocket_events(
             Ok(ResponsesWebSocketEvent::Done(_)) => {}
             Ok(ResponsesWebSocketEvent::Error(error)) => {
                 accumulator.flush_tool_calls(&mut out);
-                out.error(CompletionError::ProviderError(error.to_string()));
+                out.error(ProviderError::Provider(error.to_string()));
                 errored = true;
                 break;
             }
@@ -175,10 +176,10 @@ fn driver() -> conformance::WireDriver {
         Box::pin(async move {
             let (messages, abort) = ws_script(chunks)?;
             let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|error| {
-                CompletionError::ProviderError(format!("listener bind failed: {error}"))
+                ProviderError::Provider(format!("listener bind failed: {error}"))
             })?;
             let address = listener.local_addr().map_err(|error| {
-                CompletionError::ProviderError(format!("listener address failed: {error}"))
+                ProviderError::Provider(format!("listener address failed: {error}"))
             })?;
             spawn_server(listener, messages, abort);
 

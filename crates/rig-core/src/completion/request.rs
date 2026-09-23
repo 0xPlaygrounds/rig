@@ -11,9 +11,8 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType};
-use crate::http_client;
+use crate::error::ProviderError;
 use crate::message::ToolChoice;
-use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
@@ -24,95 +23,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
-use thiserror::Error;
-
-/// Errors returned by completion models.
-///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-/// These recover the provider's raw HTTP status and response body so you can
-/// branch on a provider error code or surface a precise diagnostic. The same
-/// helpers are available on `EmbeddingError`, `ImageGenerationError`,
-/// `AudioGenerationError`, `TranscriptionError`, and `RerankError`.
-///
-/// ```
-/// use rig_core::completion::CompletionError;
-///
-/// /// Log the provider's raw error response when a completion fails.
-/// fn report(error: &CompletionError) {
-///     if let Some(status) = error.provider_response_status() {
-///         // Error envelopes can arrive with successful HTTP statuses.
-///         eprintln!("provider returned HTTP {status}");
-///     }
-///     match error.provider_response_json() {
-///         Ok(Some(json)) => eprintln!("provider error payload: {json}"),
-///         Ok(None) => eprintln!("no provider response body (e.g. a transport error)"),
-///         Err(_) => eprintln!(
-///             "provider response body was not valid JSON: {:?}",
-///             error.provider_response_body(),
-///         ),
-///     }
-/// }
-/// ```
-#[derive(Debug, Error)]
-pub enum CompletionError {
-    /// A transport failure that produced no provider reply (a connection
-    /// error, a timeout, an unreadable response); it never carries a
-    /// status. A reply the server made is [`Self::ProviderResponse`].
-    #[error("HttpError: {0}")]
-    HttpError(http_client::Error),
-
-    /// Json error (e.g.: serialization, deserialization)
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    /// Url error (e.g.: invalid URL)
-    #[error("UrlError: {0}")]
-    UrlError(#[from] url::ParseError),
-
-    #[cfg(not(target_family = "wasm"))]
-    /// Error building the completion request
-    #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    #[cfg(target_family = "wasm")]
-    /// Error building the completion request
-    #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + 'static>),
-
-    /// Error parsing the completion response
-    #[error("ResponseError: {0}")]
-    ResponseError(String),
-
-    /// Error returned by the completion model provider
-    #[error("ProviderError: {0}")]
-    ProviderError(String),
-
-    /// Raw error response preserved from the completion model provider
-    #[error("ProviderResponseError: {0}")]
-    ProviderResponse(provider_response::ProviderResponseError),
-}
-
-crate::provider_response::impl_provider_response_helpers!(CompletionError);
-crate::wire::impl_wire_error!(CompletionError);
-
-impl From<http_client::Error> for CompletionError {
-    fn from(error: http_client::Error) -> Self {
-        Self::from_transport_error(error)
-    }
-}
-
-/// A client that could not be built cannot complete: transport-configuration
-/// failures keep their HTTP identity, everything else (a missing key, an
-/// unreadable environment variable) is reported as a provider error.
-impl From<crate::client::ProviderClientError> for CompletionError {
-    fn from(error: crate::client::ProviderClientError) -> Self {
-        match error {
-            crate::client::ProviderClientError::Http(error) => Self::HttpError(error),
-            other => Self::ProviderError(other.to_string()),
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Document {
@@ -506,13 +416,13 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend;
 
     /// Streams a completion response for the given completion request.
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
     + WasmCompatSend;
 
     /// Generates a completion with optional execution-local observation.
@@ -522,7 +432,7 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
         &self,
         request: CompletionRequest,
         _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
     {
         self.completion(request)
     }
@@ -533,7 +443,7 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
         &self,
         request: CompletionRequest,
         _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
     + WasmCompatSend {
         self.stream(request)
     }
@@ -561,7 +471,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
     {
         (**self).completion(request)
     }
@@ -569,7 +479,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
     + WasmCompatSend {
         (**self).stream(request)
     }
@@ -578,7 +488,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
         &self,
         request: CompletionRequest,
         context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
     {
         (**self).completion_with_context(request, context)
     }
@@ -587,7 +497,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
         &self,
         request: CompletionRequest,
         context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
     + WasmCompatSend {
         (**self).stream_with_context(request, context)
     }
@@ -648,9 +558,9 @@ impl CompletionRequest {
     /// Builder `send` and `stream` validate automatically. Call this before
     /// invoking a [`CompletionModel`] directly. Response-content validation is
     /// provider-specific and is not performed here.
-    pub fn validate_message_content(&self) -> Result<(), CompletionError> {
+    pub fn validate_message_content(&self) -> Result<(), ProviderError> {
         if self.chat_history.is_empty() {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 "request has an empty chat history; providers require at least one message"
                     .to_owned()
                     .into(),
@@ -658,7 +568,7 @@ impl CompletionRequest {
         }
 
         let empty_message = |role: &str, index: usize| {
-            CompletionError::RequestError(
+            ProviderError::Request(
                 format!(
                     "{role} message at index {index} has no content; \
                      providers reject empty content blocks"
@@ -686,7 +596,7 @@ impl CompletionRequest {
                         match item {
                             UserContent::ToolResult(result) if result.content.is_empty() => {
                                 let name = &result.name;
-                                return Err(CompletionError::RequestError(
+                                return Err(ProviderError::Request(
                                     format!(
                                         "tool result for `{name}` at index {position} of the \
                                          user message at index {index} has no content; \
@@ -1078,14 +988,14 @@ pub(crate) fn shadowed_typed_fields<'a>(
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
-    pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
+    pub async fn send(self) -> Result<CompletionResponse, ProviderError> {
         let (model, request) = self.into_model_and_request();
         request.validate_message_content()?;
         model.completion(request).await
     }
 
     /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
+    pub async fn stream(self) -> Result<StreamingCompletionResponse, ProviderError> {
         let (model, request) = self.into_model_and_request();
         request.validate_message_content()?;
         model.stream(request).await

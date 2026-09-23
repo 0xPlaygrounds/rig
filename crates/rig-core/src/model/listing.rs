@@ -1,4 +1,4 @@
-//! Provider model metadata, listing interfaces, and errors.
+//! Provider model metadata and listing interfaces.
 //!
 //! ```
 //! use rig_core::model::{Model, ModelList};
@@ -7,6 +7,7 @@
 //! assert_eq!(models.len(), 1);
 //! ```
 
+use crate::error::ProviderError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -140,43 +141,7 @@ impl<'a> IntoIterator for &'a ModelList {
 /// pagination within the driver's repeated-cursor and page-count limits.
 pub trait ModelLister: WasmCompatSend + WasmCompatSync {
     /// Every model the provider offers.
-    fn list_all(
-        &self,
-    ) -> impl Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
-}
-
-/// Model-listing request, authentication, provider, or parsing failure.
-#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
-pub enum ModelListingError {
-    /// The provider returned an error response with a status code
-    #[error("API error (status {status_code}): {message}")]
-    ApiError {
-        /// HTTP status code
-        status_code: u16,
-        /// Error message from the provider
-        message: String,
-    },
-
-    /// Failed to send the request to the provider
-    #[error("Request error: {message}")]
-    RequestError {
-        /// Description of the request error
-        message: String,
-    },
-
-    /// Failed to parse the provider's response
-    #[error("Parse error: {message}")]
-    ParseError {
-        /// Description of the parsing error
-        message: String,
-    },
-
-    /// Authentication failed (invalid API key, etc.)
-    #[error("Authentication error: {message}")]
-    AuthError {
-        /// Authentication error details
-        message: String,
-    },
+    fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + WasmCompatSend;
 }
 
 const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
@@ -209,194 +174,38 @@ fn format_response_context(
     )
 }
 
-impl ModelListingError {
-    /// Creates a new ApiError with the given status code and message.
-    pub fn api_error(status_code: u16, message: impl Into<String>) -> Self {
-        Self::ApiError {
-            status_code,
-            message: message.into(),
-        }
-    }
-
-    /// Creates a new RequestError with the given message.
-    pub fn request_error(message: impl Into<String>) -> Self {
-        Self::RequestError {
-            message: message.into(),
-        }
-    }
-
-    /// Creates a new ParseError with the given message.
-    pub fn parse_error(message: impl Into<String>) -> Self {
-        Self::ParseError {
-            message: message.into(),
-        }
-    }
-
-    pub(crate) fn parse_error_with_context(
-        provider: &str,
-        path: &str,
-        error: &serde_json::Error,
-        body: &[u8],
-    ) -> Self {
-        let message =
-            format_response_context(provider, path, format_args!("parse_error={error}"), body);
-        Self::parse_error(message)
-    }
-
-    pub(crate) fn parse_error_with_details(
-        provider: &str,
-        path: &str,
-        details: impl fmt::Display,
-        body: &[u8],
-    ) -> Self {
-        let message = format_response_context(provider, path, details, body);
-        Self::parse_error(message)
-    }
+/// A listing page that did not parse, with the request context and a bounded
+/// preview of the body.
+pub(crate) fn parse_error(
+    provider: &str,
+    path: &str,
+    details: impl fmt::Display,
+    body: &[u8],
+) -> ProviderError {
+    ProviderError::Response(format_response_context(provider, path, details, body))
 }
 
-impl From<crate::http_client::Error> for ModelListingError {
-    fn from(e: crate::http_client::Error) -> Self {
-        Self::request_error(e.to_string())
-    }
-}
-
-impl From<http::Error> for ModelListingError {
-    fn from(e: http::Error) -> Self {
-        Self::request_error(e.to_string())
-    }
-}
-
-impl From<serde_json::Error> for ModelListingError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::parse_error(e.to_string())
-    }
-}
-
-/// The listing wire reports the same four shapes every other operation
-/// does; the mapping onto this enum's own vocabulary lives here so no wire
-/// restates it.
-impl crate::wire::WireError for ModelListingError {
-    fn transport(error: crate::http_client::Error) -> Self {
-        match error.non_success_status() {
-            Some(status) => Self::api_error(
-                status.as_u16(),
-                error.non_success_body().unwrap_or_default().to_owned(),
-            ),
-            None => Self::request_error(error.to_string()),
+/// Adds the provider and request path to a failed listing: a preserved reply
+/// records them as its route, and a decode failure names them in its message.
+pub(crate) fn with_route(error: ProviderError, provider: &str, path: &str) -> ProviderError {
+    match error {
+        ProviderError::ProviderResponse(mut response) => {
+            response.route = Some(format!("provider={provider} path={path}"));
+            ProviderError::ProviderResponse(response)
         }
-    }
-
-    fn http_response(status: http::StatusCode, body: &str) -> Self {
-        Self::api_error(status.as_u16(), body)
-    }
-
-    fn json(error: serde_json::Error) -> Self {
-        Self::parse_error(error.to_string())
-    }
-
-    fn decode(message: String) -> Self {
-        Self::parse_error(message)
-    }
-
-    fn provider_body(body: &str) -> Self {
-        Self::parse_error(body.to_owned())
-    }
-
-    /// A listing error carries its status in its own `ApiError` variant, so
-    /// there is no status-less reply to stamp.
-    fn with_provider_status(self, _status: Option<http::StatusCode>) -> Self {
-        self
-    }
-
-    /// Returns the error unchanged; transport request IDs are not retained.
-    fn with_provider_request_id(self, _request_id: Option<String>) -> Self {
-        self
-    }
-
-    fn with_response_headers(self, _headers: Option<http::HeaderMap>) -> Self {
-        self
-    }
-
-    fn provider_response_status(&self) -> Option<http::StatusCode> {
-        match self {
-            Self::ApiError { status_code, .. } => http::StatusCode::from_u16(*status_code).ok(),
-            _ => None,
-        }
-    }
-
-    /// Adds provider and path context plus a bounded body preview to API and
-    /// parse errors. Other variants remain unchanged.
-    fn with_route(self, provider: &str, path: &str) -> Self {
-        match self {
-            Self::ApiError {
-                status_code,
-                message,
-            } => Self::api_error(
-                status_code,
-                format_response_context(
-                    provider,
-                    path,
-                    format_args!("status={status_code}"),
-                    message.as_bytes(),
-                ),
-            ),
-            Self::ParseError { message } => Self::parse_error(format_response_context(
-                provider,
-                path,
-                format_args!("parse_error"),
-                message.as_bytes(),
-            )),
-            other => other,
-        }
-    }
-
-    /// The listing error's `ApiError` message *is* the reply's body (with
-    /// its request context), which is what a projector would read.
-    fn provider_response_body(&self) -> Option<&str> {
-        match self {
-            Self::ApiError { message, .. } => Some(message),
-            _ => None,
-        }
-    }
-
-    fn report(&self) -> crate::error::ErrorReport {
-        crate::error::ErrorReport::from(self)
-    }
-
-    fn boundary(&self) -> crate::observe::AdapterErrorBoundary {
-        use crate::observe::AdapterErrorBoundary as B;
-        match self {
-            Self::ApiError { .. } | Self::AuthError { .. } => B::ProviderResponse,
-            Self::ParseError { .. } => B::Decode,
-            Self::RequestError { .. } => B::Request,
-        }
-    }
-}
-
-impl From<&ModelListingError> for crate::error::ErrorReport {
-    fn from(error: &ModelListingError) -> Self {
-        use crate::error::{ErrorKind, retryable_status};
-        let status = match error {
-            ModelListingError::ApiError { status_code, .. } => Some(*status_code),
-            _ => None,
-        };
-        let kind = match error {
-            ModelListingError::ApiError { .. } | ModelListingError::AuthError { .. } => {
-                ErrorKind::ProviderResponse
-            }
-            ModelListingError::ParseError { .. } => ErrorKind::Response,
-            ModelListingError::RequestError { .. } => ErrorKind::Http,
-        };
-        let mut report = crate::error::ErrorReport::new(kind, error.to_string())
-            .with_retryable(retryable_status(status));
-        report.http_status = status;
-        report
-    }
-}
-
-impl From<ModelListingError> for crate::error::ErrorReport {
-    fn from(error: ModelListingError) -> Self {
-        Self::from(&error)
+        ProviderError::Json(error) => parse_error(
+            provider,
+            path,
+            format_args!("parse_error"),
+            error.to_string().as_bytes(),
+        ),
+        ProviderError::Response(message) => parse_error(
+            provider,
+            path,
+            format_args!("parse_error"),
+            message.as_bytes(),
+        ),
+        other => other,
     }
 }
 

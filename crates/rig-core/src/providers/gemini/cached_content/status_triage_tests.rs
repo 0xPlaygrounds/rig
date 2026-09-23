@@ -6,9 +6,9 @@
 //! to the provider — and a custom one may hand the same 404 back as an `Ok`
 //! response carrying the status, or reject it with an empty body: shapes
 //! rig's own test double produces. The driver funnels all of them through
-//! [`WireError::transport`] / [`WireError::http_response`], and these cells
-//! pin that the recovery this module documents (`Expired { .. } => recreate
-//! the cache`) fires on each.
+//! [`ProviderError::from_transport_error`] / [`ProviderError::from_http_response`],
+//! and these cells pin that the recovery this module documents
+//! (`CacheExpired { .. } => recreate the cache`) fires on each.
 
 use super::*;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -27,11 +27,11 @@ const GONE: &str =
     r#"{"error":{"code":404,"message":"CachedContent not found (or permission denied)."}}"#;
 
 /// A transport that rejects the 404 without headers — the shape rig's test
-/// double produces — must still reach `Expired`.
+/// double produces — must still reach `CacheExpired`.
 ///
 /// Before the triage moved from the variant to the status this fell into
 /// the catch-all `Err(error) => Http(error)` arm, so a caller matching
-/// `Expired` to recreate the cache saw an opaque transport error instead.
+/// `CacheExpired` to recreate the cache saw an opaque transport error instead.
 #[tokio::test]
 async fn a_status_error_without_captured_headers_still_reports_expired() {
     let error = caches(MockHttpResponse::error(http::StatusCode::NOT_FOUND, GONE))
@@ -39,15 +39,20 @@ async fn a_status_error_without_captured_headers_still_reports_expired() {
         .await
         .expect_err("a missing handle should not resolve");
 
-    let CachedContentError::Expired { name, message } = &error else {
-        panic!("a handle that is gone should report Expired: {error:?}");
+    let ProviderError::CacheExpired { name, response } = &error else {
+        panic!("a handle that is gone should report CacheExpired: {error:?}");
     };
     assert_eq!(name, "cachedContents/abc123");
-    assert!(message.contains("permission denied"), "{message}");
+    assert!(
+        response.body.contains("permission denied"),
+        "{}",
+        response.body
+    );
+    assert_eq!(response.status, Some(http::StatusCode::NOT_FOUND));
 }
 
 /// A transport that hands back the 404 as an `Ok` response instead of an
-/// error must reach `Expired` too.
+/// error must reach `CacheExpired` too.
 ///
 /// This is the worse half of the same bug: the error body reached
 /// `serde_json::from_str::<CachedContent>` and failed there, so the call
@@ -63,11 +68,16 @@ async fn a_non_success_response_is_triaged_rather_than_deserialized() {
     .await
     .expect_err("a missing handle should not resolve");
 
-    let CachedContentError::Expired { name, message } = &error else {
-        panic!("an Ok-wrapped 404 should report Expired, not a parse error: {error:?}");
+    let ProviderError::CacheExpired { name, response } = &error else {
+        panic!("an Ok-wrapped 404 should report CacheExpired, not a parse error: {error:?}");
     };
     assert_eq!(name, "cachedContents/abc123");
-    assert!(message.contains("permission denied"), "{message}");
+    assert!(
+        response.body.contains("permission denied"),
+        "{}",
+        response.body
+    );
+    assert_eq!(response.status, Some(http::StatusCode::NOT_FOUND));
 }
 
 /// Gemini answers a handle that lapsed a while ago with 403 rather than
@@ -83,7 +93,7 @@ async fn a_403_on_an_existing_handle_reports_expired_like_a_404() {
     .expect_err("a lapsed handle should not delete");
 
     assert!(
-        matches!(&error, CachedContentError::Expired { name, .. } if name == "cachedContents/abc123"),
+        matches!(&error, ProviderError::CacheExpired { name, .. } if name == "cachedContents/abc123"),
         "{error:?}"
     );
 }
@@ -92,7 +102,7 @@ async fn a_403_on_an_existing_handle_reports_expired_like_a_404() {
 ///
 /// `create` passes `name: None` for exactly this reason: a disabled key or
 /// a project without the API enabled answers 403, and calling that
-/// `Expired` would put a caller into a recreate loop against an API that
+/// `CacheExpired` would put a caller into a recreate loop against an API that
 /// will keep refusing.
 #[tokio::test]
 async fn a_403_on_create_is_an_api_error_not_an_expiry() {
@@ -104,8 +114,8 @@ async fn a_403_on_create_is_an_api_error_not_an_expiry() {
     .await
     .expect_err("a refused create should not succeed");
 
-    let CachedContentError::ProviderResponse(response) = &error else {
-        panic!("a create that never made a handle cannot be Expired: {error:?}");
+    let ProviderError::ProviderResponse(response) = &error else {
+        panic!("a create that never made a handle cannot be CacheExpired: {error:?}");
     };
     assert_eq!(response.status, Some(http::StatusCode::FORBIDDEN));
     assert!(
@@ -128,7 +138,7 @@ async fn a_server_error_reports_the_status_rather_than_an_expiry() {
     .await
     .expect_err("a 500 should not resolve");
 
-    let CachedContentError::ProviderResponse(response) = &error else {
+    let ProviderError::ProviderResponse(response) = &error else {
         panic!("a 500 is not an expiry: {error:?}");
     };
     assert_eq!(
@@ -160,7 +170,7 @@ async fn a_status_error_with_no_body_still_carries_its_status() {
         .await
         .expect_err("an unscripted request should not resolve");
 
-    let CachedContentError::ProviderResponse(response) = &error else {
+    let ProviderError::ProviderResponse(response) = &error else {
         panic!("a 501 is not an expiry: {error:?}");
     };
     assert_eq!(response.status, Some(http::StatusCode::NOT_IMPLEMENTED));

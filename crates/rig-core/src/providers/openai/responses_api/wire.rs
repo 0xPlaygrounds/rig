@@ -5,7 +5,8 @@
 //! let wire = OpenAI::new("key").responses("gpt-5.2");
 //! ```
 
-use crate::completion::{self, CompletionError, ProviderCapabilities};
+use crate::completion::{self, ProviderCapabilities};
+use crate::error::ProviderError;
 use crate::observe::ObservedError;
 use crate::operation::Completion;
 use crate::providers::openai::wire::{OpenAI, ResponsesContract};
@@ -46,7 +47,7 @@ impl Responses {
             &completion::CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
-    ) -> Result<Encoded, CompletionError> {
+    ) -> Result<Encoded, ProviderError> {
         let quirks = &self.provider.dialect.quirks.responses;
         // The codex gateway only ever answers with an event stream, and
         // names no content type on it. It is asked for one whatever the
@@ -70,7 +71,7 @@ impl Responses {
         let request = builder
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(body))
-            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
 
         let framing = if streaming {
             Framing::Sse
@@ -141,7 +142,7 @@ impl Responses {
         &self,
         request: completion::CompletionRequest,
         streaming: bool,
-    ) -> Result<CompletionRequest, CompletionError> {
+    ) -> Result<CompletionRequest, ProviderError> {
         let quirks = &self.provider.dialect.quirks.responses;
         let mut request = CompletionRequest::try_from(ResponsesRequestParams {
             model: self.model.clone(),
@@ -231,7 +232,7 @@ impl Wire for Responses {
         &self,
         request: completion::CompletionRequest,
         mode: Mode,
-    ) -> Result<Encoded, CompletionError> {
+    ) -> Result<Encoded, ProviderError> {
         self.encode_with_headers(request, mode, OpenAI::completion_headers)
     }
 
@@ -271,7 +272,7 @@ impl Wire for Responses {
 pub(crate) fn fold_body(
     provider: &str,
     response: super::CompletionResponse,
-) -> Result<completion::CompletionResponse, CompletionError> {
+) -> Result<completion::CompletionResponse, ProviderError> {
     use super::streaming::ResponsesEvent;
     use crate::operation::AdapterOutput;
     use crate::wire::{Decoder, Fold, Operation, Reply, Sink};

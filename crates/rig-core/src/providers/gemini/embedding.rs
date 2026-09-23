@@ -11,7 +11,8 @@
 
 use serde_json::json;
 
-use crate::embeddings::{self, EmbeddingError};
+use crate::embeddings;
+use crate::error::ProviderError;
 use crate::operation::EmbeddingCapabilities;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wire::{
@@ -74,7 +75,7 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
         let requests: Vec<_> = request
             .iter()
             .map(|doc| {
@@ -110,7 +111,7 @@ impl Wire for Embeddings {
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::Bytes(serde_json::to_vec(&body)?))
-        .map_err(|error| EmbeddingError::HttpError(error.into()))?;
+        .map_err(|error| ProviderError::Http(error.into()))?;
         // `batchEmbedContents` has no streaming variant, so a streamed call
         // sends the same bytes and reads the same whole reply.
         Ok(Encoded::new(request, Framing::Whole))
@@ -167,9 +168,10 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
 /// let vector = EmbeddingValues { values: vec![1.into(), 2.into()] };
 /// ```
 pub mod gemini_api_types {
+    use crate::error::ProviderError;
     use serde::{Deserialize, Serialize};
 
-    use crate::embeddings::{self, EmbeddingError, NormalizeEmbeddingResponse};
+    use crate::embeddings::{self, NormalizeEmbeddingResponse};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingResponse {
@@ -187,9 +189,9 @@ pub mod gemini_api_types {
             self,
             provider: &str,
             documents: Vec<String>,
-        ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
             if self.embeddings.len() != documents.len() {
-                return Err(EmbeddingError::ResponseError(
+                return Err(ProviderError::Response(
                     "Number of returned embeddings does not match input".into(),
                 ));
             }

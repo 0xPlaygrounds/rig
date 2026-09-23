@@ -11,14 +11,14 @@ use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::driver::run_wire_stream;
+use rig_core::error::ProviderError;
 use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
-    completion::CompletionError, message::ReasoningContent, streaming::UnparseableToolInput,
-    wasm_compat::WasmCompatSend,
+    message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize};
 use tracing_futures::Instrument;
@@ -320,7 +320,7 @@ impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for 
 /// Normalizes typed Converse events through the shared streaming driver.
 /// No AWS transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
-    events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, CompletionError>>
+    events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, ProviderError>>
     + WasmCompatSend
     + 'static,
 ) -> StreamingCompletionResponse {
@@ -336,7 +336,7 @@ impl CompletionModel {
     pub(crate) async fn stream(
         &self,
         completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let issuer = reasoning_issuer(&request_model);
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
@@ -380,7 +380,7 @@ impl CompletionModel {
             .instrument(span.clone())
             .await
             .map_err(|sdk_error| {
-                Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
+                Into::<ProviderError>::into(AwsSdkConverseStreamError(sdk_error))
             })?;
 
         // Capture operation metadata before moving the stream; events do not

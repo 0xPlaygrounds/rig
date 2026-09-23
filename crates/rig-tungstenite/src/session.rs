@@ -5,7 +5,7 @@
 //! use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSessionBuilder;
 //!
 //! async fn connect(builder: ResponsesWebSocketSessionBuilder)
-//!     -> Result<(), rig_core::completion::CompletionError>
+//!     -> Result<(), rig_core::error::ProviderError>
 //! {
 //!     let session = builder.connect().await?;
 //!     Ok(())
@@ -13,8 +13,8 @@
 //! ```
 
 use crate::TungsteniteClient;
-use rig_core::completion::CompletionError;
 use rig_core::driver::Bound;
+use rig_core::error::ProviderError;
 use rig_core::providers::openai::responses_api::websocket::{
     ResponsesWebSocketExt, ResponsesWebSocketSession, ResponsesWebSocketSessionBuilder,
 };
@@ -28,7 +28,7 @@ pub trait DefaultWebSocketClient {
     /// setup fails.
     fn responses_websocket(
         &self,
-    ) -> impl Future<Output = Result<ResponsesWebSocketSession, CompletionError>> + Send
+    ) -> impl Future<Output = Result<ResponsesWebSocketSession, ProviderError>> + Send
     where
         Self: Sync;
 }
@@ -39,7 +39,7 @@ where
 {
     fn responses_websocket(
         &self,
-    ) -> impl Future<Output = Result<ResponsesWebSocketSession, CompletionError>> + Send
+    ) -> impl Future<Output = Result<ResponsesWebSocketSession, ProviderError>> + Send
     where
         Self: Sync,
     {
@@ -53,11 +53,11 @@ pub trait DefaultWebSocketBuilder {
     /// connection setup fails.
     fn connect(
         self,
-    ) -> impl Future<Output = Result<ResponsesWebSocketSession, CompletionError>> + Send;
+    ) -> impl Future<Output = Result<ResponsesWebSocketSession, ProviderError>> + Send;
 }
 
 impl DefaultWebSocketBuilder for ResponsesWebSocketSessionBuilder {
-    async fn connect(self) -> Result<ResponsesWebSocketSession, CompletionError> {
+    async fn connect(self) -> Result<ResponsesWebSocketSession, ProviderError> {
         self.connect_with(&TungsteniteClient).await
     }
 }

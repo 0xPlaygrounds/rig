@@ -3,8 +3,9 @@ use super::{
     ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
     reasoning_from_done_item,
 };
-use crate::completion::{CompletionError, CompletionModel};
+use crate::completion::CompletionModel;
 use crate::driver::{Bound, WireDriver};
+use crate::error::ProviderError;
 use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, ReasoningContent};
 use crate::operation::AdapterOutput;
@@ -269,7 +270,7 @@ fn stream_events_from_sse_body(
     provider: &str,
     body: &str,
     initial_usage: Option<ResponsesUsage>,
-) -> Result<Vec<StreamEvent>, CompletionError> {
+) -> Result<Vec<StreamEvent>, ProviderError> {
     let mut driver: WireDriver<Completion, _> = WireDriver::new(
         ResponsesDecoder::new(provider, ResponsesStreamOptions::strict())
             .with_envelope_repair()
@@ -302,7 +303,7 @@ fn folded_stream_events(
     provider: &str,
     events: Vec<StreamEvent>,
     raw_response: &CompletionResponse,
-) -> Result<crate::completion::CompletionResponse, CompletionError> {
+) -> Result<crate::completion::CompletionResponse, ProviderError> {
     let reply = Reply {
         provider: provider.to_owned(),
         raw: serde_json::to_value(raw_response)?,
@@ -417,7 +418,7 @@ fn a_buffered_body_preserves_its_error_payloads() {
 
         assert!(matches!(
             err,
-            crate::completion::CompletionError::ProviderResponse(_)
+            crate::error::ProviderError::ProviderResponse(_)
         ));
         assert_eq!(err.provider_response_status(), None);
         assert_eq!(err.provider_response_body(), Some(payload.as_str()));

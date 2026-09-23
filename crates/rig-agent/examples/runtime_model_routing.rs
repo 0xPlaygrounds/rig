@@ -13,10 +13,11 @@ use futures::stream;
 use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
-    completion::{CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage},
+    completion::{CompletionModel, CompletionRequest, CompletionResponse, Usage},
     streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse, ToolCallEnd},
     tool::{Tool, ToolContext},
 };
+use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use serde::Deserialize;
 
@@ -48,7 +49,7 @@ impl CompletionModel for FastResearchModel {
     async fn completion(
         &self,
         _request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         Ok(response(
             "fast",
             AssistantContent::ToolCall(ToolCall::from_wire(
@@ -65,7 +66,7 @@ impl CompletionModel for FastResearchModel {
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         Ok(StreamingCompletionResponse::stream(
             "fast",
             Box::pin(stream::iter([
@@ -97,7 +98,7 @@ impl CompletionModel for StrongSynthesisModel {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         let saw_tool_result = request.chat_history.iter().any(|message| {
             matches!(message, rig_core::message::Message::User { content }
                 if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
@@ -113,7 +114,7 @@ impl CompletionModel for StrongSynthesisModel {
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         Ok(StreamingCompletionResponse::stream(
             "strong",
             Box::pin(stream::iter([

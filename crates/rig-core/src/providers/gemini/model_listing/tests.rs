@@ -112,14 +112,14 @@ fn parse_models_page_reports_missing_model_id_when_name_is_omitted() {
         .expect_err("entry without name/baseModelId should fail with contextual error");
 
     match error {
-        ModelListingError::ParseError { message } => {
+        ProviderError::Response(message) => {
             assert!(message.contains("provider=Gemini"));
             assert!(message.contains("path=/v1beta/models?pageSize=1000"));
             assert!(message.contains(
                 "parse_error=model entry missing usable `baseModelId` and `name` values"
             ));
         }
-        _ => panic!("expected parse error"),
+        _ => panic!("expected a response error"),
     }
 }
 
@@ -139,7 +139,7 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
         .expect_err("page should fail when no usable ID is available");
 
     match error {
-        ModelListingError::ParseError { message } => {
+        ProviderError::Response(message) => {
             assert!(message.contains("provider=Gemini"));
             assert!(message.contains("path=/v1beta/models?pageSize=1000"));
             assert!(message.contains(
@@ -147,7 +147,7 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
             ));
             assert!(message.contains(r#""name": "models/""#));
         }
-        _ => panic!("expected parse error"),
+        _ => panic!("expected a response error"),
     }
 }
 

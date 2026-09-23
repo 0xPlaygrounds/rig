@@ -4,7 +4,8 @@
 //! use rig_core::providers::openai::responses_api::streaming::{ResponsesDecoder, ResponsesStreamOptions};
 //! let decoder = ResponsesDecoder::new("openai", ResponsesStreamOptions::strict());
 //! ```
-use crate::completion::CompletionError;
+
+use crate::error::ProviderError;
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::providers::internal::wire::{self, WireEvent};
@@ -99,7 +100,7 @@ fn terminal_record(
     provider: &str,
     upstream_reasoning_issuer: bool,
     response: StreamingCompletionResponse,
-) -> Result<StreamFinal, CompletionError> {
+) -> Result<StreamFinal, ProviderError> {
     let raw = serde_json::to_value(&response)?;
     let issuer = upstream_reasoning_issuer
         .then_some(response.model.as_deref())
@@ -532,7 +533,7 @@ impl RawChoiceAccumulator {
         response: CompletionResponse,
         raw_event_data: &str,
         out: &mut AdapterOutput,
-    ) -> Result<(), CompletionError> {
+    ) -> Result<(), ProviderError> {
         match kind {
             // `response.incomplete` is a genuine terminal (e.g. hitting
             // `max_output_tokens`): the partial output and usage are kept, and
@@ -580,7 +581,7 @@ impl RawChoiceAccumulator {
                 Ok(())
             }
             ResponseChunkKind::ResponseFailed => Err(
-                crate::provider_response::completion_error_from_body(raw_event_data),
+                crate::error::ProviderError::from_provider_body(raw_event_data),
             ),
             _ => Ok(()),
         }
@@ -1052,7 +1053,7 @@ impl Decoder<Completion> for ResponsesDecoder {
             }
             ResponsesEvent::Failure(raw) => {
                 self.accumulator.flush_tool_calls(out);
-                out.error(crate::provider_response::completion_error_from_body(&raw));
+                out.error(crate::error::ProviderError::from_provider_body(&raw));
                 self.finished = true;
             }
             // Nothing to interpret: the terminal record comes from

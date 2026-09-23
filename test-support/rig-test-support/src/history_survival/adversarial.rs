@@ -231,7 +231,7 @@ async fn complete<M: CompletionModel>(
     model: &M,
     request: CompletionRequest,
     streamed: bool,
-) -> Result<CompletionResponse, rig_core::completion::CompletionError> {
+) -> Result<CompletionResponse, rig_core::error::ProviderError> {
     if !streamed {
         return model.completion(request).await;
     }
@@ -239,9 +239,7 @@ async fn complete<M: CompletionModel>(
     let mut stream = model.stream(request).await?;
     while let Some(item) = stream.next().await {
         if let Err(error) = item {
-            return Err(rig_core::completion::CompletionError::ResponseError(
-                error.to_string(),
-            ));
+            return Err(rig_core::error::ProviderError::Response(error.to_string()));
         }
     }
     stream.finish()

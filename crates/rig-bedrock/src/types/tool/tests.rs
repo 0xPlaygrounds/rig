@@ -1,9 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::{
-    completion::CompletionError,
-    message::{DocumentSourceKind, Image, ImageMediaType, Text, ToolResultContent},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Text, ToolResultContent};
 
 use crate::types::{converse_output::ToolResultContentBlock, tool::RigToolResultContent};
 
@@ -110,9 +108,7 @@ fn aws_tool_to_unsupported_rig_tool() {
     assert!(tool.is_err());
     assert_eq!(
         tool.err().unwrap().to_string(),
-        CompletionError::ProviderError(
-            "ToolResultContentBlock contains unsupported variant".into()
-        )
-        .to_string()
+        ProviderError::Provider("ToolResultContentBlock contains unsupported variant".into())
+            .to_string()
     );
 }

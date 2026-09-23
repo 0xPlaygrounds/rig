@@ -19,6 +19,7 @@ use std::sync::{
 
 use crate::bus::Registrar;
 use indexmap::IndexMap;
+use rig_core::error::ProviderError;
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,
@@ -28,7 +29,7 @@ use rig_core::{
 };
 
 use crate::{
-    completion::{CompletionError, ToolDefinition},
+    completion::ToolDefinition,
     tool::{
         DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext,
         ToolDispatch, ToolLease, ToolResult, ToolSet, execute_tool,
@@ -723,9 +724,7 @@ impl ToolServerHandle {
 
             futures::future::try_join_all(search_futures)
                 .await
-                .map_err(|e| {
-                    ToolServerError::DefinitionError(CompletionError::RequestError(Box::new(e)))
-                })?
+                .map_err(|e| ToolServerError::DefinitionError(ProviderError::Request(Box::new(e))))?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<String>>()
@@ -790,7 +789,7 @@ const _: () = {
 pub enum ToolServerError {
     /// The advertised definitions could not be computed.
     #[error("Failed to retrieve tool definitions: {0}")]
-    DefinitionError(CompletionError),
+    DefinitionError(ProviderError),
 }
 
 impl ManagedToolSink for ToolServerHandle {

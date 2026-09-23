@@ -1,9 +1,10 @@
 //! Embedding helpers for deterministic tests.
 
+use crate::error::ProviderError;
 use crate::{
     Embed,
     embeddings::{
-        Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
+        Embedding, EmbeddingModel, EmbeddingResponse,
         embed::{EmbedError, TextEmbedder},
     },
     wasm_compat::WasmCompatSend,
@@ -25,7 +26,7 @@ impl EmbeddingModel for MockEmbeddingModel {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, ProviderError> {
         Ok(EmbeddingResponse::new(
             documents
                 .into_iter()

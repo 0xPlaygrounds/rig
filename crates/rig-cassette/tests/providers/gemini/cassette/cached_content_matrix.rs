@@ -49,6 +49,7 @@
 //!     cached_content_matrix -- --test-threads=1
 //! ```
 
+use rig::error::ProviderError;
 use rig::prelude::*;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, Gemini};
@@ -871,8 +872,6 @@ async fn list_follows_the_cursor_across_pages() {
 /// Deleting a handle twice reports the second as gone rather than succeeding.
 #[tokio::test]
 async fn deleting_twice_reports_the_second_as_expired() {
-    use rig::providers::gemini::cached_content::CachedContentError;
-
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_double_delete",
         |client| async move {
@@ -891,13 +890,15 @@ async fn deleting_twice_reports_the_second_as_expired() {
                 .delete(&created.name)
                 .await
                 .expect_err("a second delete should not silently succeed");
-            let CachedContentError::Expired { name, message } = &error else {
-                panic!("a handle that is already gone should report Expired: {error:?}");
+            let ProviderError::CacheExpired { name, response } = &error else {
+
+                panic!("a handle that is already gone should report CacheExpired: {error:?}");
             };
             assert_eq!(*name, created.name);
+            let message = &response.body;
             assert!(
                 message.contains("not found") || message.contains("permission"),
-                "Expired should carry the provider's own message — a 403 also covers a disabled \
+                "CacheExpired should carry the provider's own message — a 403 also covers a disabled \
                  key or a project without the API enabled, and the message is the only text that \
                  says which: {message}"
             );

@@ -8,11 +8,9 @@
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "audio")]
-use crate::audio_generation::AudioGenerationError;
-use crate::client::VerifyError;
-use crate::embeddings::{self, EmbeddingError};
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::embeddings;
+use crate::error::ProviderError;
+use crate::model::{Model, ModelList};
 use crate::operation::{
     Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
     Verify as VerifyOp,
@@ -22,8 +20,7 @@ use crate::providers::openai::completion::Usage;
 use crate::providers::openai::embedding::{
     CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
 };
-use crate::rerank::RerankError;
-use crate::transcription::{TranscriptionError, TranscriptionRequest};
+use crate::transcription::TranscriptionRequest;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
@@ -35,31 +32,30 @@ use super::SpeechBody;
 use super::{AcceptedWidths, ModelWidth, OpenAI, TranscriptionBody};
 
 /// Encode an authenticated JSON POST with whole-response framing.
-/// Return serialization, URI, and envelope errors as the operation's error type.
-fn json_post<E: crate::wire::WireError>(
+fn json_post(
     provider: &OpenAI,
     path: &str,
     deployment: Option<&str>,
     body: &serde_json::Value,
-) -> Result<Encoded, E> {
+) -> Result<Encoded, ProviderError> {
     json_post_to(provider, provider.uri(path, deployment), body)
 }
 
 /// [`json_post`] against an already-resolved URL, for the endpoints whose
 /// URL is derived rather than a fixed path under the base.
-fn json_post_to<E: crate::wire::WireError>(
+fn json_post_to(
     provider: &OpenAI,
     uri: String,
     body: &serde_json::Value,
-) -> Result<Encoded, E> {
-    let bytes = serde_json::to_vec(body).map_err(E::json)?;
+) -> Result<Encoded, ProviderError> {
+    let bytes = serde_json::to_vec(body)?;
     let builder = http::Request::post(uri).header("Content-Type", "application/json");
     encoded(provider, builder, Body::Bytes(bytes))
 }
 
 /// The `GET` whose status is the answer, for the two endpoints that send no
 /// body: the model catalogue and the credential check.
-fn get<E: crate::wire::WireError>(provider: &OpenAI, path: &str) -> Result<Encoded, E> {
+fn get(provider: &OpenAI, path: &str) -> Result<Encoded, ProviderError> {
     encoded(
         provider,
         http::Request::get(provider.uri(path, None)),
@@ -70,22 +66,23 @@ fn get<E: crate::wire::WireError>(provider: &OpenAI, path: &str) -> Result<Encod
 /// Authenticate and build a request, then apply its modality envelope hook.
 /// Return construction or hook errors. Use whole-response framing and the
 /// dialect's request-ID header.
-fn encoded<E: crate::wire::WireError>(
+fn encoded(
     provider: &OpenAI,
     builder: http::request::Builder,
     body: Body,
-) -> Result<Encoded, E> {
+) -> Result<Encoded, ProviderError> {
     let mut request = provider
         .authenticate(builder)
         .body(body)
-        .map_err(|error| E::decode(error.to_string()))?;
+        .map_err(|error| ProviderError::Response(error.to_string()))?;
     if let Some(envelope) = provider
         .dialect
         .quirks
         .hooks
         .and_then(|hooks| hooks.modality_envelope)
     {
-        envelope(provider, &mut request).map_err(|error| E::decode(error.to_string()))?;
+        envelope(provider, &mut request)
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
     }
     Ok(Encoded::new(request, Framing::Whole)
         .with_request_id_header(provider.dialect.request_id_header))
@@ -154,9 +151,9 @@ impl Embeddings {
 
     /// Validate declared widths against the dialect's zero-width and model policies.
     /// Return a parameter error for unsupported widths; unknown models are unchecked.
-    fn refuse_unhonourable_width(&self) -> Result<(), EmbeddingError> {
+    fn refuse_unhonourable_width(&self) -> Result<(), ProviderError> {
         let quirks = &self.provider.dialect.quirks.embedding;
-        let invalid = |requirement, parameter| EmbeddingError::InvalidParameterValue {
+        let invalid = |requirement, parameter| ProviderError::InvalidParameterValue {
             provider: self.provider.dialect.name,
             parameter,
             requirement,
@@ -186,7 +183,7 @@ impl Embeddings {
             return Ok(());
         }
         match width.accepted {
-            AcceptedWidths::Fixed => Err(EmbeddingError::UnsupportedParameter {
+            AcceptedWidths::Fixed => Err(ProviderError::UnsupportedParameter {
                 provider: self.provider.dialect.name,
                 parameter,
             }),
@@ -240,7 +237,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Embedding>) {
         if event.usage.is_none() && self.requires_usage {
-            out.push(Err(EmbeddingError::MissingUsage {
+            out.push(Err(ProviderError::MissingUsage {
                 provider: self.provider,
             }));
             return;
@@ -299,24 +296,24 @@ impl Wire for Embeddings {
         .declaring(self.ndims)
     }
 
-    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
         let quirks = &self.provider.dialect.quirks.embedding;
         // Base64 vectors are not decoded anywhere, so asking for them would
         // answer 200 with a payload rig cannot read.
         if self.encoding_format == Some(EncodingFormat::Base64) {
-            return Err(EmbeddingError::UnsupportedResponseEncoding {
+            return Err(ProviderError::UnsupportedResponseEncoding {
                 provider: self.provider.dialect.name,
                 encoding_format: "base64",
             });
         }
         if self.encoding_format.is_some() && !quirks.supports_encoding_format {
-            return Err(EmbeddingError::UnsupportedParameter {
+            return Err(ProviderError::UnsupportedParameter {
                 provider: self.provider.dialect.name,
                 parameter: "encoding_format",
             });
         }
         if self.user.is_some() && !quirks.supports_user {
-            return Err(EmbeddingError::UnsupportedParameter {
+            return Err(ProviderError::UnsupportedParameter {
                 provider: self.provider.dialect.name,
                 parameter: "user",
             });
@@ -325,7 +322,7 @@ impl Wire for Embeddings {
 
         let mut body = serde_json::json!({ "input": request });
         let Some(object) = body.as_object_mut() else {
-            return Err(EmbeddingError::ResponseError(
+            return Err(ProviderError::Response(
                 "embedding request body must be an object".into(),
             ));
         };
@@ -382,7 +379,7 @@ impl Transcriptions {
 
     /// OpenAI's multipart upload: the audio as a file part beside the
     /// per-request options.
-    fn multipart_body(&self, request: TranscriptionRequest) -> Result<Body, TranscriptionError> {
+    fn multipart_body(&self, request: TranscriptionRequest) -> Result<Body, ProviderError> {
         use crate::http_client::MultipartForm;
         use crate::http_client::multipart::Part;
 
@@ -416,18 +413,16 @@ impl Transcriptions {
 
     /// Encode base64 audio under `input_audio`, inferring format from the filename.
     /// Reject top-level prompts and non-object additional parameters.
-    fn input_audio_body(&self, request: TranscriptionRequest) -> Result<Body, TranscriptionError> {
+    fn input_audio_body(&self, request: TranscriptionRequest) -> Result<Body, ProviderError> {
         use base64::Engine;
 
         if request.prompt.is_some() {
-            return Err(TranscriptionError::RequestError(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "OpenRouter STT does not support a top-level prompt field. \
+            return Err(ProviderError::Request(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "OpenRouter STT does not support a top-level prompt field. \
                      Provider-specific prompt options can be passed via `additional_params`. \
                      Example: {\"provider\": {\"options\": {\"<provider>\": {\"prompt\": \"<text>\"}}}}",
-                ),
-            )));
+            ))));
         }
 
         let mut body = serde_json::Map::new();
@@ -459,9 +454,9 @@ impl Transcriptions {
 /// A transcription request's `additional_params`, as an object.
 fn additional_params_object(
     params: &serde_json::Value,
-) -> Result<&serde_json::Map<String, serde_json::Value>, TranscriptionError> {
+) -> Result<&serde_json::Map<String, serde_json::Value>, ProviderError> {
     params.as_object().ok_or_else(|| {
-        TranscriptionError::RequestError(Box::new(std::io::Error::new(
+        ProviderError::Request(Box::new(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "additional transcription parameters must be a JSON object",
         )))
@@ -507,7 +502,7 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
                 Ok(response) => out.push(Ok(response.with_raw(raw))),
                 Err(error) => out.push(Err(error)),
             },
-            Err(error) => out.push(Err(TranscriptionError::from(error))),
+            Err(error) => out.push(Err(ProviderError::from(error))),
         }
     }
 }
@@ -524,11 +519,7 @@ impl Wire for Transcriptions {
         Some(&self.model)
     }
 
-    fn encode(
-        &self,
-        request: TranscriptionRequest,
-        _mode: Mode,
-    ) -> Result<Encoded, TranscriptionError> {
+    fn encode(&self, request: TranscriptionRequest, _mode: Mode) -> Result<Encoded, ProviderError> {
         let uri = self
             .provider
             .modality_uri(
@@ -536,7 +527,7 @@ impl Wire for Transcriptions {
                 self.provider.dialect.quirks.transcription_path,
                 &self.model,
             )
-            .map_err(TranscriptionError::ProviderError)?;
+            .map_err(ProviderError::Provider)?;
         let builder = http::Request::post(uri);
         let (builder, body) = match self.provider.dialect.quirks.transcription_body {
             TranscriptionBody::Multipart => (builder, self.multipart_body(request)?),
@@ -683,7 +674,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         event: Self::Event,
         out: &mut Output<crate::operation::ImageGeneration>,
     ) {
-        use crate::image_generation::{ImageGenerationError, ImageGenerationResponse};
+        use crate::image_generation::ImageGenerationResponse;
         use base64::Engine;
 
         let reply = match event {
@@ -696,7 +687,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
             ImagesEvent::Json(reply) => reply,
         };
         let Some(encoded) = reply.first_base64() else {
-            out.push(Err(ImageGenerationError::ResponseError(
+            out.push(Err(ProviderError::Response(
                 "missing image data".to_owned(),
             )));
             return;
@@ -704,7 +695,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         let image = match base64::prelude::BASE64_STANDARD.decode(encoded) {
             Ok(image) => image,
             Err(error) => {
-                out.push(Err(ImageGenerationError::ResponseError(error.to_string())));
+                out.push(Err(ProviderError::Response(error.to_string())));
                 return;
             }
         };
@@ -732,7 +723,7 @@ impl Wire for Images {
         &self,
         request: crate::image_generation::ImageGenerationRequest,
         _mode: Mode,
-    ) -> Result<Encoded, crate::image_generation::ImageGenerationError> {
+    ) -> Result<Encoded, crate::error::ProviderError> {
         let mut body = match self.provider.dialect.quirks.image_body {
             // `response_format` is deliberately absent: it is no longer part
             // of OpenAI's request schema, which rejects it before it even
@@ -785,7 +776,7 @@ impl Wire for Images {
                 self.provider.dialect.quirks.image_generation_path,
                 &self.model,
             )
-            .map_err(crate::image_generation::ImageGenerationError::ProviderError)?;
+            .map_err(crate::error::ProviderError::Provider)?;
         json_post_to(&self.provider, uri, &body)
     }
 
@@ -863,14 +854,14 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
                 let reply = match serde_json::from_slice::<SpeechReply>(&event) {
                     Ok(reply) => reply,
                     Err(error) => {
-                        out.push(Err(AudioGenerationError::ResponseError(error.to_string())));
+                        out.push(Err(ProviderError::Response(error.to_string())));
                         return;
                     }
                 };
                 match base64::prelude::BASE64_STANDARD.decode(&reply.audio) {
                     Ok(audio) => audio,
                     Err(error) => {
-                        out.push(Err(AudioGenerationError::ResponseError(error.to_string())));
+                        out.push(Err(ProviderError::Response(error.to_string())));
                         return;
                     }
                 }
@@ -900,7 +891,7 @@ impl Wire for Speech {
         &self,
         request: crate::audio_generation::AudioGenerationRequest,
         _mode: Mode,
-    ) -> Result<Encoded, AudioGenerationError> {
+    ) -> Result<Encoded, ProviderError> {
         let mut body = match self.provider.dialect.quirks.speech_body {
             SpeechBody::OpenAi => serde_json::json!({
                 "model": self.model,
@@ -1050,7 +1041,7 @@ impl Wire for Models {
         self.provider.dialect.name
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
@@ -1189,11 +1180,11 @@ impl Wire for Rerank {
         &self,
         request: crate::operation::RerankRequest,
         _mode: Mode,
-    ) -> Result<Encoded, RerankError> {
+    ) -> Result<Encoded, ProviderError> {
         let quirks = &self.provider.dialect.quirks.rerank;
         // An empty path explicitly disables reranking.
         if quirks.path.is_empty() {
-            return Err(RerankError::ProviderError(format!(
+            return Err(ProviderError::Provider(format!(
                 "{} offers no reranking endpoint",
                 self.provider.dialect.name
             )));
@@ -1203,7 +1194,7 @@ impl Wire for Rerank {
             "documents": request.documents,
         });
         let Some(object) = body.as_object_mut() else {
-            return Err(RerankError::ResponseError(
+            return Err(ProviderError::Response(
                 "rerank request body must be an object".into(),
             ));
         };
@@ -1253,10 +1244,10 @@ impl Wire for Verify {
         self.provider.dialect.name
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, VerifyError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ProviderError> {
         let path = self.provider.dialect.quirks.verify_path;
         if path.is_empty() {
-            return Err(VerifyError::ProviderError(format!(
+            return Err(ProviderError::Provider(format!(
                 "{} offers no endpoint that checks a credential without consuming tokens",
                 self.provider.dialect.name
             )));

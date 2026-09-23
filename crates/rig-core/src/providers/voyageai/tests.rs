@@ -2,7 +2,8 @@
 /// caller reading a 503 must see what Voyage actually said.
 #[tokio::test]
 async fn rerank_non_success_preserves_status_and_body() {
-    use crate::rerank::{RerankError, RerankModel as _};
+    use crate::error::ProviderError;
+    use crate::rerank::RerankModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
@@ -16,7 +17,7 @@ async fn rerank_non_success_preserves_status_and_body() {
         .await
         .expect_err("rerank should fail with non-success status");
 
-    assert!(matches!(error, RerankError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -30,7 +31,8 @@ async fn rerank_non_success_preserves_status_and_body() {
 /// failure about a missing ordering.
 #[tokio::test]
 async fn rerank_2xx_error_envelope_preserves_status_and_body() {
-    use crate::rerank::{RerankError, RerankModel as _};
+    use crate::error::ProviderError;
+    use crate::rerank::RerankModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"message":"boom"}"#;
@@ -43,7 +45,7 @@ async fn rerank_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("rerank should fail with provider error envelope");
 
-    let RerankError::ProviderResponse(stored) = &error else {
+    let ProviderError::ProviderResponse(stored) = &error else {
         panic!("expected ProviderResponse, got {error:?}");
     };
     // Byte-equal, not "contains": a preserved reply is the provider's bytes

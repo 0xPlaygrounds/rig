@@ -392,7 +392,7 @@ fn rig_reasoning_with_empty_text_and_no_signature_returns_error() {
     let aws_content_block = rig_content.into_content_block();
     assert!(matches!(
         aws_content_block,
-        Err(completion::CompletionError::ProviderError(message))
+        Err(rig_core::error::ProviderError::Provider(message))
             if message.contains("at least one text or summary block")
     ));
 }
@@ -410,7 +410,7 @@ fn rig_reasoning_with_multiple_signed_text_blocks_returns_error() {
     let aws_content_block = rig_content.into_content_block();
     assert!(matches!(
         aws_content_block,
-        Err(completion::CompletionError::ProviderError(message))
+        Err(rig_core::error::ProviderError::Provider(message))
             if message.contains("multiple signed reasoning text blocks")
     ));
 }

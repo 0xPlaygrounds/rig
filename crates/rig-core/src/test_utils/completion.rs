@@ -5,11 +5,9 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
+use crate::error::ProviderError;
 use crate::{
-    completion::{
-        AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-        Usage,
-    },
+    completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, Usage},
     message::{ToolCall, ToolFunction},
     streaming::StreamingCompletionResponse,
 };
@@ -38,11 +36,11 @@ impl MockError {
         Self::Request(message.into())
     }
 
-    pub(crate) fn into_completion_error(self) -> CompletionError {
+    pub(crate) fn into_completion_error(self) -> ProviderError {
         match self {
-            Self::Provider(message) => CompletionError::ProviderError(message),
-            Self::Request(message) => CompletionError::RequestError(message.into()),
-            Self::ProviderResponse(response) => CompletionError::ProviderResponse(response),
+            Self::Provider(message) => ProviderError::Provider(message),
+            Self::Request(message) => ProviderError::Request(message.into()),
+            Self::ProviderResponse(response) => ProviderError::ProviderResponse(response),
         }
     }
 }
@@ -242,7 +240,7 @@ impl MockTurn {
     /// serialized. Public so a test can state the expected `raw` of a
     /// recorded call without repeating the mock's serialization. An error
     /// turn has no document.
-    pub fn raw(&self) -> Result<serde_json::Value, CompletionError> {
+    pub fn raw(&self) -> Result<serde_json::Value, ProviderError> {
         let response = self
             .response
             .as_ref()
@@ -253,7 +251,7 @@ impl MockTurn {
         }
     }
 
-    fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
+    fn into_completion_response(self) -> Result<CompletionResponse, ProviderError> {
         let raw = self.raw()?;
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(
@@ -278,7 +276,7 @@ struct MockCompletionModelState {
 /// A cloneable scripted [`CompletionModel`] for tests.
 ///
 /// Each completion or stream call consumes exactly one scripted turn. If no turn
-/// is available, the model returns [`CompletionError::ProviderError`] with a
+/// is available, the model returns [`ProviderError::Provider`] with a
 /// clear message instead of repeating previous responses.
 #[derive(Clone, Default)]
 pub struct MockCompletionModel {
@@ -399,14 +397,14 @@ impl CompletionModel for MockCompletionModel {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
+    ) -> Result<crate::completion::CompletionResponse, ProviderError> {
         self.completion_with_context(request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, ProviderError> {
         self.stream_with_context(request, None).await
     }
 
@@ -414,10 +412,10 @@ impl CompletionModel for MockCompletionModel {
         &self,
         request: CompletionRequest,
         context: Option<crate::observe::AdapterContext>,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         self.record_request(request, context);
         let Some(turn) = self.next_turn() else {
-            return Err(CompletionError::ProviderError(
+            return Err(ProviderError::Provider(
                 "mock completion model has no scripted completion turn".to_string(),
             ));
         };
@@ -429,10 +427,10 @@ impl CompletionModel for MockCompletionModel {
         &self,
         request: CompletionRequest,
         context: Option<crate::observe::AdapterContext>,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         self.record_request(request, context);
         let Some(events) = self.next_stream_turn() else {
-            return Err(CompletionError::ProviderError(
+            return Err(ProviderError::Provider(
                 "mock completion model has no scripted streaming turn".to_string(),
             ));
         };

@@ -1,15 +1,13 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::{
-    completion::CompletionError,
-    message::{DocumentMediaType, MimeType},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{DocumentMediaType, MimeType};
 
 use super::converse_output::DocumentFormat;
 
 pub struct RigDocumentMediaType(pub DocumentMediaType);
 
 impl TryFrom<RigDocumentMediaType> for aws_bedrock::DocumentFormat {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: RigDocumentMediaType) -> Result<Self, Self::Error> {
         match value.0 {
@@ -18,7 +16,7 @@ impl TryFrom<RigDocumentMediaType> for aws_bedrock::DocumentFormat {
             DocumentMediaType::HTML => Ok(aws_bedrock::DocumentFormat::Html),
             DocumentMediaType::MARKDOWN => Ok(aws_bedrock::DocumentFormat::Md),
             DocumentMediaType::CSV => Ok(aws_bedrock::DocumentFormat::Csv),
-            e => Err(CompletionError::ProviderError(format!(
+            e => Err(ProviderError::Provider(format!(
                 "Unsupported media type {}",
                 e.to_mime_type()
             ))),
@@ -27,12 +25,12 @@ impl TryFrom<RigDocumentMediaType> for aws_bedrock::DocumentFormat {
 }
 
 impl TryFrom<DocumentFormat> for RigDocumentMediaType {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: DocumentFormat) -> Result<Self, Self::Error> {
         // Preserve wire spellings in errors for unsupported media types.
-        fn unsupported(format: &str) -> CompletionError {
-            CompletionError::ProviderError(format!("Unsupported media type {format}"))
+        fn unsupported(format: &str) -> ProviderError {
+            ProviderError::Provider(format!("Unsupported media type {format}"))
         }
 
         match value {

@@ -4128,7 +4128,7 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
     assert!(!saw_final_response);
     let error = error.expect("unterminated tool-call args delta should fail");
     match error {
-        StreamingError::Completion(CompletionError::ResponseError(message)) => {
+        StreamingError::Completion(ProviderError::Response(message)) => {
             assert!(
                 message.contains("streamed tool call arguments"),
                 "{message}"

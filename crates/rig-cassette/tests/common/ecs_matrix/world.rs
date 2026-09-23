@@ -26,8 +26,6 @@ use bevy_app::App;
 use bevy_ecs::prelude::*;
 use futures::StreamExt;
 
-use rig_agent::completion::CompletionError;
-
 use rig_agent::completion::CompletionModel;
 
 use rig_agent::completion::CompletionRequest;
@@ -37,6 +35,7 @@ use rig_agent::completion::CompletionResponse;
 use rig_agent::completion::ProviderCapabilities;
 
 use rig_core::effect::EffectFamily;
+use rig_core::error::ProviderError;
 
 use rig_core::effect::EffectKind;
 
@@ -141,14 +140,14 @@ impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         self.inner.completion(request).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let stream = self.inner.stream(request).await?;
         let provider = stream.provider().to_owned();
         let message_id = stream.message_id.clone();

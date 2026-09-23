@@ -5,9 +5,8 @@
 //!
 //! let message = Message::user("Hello");
 //! ```
-pub use crate::client::verify::VerifyError;
 
-pub use crate::completion::{CompletionError, CompletionModel, Message};
+pub use crate::completion::{CompletionModel, Message};
 pub use crate::driver::{Bind, Bound, CompletionProvider};
 
 // The root re-export includes the derive macro when enabled.

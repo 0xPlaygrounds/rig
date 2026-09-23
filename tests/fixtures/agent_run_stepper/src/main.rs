@@ -21,10 +21,7 @@ use std::{
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
-use rig_core::completion::{
-    AssistantContent, CompletionError, CompletionModel, CompletionRequest,
-    CompletionRequestBuilder, CompletionResponse, ModelRef, Usage,
-};
+use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionRequestBuilder, CompletionResponse, ModelRef, Usage};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::serve::adapters::CompletionAdapter;
@@ -32,6 +29,7 @@ use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::error::ProviderError;
 
 /// Every future here is ready on first poll (a scripted model, in-process
 /// tools); a no-op waker is all the "runtime" this driver needs.
@@ -68,7 +66,7 @@ impl CompletionModel for ScriptedModel {
     fn completion(
         &self,
         request: CompletionRequest,
-        ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend {
+        ) -> impl Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let choice = if call == 0 {
             // The request must carry the tool the run will call back into.
@@ -101,9 +99,9 @@ impl CompletionModel for ScriptedModel {
     fn stream(
         &self,
         _request: CompletionRequest,
-        ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend
+        ) -> impl Future<Output = Result<StreamingCompletionResponse, ProviderError>> + WasmCompatSend
     {
-        std::future::ready(Err(CompletionError::ProviderError(
+        std::future::ready(Err(ProviderError::Provider(
             "fixture drives unary completions only".to_string(),
         )))
     }

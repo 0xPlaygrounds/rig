@@ -3,17 +3,18 @@
 
 use serde::{Deserialize, Deserializer};
 
-use crate::completion::{CompletionError, FinishReason};
+use crate::completion::FinishReason;
+use crate::error::ProviderError;
 
 /// The wire's in-band provider error envelope, when this frame is one.
 ///
 /// Delivered with a 200 status, so it is not an HTTP failure: the frame is
 /// this wire's own terminal failure and the decoder models it as an event.
-pub(crate) fn provider_error_envelope(data: &str) -> Option<CompletionError> {
+pub(crate) fn provider_error_envelope(data: &str) -> Option<ProviderError> {
     provider_response_from_compatible_sse_data(data)
 }
 
-fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
+fn provider_response_from_compatible_sse_data(data: &str) -> Option<ProviderError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
     // Null or empty-string error fields can accompany valid terminal usage.
     let error = value
@@ -33,7 +34,7 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
         tracing::warn!(message, "provider returned a streaming error event");
     }
 
-    Some(crate::provider_response::completion_error_from_body(data))
+    Some(crate::error::ProviderError::from_provider_body(data))
 }
 
 /// Map an OpenAI Chat Completions-style `finish_reason` string onto the

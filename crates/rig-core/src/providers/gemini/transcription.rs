@@ -4,6 +4,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use mime_guess;
 use serde_json::{Map, Value};
 
+use crate::error::ProviderError;
 use crate::{
     completion::Usage,
     operation::Transcription,
@@ -12,7 +13,7 @@ use crate::{
         visible_text_parts,
     },
     providers::internal::wire::classify_marker_keyed_frame,
-    transcription::{self, NormalizeTranscriptionResponse, TranscriptionError},
+    transcription::{self, NormalizeTranscriptionResponse},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
 };
 
@@ -25,7 +26,7 @@ const TRANSCRIPTION_PREAMBLE: &str =
 /// Reject invalid generation parameters or JSON serialization failures.
 fn transcription_body(
     request: transcription::TranscriptionRequest,
-) -> Result<Vec<u8>, TranscriptionError> {
+) -> Result<Vec<u8>, ProviderError> {
     let additional_params = request
         .additional_params
         .unwrap_or_else(|| Value::Object(Map::new()));
@@ -116,7 +117,7 @@ impl Wire for Transcriptions {
         &self,
         request: transcription::TranscriptionRequest,
         _mode: Mode,
-    ) -> Result<Encoded, TranscriptionError> {
+    ) -> Result<Encoded, ProviderError> {
         let body = transcription_body(request)?;
         let request = http::Request::post(format!(
             "{}/v1beta/models/{}:generateContent?key={}",
@@ -126,7 +127,7 @@ impl Wire for Transcriptions {
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::Bytes(body))
-        .map_err(|error| TranscriptionError::HttpError(error.into()))?;
+        .map_err(|error| ProviderError::Http(error.into()))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }
@@ -160,10 +161,11 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
     fn normalize(
         self,
         provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        let candidate = self.candidates.first().ok_or_else(|| {
-            TranscriptionError::ResponseError("No response candidates in response".into())
-        })?;
+    ) -> Result<transcription::TranscriptionResponse, ProviderError> {
+        let candidate = self
+            .candidates
+            .first()
+            .ok_or_else(|| ProviderError::Response("No response candidates in response".into()))?;
 
         let mut parts = candidate
             .content
@@ -173,7 +175,7 @@ impl NormalizeTranscriptionResponse for GenerateContentResponse {
             .flatten()
             .peekable();
         if parts.peek().is_none() {
-            return Err(TranscriptionError::ResponseError(
+            return Err(ProviderError::Response(
                 "Response content contains no text".to_string(),
             ));
         }

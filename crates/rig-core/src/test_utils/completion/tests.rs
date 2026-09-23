@@ -142,7 +142,7 @@ async fn missing_completion_turn_returns_provider_error() {
 
     assert!(matches!(
         err,
-        CompletionError::ProviderError(message)
+        ProviderError::Provider(message)
             if message.contains("no scripted completion turn")
     ));
 }

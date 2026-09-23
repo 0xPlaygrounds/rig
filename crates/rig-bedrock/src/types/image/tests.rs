@@ -1,9 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::{
-    completion::CompletionError,
-    message::{DocumentSourceKind, Image, ImageMediaType},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{DocumentSourceKind, Image, ImageMediaType};
 
 use crate::types::image::RigImage;
 
@@ -46,6 +44,6 @@ fn test_unsupported_image_to_aws_image() {
     let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.try_into();
     assert_eq!(
         aws_image.err().unwrap().to_string(),
-        CompletionError::ProviderError("Unsupported format image/heic".into()).to_string()
+        ProviderError::Provider("Unsupported format image/heic".into()).to_string()
     );
 }

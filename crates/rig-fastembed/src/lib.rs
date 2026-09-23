@@ -13,7 +13,8 @@ use std::{error::Error as StdError, fmt};
 
 pub use fastembed::EmbeddingModel as FastembedModel;
 use fastembed::{InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel};
-use rig_core::embeddings::{self, EmbeddingError};
+use rig_core::embeddings;
+use rig_core::error::ProviderError;
 
 #[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
@@ -190,7 +191,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
         rig_core::telemetry::instrument_modality(
             "fastembed",
             &format!("{:?}", self.model),
@@ -201,7 +202,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                         || "FastEmbed model initialization failed".to_string(),
                         ToString::to_string,
                     );
-                    return Err(EmbeddingError::ProviderError(message));
+                    return Err(ProviderError::Provider(message));
                 };
 
                 let documents_as_strings: Vec<String> = documents.into_iter().collect();
@@ -211,7 +212,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                         documents_as_strings.iter().map(String::as_str).collect(),
                         None,
                     )
-                    .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
+                    .map_err(|err| ProviderError::Provider(err.to_string()))?;
 
                 let docs = documents_as_strings
                     .into_iter()

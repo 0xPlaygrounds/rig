@@ -24,12 +24,10 @@ use rig_agent::{
         AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, ModelTurnAction,
         ModelTurnFinished, MultiTurnStreamItem, RequestPatch,
     },
-    completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-        Usage,
-    },
+    completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason, Usage},
     streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse},
 };
+use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 
 /// The full answer costs this many output tokens; anything less is truncated.
@@ -61,7 +59,7 @@ impl CompletionModel for BudgetedModel {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         let (text, reason) = Self::answer_under(request.max_tokens);
         Ok(CompletionResponse::new(
             vec![AssistantContent::text(text)],
@@ -75,7 +73,7 @@ impl CompletionModel for BudgetedModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         // Identical semantics on the streaming surface: the hook sees the same
         // reason and the same cap either way.
         let (text, reason) = Self::answer_under(request.max_tokens);

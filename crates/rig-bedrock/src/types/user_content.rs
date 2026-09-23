@@ -1,9 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use rig_core::{
-    completion::CompletionError,
-    message::{Text, ToolResultContent, UserContent},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{Text, ToolResultContent, UserContent};
 
 use super::{
     converse_output::ContentBlock, document::RigDocument, image::RigImage,
@@ -13,7 +11,7 @@ use super::{
 pub struct RigUserContent(pub UserContent);
 
 impl TryFrom<ContentBlock> for RigUserContent {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: ContentBlock) -> Result<Self, Self::Error> {
         match value {
@@ -30,9 +28,7 @@ impl TryFrom<ContentBlock> for RigUserContent {
 
                 let tool_results =
                     rig_core::message::require_non_empty(tool_result_contents, || {
-                        CompletionError::ProviderError(
-                            "ToolResult returned invalid response".into(),
-                        )
+                        ProviderError::Provider("ToolResult returned invalid response".into())
                     })?;
                 // Bedrock's wire correlates results by `toolUseId` only
                 // and never carries the tool name; this conversion is lossy
@@ -51,7 +47,7 @@ impl TryFrom<ContentBlock> for RigUserContent {
                 let image: RigImage = image.try_into()?;
                 Ok(RigUserContent(UserContent::Image(image.0)))
             }
-            _ => Err(CompletionError::ProviderError(
+            _ => Err(ProviderError::Provider(
                 "ToolResultContentBlock contains unsupported variant".into(),
             )),
         }
@@ -59,7 +55,7 @@ impl TryFrom<ContentBlock> for RigUserContent {
 }
 
 impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: RigUserContent) -> Result<Self, Self::Error> {
         match value.0 {
@@ -75,7 +71,7 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
                             .collect::<Result<Vec<aws_bedrock::ToolResultContentBlock>, _>>()?,
                     ))
                     .build()
-                    .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+                    .map_err(|e| ProviderError::Provider(e.to_string()))?;
                 Ok(vec![aws_bedrock::ContentBlock::ToolResult(builder)])
             }
             UserContent::Image(image) => {
@@ -90,12 +86,8 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
                     aws_bedrock::ContentBlock::Document(doc),
                 ])
             }
-            UserContent::Audio(_) => Err(CompletionError::ProviderError(
-                "Audio is not supported".into(),
-            )),
-            UserContent::Video(_) => Err(CompletionError::ProviderError(
-                "Video is not supported".into(),
-            )),
+            UserContent::Audio(_) => Err(ProviderError::Provider("Audio is not supported".into())),
+            UserContent::Video(_) => Err(ProviderError::Provider("Video is not supported".into())),
         }
     }
 }

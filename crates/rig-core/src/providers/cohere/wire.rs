@@ -7,9 +7,10 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::CompletionRequest;
 use crate::driver::{HasEmbedding, HasImageEmbedding};
-use crate::embeddings::{Embedding as Vector, EmbeddingError};
+use crate::embeddings::Embedding as Vector;
+use crate::error::ProviderError;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
 use crate::wire::{
@@ -125,7 +126,7 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, ProviderError> {
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
             body.additional_params = Some(json_utils::merge(
@@ -144,7 +145,7 @@ impl Wire for Chat {
             .provider
             .post("/v2/chat")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| CompletionError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         // Cohere reports no request-id response header: its
         // `x-debug-trace-id` is a debug trace handle, not a documented
         // request id, so the normalized id stays unset by design.
@@ -246,7 +247,7 @@ impl Wire for Embeddings {
         Some(&self.model)
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, ProviderError> {
         let body = serde_json::json!({
             "model": self.model,
             "texts": texts,
@@ -256,7 +257,7 @@ impl Wire for Embeddings {
             .provider
             .post("/v1/embed")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EmbeddingError::HttpError(error.into()))?;
+            .map_err(|error| ProviderError::Http(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -284,7 +285,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
             EmbedReply::Reply(reply) => reply,
             // Preserve the error body so the driver can attach its HTTP status.
             EmbedReply::Failure(body) => {
-                out.push(Err(EmbeddingError::from_provider_body(body)));
+                out.push(Err(ProviderError::from_provider_body(body)));
                 return;
             }
         };
@@ -345,7 +346,7 @@ impl Wire for ImageEmbeddings {
         Some(super::EMBED_ENGLISH_V3)
     }
 
-    fn encode(&self, images: Vec<Vec<u8>>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+    fn encode(&self, images: Vec<Vec<u8>>, _mode: Mode) -> Result<Encoded, ProviderError> {
         let requests = images
             .into_iter()
             .map(|image| {
@@ -360,9 +361,9 @@ impl Wire for ImageEmbeddings {
                 self.provider
                     .post("/v1/embed")
                     .body(Body::Bytes(serde_json::to_vec(&body)?))
-                    .map_err(|error| EmbeddingError::HttpError(error.into()))
+                    .map_err(|error| ProviderError::Http(error.into()))
             })
-            .collect::<Result<Vec<_>, EmbeddingError>>()?;
+            .collect::<Result<Vec<_>, ProviderError>>()?;
         Ok(Encoded::batch(requests, Framing::Whole))
     }
 
@@ -391,13 +392,13 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
             // Same 200-with-an-envelope reply as the text route: the body
             // verbatim, with the driver stamping the status.
             EmbedReply::Failure(body) => {
-                out.push(Err(EmbeddingError::from_provider_body(body)));
+                out.push(Err(ProviderError::from_provider_body(body)));
                 return;
             }
         };
         // Each request carries one image, so any other vector count is invalid.
         let [vector] = reply.embeddings.values.as_slice() else {
-            out.push(Err(EmbeddingError::ResponseError(format!(
+            out.push(Err(ProviderError::Response(format!(
                 "Expected 1 image embedding, got {}",
                 reply.embeddings.values.len()
             ))));

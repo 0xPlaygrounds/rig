@@ -3,9 +3,9 @@ use crate::types::assistant_content::PROVIDER_NAME;
 use crate::types::errors::AwsSdkInvokeModelError;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
+use rig_core::error::ProviderError;
 use rig_core::image_generation::{
-    self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
-    NormalizeImageGenerationResponse,
+    self, ImageGenerationRequest, ImageGenerationResponse, NormalizeImageGenerationResponse,
 };
 
 pub use crate::completion::{
@@ -36,7 +36,7 @@ impl ImageGenerationModel {
     pub async fn raw_image_generation(
         &self,
         generation_request: ImageGenerationRequest,
-    ) -> Result<TextToImageResponse, ImageGenerationError> {
+    ) -> Result<TextToImageResponse, ProviderError> {
         self.raw_image_generation_with_request_id(generation_request)
             .await
             .map(|(response, _)| response)
@@ -47,7 +47,7 @@ impl ImageGenerationModel {
     pub async fn raw_image_generation_with_request_id(
         &self,
         generation_request: ImageGenerationRequest,
-    ) -> Result<(TextToImageResponse, Option<String>), ImageGenerationError> {
+    ) -> Result<(TextToImageResponse, Option<String>), ProviderError> {
         let request = TextToImageGeneration::new(generation_request.prompt)
             .width(generation_request.width)
             .height(generation_request.height);
@@ -64,19 +64,17 @@ impl ImageGenerationModel {
             .body(Blob::new(body))
             .send()
             .await
-            .map_err(|sdk_error| {
-                Into::<ImageGenerationError>::into(AwsSdkInvokeModelError(sdk_error))
-            })?;
+            .map_err(|sdk_error| Into::<ProviderError>::into(AwsSdkInvokeModelError(sdk_error)))?;
 
         let provider_request_id =
             aws_sdk_bedrockruntime::operation::RequestId::request_id(&model_response)
                 .map(str::to_string);
 
         let response_str = String::from_utf8(model_response.body.into_inner())
-            .map_err(|e| ImageGenerationError::ResponseError(e.to_string()))?;
+            .map_err(|e| ProviderError::Response(e.to_string()))?;
 
         let result: TextToImageResponse = serde_json::from_str(&response_str)
-            .map_err(|e| ImageGenerationError::ResponseError(e.to_string()))?;
+            .map_err(|e| ProviderError::Response(e.to_string()))?;
 
         Ok((result, provider_request_id))
     }
@@ -86,7 +84,7 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
     async fn image_generation(
         &self,
         generation_request: ImageGenerationRequest,
-    ) -> Result<ImageGenerationResponse, ImageGenerationError> {
+    ) -> Result<ImageGenerationResponse, ProviderError> {
         rig_core::telemetry::instrument_modality(
             PROVIDER_NAME,
             &self.model,

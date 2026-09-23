@@ -7,9 +7,10 @@
 //! assert_eq!(options.generate, Some(false));
 //! ```
 
-use crate::completion::{self, CompletionError};
+use crate::completion;
 use crate::driver::{Bound, WireDriver};
 use crate::driver::{TriagedFrame, triage_frame};
+use crate::error::ProviderError;
 use crate::http_client::{self, NoBody};
 use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{
@@ -255,7 +256,7 @@ impl ResponsesWebSocketSessionBuilder {
     pub async fn connect_with<W>(
         self,
         backend: &W,
-    ) -> Result<ResponsesWebSocketSession, CompletionError>
+    ) -> Result<ResponsesWebSocketSession, ProviderError>
     where
         W: WebSocketClientExt,
     {
@@ -289,7 +290,7 @@ impl ResponsesWebSocketSession {
         wire: Responses,
         connect_timeout: Option<Duration>,
         event_timeout: Option<Duration>,
-    ) -> Result<Self, CompletionError>
+    ) -> Result<Self, ProviderError>
     where
         W: WebSocketClientExt,
     {
@@ -336,7 +337,7 @@ impl ResponsesWebSocketSession {
     pub async fn send(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
+    ) -> Result<(), ProviderError> {
         self.send_with_options(
             completion_request,
             ResponsesWebSocketCreateOptions::default(),
@@ -349,11 +350,11 @@ impl ResponsesWebSocketSession {
         &mut self,
         completion_request: crate::completion::CompletionRequest,
         options: ResponsesWebSocketCreateOptions,
-    ) -> Result<(), CompletionError> {
+    ) -> Result<(), ProviderError> {
         self.ensure_open()?;
 
         if self.in_flight {
-            return Err(CompletionError::ProviderError(
+            return Err(ProviderError::Provider(
                 "An OpenAI websocket response is already in flight on this session".to_string(),
             ));
         }
@@ -384,7 +385,7 @@ impl ResponsesWebSocketSession {
     }
 
     /// Reads the next server event for the current in-flight turn.
-    pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, CompletionError> {
+    pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, ProviderError> {
         self.next_event_with_payload().await.map(|(event, _)| event)
     }
 
@@ -392,11 +393,11 @@ impl ResponsesWebSocketSession {
     /// by [`ResponsesDecoder`]. Returns the same session errors as [`Self::next_event`].
     async fn next_event_with_payload(
         &mut self,
-    ) -> Result<(ResponsesWebSocketEvent, String), CompletionError> {
+    ) -> Result<(ResponsesWebSocketEvent, String), ProviderError> {
         self.ensure_open()?;
 
         if !self.in_flight {
-            return Err(CompletionError::ProviderError(
+            return Err(ProviderError::Provider(
                 "No OpenAI websocket response is currently in flight on this session".to_string(),
             ));
         }
@@ -409,7 +410,7 @@ impl ResponsesWebSocketSession {
 
             let Some(message) = message else {
                 self.mark_closed();
-                return Err(CompletionError::ProviderError(
+                return Err(ProviderError::Provider(
                     "The OpenAI websocket connection closed before the turn finished".to_string(),
                 ));
             };
@@ -441,7 +442,7 @@ impl ResponsesWebSocketSession {
     pub async fn warmup(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<String, CompletionError> {
+    ) -> Result<String, ProviderError> {
         self.send_with_options(
             completion_request,
             ResponsesWebSocketCreateOptions::warmup(),
@@ -456,7 +457,7 @@ impl ResponsesWebSocketSession {
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<completion::CompletionResponse, ProviderError> {
         let provider = self.wire.name().to_owned();
         self.send(completion_request).await?;
         let (response, events) = self.wait_for_terminal_response().await?;
@@ -475,7 +476,7 @@ impl ResponsesWebSocketSession {
     ///
     /// Call this when you are finished with the session so the websocket can
     /// terminate with a clean close handshake.
-    pub async fn close(&mut self) -> Result<(), CompletionError> {
+    pub async fn close(&mut self) -> Result<(), ProviderError> {
         if self.closed {
             return Ok(());
         }
@@ -492,7 +493,7 @@ impl ResponsesWebSocketSession {
     fn prepare_request(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<crate::providers::openai::responses_api::CompletionRequest, CompletionError> {
+    ) -> Result<crate::providers::openai::responses_api::CompletionRequest, ProviderError> {
         let mut request = self.wire.responses_request(completion_request, false)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
@@ -510,7 +511,7 @@ impl ResponsesWebSocketSession {
         Ok(request)
     }
 
-    async fn wait_for_completed_response(&mut self) -> Result<CompletionResponse, CompletionError> {
+    async fn wait_for_completed_response(&mut self) -> Result<CompletionResponse, ProviderError> {
         Ok(self.wait_for_terminal_response().await?.0)
     }
 
@@ -519,7 +520,7 @@ impl ResponsesWebSocketSession {
     /// collected events. A terminal event without a response body is an error.
     async fn wait_for_terminal_response(
         &mut self,
-    ) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
+    ) -> Result<(CompletionResponse, Vec<StreamEvent>), ProviderError> {
         // Frames arrive incrementally; finish only after a provider terminal event.
         let mut driver = WireDriver::<Completion, _>::new(self.wire.decoder(Mode::Streaming));
         let mut events = Vec::new();
@@ -574,7 +575,7 @@ impl ResponsesWebSocketSession {
                             .to_string()
                     };
 
-                    return Err(CompletionError::ProviderError(message));
+                    return Err(ProviderError::Provider(message));
                 }
                 ResponsesWebSocketEvent::Error(error) => {
                     // Genuine provider error event: preserve the serialized payload
@@ -654,9 +655,9 @@ impl ResponsesWebSocketSession {
         self.failed = true;
     }
 
-    fn ensure_open(&self) -> Result<(), CompletionError> {
+    fn ensure_open(&self) -> Result<(), ProviderError> {
         if self.closed || self.failed {
-            return Err(CompletionError::ProviderError(
+            return Err(ProviderError::Provider(
                 "The OpenAI websocket session is closed".to_string(),
             ));
         }
@@ -664,7 +665,7 @@ impl ResponsesWebSocketSession {
         Ok(())
     }
 
-    fn fail_session(&mut self, error: CompletionError) -> CompletionError {
+    fn fail_session(&mut self, error: ProviderError) -> ProviderError {
         self.mark_failed();
         error
     }
@@ -673,7 +674,7 @@ impl ResponsesWebSocketSession {
     /// Timeout failure marks the session failed; transport results remain nested.
     async fn read_next_frame(
         &mut self,
-    ) -> Result<http_client::Result<Option<Frame>>, CompletionError> {
+    ) -> Result<http_client::Result<Option<Frame>>, ProviderError> {
         let Some(timeout_duration) = self.event_timeout else {
             return Ok(self.socket.recv().await);
         };
@@ -706,7 +707,7 @@ fn drain(
     driver: &mut WireDriver<Completion, ResponsesDecoder>,
     events: &mut Vec<StreamEvent>,
     payload: String,
-) -> Result<(), CompletionError> {
+) -> Result<(), ProviderError> {
     driver.push(WireFrame::Text(payload));
     for item in driver.drain() {
         events.push(item?);
@@ -720,7 +721,7 @@ fn fold_events(
     provider: &str,
     events: Vec<StreamEvent>,
     response: &CompletionResponse,
-) -> Result<completion::CompletionResponse, CompletionError> {
+) -> Result<completion::CompletionResponse, ProviderError> {
     let mut fold = <Completion as Operation>::Fold::default();
     for event in events {
         fold.absorb(event)?;
@@ -735,16 +736,16 @@ fn fold_events(
 
 fn terminal_response_result(
     response: CompletionResponse,
-) -> Result<CompletionResponse, CompletionError> {
+) -> Result<CompletionResponse, ProviderError> {
     match response.status {
         ResponseStatus::Completed => Ok(response),
         // Preserve provider error envelopes as reserialized JSON without an HTTP status.
         // Without an error object, return a local diagnostic instead.
         ResponseStatus::Failed => match response.error.as_ref() {
-            Some(error) => Err(CompletionError::from_provider_body(
+            Some(error) => Err(ProviderError::from_provider_body(
                 serde_json::to_string(&response).unwrap_or_else(|_| error.message.clone()),
             )),
-            None => Err(CompletionError::ProviderError(response_error_message(
+            None => Err(ProviderError::Provider(response_error_message(
                 "failed response",
             ))),
         },
@@ -753,7 +754,7 @@ fn terminal_response_result(
         // normalization path maps the status/incomplete_details to a finish
         // reason via `map_finish_reason`, matching the unary and SSE paths.
         ResponseStatus::Incomplete => Ok(response),
-        other => Err(CompletionError::ProviderError(format!(
+        other => Err(ProviderError::Provider(format!(
             "OpenAI websocket response ended in state {other:?}"
         ))),
     }
@@ -765,15 +766,15 @@ fn response_error_message(fallback: &str) -> String {
 
 /// Preserve an error event as reserialized provider JSON without an HTTP status.
 /// Fall back to its display text if serialization fails.
-fn provider_error_from_event(error: &ResponsesWebSocketErrorEvent) -> CompletionError {
-    CompletionError::from_provider_body(
+fn provider_error_from_event(error: &ResponsesWebSocketErrorEvent) -> ProviderError {
+    ProviderError::from_provider_body(
         serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
     )
 }
 
 /// Decode WebSocket error and done events or delegate to Responses classification.
 /// Return parsing and triage errors; preserve unknown payloads.
-fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, CompletionError> {
+fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, ProviderError> {
     #[derive(Deserialize)]
     struct EventType {
         #[serde(rename = "type")]
@@ -784,10 +785,10 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
     match event_type.kind.as_str() {
         "error" => serde_json::from_str(payload)
             .map(|e| Some(ResponsesWebSocketEvent::Error(e)))
-            .map_err(CompletionError::from),
+            .map_err(ProviderError::from),
         "response.done" => serde_json::from_str(payload)
             .map(|d| Some(ResponsesWebSocketEvent::Done(d)))
-            .map_err(CompletionError::from),
+            .map_err(ProviderError::from),
         _ => Ok(Some(
             match triage_frame(classify_responses_frame(payload))? {
                 TriagedFrame::Event(StreamingCompletionChunk::Response(response)) => {
@@ -806,19 +807,19 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
 ///
 /// `Ok(None)` is a frame with no protocol payload (a keepalive), which the
 /// session skips; a close frame mid-turn is an error naming the peer's reason.
-fn websocket_frame_to_text(frame: Frame) -> Result<Option<String>, CompletionError> {
+fn websocket_frame_to_text(frame: Frame) -> Result<Option<String>, ProviderError> {
     match frame {
         Frame::Text(text) => Ok(Some(text)),
         Frame::Binary(bytes) => String::from_utf8(bytes.to_vec())
             .map(Some)
-            .map_err(|error| CompletionError::ResponseError(error.to_string())),
+            .map_err(|error| ProviderError::Response(error.to_string())),
         Frame::Ping(_) | Frame::Pong(_) => Ok(None),
         Frame::Close(frame) => {
             let reason = frame
                 .map(|frame| frame.reason)
                 .filter(|reason| !reason.is_empty())
                 .unwrap_or_else(|| "without a close reason".to_string());
-            Err(CompletionError::ProviderError(format!(
+            Err(ProviderError::Provider(format!(
                 "The OpenAI websocket connection closed {reason}"
             )))
         }
@@ -830,9 +831,9 @@ fn websocket_frame_to_text(frame: Frame) -> Result<Option<String>, CompletionErr
 ///
 /// The backend supplies the websocket-specific handshake headers; this only
 /// states where to connect and who is connecting.
-fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, CompletionError> {
+fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, ProviderError> {
     let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
-        .map_err(CompletionError::HttpError)?;
+        .map_err(ProviderError::Http)?;
 
     let request = wire.provider.headers(
         http_client::Request::builder()
@@ -841,23 +842,23 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, C
     );
 
     request.body(NoBody).map_err(|error| {
-        CompletionError::ProviderError(format!("Failed to build OpenAI websocket request: {error}"))
+        ProviderError::Provider(format!("Failed to build OpenAI websocket request: {error}"))
     })
 }
 
-fn event_timeout_error(timeout: Duration) -> CompletionError {
-    CompletionError::ProviderError(format!(
+fn event_timeout_error(timeout: Duration) -> ProviderError {
+    ProviderError::Provider(format!(
         "Timed out waiting for the next OpenAI websocket event after {timeout:?}"
     ))
 }
 
 /// Convert transport errors, retaining rejected-upgrade status, body, and request ID.
 /// Failures without a provider response retain transport error classification.
-fn websocket_provider_error(error: http_client::Error) -> CompletionError {
+fn websocket_provider_error(error: http_client::Error) -> ProviderError {
     let provider_request_id = error.non_success_headers().and_then(|headers| {
         crate::providers::internal::request_id_from_headers(headers, REQUEST_ID_HEADER)
     });
-    CompletionError::from_transport_error(error).with_provider_request_id(provider_request_id)
+    ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
 /// Construct Responses WebSocket sessions from a bound wire and a supplied backend.
@@ -869,7 +870,7 @@ pub trait ResponsesWebSocketExt {
     fn responses_websocket_with<W>(
         &self,
         backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>>
     + WasmCompatSend
     where
         W: WebSocketClientExt + WasmCompatSync,
@@ -884,7 +885,7 @@ impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
     fn responses_websocket_with<W>(
         &self,
         backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>>
     + WasmCompatSend
     where
         W: WebSocketClientExt + WasmCompatSync,

@@ -1,10 +1,8 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 
-use rig_core::{
-    completion::CompletionError,
-    message::{AssistantContent, Text},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{AssistantContent, Text};
 use serde::{Deserialize, Serialize};
 
 use crate::types::message::RigMessage;
@@ -15,7 +13,7 @@ use super::{
     },
     json::AwsDocument,
 };
-use rig_core::completion::{self};
+use rig_core::completion;
 use rig_core::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -79,7 +77,7 @@ pub const PROVIDER_NAME: &str = "aws_bedrock";
 pub(crate) fn completion_response(
     output: AwsConverseOutput,
     model: &str,
-) -> Result<completion::CompletionResponse, CompletionError> {
+) -> Result<completion::CompletionResponse, ProviderError> {
     let mut response: completion::CompletionResponse = output.try_into()?;
     response.choice =
         rig_core::streaming::stamp_reasoning(response.choice, reasoning_issuer(model));
@@ -114,7 +112,7 @@ pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
 }
 
 impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
         // The provider's own document, captured before the output is
@@ -124,21 +122,19 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
             .clone()
             .0
             .output
-            .ok_or(CompletionError::ProviderError(
+            .ok_or(ProviderError::Provider(
                 "Model didn't return any output".into(),
             ))?
             .as_message()
             .map_err(|_| {
-                CompletionError::ProviderError(
-                    "Failed to extract message from converse output".into(),
-                )
+                ProviderError::Provider("Failed to extract message from converse output".into())
             })?
             .to_owned()
             .try_into()?;
 
         let choice = match message.0 {
             completion::Message::Assistant { content, .. } => Ok(content),
-            _ => Err(CompletionError::ResponseError(
+            _ => Err(ProviderError::Response(
                 "Converse output message was not an assistant message".to_owned(),
             )),
         }?;
@@ -163,7 +159,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
 pub struct RigAssistantContent(pub AssistantContent);
 
 impl TryFrom<ContentBlock> for RigAssistantContent {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: ContentBlock) -> Result<Self, Self::Error> {
         match value {
@@ -190,11 +186,11 @@ impl TryFrom<ContentBlock> for RigAssistantContent {
                         rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(blob.inner)),
                     )))
                 }
-                _ => Err(CompletionError::ProviderError(
+                _ => Err(ProviderError::Provider(
                     "AWS Bedrock returned unsupported ReasoningContentBlock variant".into(),
                 )),
             },
-            _ => Err(CompletionError::ProviderError(
+            _ => Err(ProviderError::Provider(
                 "AWS Bedrock returned unsupported ContentBlock".into(),
             )),
         }
@@ -207,7 +203,7 @@ impl RigAssistantContent {
     /// with a warning. Rejects images and unrepresentable signed reasoning.
     pub(crate) fn into_content_block(
         self,
-    ) -> Result<Option<aws_bedrock::ContentBlock>, CompletionError> {
+    ) -> Result<Option<aws_bedrock::ContentBlock>, ProviderError> {
         match self.0 {
             AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
             AssistantContent::ToolCall(tool_call) => {
@@ -221,7 +217,7 @@ impl RigAssistantContent {
                         .name(tool_call.function.name)
                         .input(doc.0)
                         .build()
-                        .map_err(|e| CompletionError::ProviderError(e.to_string()))?,
+                        .map_err(|e| ProviderError::Provider(e.to_string()))?,
                 )))
             }
             AssistantContent::Reasoning(mut reasoning) => {
@@ -318,13 +314,13 @@ impl RigAssistantContent {
                     })
                     .count();
                 if signed_text_count > 1 {
-                    return Err(CompletionError::ProviderError(
+                    return Err(ProviderError::Provider(
                         "AWS Bedrock does not support multiple signed reasoning text blocks"
                             .to_owned(),
                     ));
                 }
                 if signed_text_count == 1 && reasoning.content.len() > 1 {
-                    return Err(CompletionError::ProviderError(
+                    return Err(ProviderError::Provider(
                         "AWS Bedrock requires a single signed reasoning text block without additional reasoning parts"
                             .to_owned(),
                     ));
@@ -335,7 +331,7 @@ impl RigAssistantContent {
                 // Signature-only reasoning must survive tool-call replay even
                 // when its plaintext is empty.
                 if flattened_text.is_empty() && !has_signature {
-                    return Err(CompletionError::ProviderError(
+                    return Err(ProviderError::Provider(
                         "AWS Bedrock reasoning conversion requires at least one text or summary block"
                             .to_owned(),
                     ));
@@ -349,14 +345,14 @@ impl RigAssistantContent {
                 }
 
                 let reasoning_text_block = reasoning_block.build().map_err(|e| {
-                    CompletionError::ProviderError(format!("Failed to build reasoning block: {e}"))
+                    ProviderError::Provider(format!("Failed to build reasoning block: {e}"))
                 })?;
 
                 Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(
                     aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
                 )))
             }
-            AssistantContent::Image(_) => Err(CompletionError::ProviderError(
+            AssistantContent::Image(_) => Err(ProviderError::Provider(
                 "AWS Bedrock does not support image content in assistant messages".to_owned(),
             )),
         }

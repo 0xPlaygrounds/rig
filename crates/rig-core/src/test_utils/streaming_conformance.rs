@@ -25,9 +25,10 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 
+use crate::error::ProviderError;
 use crate::streaming::BlockId;
 use crate::{
-    completion::{CompletionError, FinishReason},
+    completion::FinishReason,
     error::ErrorReport,
     http_client,
     message::AssistantContent,
@@ -39,7 +40,7 @@ use crate::{
 pub enum ConformanceError {
     /// Opening the stream failed before any wire frame was consumed.
     #[error(transparent)]
-    Completion(#[from] CompletionError),
+    Completion(#[from] ProviderError),
     /// The pipeline violated the streaming contract table.
     #[error("{scenario} conformance failed for {provider}: {details}")]
     Contract {
@@ -674,7 +675,7 @@ impl DrainedStream {
 }
 
 type DriveFn = Box<
-    dyn Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, CompletionError>> + Send + Sync,
+    dyn Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, ProviderError>> + Send + Sync,
 >;
 
 /// One provider's full streaming pipeline over scripted wire chunks.
@@ -692,7 +693,7 @@ impl WireDriver {
     /// Wrap a provider pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, CompletionError>>
+        drive: impl Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, ProviderError>>
         + Send
         + Sync
         + 'static,
@@ -704,7 +705,7 @@ impl WireDriver {
     }
 
     /// Run the provider's full pipeline over `chunks` and drain it.
-    pub async fn drive(&self, chunks: WireChunks) -> Result<DrainedStream, CompletionError> {
+    pub async fn drive(&self, chunks: WireChunks) -> Result<DrainedStream, ProviderError> {
         (self.drive)(chunks).await
     }
 }
@@ -733,7 +734,7 @@ pub struct InterleavedReasoningFixture {
 }
 
 type BufferedDriveFn = Box<
-    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, CompletionError>>
+    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, ProviderError>>
         + Send
         + Sync,
 >;
@@ -750,7 +751,7 @@ impl BufferedBodyDriver {
     /// Wrap a buffered pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, CompletionError>>
+        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, ProviderError>>
         + Send
         + Sync
         + 'static,
@@ -762,7 +763,7 @@ impl BufferedBodyDriver {
     }
 
     /// Run the buffered pipeline over a complete SSE body.
-    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, CompletionError> {
+    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, ProviderError> {
         (self.drive)(body).await
     }
 }
@@ -1676,7 +1677,7 @@ pub mod fixtures {
     pub async fn drain_observed<M: CompletionModel>(
         model: &M,
         request: crate::completion::CompletionRequest,
-    ) -> Result<DrainedStream, CompletionError> {
+    ) -> Result<DrainedStream, ProviderError> {
         let log = std::sync::Arc::new(crate::observe::ObservationLog::default());
         let context = crate::observe::AdapterContext::new(
             log.clone(),
@@ -1718,12 +1719,12 @@ pub mod fixtures {
     /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`
     /// replays. Only byte frames are valid here — an event frame in a
     /// byte-driver fixture is a fixture authoring error.
-    fn byte_chunks(chunks: WireChunks) -> Result<Vec<http_client::Result<Bytes>>, CompletionError> {
+    fn byte_chunks(chunks: WireChunks) -> Result<Vec<http_client::Result<Bytes>>, ProviderError> {
         chunks
             .into_iter()
             .map(|chunk| match chunk {
                 Ok(WireInput::Bytes(bytes)) => Ok(Ok(bytes)),
-                Ok(WireInput::Event(_)) => Err(CompletionError::ProviderError(
+                Ok(WireInput::Event(_)) => Err(ProviderError::Provider(
                     "typed-event frame fed to a byte-transport driver".to_string(),
                 )),
                 Err(error) => Ok(Err(error)),

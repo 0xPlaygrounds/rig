@@ -4,8 +4,8 @@ use super::*;
 use crate::{http_client, provider_response::ProviderResponseError};
 
 /// A non-success reply as a transport reports it, routed like a `?` would.
-fn http_error(status: u16) -> CompletionError {
-    CompletionError::from_transport_error(http_client::Error::non_success_with_details(
+fn http_error(status: u16) -> ProviderError {
+    ProviderError::from_transport_error(http_client::Error::non_success_with_details(
         StatusCode::from_u16(status).expect("valid status"),
         http::HeaderMap::new(),
         "body".to_string(),
@@ -15,7 +15,7 @@ fn http_error(status: u16) -> CompletionError {
 #[test]
 fn retrieval_wrapping_preserves_embedding_error_classification() {
     for (status, retryable) in [(400, false), (429, true), (503, true)] {
-        let inner = EmbeddingError::ProviderResponse(ProviderResponseError::new(
+        let inner = ProviderError::ProviderResponse(ProviderResponseError::new(
             StatusCode::from_u16(status).expect("valid status"),
             "embedding request failed",
         ));
@@ -283,7 +283,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         http_client::Error::Instance("connection reset by peer".into()),
     ];
     for error in transient {
-        let error = CompletionError::HttpError(error);
+        let error = ProviderError::Http(error);
         assert!(error.is_retryable(), "{error}");
         let report = error.report();
         assert_eq!(report.kind, ErrorKind::Http);
@@ -298,7 +298,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         ),
     ];
     for error in permanent {
-        let error = CompletionError::HttpError(error);
+        let error = ProviderError::Http(error);
         assert!(!error.is_retryable(), "{error}");
         assert!(!error.report().retryable, "{error}");
     }
@@ -307,7 +307,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
     assert!(http_error(503).is_retryable());
     // A provider response without a status decides nothing either.
     assert!(
-        !CompletionError::ProviderResponse(ProviderResponseError::without_status("body"))
+        !ProviderError::ProviderResponse(ProviderResponseError::without_status("body"))
             .is_retryable()
     );
 }
@@ -348,7 +348,7 @@ fn tool_retryability_has_one_answer_on_every_surface() {
 
 #[test]
 fn completion_provider_response_classifies_by_status() {
-    let error = CompletionError::ProviderResponse(ProviderResponseError::new(
+    let error = ProviderError::ProviderResponse(ProviderResponseError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "down",
     ));
@@ -361,16 +361,10 @@ fn completion_provider_response_classifies_by_status() {
 #[test]
 fn completion_non_http_variants_are_not_retryable() {
     let cases = [
+        (ProviderError::Response("bad".into()), ErrorKind::Response),
+        (ProviderError::Provider("bad".into()), ErrorKind::Provider),
         (
-            CompletionError::ResponseError("bad".into()),
-            ErrorKind::Response,
-        ),
-        (
-            CompletionError::ProviderError("bad".into()),
-            ErrorKind::Provider,
-        ),
-        (
-            CompletionError::UrlError(url::ParseError::EmptyHost),
+            ProviderError::Url(url::ParseError::EmptyHost),
             ErrorKind::Url,
         ),
     ];
@@ -458,7 +452,7 @@ fn a_provider_response_travels_with_the_report() {
     // the wire, and survives serde.
     let mut headers = http::HeaderMap::new();
     headers.insert("retry-after", http::HeaderValue::from_static("7"));
-    let error = CompletionError::ProviderResponse(
+    let error = ProviderError::ProviderResponse(
         ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
             .with_provider_request_id(Some("req-9".to_owned()))
             .with_headers(Some(headers)),
@@ -509,24 +503,19 @@ fn a_provider_response_travels_with_the_report() {
         Some(StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(http.provider_response_body(), Some("body"));
-    let plain = ErrorReport::from(&CompletionError::ProviderError("oops".to_owned()));
+    let plain = ErrorReport::from(&ProviderError::Provider("oops".to_owned()));
     assert!(plain.provider_response.is_none());
     assert_eq!(plain.provider_response_body(), None);
 }
 
 #[test]
-fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
+fn provider_reports_retain_structured_provider_metadata() {
     let response = ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, "retry later")
         .with_provider_request_id(Some("req-retained".into()));
-    let embedding = EmbeddingError::ProviderResponse(response.clone());
-    let rerank = RerankError::ProviderResponse(response.clone());
+    let direct = ProviderError::ProviderResponse(response.clone());
     let wrapped =
-        VectorStoreError::EmbeddingError(EmbeddingError::ProviderResponse(response.clone()));
-    for report in [
-        ErrorReport::from(&embedding),
-        ErrorReport::from(&rerank),
-        ErrorReport::from(&wrapped),
-    ] {
+        VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()));
+    for report in [ErrorReport::from(&direct), ErrorReport::from(&wrapped)] {
         assert_eq!(report.request_id.as_deref(), Some("req-retained"));
         assert_eq!(
             serde_json::to_value(report.provider_response.as_ref()).unwrap(),
@@ -541,21 +530,17 @@ fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
 }
 
 /// A transport rejection routed through the `From` conversion is the
-/// provider's reply on every capability: body, headers and status ride on
-/// the report, and the kind says so. `HttpError` itself cannot carry any of
-/// them, so a report from one has no provider response.
+/// provider's reply: body, headers and status ride on the report, and the
+/// kind says so. `Http` itself cannot carry any of them, so a report from
+/// one has no provider response.
 #[test]
-fn embedding_and_rerank_http_reports_retain_body_and_headers() {
-    for report in [
-        ErrorReport::from(EmbeddingError::HttpError(http_client::Error::StreamEnded)),
-        ErrorReport::from(RerankError::HttpError(http_client::Error::StreamEnded)),
-    ] {
-        assert_eq!(report.kind, ErrorKind::Http);
-        assert_eq!(report.http_status, None);
-        assert!(report.provider_response.is_none());
-        assert!(report.retryable);
-    }
-    let make_error = || {
+fn http_reports_retain_body_and_headers() {
+    let report = ErrorReport::from(ProviderError::Http(http_client::Error::StreamEnded));
+    assert_eq!(report.kind, ErrorKind::Http);
+    assert_eq!(report.http_status, None);
+    assert!(report.provider_response.is_none());
+    assert!(report.retryable);
+    let error = || {
         let mut headers = http::HeaderMap::new();
         headers.insert("retry-after", http::HeaderValue::from_static("7"));
         http_client::Error::InvalidStatusCodeWithDetails {
@@ -564,26 +549,22 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
             headers,
         }
     };
-    for report in [
-        ErrorReport::from(EmbeddingError::from(make_error())),
-        ErrorReport::from(RerankError::from(make_error())),
-    ] {
-        assert_eq!(report.kind, ErrorKind::ProviderResponse);
-        let response = report.provider_response.expect("structured HTTP response");
-        assert_eq!(response.body, "temporary outage");
-        assert_eq!(
-            response
-                .headers
-                .as_ref()
-                .expect("retained headers")
-                .get("retry-after")
-                .expect("retry header"),
-            "7"
-        );
-        assert_eq!(response.status, Some(StatusCode::SERVICE_UNAVAILABLE));
-        assert!(report.retryable);
-        assert!(report.request_id.is_none());
-    }
+    let report = ErrorReport::from(ProviderError::from(error()));
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    let response = report.provider_response.expect("structured HTTP response");
+    assert_eq!(response.body, "temporary outage");
+    assert_eq!(
+        response
+            .headers
+            .as_ref()
+            .expect("retained headers")
+            .get("retry-after")
+            .expect("retry header"),
+        "7"
+    );
+    assert_eq!(response.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(report.retryable);
+    assert!(report.request_id.is_none());
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -603,7 +584,7 @@ fn wrapped_memory_error_retains_nested_sources() {
 
 #[test]
 fn wrapped_document_error_retains_nested_sources() {
-    let error = EmbeddingError::DocumentError(Box::new(NestedBackendError(std::io::Error::other(
+    let error = ProviderError::Request(Box::new(NestedBackendError(std::io::Error::other(
         "document",
     ))));
     assert!(

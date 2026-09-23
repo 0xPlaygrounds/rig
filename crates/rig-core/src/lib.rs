@@ -15,9 +15,10 @@
 //! and external storage integrations.
 //!
 //! ```no_run
-//! use rig_core::completion::{CompletionError, CompletionModel, CompletionResponse};
+//! use rig_core::completion::{CompletionModel, CompletionResponse};
+//! use rig_core::error::ProviderError;
 //!
-//! async fn ask<M: CompletionModel + Clone>(model: &M) -> Result<CompletionResponse, CompletionError> {
+//! async fn ask<M: CompletionModel + Clone>(model: &M) -> Result<CompletionResponse, ProviderError> {
 //!     let request = model.completion_request("Who are you?").build();
 //!     model.completion(request).await
 //! }
@@ -71,7 +72,7 @@ pub mod ws_client;
 
 pub use completion::message;
 pub use embeddings::Embed;
-pub use error::{ErrorKind, ErrorReport};
+pub use error::{ErrorKind, ErrorReport, ProviderError};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of

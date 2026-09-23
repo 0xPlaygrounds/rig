@@ -1,9 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::{
-    completion::CompletionError,
-    message::{Document, DocumentMediaType, DocumentSourceKind},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{Document, DocumentMediaType, DocumentSourceKind};
 
 use crate::types::{converse_output::DocumentBlock, document::RigDocument};
 
@@ -82,7 +80,7 @@ fn test_unsupported_document_to_aws_document() {
     let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.try_into();
     assert_eq!(
         aws_document.err().unwrap().to_string(),
-        CompletionError::ProviderError("Unsupported media type application/x-javascript".into())
+        ProviderError::Provider("Unsupported media type application/x-javascript".into())
             .to_string()
     );
 }
@@ -117,6 +115,6 @@ fn test_unsupported_aws_document_to_rig_document() {
     assert!(rig_document.is_err());
     assert_eq!(
         rig_document.err().unwrap().to_string(),
-        CompletionError::ProviderError("Unsupported media type xlsx".into()).to_string()
+        ProviderError::Provider("Unsupported media type xlsx".into()).to_string()
     );
 }

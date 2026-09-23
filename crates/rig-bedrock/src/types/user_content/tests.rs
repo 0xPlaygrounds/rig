@@ -1,9 +1,7 @@
 use crate::types::{converse_output::ContentBlock, user_content::RigUserContent};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::{
-    completion::CompletionError,
-    message::{ToolResultContent, UserContent},
-};
+use rig_core::error::ProviderError;
+use rig_core::message::{ToolResultContent, UserContent};
 
 /// The inbound path reads the mirror, but what Bedrock sends is the SDK
 /// block, so the tests still start there and mirror it first.
@@ -69,10 +67,8 @@ fn aws_unsupported_content_block_to_user_content() {
     assert!(user_content.is_err());
     assert_eq!(
         user_content.err().unwrap().to_string(),
-        CompletionError::ProviderError(
-            "ToolResultContentBlock contains unsupported variant".into()
-        )
-        .to_string()
+        ProviderError::Provider("ToolResultContentBlock contains unsupported variant".into())
+            .to_string()
     );
 }
 

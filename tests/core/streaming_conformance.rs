@@ -20,13 +20,12 @@ use rig_core::test_utils::streaming_conformance::{
 /// in-crate fixtures apply; event frames are a fixture authoring error here).
 fn byte_chunks(
     chunks: conformance::WireChunks,
-) -> Result<Vec<rig_core::http_client::Result<bytes::Bytes>>, rig_core::completion::CompletionError>
-{
+) -> Result<Vec<rig_core::http_client::Result<bytes::Bytes>>, rig_core::error::ProviderError> {
     chunks
         .into_iter()
         .map(|chunk| match chunk {
             Ok(frame) => frame.as_bytes().cloned().map(Ok).ok_or_else(|| {
-                rig_core::completion::CompletionError::ProviderError(
+                rig_core::error::ProviderError::Provider(
                     "typed-event frame fed to a byte-transport driver".to_string(),
                 )
             }),

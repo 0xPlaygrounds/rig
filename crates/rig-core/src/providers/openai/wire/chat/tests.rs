@@ -734,7 +734,7 @@ async fn malformed_arguments_on_a_completed_tool_turn_stay_a_decode_error() {
         .await
         .expect_err("a completed tool-call turn with malformed arguments is a defect");
     assert!(
-        matches!(error, CompletionError::JsonError(_)),
+        matches!(error, ProviderError::Json(_)),
         "the malformed payload must stay loud rather than be dropped: {error:?}"
     );
 }
@@ -808,7 +808,7 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     let strict = Bound::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
         .completion(prompt("ask"))
         .await;
-    let Err(CompletionError::ResponseError(message)) = &strict else {
+    let Err(ProviderError::Response(message)) = &strict else {
         panic!("openai does not answer with a bare string: {strict:?}");
     };
     assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR);
@@ -894,7 +894,7 @@ async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
             .completion(prompt("ask"))
             .await;
 
-        let Err(CompletionError::ResponseError(message)) = &folded else {
+        let Err(ProviderError::Response(message)) = &folded else {
             panic!("`{reason:?}` does not license an empty turn: {folded:?}");
         };
         assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR, "{reason:?}");

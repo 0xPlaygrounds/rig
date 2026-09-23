@@ -3,8 +3,8 @@
 use super::super::tests::{recorded, recorded_json};
 use super::*;
 use crate::driver::Bound;
-use crate::embeddings::EmbeddingError;
 use crate::embeddings::EmbeddingModel as _;
+use crate::error::ProviderError;
 use crate::model::ModelLister as _;
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
@@ -830,7 +830,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 /// vector, so the disagreement never appears in the reply at all.
 #[test]
 fn an_unhonourable_width_is_refused_before_the_request_is_built() {
-    fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> EmbeddingError {
+    fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> ProviderError {
         OpenAI::with_key(dialect, "k")
             .embeddings(model, Some(ndims))
             .encode(documents(), Mode::Unary)
@@ -859,7 +859,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     assert!(
         matches!(
             refusal(&MISTRAL, MISTRAL_EMBED, 512),
-            EmbeddingError::UnsupportedParameter {
+            ProviderError::UnsupportedParameter {
                 provider: "mistral",
                 parameter: "output_dimension",
             }

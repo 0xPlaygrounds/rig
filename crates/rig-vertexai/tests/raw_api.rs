@@ -1,4 +1,5 @@
-use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
+use rig_core::completion::{CompletionRequest, CompletionResponse};
+use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_vertexai::completion::{CompletionModel, VertexGenerateContentOutput};
 
@@ -7,7 +8,7 @@ struct SavedResponse(VertexGenerateContentOutput);
 async fn capture(
     model: &CompletionModel,
     request: CompletionRequest,
-) -> Result<SavedResponse, CompletionError> {
+) -> Result<SavedResponse, ProviderError> {
     Ok(SavedResponse(model.raw_completion(request).await?))
 }
 

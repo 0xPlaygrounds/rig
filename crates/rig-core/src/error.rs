@@ -1,11 +1,13 @@
-//! Serializable error reports and shared retry classifications for the effect protocol.
-//! Reports preserve classifications, available provider metadata, and textual source chains.
+//! The provider error type, serializable error reports, and shared retry
+//! classifications for the effect protocol. Reports preserve classifications,
+//! available provider metadata, and textual source chains.
 //!
 //! ```
-//! use rig_core::error::{ErrorKind, ErrorReport};
+//! use rig_core::error::{ErrorKind, ProviderError};
 //!
-//! let report = ErrorReport::new(ErrorKind::Cancelled, "cancelled");
-//! assert!(!report.is_retryable());
+//! let error = ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, "slow down");
+//! assert!(error.is_retryable());
+//! assert_eq!(error.report().kind, ErrorKind::ProviderResponse);
 //! ```
 
 use std::fmt;
@@ -13,19 +15,13 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::CompletionError,
-    embeddings::EmbeddingError,
+    http_client,
     memory::MemoryError,
-    rerank::RerankError,
+    observe::AdapterErrorBoundary,
+    provider_response::ProviderResponseError,
     tool::{ToolErrorKind, ToolExecutionError},
-    transcription::TranscriptionError,
     vector_store::VectorStoreError,
 };
-
-#[cfg(feature = "audio")]
-use crate::audio_generation::AudioGenerationError;
-#[cfg(feature = "image")]
-use crate::image_generation::ImageGenerationError;
 
 /// Normalized classification of an [`ErrorReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -291,14 +287,14 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 /// Protocol, header, and content-type errors are not retryable. Errors carrying
 /// an HTTP status use [`retryable_status`]. This does not guarantee the server
 /// has not processed the request.
-pub fn transient_transport(error: &crate::http_client::Error) -> bool {
+pub fn transient_transport(error: &http_client::Error) -> bool {
     match error {
-        crate::http_client::Error::StreamEnded | crate::http_client::Error::Instance(_) => true,
-        crate::http_client::Error::Protocol(_)
-        | crate::http_client::Error::InvalidHeaderValue(_)
-        | crate::http_client::Error::NoHeaders
-        | crate::http_client::Error::InvalidContentType(_) => false,
-        crate::http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
+        http_client::Error::StreamEnded | http_client::Error::Instance(_) => true,
+        http_client::Error::Protocol(_)
+        | http_client::Error::InvalidHeaderValue(_)
+        | http_client::Error::NoHeaders
+        | http_client::Error::InvalidContentType(_) => false,
+        http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
             retryable_status(Some(status.as_u16()))
         }
     }
@@ -316,127 +312,360 @@ pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<Str
     chain
 }
 
-/// Implements report conversions for provider errors. Additional variants
-/// default to request faults unless an explicit pattern and kind override them.
-macro_rules! impl_report_for_provider_error {
-    ($error:ident $(, $extra:pat => $extra_kind:expr)* $(,)?) => {
-        impl From<&$error> for $crate::error::ErrorReport {
-            fn from(error: &$error) -> Self {
-                use $crate::error::ErrorKind;
-                let (kind, provider_response) = match error {
-                    $error::HttpError(_) => (ErrorKind::Http, None),
-                    $error::JsonError(_) => (ErrorKind::Json, None),
-                    $error::ResponseError(_) => (ErrorKind::Response, None),
-                    $error::ProviderError(_) => (ErrorKind::Provider, None),
-                    $error::ProviderResponse(response) => {
-                        (ErrorKind::ProviderResponse, Some(response.clone()))
-                    }
-                    $( $extra => ($extra_kind, None), )*
-                    _ => (ErrorKind::Request, None),
-                };
-                $crate::error::ErrorReport {
-                    kind,
-                    retryable: error.is_retryable(),
-                    message: error.to_string(),
-                    code: provider_response
-                        .as_ref()
-                        .and_then(|response| response.machine_code()),
-                    http_status: provider_response
-                        .as_ref()
-                        .and_then(|response| response.status.map(|status| status.as_u16())),
-                    refusal: provider_response
-                        .as_ref()
-                        .is_some_and(|response| response.refusal),
-                    source_chain: $crate::error::source_chain(error),
-                    request_id: provider_response
-                        .as_ref()
-                        .and_then(|response| response.provider_request_id.clone()),
-                    provider_response,
-                    detail: None,
-                }
-            }
-        }
+/// A boxed request-building failure.
+#[cfg(not(target_family = "wasm"))]
+pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-        impl From<$error> for $crate::error::ErrorReport {
-            fn from(error: $error) -> Self {
-                Self::from(&error)
-            }
-        }
-    };
+/// A boxed request-building failure.
+#[cfg(target_family = "wasm")]
+pub type BoxError = Box<dyn std::error::Error + 'static>;
+
+/// A failed provider operation: completion, embedding, reranking,
+/// transcription, image or audio generation, verification, model listing, or
+/// context caching.
+///
+/// The variant is the classification, and each variant maps to one
+/// [`ErrorKind`]. A provider's reply is preserved as a
+/// [`ProviderResponseError`] with its status, body, headers, and request ID;
+/// read it through [`Self::provider_response`] or the accessors below.
+///
+/// ```
+/// use rig_core::error::ProviderError;
+///
+/// fn log(error: &ProviderError) {
+///     if let Some(status) = error.provider_response_status() {
+///         // Error envelopes can arrive with successful HTTP statuses.
+///         eprintln!("provider returned HTTP {status}");
+///     }
+///     match error.provider_response_json() {
+///         Ok(Some(json)) => eprintln!("provider error payload: {json}"),
+///         Ok(None) => eprintln!("no provider response body: {error}"),
+///         Err(_) => eprintln!("non-JSON body: {:?}", error.provider_response_body()),
+///     }
+/// }
+/// ```
+#[derive(Debug, thiserror::Error)]
+pub enum ProviderError {
+    /// A transport failure that produced no provider reply: a reset
+    /// connection, a timeout, an unreadable response. A reply the server
+    /// made is [`Self::ProviderResponse`].
+    #[error("HttpError: {0}")]
+    Http(http_client::Error),
+    /// JSON serialization or deserialization failed.
+    #[error("JsonError: {0}")]
+    Json(#[from] serde_json::Error),
+    /// A URL could not be parsed.
+    #[error("UrlError: {0}")]
+    Url(#[from] url::ParseError),
+    /// The request could not be built.
+    #[error("RequestError: {0}")]
+    Request(#[from] BoxError),
+    /// The reply decoded but does not answer the request.
+    #[error("ResponseError: {0}")]
+    Response(String),
+    /// The provider reported a failure without a preserved reply.
+    #[error("ProviderError: {0}")]
+    Provider(String),
+    /// The provider's reply, preserved: a non-success status with its body, a
+    /// 2xx error envelope, or a non-HTTP transport's error payload.
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(ProviderResponseError),
+    /// The provider rejected the configured credentials with 401 or 403.
+    #[error("invalid authentication: {0}")]
+    InvalidAuthentication(ProviderResponseError),
+    /// A request for an existing context-cache handle answered 403 or 404.
+    /// The reply's body is the provider's explanation, which can name a
+    /// cause other than expiry, such as a credential or quota failure.
+    #[error("cached content `{name}` is expired or was deleted: {}", response.body)]
+    CacheExpired {
+        /// The cache handle the request named.
+        name: String,
+        /// The provider's reply.
+        response: ProviderResponseError,
+    },
+    /// The provider does not support a request parameter configured on the
+    /// model.
+    #[error("{provider} embeddings do not support the `{parameter}` parameter")]
+    UnsupportedParameter {
+        /// Provider whose API rejects the parameter.
+        provider: &'static str,
+        /// Unsupported request parameter.
+        parameter: &'static str,
+    },
+    /// A request parameter was configured outside the provider's supported
+    /// range.
+    #[error("{provider} embeddings require `{parameter}` {requirement}")]
+    InvalidParameterValue {
+        /// Provider whose API constrains the parameter.
+        provider: &'static str,
+        /// Request parameter with the invalid value.
+        parameter: &'static str,
+        /// Concise description of the accepted values.
+        requirement: &'static str,
+    },
+    /// Rig cannot decode the requested response encoding.
+    #[error("Rig cannot decode {provider} embedding responses encoded as `{encoding_format}`")]
+    UnsupportedResponseEncoding {
+        /// Provider whose response encoding was requested.
+        provider: &'static str,
+        /// Response encoding that Rig cannot decode.
+        encoding_format: &'static str,
+    },
+    /// A provider that guarantees usage omitted it from the response.
+    #[error("{provider} embedding response omitted required usage")]
+    MissingUsage {
+        /// Provider whose response omitted usage.
+        provider: &'static str,
+    },
+    /// The provider returned vectors of a width other than the one the caller
+    /// declared through
+    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
+    /// argument. Raised only when the width was set explicitly.
+    #[error(
+        "{provider} embedding response returned {returned}-dimension vectors, but the model was \
+         created with {requested} dimensions; this provider does not resize embeddings"
+    )]
+    MismatchedDimensions {
+        /// Provider whose response disagreed with the declared width.
+        provider: String,
+        /// Width the caller declared.
+        requested: usize,
+        /// Width the provider actually returned.
+        returned: usize,
+    },
 }
 
-pub(crate) use impl_report_for_provider_error;
+impl ProviderError {
+    /// Preserves the status and verbatim body as [`Self::ProviderResponse`],
+    /// including error envelopes returned with 2xx statuses.
+    pub fn from_http_response(status: http::StatusCode, body: impl Into<String>) -> Self {
+        Self::ProviderResponse(ProviderResponseError::new(status, body))
+    }
 
-impl_report_for_provider_error!(TranscriptionError);
-#[cfg(feature = "image")]
-impl_report_for_provider_error!(ImageGenerationError);
-#[cfg(feature = "audio")]
-impl_report_for_provider_error!(AudioGenerationError);
+    /// Preserves a verbatim provider error body with no HTTP status as
+    /// [`Self::ProviderResponse`].
+    pub fn from_provider_body(body: impl Into<String>) -> Self {
+        Self::ProviderResponse(ProviderResponseError::without_status(body))
+    }
 
-impl CompletionError {
+    /// Converts a non-success reply the transport reported as an error to
+    /// [`Self::ProviderResponse`], keeping its status, body, and headers.
+    /// Other transport errors become [`Self::Http`].
+    pub fn from_transport_error(error: http_client::Error) -> Self {
+        match error {
+            http_client::Error::InvalidStatusCodeWithDetails {
+                status,
+                body,
+                headers,
+            } => Self::from_http_response(status, body).with_response_headers(Some(headers)),
+            other => Self::Http(other),
+        }
+    }
+
+    /// The classification this error reports as.
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::Http(_) => ErrorKind::Http,
+            Self::Json(_) => ErrorKind::Json,
+            Self::Url(_) => ErrorKind::Url,
+            Self::Request(_)
+            | Self::UnsupportedParameter { .. }
+            | Self::InvalidParameterValue { .. } => ErrorKind::Request,
+            Self::Response(_)
+            | Self::UnsupportedResponseEncoding { .. }
+            | Self::MissingUsage { .. }
+            | Self::MismatchedDimensions { .. } => ErrorKind::Response,
+            Self::Provider(_) => ErrorKind::Provider,
+            Self::ProviderResponse(_)
+            | Self::InvalidAuthentication(_)
+            | Self::CacheExpired { .. } => ErrorKind::ProviderResponse,
+        }
+    }
+
+    /// Classifies transport failures with [`transient_transport`] and
+    /// preserved replies with [`ProviderResponseError::is_retryable`]. Every
+    /// other failure, rejected credentials and expired caches included, is not
+    /// retryable.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Http(error) => transient_transport(error),
+            Self::ProviderResponse(response) => response.is_retryable(),
+            _ => false,
+        }
+    }
+
+    /// The provider's preserved reply, when this error carries one.
+    pub fn provider_response(&self) -> Option<&ProviderResponseError> {
+        match self {
+            Self::ProviderResponse(response)
+            | Self::InvalidAuthentication(response)
+            | Self::CacheExpired { response, .. } => Some(response),
+            _ => None,
+        }
+    }
+
+    /// The preserved reply's body. An empty body returns `Some("")`, while
+    /// [`Self::provider_response_json`] maps it to `Ok(None)`.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        self.provider_response()
+            .map(|response| response.body.as_str())
+    }
+
+    /// Parses the preserved reply's body as JSON: `Ok(None)` when there is no
+    /// body or it is empty, `Err` when it is not valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        crate::provider_response::json(self.provider_response_body())
+    }
+
+    /// The preserved reply's HTTP status. It may be 2xx for an error envelope.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        self.provider_response()
+            .and_then(|response| response.status)
+    }
+
+    /// The provider's transport request ID, when the reply carried one.
+    pub fn provider_request_id(&self) -> Option<&str> {
+        self.provider_response()
+            .and_then(|response| response.provider_request_id.as_deref())
+    }
+
+    /// The preserved reply's headers. `None` means not captured, as for
+    /// non-HTTP transports and replies built from only a status and body.
+    /// This example reads the seconds form of `Retry-After`:
+    ///
+    /// ```no_run
+    /// # use rig_core::error::ProviderError;
+    /// # use std::time::Duration;
+    /// fn backoff(error: &ProviderError) -> Option<Duration> {
+    ///     let seconds = error
+    ///         .provider_response_headers()?
+    ///         .get(http::header::RETRY_AFTER)?
+    ///         .to_str()
+    ///         .ok()?
+    ///         .parse()
+    ///         .ok()?;
+    ///     Some(Duration::from_secs(seconds))
+    /// }
+    /// ```
+    pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+        self.provider_response()
+            .and_then(|response| response.headers.as_ref())
+    }
+
+    /// Fills an absent request ID on the preserved reply, ignoring empty
+    /// strings.
+    pub fn with_provider_request_id(self, request_id: Option<String>) -> Self {
+        self.map_response(|response| match response.provider_request_id {
+            Some(_) => response,
+            None => response.with_provider_request_id(request_id),
+        })
+    }
+
+    /// Fills absent headers on the preserved reply.
+    pub fn with_response_headers(self, headers: Option<http::HeaderMap>) -> Self {
+        self.map_response(|response| match (&response.headers, headers) {
+            (None, Some(headers)) => response.with_headers(Some(headers)),
+            _ => response,
+        })
+    }
+
+    /// Attaches the HTTP status a transport reported beside a reply preserved
+    /// without one, so it classifies by status. A captured status is kept.
+    pub fn with_provider_status(self, status: Option<http::StatusCode>) -> Self {
+        self.map_response(|response| response.with_status(status))
+    }
+
+    /// Attaches the provider's machine-readable code for the failure, such as
+    /// a gRPC status name or an AWS exception type.
+    pub fn with_provider_code(self, code: Option<String>) -> Self {
+        self.map_response(|response| response.with_code(code))
+    }
+
+    /// Replaces the preserved reply's transport retry verdict, used when its
+    /// status is absent or successful.
+    pub fn with_transient(self, transient: Option<bool>) -> Self {
+        self.map_response(|response| response.with_transient(transient))
+    }
+
     /// The wire form of this error.
     pub fn report(&self) -> ErrorReport {
         ErrorReport::from(self)
     }
+
+    /// Which boundary produced this error, by its classification.
+    pub(crate) fn boundary(&self) -> AdapterErrorBoundary {
+        match (self, self.kind()) {
+            (Self::Http(error), _) => AdapterErrorBoundary::from_http(error),
+            (_, ErrorKind::Json | ErrorKind::Response) => AdapterErrorBoundary::Decode,
+            (_, ErrorKind::Provider | ErrorKind::ProviderResponse) => {
+                AdapterErrorBoundary::ProviderResponse
+            }
+            _ => AdapterErrorBoundary::Request,
+        }
+    }
+
+    fn map_response(
+        self,
+        map: impl FnOnce(ProviderResponseError) -> ProviderResponseError,
+    ) -> Self {
+        match self {
+            Self::ProviderResponse(response) => Self::ProviderResponse(map(response)),
+            Self::InvalidAuthentication(response) => Self::InvalidAuthentication(map(response)),
+            Self::CacheExpired { name, response } => Self::CacheExpired {
+                name,
+                response: map(response),
+            },
+            other => other,
+        }
+    }
 }
 
-impl From<&CompletionError> for ErrorReport {
-    fn from(error: &CompletionError) -> Self {
-        let (kind, http_status) = match error {
-            CompletionError::HttpError(_) => (ErrorKind::Http, None),
-            CompletionError::JsonError(_) => (ErrorKind::Json, None),
-            CompletionError::UrlError(_) => (ErrorKind::Url, None),
-            CompletionError::RequestError(_) => (ErrorKind::Request, None),
-            CompletionError::ResponseError(_) => (ErrorKind::Response, None),
-            CompletionError::ProviderError(_) => (ErrorKind::Provider, None),
-            CompletionError::ProviderResponse(response) => {
-                let status = response.status.map(|s| s.as_u16());
-                (ErrorKind::ProviderResponse, status)
-            }
-        };
-        let request_id = match error {
-            CompletionError::ProviderResponse(response) => response.provider_request_id.clone(),
-            CompletionError::HttpError(_)
-            | CompletionError::JsonError(_)
-            | CompletionError::UrlError(_)
-            | CompletionError::RequestError(_)
-            | CompletionError::ResponseError(_)
-            | CompletionError::ProviderError(_) => None,
-        };
-        let provider_response = match error {
-            CompletionError::ProviderResponse(response) => Some(response.clone()),
-            CompletionError::HttpError(_)
-            | CompletionError::JsonError(_)
-            | CompletionError::UrlError(_)
-            | CompletionError::RequestError(_)
-            | CompletionError::ResponseError(_)
-            | CompletionError::ProviderError(_) => None,
-        };
-        let code = match error {
-            CompletionError::ProviderResponse(response) => response.machine_code(),
-            _ => None,
-        };
-        let refusal = match error {
-            CompletionError::ProviderResponse(response) => response.refusal,
-            _ => false,
-        };
+impl From<http_client::Error> for ProviderError {
+    fn from(error: http_client::Error) -> Self {
+        Self::from_transport_error(error)
+    }
+}
+
+impl From<http::Error> for ProviderError {
+    fn from(error: http::Error) -> Self {
+        Self::Request(Box::new(error))
+    }
+}
+
+/// A client that could not be built: transport-configuration failures keep
+/// their HTTP identity, anything else (a missing key, an unreadable
+/// environment variable) is reported as a provider error.
+impl From<crate::client::ProviderClientError> for ProviderError {
+    fn from(error: crate::client::ProviderClientError) -> Self {
+        match error {
+            crate::client::ProviderClientError::Http(error) => Self::Http(error),
+            other => Self::Provider(other.to_string()),
+        }
+    }
+}
+
+impl From<&ProviderError> for ErrorReport {
+    fn from(error: &ProviderError) -> Self {
+        let response = error.provider_response();
         ErrorReport {
-            kind,
+            kind: error.kind(),
             retryable: error.is_retryable(),
             message: error.to_string(),
-            code,
-            http_status,
-            refusal,
+            code: response.and_then(ProviderResponseError::machine_code),
+            http_status: response
+                .and_then(|response| response.status)
+                .map(|status| status.as_u16()),
+            refusal: response.is_some_and(|response| response.refusal),
             source_chain: source_chain(error),
-            request_id,
-            provider_response,
+            request_id: response.and_then(|response| response.provider_request_id.clone()),
+            provider_response: response.cloned(),
             detail: None,
         }
     }
 }
 
-impl From<CompletionError> for ErrorReport {
-    fn from(error: CompletionError) -> Self {
+impl From<ProviderError> for ErrorReport {
+    fn from(error: ProviderError) -> Self {
         Self::from(&error)
     }
 }
@@ -514,112 +743,6 @@ impl From<&MemoryError> for ErrorReport {
 
 impl From<MemoryError> for ErrorReport {
     fn from(error: MemoryError) -> Self {
-        Self::from(&error)
-    }
-}
-
-impl From<&EmbeddingError> for ErrorReport {
-    fn from(error: &EmbeddingError) -> Self {
-        let (kind, http_status) = match error {
-            EmbeddingError::HttpError(_) => (ErrorKind::Http, None),
-            EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
-            EmbeddingError::UrlError(_) => (ErrorKind::Url, None),
-            EmbeddingError::DocumentError(_) => (ErrorKind::Request, None),
-            EmbeddingError::ResponseError(_) => (ErrorKind::Response, None),
-            EmbeddingError::UnsupportedParameter { .. }
-            | EmbeddingError::InvalidParameterValue { .. } => (ErrorKind::Request, None),
-            EmbeddingError::UnsupportedResponseEncoding { .. }
-            | EmbeddingError::MissingUsage { .. }
-            | EmbeddingError::MismatchedDimensions { .. } => (ErrorKind::Response, None),
-            EmbeddingError::ProviderError(_) => (ErrorKind::Provider, None),
-            EmbeddingError::ProviderResponse(response) => {
-                let status = response.status.map(|s| s.as_u16());
-                (ErrorKind::ProviderResponse, status)
-            }
-        };
-        // One rule per error type: the retry verdict is the error's own,
-        // never a copy of its table kept beside the report.
-        let retryable = error.is_retryable();
-        let provider_response = match error {
-            EmbeddingError::ProviderResponse(response) => Some(response.clone()),
-            _ => None,
-        };
-        let request_id = provider_response
-            .as_ref()
-            .and_then(|response| response.provider_request_id.clone());
-        let code = provider_response
-            .as_ref()
-            .and_then(|response| response.machine_code());
-        let refusal = provider_response
-            .as_ref()
-            .is_some_and(|response| response.refusal);
-        ErrorReport {
-            kind,
-            retryable,
-            message: error.to_string(),
-            code,
-            http_status,
-            refusal,
-            source_chain: source_chain(error),
-            request_id,
-            provider_response,
-            detail: None,
-        }
-    }
-}
-
-impl From<EmbeddingError> for ErrorReport {
-    fn from(error: EmbeddingError) -> Self {
-        Self::from(&error)
-    }
-}
-
-impl From<&RerankError> for ErrorReport {
-    fn from(error: &RerankError) -> Self {
-        let (kind, http_status) = match error {
-            RerankError::HttpError(_) => (ErrorKind::Http, None),
-            RerankError::JsonError(_) => (ErrorKind::Json, None),
-            RerankError::UrlError(_) => (ErrorKind::Url, None),
-            RerankError::ResponseError(_) => (ErrorKind::Response, None),
-            RerankError::ProviderError(_) => (ErrorKind::Provider, None),
-            RerankError::ProviderResponse(response) => {
-                let status = response.status.map(|s| s.as_u16());
-                (ErrorKind::ProviderResponse, status)
-            }
-        };
-        // One rule per error type: the retry verdict is the error's own,
-        // never a copy of its table kept beside the report.
-        let retryable = error.is_retryable();
-        let provider_response = match error {
-            RerankError::ProviderResponse(response) => Some(response.clone()),
-            _ => None,
-        };
-        let request_id = provider_response
-            .as_ref()
-            .and_then(|response| response.provider_request_id.clone());
-        let code = provider_response
-            .as_ref()
-            .and_then(|response| response.machine_code());
-        let refusal = provider_response
-            .as_ref()
-            .is_some_and(|response| response.refusal);
-        ErrorReport {
-            kind,
-            retryable,
-            message: error.to_string(),
-            code,
-            http_status,
-            refusal,
-            source_chain: source_chain(error),
-            request_id,
-            provider_response,
-            detail: None,
-        }
-    }
-}
-
-impl From<RerankError> for ErrorReport {
-    fn from(error: RerankError) -> Self {
         Self::from(&error)
     }
 }

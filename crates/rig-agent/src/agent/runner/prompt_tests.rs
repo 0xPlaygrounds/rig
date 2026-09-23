@@ -12,7 +12,7 @@ use crate::{
         },
     },
     completion::{
-        AssistantContent, CompletionError, CompletionRequest, FinishReason, Message, PromptError,
+        AssistantContent, CompletionRequest, FinishReason, Message, PromptError,
         StructuredOutputError, Usage,
     },
     test_utils::{
@@ -23,6 +23,7 @@ use crate::{
     tool::{Tool, ToolContext},
 };
 use rig_core::completion::message::turn_delivered_no_answer;
+use rig_core::error::ProviderError;
 use rig_core::message::ProviderCallId;
 use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
 use schemars::JsonSchema;
@@ -1663,12 +1664,12 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
         .expect_err("invalid ToolChoice::Specific should fail before provider request");
 
     match err {
-        PromptError::CompletionError(CompletionError::RequestError(err)) => {
+        PromptError::CompletionError(ProviderError::Request(err)) => {
             let msg = err.to_string();
             assert!(msg.contains("missing"), "got: {msg}");
             assert!(msg.contains("add"), "got: {msg}");
         }
-        other => panic!("expected CompletionError::RequestError, got {other:?}"),
+        other => panic!("expected ProviderError::Request, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 0);
 }

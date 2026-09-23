@@ -19,7 +19,8 @@ use crate::{
 };
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::{self, CompletionError, CompletionRequest};
+use rig_core::completion::{self, CompletionRequest};
+use rig_core::error::ProviderError;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::ProviderResponseExt;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -190,7 +191,7 @@ impl CompletionModel {
     pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<AwsConverseOutput, CompletionError> {
+    ) -> Result<AwsConverseOutput, ProviderError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
 
         let span =
@@ -230,13 +231,14 @@ impl CompletionModel {
             .set_guardrail_config(self.guardrail.clone());
 
         async move {
-            let response = converse_builder.send().await.map_err(|sdk_error| {
-                Into::<CompletionError>::into(AwsSdkConverseError(sdk_error))
-            })?;
+            let response = converse_builder
+                .send()
+                .await
+                .map_err(|sdk_error| Into::<ProviderError>::into(AwsSdkConverseError(sdk_error)))?;
 
-            let response: InternalConverseOutput = response.try_into().map_err(|x| {
-                CompletionError::ProviderError(format!("Type conversion error: {x}"))
-            })?;
+            let response: InternalConverseOutput = response
+                .try_into()
+                .map_err(|x| ProviderError::Provider(format!("Type conversion error: {x}")))?;
 
             let aws_output = AwsConverseOutput(response);
 
@@ -255,7 +257,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<completion::CompletionResponse, ProviderError> {
         let model = resolve_request_model(&self.model, &completion_request);
         completion_response(self.raw_completion(completion_request).await?, &model)
     }
@@ -263,7 +265,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         CompletionModel::stream(self, request).await
     }
 }

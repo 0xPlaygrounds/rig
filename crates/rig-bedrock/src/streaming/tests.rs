@@ -506,7 +506,7 @@ fn message_stop_event(reason: aws_bedrock::StopReason) -> aws_bedrock::ConverseS
 /// returning every item the stream would yield, plus the final state.
 fn run_events(
     events: Vec<aws_bedrock::ConverseStreamOutput>,
-) -> (Vec<Result<StreamEvent, CompletionError>>, StreamState) {
+) -> (Vec<Result<StreamEvent, ProviderError>>, StreamState) {
     let mut state = StreamState::default();
     let mut out = AdapterOutput::new();
     for event in events {
@@ -521,7 +521,7 @@ fn run_events(
 /// in the accumulator, so assertions about completed calls and
 /// malformed-input errors belong at this level.
 async fn assembled(
-    items: Vec<Result<StreamEvent, CompletionError>>,
+    items: Vec<Result<StreamEvent, ProviderError>>,
 ) -> (Vec<rig_core::message::ToolCall>, Vec<ErrorReport>) {
     use futures::StreamExt;
     let mut stream =
@@ -757,7 +757,7 @@ fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseSt
 
 /// Drive `items` through the normalized pipeline exactly as the
 /// `CompletionModel` seam does, returning the terminal.
-async fn normalized_terminal(items: Vec<Result<StreamEvent, CompletionError>>) -> StreamFinal {
+async fn normalized_terminal(items: Vec<Result<StreamEvent, ProviderError>>) -> StreamFinal {
     let mut stream =
         StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
     while let Some(item) = stream.next().await {

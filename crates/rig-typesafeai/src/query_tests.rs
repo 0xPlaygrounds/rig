@@ -1,6 +1,7 @@
 use crate::{ChoiceAnswer, Evaluate, Jev, NoulAnswer, Query, ScoreAnswer, types};
 use anyhow::ensure;
 use rig_core::driver::Bind;
+use rig_core::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -29,7 +30,7 @@ struct Assessment<R = ChoiceAnswer<Route>, U = ScoreAnswer<Urgency>, F = NoulAns
 type AssessmentQuery = Assessment<crate::Choice<Route>, crate::Score<Urgency>, crate::Noul>;
 
 impl AssessmentQuery {
-    fn new() -> Result<Self, crate::Error> {
+    fn new() -> Result<Self, rig_core::error::ProviderError> {
         Ok(Self {
             route: crate::Choice::<Route>::new(
                 "Which team should handle the customer message?",
@@ -56,7 +57,10 @@ impl<R: crate::Query, U: crate::Query, F: crate::Query> crate::Query for Assessm
     type Response = Assessment<R::Response, U::Response, F::Response>;
     type Output = Assessment<R::Output, U::Output, F::Output>;
 
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, crate::Error> {
+    fn decode(
+        &self,
+        response: Self::Response,
+    ) -> Result<Self::Output, rig_core::error::ProviderError> {
         Ok(Assessment {
             route: self.route.decode(response.route)?,
             urgency: self.urgency.decode(response.urgency)?,
@@ -125,7 +129,7 @@ fn named_query_rejects_mismatched_answer_types() -> anyhow::Result<()> {
     let schema = AssessmentQuery::new()?;
     ensure!(matches!(
         schema.decode(serde_json::from_value(answers)?),
-        Err(crate::Error::InvalidResponse(_))
+        Err(ProviderError::Response(_))
     ));
     Ok(())
 }
@@ -180,7 +184,10 @@ struct Renamed<Q> {
 impl<Q: Query> Query for Renamed<Q> {
     type Response = Renamed<Q::Response>;
     type Output = Renamed<Q::Output>;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, crate::Error> {
+    fn decode(
+        &self,
+        response: Self::Response,
+    ) -> Result<Self::Output, rig_core::error::ProviderError> {
         Ok(Renamed {
             ready: self.ready.decode(response.ready)?,
         })
@@ -216,7 +223,7 @@ fn serde_boundary_rejects_duplicate_keys_and_invalid_request_shapes() -> anyhow:
     let raw = serde_json::value::to_raw_value(&query)?;
     ensure!(matches!(
         crate::validation::request_ids(&raw),
-        Err(crate::Error::InvalidRequest(_))
+        Err(ProviderError::Request(_))
     ));
     for json in [
         "{}",
@@ -227,7 +234,7 @@ fn serde_boundary_rejects_duplicate_keys_and_invalid_request_shapes() -> anyhow:
         let raw = serde_json::value::RawValue::from_string(json.into())?;
         ensure!(matches!(
             crate::validation::request_ids(&raw),
-            Err(crate::Error::InvalidRequest(_))
+            Err(ProviderError::Request(_))
         ));
     }
     let raw = serde_json::value::RawValue::from_string(
@@ -235,7 +242,7 @@ fn serde_boundary_rejects_duplicate_keys_and_invalid_request_shapes() -> anyhow:
     )?;
     ensure!(matches!(
         crate::validation::response_ids(&raw),
-        Err(crate::Error::InvalidResponse(_))
+        Err(ProviderError::Response(_))
     ));
     Ok(())
 }

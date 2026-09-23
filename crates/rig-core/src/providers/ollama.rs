@@ -15,13 +15,14 @@
 //! Bind a wire to a transport to execute it. `Ollama::from_env` reads
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
 use crate::completion::Usage;
+use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
 use crate::model::Model;
 use crate::operation::Completion;
 use crate::providers::internal;
 use crate::streaming::{StreamFinal, ToolCallEnd};
 use crate::{
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{self, CompletionRequest},
     json_utils, message,
 };
 use serde::{Deserialize, Serialize};
@@ -201,7 +202,7 @@ pub(super) struct OllamaCompletionRequest {
 }
 
 impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let chat_history = req.chat_history_with_documents();
@@ -252,14 +253,14 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                             "high" => Level::High,
                             "max" => Level::Max,
                             _ => {
-                                return Err(CompletionError::RequestError(
+                                return Err(ProviderError::Request(
                                     "`think` must be a 'low', 'medium', 'high', 'max' or bool"
                                         .into(),
                                 ));
                             }
                         }),
                         _ => {
-                            return Err(CompletionError::RequestError(
+                            return Err(ProviderError::Request(
                                 "`think` must be a 'low', 'medium', 'high', 'max' or bool".into(),
                             ));
                         }
@@ -271,9 +272,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                         keep_alive_val
                             .as_str()
                             .ok_or_else(|| {
-                                CompletionError::RequestError(
-                                    "`keep_alive` must be a string".into(),
-                                )
+                                ProviderError::Request("`keep_alive` must be a string".into())
                             })?
                             .to_string(),
                     );

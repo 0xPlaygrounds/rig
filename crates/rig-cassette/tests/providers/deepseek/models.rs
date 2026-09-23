@@ -3,6 +3,7 @@
 //! Run with:
 //! `cargo test -p rig --test deepseek list_models_smoke -- --ignored --nocapture`
 
+use rig::error::ProviderError;
 use rig::model::ModelLister;
 
 use super::support::with_deepseek_cassette;
@@ -37,11 +38,9 @@ async fn list_models_smoke() {
 }
 
 /// rig#2079 — the shared fetch path classifies a rejected listing as
-/// `ApiError` carrying provider, path, status and a body preview.
+/// the provider's reply, with its status and a route naming provider and path.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Result<()> {
-    use rig::model::ModelListingError;
-
     super::support::with_deepseek_cassette_bogus_key_result(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
@@ -51,18 +50,16 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ModelListingError::ApiError {
-                status_code,
-                message,
-            } = &error
-            else {
+            let ProviderError::ProviderResponse(response) = &error else {
                 anyhow::bail!(
-                    "a rejected listing must classify as ApiError\nDisplay: {error}\n\
+                    "a rejected listing must keep the provider's reply\nDisplay: {error}\n\
                      Debug: {error:#?}"
                 );
             };
+            let status_code = response.status.map(|status| status.as_u16());
+            let message = error.to_string();
 
-            anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
+            anyhow::ensure!(status_code == Some(401), "unexpected status: {error:#?}");
             // `provider=` is the wire's descriptor name — the same `deepseek`
             // every normalized response reports, not a display label. The
             // deleted client layer decorated this message with its own
@@ -70,7 +67,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
             // two spellings; there is now one. `path=` is unchanged: DeepSeek's
             // base URL carries no version segment, so the listing really does
             // send `/models`.
-            for expected in ["provider=deepseek", "path=/models", "status=401"] {
+            for expected in ["provider=deepseek", "path=/models", "status 401"] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

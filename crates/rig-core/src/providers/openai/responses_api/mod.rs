@@ -10,7 +10,8 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::completion::CompletionError;
+
+use crate::error::ProviderError;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
 use crate::message::{
@@ -309,14 +310,12 @@ pub enum ToolResultOutputContent {
 
 /// Returns a request error for an unsupported source.
 /// Callers must base64-encode raw bytes before request conversion.
-fn unsupported_document_source(source: DocumentSourceKind) -> CompletionError {
+fn unsupported_document_source(source: DocumentSourceKind) -> ProviderError {
     match source {
-        DocumentSourceKind::Raw(_) => CompletionError::RequestError(
-            "Raw file data not supported, encode as base64 first".into(),
-        ),
-        source => {
-            CompletionError::RequestError(format!("Unsupported document type: {source}").into())
+        DocumentSourceKind::Raw(_) => {
+            ProviderError::Request("Raw file data not supported, encode as base64 first".into())
         }
+        source => ProviderError::Request(format!("Unsupported document type: {source}").into()),
     }
 }
 
@@ -381,7 +380,7 @@ fn responses_tool_result_output(
 }
 
 impl TryFrom<crate::completion::Message> for Vec<InputItem> {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: crate::completion::Message) -> Result<Self, Self::Error> {
         match value {
@@ -404,9 +403,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             // Prefer provider identity so results match replayed calls.
                             let call_id = tool_result.wire_call_id().into_owned();
                             let output = responses_tool_result_output(tool_result.content)
-                                .map_err(|error| {
-                                    CompletionError::ProviderError(error.to_string())
-                                })?;
+                                .map_err(|error| ProviderError::Provider(error.to_string()))?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
@@ -474,7 +471,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             }));
                         }
                         message => {
-                            return Err(CompletionError::ProviderError(format!(
+                            return Err(ProviderError::Provider(format!(
                                 "Unsupported message: {message:?}"
                             )));
                         }
@@ -559,7 +556,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             }
                         }
                         crate::message::AssistantContent::Image(_) => {
-                            return Err(CompletionError::ProviderError(
+                            return Err(ProviderError::Provider(
                                 "Assistant image content is not supported in OpenAI Responses API"
                                     .to_string(),
                             ));
@@ -838,7 +835,7 @@ pub enum AllowedTool {
 }
 
 impl TryFrom<message::ToolChoice> for ToolChoice {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
         let choice = match value {
@@ -848,7 +845,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
             message::ToolChoice::Specific { function_names } => {
                 let mut names = function_names.into_iter();
                 let Some(first) = names.next() else {
-                    return Err(CompletionError::RequestError(
+                    return Err(ProviderError::Request(
                         "ToolChoice::Specific requires at least one function name".into(),
                     ));
                 };
@@ -1115,7 +1112,7 @@ pub enum SystemInstructionsPlacement {
 
 /// Converts a Rig request using the default system-instruction placement.
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
-    type Error = CompletionError;
+    type Error = ProviderError;
     fn try_from(
         (model, request): (String, crate::completion::CompletionRequest),
     ) -> Result<Self, Self::Error> {
@@ -1136,7 +1133,7 @@ pub struct ResponsesRequestParams {
 }
 
 impl TryFrom<ResponsesRequestParams> for CompletionRequest {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(params: ResponsesRequestParams) -> Result<Self, Self::Error> {
         let ResponsesRequestParams {
@@ -1151,7 +1148,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             let mut full_history: Vec<InputItem> = Vec::new();
             let tool_ids =
                 crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
-                    .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                    .map_err(|error| ProviderError::Request(Box::new(error)))?;
             for (position, history_item) in chat_history.into_iter().enumerate() {
                 let mut items = <Vec<InputItem>>::try_from(history_item)?;
                 tool_ids
@@ -1163,7 +1160,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
                             _ => None,
                         }),
                     )
-                    .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                    .map_err(|error| ProviderError::Request(Box::new(error)))?;
                 full_history.extend(items);
             }
             full_history
@@ -1210,7 +1207,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         let lifted_system_items = input.len() < items_before_lift;
 
         let input = crate::message::require_non_empty(input, || {
-            CompletionError::RequestError(if lifted_system_items {
+            ProviderError::Request(if lifted_system_items {
                 "OpenAI Responses request input must contain at least one non-system item \
                  (system messages were lifted into the top-level `instructions` field)"
                     .into()
@@ -1233,7 +1230,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
                     raw_tools,
                 )
                 .map_err(|err| {
-                    CompletionError::RequestError(
+                    ProviderError::Request(
                         format!(
                             "Invalid OpenAI Responses tools payload in additional_params: {err}"
                         )
@@ -1254,7 +1251,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         } else {
             serde_json::from_value::<AdditionalParameters>(additional_params_payload).map_err(
                 |err| {
-                    CompletionError::RequestError(
+                    ProviderError::Request(
                         format!("Invalid OpenAI Responses additional_params payload: {err}").into(),
                     )
                 },

@@ -17,7 +17,8 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
-use rig_core::completion::{self, CompletionError, CompletionRequest};
+use rig_core::completion::{self, CompletionRequest};
+use rig_core::error::ProviderError;
 use rig_core::message::{self, MimeType, Reasoning};
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
@@ -78,14 +79,14 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
 pub fn tool_protocol_finish_reason_error(
     reason: i32,
     finish_message: Option<&str>,
-) -> Option<CompletionError> {
+) -> Option<ProviderError> {
     use proto::candidate::FinishReason as Wire;
 
     let reason = Wire::try_from(reason).ok()?;
     match reason {
         Wire::MalformedFunctionCall | Wire::UnexpectedToolCall | Wire::TooManyToolCalls => {
             let message = finish_message.unwrap_or("no finish message provided");
-            Some(CompletionError::ResponseError(format!(
+            Some(ProviderError::Response(format!(
                 "Gemini stopped with finish_reason={}: {message}",
                 reason.as_str_name()
             )))
@@ -100,13 +101,13 @@ impl CompletionModel {
     pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<GenerateContentResponse, CompletionError> {
+    ) -> Result<GenerateContentResponse, ProviderError> {
         let request = create_grpc_request(&self.model, completion_request)?;
 
         let mut grpc_client = self
             .client
             .grpc_client()
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
 
         let response = grpc_client
             .generate_content(request)
@@ -122,14 +123,14 @@ impl completion::CompletionModel for CompletionModel {
     async fn completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<completion::CompletionResponse, ProviderError> {
         self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<rig_core::streaming::StreamingCompletionResponse, ProviderError> {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }
@@ -151,8 +152,8 @@ pub(crate) fn text_part(text: String) -> proto::Part {
 
 /// Preserves tonic status display text with RPC code and retry classification.
 /// Transport failures use the same provider-body representation.
-pub(crate) fn rpc_error(status: &tonic::Status) -> CompletionError {
-    CompletionError::from_provider_body(status.to_string())
+pub(crate) fn rpc_error(status: &tonic::Status) -> ProviderError {
+    ProviderError::from_provider_body(status.to_string())
         .with_provider_code(Some(grpc_code_name(status.code())))
         .with_transient(Some(transient_grpc_code(status.code())))
 }
@@ -186,7 +187,7 @@ pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
 pub(crate) fn create_grpc_request(
     model: &str,
     completion_request: CompletionRequest,
-) -> Result<GenerateContentRequest, CompletionError> {
+) -> Result<GenerateContentRequest, ProviderError> {
     let CompletionRequest {
         model: _,
         chat_history,
@@ -248,7 +249,7 @@ pub(crate) fn create_grpc_request(
                     ..Default::default()
                 })
             })
-            .collect::<Result<Vec<_>, CompletionError>>()?;
+            .collect::<Result<Vec<_>, ProviderError>>()?;
 
         vec![proto::Tool {
             function_declarations,
@@ -270,9 +271,9 @@ pub(crate) fn create_grpc_request(
     })
 }
 
-fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, CompletionError> {
+fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, ProviderError> {
     match msg {
-        message::Message::System { .. } => Err(CompletionError::RequestError(
+        message::Message::System { .. } => Err(ProviderError::Request(
             "System messages must be sent via Gemini gRPC system_instruction".into(),
         )),
         message::Message::User { content } => {
@@ -304,7 +305,7 @@ use rig_core::providers::gemini::completion::split_system_messages_from_history;
 
 fn rig_user_content_to_grpc_part(
     content: message::UserContent,
-) -> Result<proto::Part, CompletionError> {
+) -> Result<proto::Part, ProviderError> {
     match content {
         message::UserContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
         message::UserContent::ToolResult(result) => {
@@ -314,7 +315,7 @@ fn rig_user_content_to_grpc_part(
                 .map(|content| match content {
                     message::ToolResultContent::Text(t) => Ok(serde_json::Value::String(t.text)),
                     message::ToolResultContent::Json { value } => Ok(value),
-                    message::ToolResultContent::Image(_) => Err(CompletionError::RequestError(
+                    message::ToolResultContent::Image(_) => Err(ProviderError::Request(
                         "Gemini gRPC does not support images in tool results".into(),
                     )),
                 })
@@ -343,7 +344,7 @@ fn rig_user_content_to_grpc_part(
         }
         message::UserContent::Image(img) => {
             let Some(media_type) = img.media_type else {
-                return Err(CompletionError::RequestError(
+                return Err(ProviderError::Request(
                     "Media type for image is required for Gemini".into(),
                 ));
             };
@@ -355,7 +356,7 @@ fn rig_user_content_to_grpc_part(
                 | message::ImageMediaType::HEIC
                 | message::ImageMediaType::HEIF => {}
                 _ => {
-                    return Err(CompletionError::RequestError(
+                    return Err(ProviderError::Request(
                         format!("Unsupported image media type {media_type:?}").into(),
                     ));
                 }
@@ -374,12 +375,10 @@ fn rig_user_content_to_grpc_part(
                 message::DocumentSourceKind::Base64(data)
                 | message::DocumentSourceKind::String(data) => decode_base64_bytes(&data)?,
                 message::DocumentSourceKind::Unknown => {
-                    return Err(CompletionError::RequestError(
-                        "Image content has no body".into(),
-                    ));
+                    return Err(ProviderError::Request("Image content has no body".into()));
                 }
                 _ => {
-                    return Err(CompletionError::RequestError(
+                    return Err(ProviderError::Request(
                         "Unsupported document source kind".into(),
                     ));
                 }
@@ -390,7 +389,7 @@ fn rig_user_content_to_grpc_part(
                 data,
             })))
         }
-        _ => Err(CompletionError::RequestError(
+        _ => Err(ProviderError::Request(
             "Unsupported user content type".into(),
         )),
     }
@@ -398,7 +397,7 @@ fn rig_user_content_to_grpc_part(
 
 fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
-) -> Result<proto::Part, CompletionError> {
+) -> Result<proto::Part, ProviderError> {
     match content {
         message::AssistantContent::Text(text) => Ok(proto::Part {
             thought_signature: decode_optional_base64(
@@ -433,22 +432,23 @@ fn rig_assistant_content_to_grpc_part(
             )?,
             part_metadata: None,
         }),
-        _ => Err(CompletionError::RequestError(
+        _ => Err(ProviderError::Request(
             "Unsupported assistant content type".into(),
         )),
     }
 }
 
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
         // The provider's own document, captured before the response is
         // consumed into normalized content.
         let raw = serde_json::to_value(&response)?;
-        let candidate = response.candidates.first().ok_or_else(|| {
-            CompletionError::ResponseError("No response candidates in response".into())
-        })?;
+        let candidate = response
+            .candidates
+            .first()
+            .ok_or_else(|| ProviderError::Response("No response candidates in response".into()))?;
 
         // Same helper (and therefore the same message) as the streaming path,
         // so a tool-protocol abort reads identically on both surfaces.
@@ -460,7 +460,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
         }
 
         let content_ref = candidate.content.as_ref().ok_or_else(|| {
-            CompletionError::ResponseError(format!(
+            ProviderError::Response(format!(
                 "Gemini candidate missing content (finish_reason={})",
                 candidate.finish_reason
             ))
@@ -504,7 +504,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                             )
                         }
                         _ => {
-                            return Err(CompletionError::ResponseError(format!(
+                            return Err(ProviderError::Response(format!(
                                 "Unsupported media type {mime_type:?}"
                             )));
                         }
@@ -529,7 +529,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                     completion::AssistantContent::ToolCall(tool_call)
                 }
                 _ => {
-                    return Err(CompletionError::ResponseError(
+                    return Err(ProviderError::Response(
                         "Response did not contain a message or tool call".into(),
                     ));
                 }
@@ -609,7 +609,7 @@ impl ProviderResponseExt for GenerateContentResponse {
     }
 }
 
-fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
+fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, ProviderError> {
     let data = input.trim();
 
     // Allow `data:<mime>;base64,<data>` inputs.
@@ -634,12 +634,12 @@ fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
     }
 
     let err = last_err.unwrap_or_else(|| "unknown base64 decode error".to_string());
-    Err(CompletionError::RequestError(
+    Err(ProviderError::Request(
         format!("Invalid base64 data: {err}").into(),
     ))
 }
 
-fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionError> {
+fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, ProviderError> {
     let Some(sig) = sig else {
         return Ok(Vec::new());
     };
@@ -671,7 +671,7 @@ pub(crate) fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
     }
 }
 
-fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, CompletionError> {
+fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, ProviderError> {
     match value {
         serde_json::Value::Object(map) => Ok(proto::Struct {
             fields: map
@@ -679,7 +679,7 @@ fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, Compl
                 .map(|(k, v)| (k, json_to_prost_value(v)))
                 .collect(),
         }),
-        _ => Err(CompletionError::RequestError(
+        _ => Err(ProviderError::Request(
             "Expected a JSON object for google.protobuf.Struct".into(),
         )),
     }
@@ -745,7 +745,7 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
 /// Empty object schemas map to `None`.
 fn tool_parameters_to_proto_schema(
     value: &serde_json::Value,
-) -> Result<Option<proto::Schema>, CompletionError> {
+) -> Result<Option<proto::Schema>, ProviderError> {
     tool_parameters_to_schema(value.clone()).map(|schema| schema.map(gemini_schema_to_proto_schema))
 }
 

@@ -1,9 +1,9 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
-use rig_core::client::VerifyError;
 use rig_core::driver::CompletionProvider;
 use rig_core::embeddings::EmbeddingsBuilder;
+use rig_core::error::ProviderError;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -130,7 +130,7 @@ impl Client {
     }
 
     /// Returns success without making a request or validating credentials.
-    pub async fn verify(&self) -> Result<(), VerifyError> {
+    pub async fn verify(&self) -> Result<(), ProviderError> {
         Ok(())
     }
 }

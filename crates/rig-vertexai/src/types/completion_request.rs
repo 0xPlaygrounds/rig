@@ -1,6 +1,6 @@
 use crate::types::message::RigMessage;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::CompletionError;
+use rig_core::error::ProviderError;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig as GeminiGenerationConfig,
     ImageConfig as GeminiImageConfig, ResponseModality, ThinkingConfig as GeminiThinkingConfig,
@@ -10,7 +10,7 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
-    pub fn contents(self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
+    pub fn contents(self) -> Result<Vec<vertexai::model::Content>, ProviderError> {
         // Function responses require names rather than call identifiers.
         let mut history: Vec<rig_core::completion::Message> = self.0.chat_history;
         // Cross-provider ingested results arrive with an empty name and
@@ -101,7 +101,7 @@ impl VertexCompletionRequest {
 
     pub fn generation_config(
         &self,
-    ) -> Result<Option<vertexai::model::GenerationConfig>, CompletionError> {
+    ) -> Result<Option<vertexai::model::GenerationConfig>, ProviderError> {
         let AdditionalParameters {
             generation_config, ..
         } = match self.0.additional_params.as_ref() {
@@ -143,15 +143,15 @@ impl VertexCompletionRequest {
     }
 }
 
-fn vertex_max_output_tokens(max_output_tokens: u64) -> Result<i32, CompletionError> {
+fn vertex_max_output_tokens(max_output_tokens: u64) -> Result<i32, ProviderError> {
     i32::try_from(max_output_tokens).map_err(|_| {
-        CompletionError::RequestError("max_output_tokens exceeds Vertex AI's i32 range".into())
+        ProviderError::Request("max_output_tokens exceeds Vertex AI's i32 range".into())
     })
 }
 
-fn vertex_f32(value: f64, field: &str) -> Result<f32, CompletionError> {
+fn vertex_f32(value: f64, field: &str) -> Result<f32, ProviderError> {
     if !value.is_finite() || value < f64::from(f32::MIN) || value > f64::from(f32::MAX) {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             format!("{field} must be finite and within Vertex AI's f32 range").into(),
         ));
     }
@@ -161,17 +161,17 @@ fn vertex_f32(value: f64, field: &str) -> Result<f32, CompletionError> {
 
 fn vertex_generation_config(
     config: GeminiGenerationConfig,
-) -> Result<vertexai::model::GenerationConfig, CompletionError> {
+) -> Result<vertexai::model::GenerationConfig, ProviderError> {
     if config.response_schema.is_some()
         && (config.response_json_schema.is_some() || config._response_json_schema.is_some())
     {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             "responseSchema cannot be combined with responseJsonSchema or _responseJsonSchema"
                 .into(),
         ));
     }
     if config.response_json_schema.is_some() && config._response_json_schema.is_some() {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             "responseJsonSchema cannot be combined with _responseJsonSchema".into(),
         ));
     }
@@ -239,9 +239,9 @@ fn vertex_generation_config(
 
 fn vertex_thinking_config(
     config: GeminiThinkingConfig,
-) -> Result<vertexai::model::generation_config::ThinkingConfig, CompletionError> {
+) -> Result<vertexai::model::generation_config::ThinkingConfig, ProviderError> {
     if config.thinking_budget.is_some() && config.thinking_level.is_some() {
-        return Err(CompletionError::RequestError(
+        return Err(ProviderError::Request(
             "thinking_budget and thinking_level cannot both be set".into(),
         ));
     }
@@ -252,7 +252,7 @@ fn vertex_thinking_config(
     }
     if let Some(thinking_budget) = config.thinking_budget {
         let thinking_budget = i32::try_from(thinking_budget).map_err(|_| {
-            CompletionError::RequestError("thinking_budget exceeds Vertex AI's i32 range".into())
+            ProviderError::Request("thinking_budget exceeds Vertex AI's i32 range".into())
         })?;
         vertex_config = vertex_config.set_thinking_budget(thinking_budget);
     }
@@ -278,11 +278,11 @@ fn vertex_thinking_config(
 
 fn vertex_response_modality(
     modality: &ResponseModality,
-) -> Result<vertexai::model::generation_config::Modality, CompletionError> {
+) -> Result<vertexai::model::generation_config::Modality, ProviderError> {
     match modality {
         ResponseModality::Text => Ok(vertexai::model::generation_config::Modality::Text),
         ResponseModality::Image => Ok(vertexai::model::generation_config::Modality::Image),
-        ResponseModality::Audio => Err(CompletionError::RequestError(
+        ResponseModality::Audio => Err(ProviderError::Request(
             "responseModalities AUDIO is unsupported because Rig cannot represent assistant audio responses"
                 .into(),
         )),

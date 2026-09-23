@@ -144,7 +144,7 @@ fn instrument_modality_records_usage_and_identity() {
                 "probe",
                 "probe-embed",
                 ModalityOperation::Embeddings,
-                async { Ok::<_, crate::embeddings::EmbeddingError>(response) },
+                async { Ok::<_, crate::error::ProviderError>(response) },
             ))
             .expect("call succeeds");
     });

@@ -1,11 +1,12 @@
 //! Copilot reasoning roundtrip tests.
 
+use rig::error::ProviderError;
 use rig::providers::copilot::wire::CopilotWire;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
+    CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
 use rig::driver::Bound;
 use rig::providers::copilot;
@@ -42,14 +43,14 @@ impl CompletionModel for CapturingProviderFinals {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, ProviderError> {
         self.inner.completion(request).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, ProviderError> {
         let raw = self.inner.stream(request).await?;
         let finals = self.finals();
         let captured = raw.map(move |item| {

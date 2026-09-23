@@ -1,5 +1,6 @@
 use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
 use crate::message::AssistantContent;
+use crate::{http_client, provider_response};
 
 mod message_content_validation {
     use super::super::CompletionRequest;
@@ -752,7 +753,7 @@ fn chat_history_with_documents_does_not_duplicate_documents() {
 #[test]
 fn completion_error_provider_response_helpers_with_preserved_json_body() {
     let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
-    let error = CompletionError::ProviderResponse(
+    let error = ProviderError::ProviderResponse(
         provider_response::ProviderResponseError::without_status(body.to_string()),
     );
 
@@ -774,7 +775,7 @@ fn completion_error_provider_response_helpers_with_preserved_json_body() {
 #[test]
 fn completion_error_provider_response_helpers_with_preserved_status() {
     let body = r#"{"error":{"message":"too many requests"}}"#;
-    let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError::new(
+    let error = ProviderError::ProviderResponse(provider_response::ProviderResponseError::new(
         http::StatusCode::TOO_MANY_REQUESTS,
         body.to_string(),
     ));
@@ -788,7 +789,7 @@ fn completion_error_provider_response_helpers_with_preserved_status() {
 
 #[test]
 fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
-    let error = CompletionError::ProviderResponse(
+    let error = ProviderError::ProviderResponse(
         provider_response::ProviderResponseError::without_status("provider exploded".to_string()),
     );
 
@@ -801,7 +802,7 @@ fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
 fn completion_error_provider_error_is_not_a_provider_response() {
     // `ProviderError` also carries Rig-generated diagnostics, so the helpers
     // must not report its string as a provider response body.
-    let error = CompletionError::ProviderError("stream transport failed".to_string());
+    let error = ProviderError::Provider("stream transport failed".to_string());
 
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
@@ -816,12 +817,11 @@ fn completion_error_provider_error_is_not_a_provider_response() {
 #[test]
 fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
     let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
-    let error =
-        CompletionError::from_transport_error(http_client::Error::non_success_with_details(
-            http::StatusCode::BAD_REQUEST,
-            http::HeaderMap::new(),
-            body.to_string(),
-        ));
+    let error = ProviderError::from_transport_error(http_client::Error::non_success_with_details(
+        http::StatusCode::BAD_REQUEST,
+        http::HeaderMap::new(),
+        body.to_string(),
+    ));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(
@@ -841,7 +841,7 @@ fn completion_error_provider_response_helpers_with_http_non_success_body_and_sta
 
 #[test]
 fn completion_error_provider_response_helpers_with_unrelated_variant() {
-    let error = CompletionError::ResponseError("failed to parse provider response".to_string());
+    let error = ProviderError::Response("failed to parse provider response".to_string());
 
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
@@ -855,7 +855,7 @@ fn completion_error_provider_response_helpers_with_unrelated_variant() {
 
 #[test]
 fn provider_response_json_returns_none_for_empty_preserved_body() {
-    let error = CompletionError::ProviderResponse(
+    let error = ProviderError::ProviderResponse(
         provider_response::ProviderResponseError::without_status(String::new()),
     );
 

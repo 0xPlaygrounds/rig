@@ -1,148 +1,138 @@
 use http::StatusCode;
 
-/// Asserts the one funnel preserves a provider's status + body across the
-/// routes every capability error exposes: a non-success HTTP response, a
-/// 2xx provider error envelope, a non-HTTP (gRPC/SDK) transport, and a
-/// transport that reported the reply as an error.
-macro_rules! assert_funnel {
-    ($err:ty) => {{
-        type E = $err;
-        let body = r#"{"error":{"message":"boom"}}"#;
+/// The one funnel preserves a provider's status and body across every route:
+/// a non-success HTTP response, a 2xx provider error envelope, a non-HTTP
+/// (gRPC/SDK) transport, and a transport that reported the reply as an error.
+#[test]
+fn funnel_preserves_status_and_body() {
+    type E = crate::error::ProviderError;
+    let body = r#"{"error":{"message":"boom"}}"#;
 
-        // Non-success status -> ProviderResponse, with status + body recoverable.
-        let err = E::from_http_response(StatusCode::SERVICE_UNAVAILABLE, body);
+    // Non-success status -> ProviderResponse, with status + body recoverable.
+    let err = E::from_http_response(StatusCode::SERVICE_UNAVAILABLE, body);
+    assert!(
+        matches!(err, E::ProviderResponse(_)),
+        "a provider's reply is a ProviderResponse",
+    );
+    assert_eq!(
+        err.provider_response_status(),
+        Some(StatusCode::SERVICE_UNAVAILABLE),
+        "non-success status not preserved",
+    );
+    assert_eq!(
+        err.provider_response_body(),
+        Some(body),
+        "non-success body not preserved",
+    );
+    assert_eq!(
+        err.provider_response_json()
+            .expect("valid json")
+            .expect("present json")["error"]["message"],
+        "boom",
+    );
+    assert_eq!(err.provider_request_id(), None);
+
+    // A provider error envelope returned with a 2xx status -> ProviderResponse,
+    // preserving the (success) status so callers can still see it.
+    let err = E::from_http_response(StatusCode::OK, body);
+    assert_eq!(
+        err.provider_response_status(),
+        Some(StatusCode::OK),
+        "2xx envelope status not preserved",
+    );
+    assert_eq!(err.provider_response_body(), Some(body));
+
+    // No HTTP status available (gRPC/SDK) -> ProviderResponse with status None.
+    let err = E::from_provider_body(body);
+    assert_eq!(
+        err.provider_response_status(),
+        None,
+        "status should be None for provider body",
+    );
+    assert_eq!(err.provider_response_body(), Some(body));
+
+    // Empty-body asymmetry: the body is `Some("")` but JSON parses to `Ok(None)`.
+    let err = E::from_provider_body("");
+    assert_eq!(err.provider_response_body(), Some(""));
+    assert!(err.provider_response_json().expect("ok").is_none());
+
+    // A transport that reported the reply as an error routes through the
+    // same funnel: status, body and headers -> ProviderResponse; no
+    // response at all stays a transport error, with no status.
+    let err = E::from_transport_error(crate::http_client::Error::InvalidStatusCodeWithDetails {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        body: body.to_string(),
+        headers: retry_after_headers(),
+    });
+    assert!(matches!(err, E::ProviderResponse(_)));
+    assert_eq!(err.provider_response_body(), Some(body));
+    assert_eq!(
+        err.provider_response_headers()
+            .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+            .and_then(|value| value.to_str().ok()),
+        Some("20"),
+    );
+    let err = E::from_transport_error(crate::http_client::Error::StreamEnded);
+    assert!(matches!(err, E::Http(_)));
+    assert_eq!(err.provider_response_status(), None);
+    // The `?` conversion is the same route.
+    let err: E = crate::http_client::Error::non_success_with_details(
+        StatusCode::NOT_FOUND,
+        http::HeaderMap::new(),
+        body.to_string(),
+    )
+    .into();
+    assert!(matches!(err, E::ProviderResponse(_)));
+
+    // rig#2210 — headers are only present when a capture path
+    // preserved them. The status+body funnels never have any...
+    for err in [
+        E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body),
+        E::from_http_response(StatusCode::OK, body),
+        E::from_provider_body(body),
+        E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
+            .with_provider_request_id(Some("req_abc".to_string())),
+    ] {
         assert!(
-            matches!(err, E::ProviderResponse(_)),
-            concat!(
-                stringify!($err),
-                ": a provider's reply is a ProviderResponse"
-            ),
+            err.provider_response_headers().is_none(),
+            "a funnel cannot invent headers",
         );
-        assert_eq!(
-            err.provider_response_status(),
-            Some(StatusCode::SERVICE_UNAVAILABLE),
-            concat!(stringify!($err), ": non-success status not preserved"),
-        );
-        assert_eq!(
-            err.provider_response_body(),
-            Some(body),
-            concat!(stringify!($err), ": non-success body not preserved"),
-        );
-        assert_eq!(
-            err.provider_response_json()
-                .expect("valid json")
-                .expect("present json")["error"]["message"],
-            "boom",
-        );
-        assert_eq!(err.provider_request_id(), None);
+        // ...and attaching `None` must not disturb the error.
+        let untouched = err.with_response_headers(None);
+        assert!(untouched.provider_response_headers().is_none());
+        assert_eq!(untouched.provider_response_body(), Some(body));
+    }
 
-        // A provider error envelope returned with a 2xx status -> ProviderResponse,
-        // preserving the (success) status so callers can still see it.
-        let err = E::from_http_response(StatusCode::OK, body);
-        assert_eq!(
-            err.provider_response_status(),
-            Some(StatusCode::OK),
-            concat!(stringify!($err), ": 2xx envelope status not preserved"),
-        );
-        assert_eq!(err.provider_response_body(), Some(body));
+    // ...but a preserved response carries headers once attached, so
+    // `Retry-After` stays readable on a 429 whether or not the provider
+    // reported a request id.
+    let without_id = E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
+        .with_response_headers(Some(retry_after_headers()));
+    let with_id = E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
+        .with_provider_request_id(Some("req_abc".to_string()))
+        .with_response_headers(Some(retry_after_headers()));
 
-        // No HTTP status available (gRPC/SDK) -> ProviderResponse with status None.
-        let err = E::from_provider_body(body);
-        assert_eq!(
-            err.provider_response_status(),
-            None,
-            concat!(
-                stringify!($err),
-                ": status should be None for provider body"
-            ),
-        );
-        assert_eq!(err.provider_response_body(), Some(body));
-
-        // Empty-body asymmetry: the body is `Some("")` but JSON parses to `Ok(None)`.
-        let err = E::from_provider_body("");
-        assert_eq!(err.provider_response_body(), Some(""));
-        assert!(err.provider_response_json().expect("ok").is_none());
-
-        // A transport that reported the reply as an error routes through the
-        // same funnel: status, body and headers -> ProviderResponse; no
-        // response at all stays a transport error, with no status.
-        let err =
-            E::from_transport_error($crate::http_client::Error::InvalidStatusCodeWithDetails {
-                status: StatusCode::TOO_MANY_REQUESTS,
-                body: body.to_string(),
-                headers: retry_after_headers(),
-            });
-        assert!(matches!(err, E::ProviderResponse(_)));
-        assert_eq!(err.provider_response_body(), Some(body));
+    for (label, err) in [("without id", without_id), ("with id", with_id)] {
         assert_eq!(
             err.provider_response_headers()
                 .and_then(|headers| headers.get(http::header::RETRY_AFTER))
                 .and_then(|value| value.to_str().ok()),
             Some("20"),
+            "{label}: captured Retry-After not surfaced",
         );
-        let err = E::from_transport_error($crate::http_client::Error::StreamEnded);
-        assert!(matches!(err, E::HttpError(_)));
-        assert_eq!(err.provider_response_status(), None);
-        // The `?` conversion is the same route.
-        let err: E = $crate::http_client::Error::non_success_with_details(
-            StatusCode::NOT_FOUND,
-            http::HeaderMap::new(),
-            body.to_string(),
-        )
-        .into();
-        assert!(matches!(err, E::ProviderResponse(_)));
-
-        // rig#2210 — headers are only present when a capture path
-        // preserved them. The status+body funnels never have any...
-        for err in [
-            E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body),
-            E::from_http_response(StatusCode::OK, body),
-            E::from_provider_body(body),
-            E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
-                .with_provider_request_id(Some("req_abc".to_string())),
-        ] {
-            assert!(
-                err.provider_response_headers().is_none(),
-                concat!(stringify!($err), ": a funnel cannot invent headers"),
-            );
-            // ...and attaching `None` must not disturb the error.
-            let untouched = err.with_response_headers(None);
-            assert!(untouched.provider_response_headers().is_none());
-            assert_eq!(untouched.provider_response_body(), Some(body));
-        }
-
-        // ...but a preserved response carries headers once attached, so
-        // `Retry-After` stays readable on a 429 whether or not the provider
-        // reported a request id.
-        let without_id = E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
-            .with_response_headers(Some(retry_after_headers()));
-        let with_id = E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
-            .with_provider_request_id(Some("req_abc".to_string()))
-            .with_response_headers(Some(retry_after_headers()));
-
-        for (label, err) in [("without id", without_id), ("with id", with_id)] {
-            let err_ty = stringify!($err);
-            assert_eq!(
-                err.provider_response_headers()
-                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
-                    .and_then(|value| value.to_str().ok()),
-                Some("20"),
-                "{err_ty}/{label}: captured Retry-After not surfaced",
-            );
-            // Attaching headers must not disturb the status or body the
-            // funnel already preserved.
-            assert_eq!(
-                err.provider_response_status(),
-                Some(StatusCode::TOO_MANY_REQUESTS),
-                "{err_ty}/{label}: status lost when headers were attached",
-            );
-            assert_eq!(
-                err.provider_response_body(),
-                Some(body),
-                "{err_ty}/{label}: body lost when headers were attached",
-            );
-        }
-    }};
+        // Attaching headers must not disturb the status or body the
+        // funnel already preserved.
+        assert_eq!(
+            err.provider_response_status(),
+            Some(StatusCode::TOO_MANY_REQUESTS),
+            "{label}: status lost when headers were attached",
+        );
+        assert_eq!(
+            err.provider_response_body(),
+            Some(body),
+            "{label}: body lost when headers were attached",
+        );
+    }
 }
 
 /// A 429's rate-limit metadata, as a provider would send it.
@@ -156,32 +146,19 @@ fn retry_after_headers() -> http::HeaderMap {
     headers
 }
 
-#[test]
-fn funnel_preserves_status_and_body_for_every_capability_error() {
-    assert_funnel!(crate::completion::CompletionError);
-    assert_funnel!(crate::embeddings::embedding::EmbeddingError);
-    assert_funnel!(crate::transcription::TranscriptionError);
-    assert_funnel!(crate::client::verify::VerifyError);
-    assert_funnel!(crate::rerank::RerankError);
-    #[cfg(feature = "image")]
-    assert_funnel!(crate::image_generation::ImageGenerationError);
-    #[cfg(feature = "audio")]
-    assert_funnel!(crate::audio_generation::AudioGenerationError);
-}
-
 /// rig#2314: the transport id stamps onto the preserved response, so
 /// status, body and id all stay recoverable and the id appears in the
 /// logged message.
 #[test]
 fn stamping_a_request_id_keeps_status_body_and_names_the_id() {
-    let error = crate::completion::CompletionError::from_http_response(
+    let error = crate::error::ProviderError::from_http_response(
         StatusCode::NOT_FOUND,
         r#"{"error":"nope"}"#,
     )
     .with_provider_request_id(Some("req_abc".to_string()));
     assert!(matches!(
         error,
-        crate::completion::CompletionError::ProviderResponse(_)
+        crate::error::ProviderError::ProviderResponse(_)
     ));
     assert_eq!(
         error.provider_response_status(),
@@ -200,9 +177,8 @@ fn stamping_a_request_id_keeps_status_body_and_names_the_id() {
 #[test]
 fn an_absent_id_leaves_the_message_unchanged() {
     for id in [None, Some(String::new())] {
-        let error =
-            crate::completion::CompletionError::from_http_response(StatusCode::BAD_REQUEST, "bad")
-                .with_provider_request_id(id);
+        let error = crate::error::ProviderError::from_http_response(StatusCode::BAD_REQUEST, "bad")
+            .with_provider_request_id(id);
         assert_eq!(error.provider_request_id(), None);
         assert!(!error.to_string().contains("request id"));
     }
@@ -213,18 +189,14 @@ fn an_absent_id_leaves_the_message_unchanged() {
 /// absorb the call unchanged.
 #[test]
 fn stamping_never_overwrites_an_earlier_id_and_is_a_no_op_without_a_slot() {
-    let error =
-        crate::completion::CompletionError::from_http_response(StatusCode::BAD_REQUEST, "bad")
-            .with_provider_request_id(Some("first".to_string()))
-            .with_provider_request_id(Some("second".to_string()));
+    let error = crate::error::ProviderError::from_http_response(StatusCode::BAD_REQUEST, "bad")
+        .with_provider_request_id(Some("first".to_string()))
+        .with_provider_request_id(Some("second".to_string()));
     assert_eq!(error.provider_request_id(), Some("first"));
 
-    let error = crate::completion::CompletionError::ProviderError("rig diagnostic".to_string())
+    let error = crate::error::ProviderError::Provider("rig diagnostic".to_string())
         .with_provider_request_id(Some("req_abc".to_string()));
-    assert!(matches!(
-        error,
-        crate::completion::CompletionError::ProviderError(_)
-    ));
+    assert!(matches!(error, crate::error::ProviderError::Provider(_)));
     assert_eq!(error.provider_request_id(), None);
 }
 
@@ -232,7 +204,7 @@ fn stamping_never_overwrites_an_earlier_id_and_is_a_no_op_without_a_slot() {
 /// on the same path and must not evict each other.
 #[test]
 fn request_id_and_headers_coexist_on_one_error() {
-    let error = crate::completion::CompletionError::from_http_response(
+    let error = crate::error::ProviderError::from_http_response(
         StatusCode::TOO_MANY_REQUESTS,
         r#"{"error":"slow down"}"#,
     )
@@ -258,9 +230,9 @@ fn attaching_headers_never_overwrites_an_earlier_capture() {
     later.insert(http::header::RETRY_AFTER, "999".parse().expect("value"));
 
     for build in [
-        crate::completion::CompletionError::from_http_response,
+        crate::error::ProviderError::from_http_response,
         |status, body| {
-            crate::completion::CompletionError::from_http_response(status, body)
+            crate::error::ProviderError::from_http_response(status, body)
                 .with_provider_request_id(Some("req_abc".to_string()))
         },
     ] {
@@ -284,21 +256,17 @@ fn attaching_headers_never_overwrites_an_earlier_capture() {
 /// has no response to annotate either.
 #[test]
 fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
-    let error = crate::completion::CompletionError::ProviderError("rig diagnostic".to_string())
+    let error = crate::error::ProviderError::Provider("rig diagnostic".to_string())
         .with_response_headers(Some(retry_after_headers()));
-    assert!(matches!(
-        error,
-        crate::completion::CompletionError::ProviderError(_)
-    ));
+    assert!(matches!(error, crate::error::ProviderError::Provider(_)));
     assert!(error.provider_response_headers().is_none());
     assert_eq!(error.to_string(), "ProviderError: rig diagnostic");
 
-    let error =
-        crate::completion::CompletionError::HttpError(crate::http_client::Error::StreamEnded)
-            .with_response_headers(Some(retry_after_headers()));
+    let error = crate::error::ProviderError::Http(crate::http_client::Error::StreamEnded)
+        .with_response_headers(Some(retry_after_headers()));
     assert!(matches!(
         error,
-        crate::completion::CompletionError::HttpError(crate::http_client::Error::StreamEnded)
+        crate::error::ProviderError::Http(crate::http_client::Error::StreamEnded)
     ));
     assert!(error.provider_response_headers().is_none());
 }
@@ -307,7 +275,7 @@ fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
 /// callers grep and alert on — message churn must be a reviewed diff.
 #[test]
 fn display_goldens_for_error_shapes() {
-    let with_id = crate::completion::CompletionError::from_http_response(
+    let with_id = crate::error::ProviderError::from_http_response(
         StatusCode::NOT_FOUND,
         r#"{"error":"nope"}"#,
     )
@@ -317,7 +285,7 @@ fn display_goldens_for_error_shapes() {
         r#"ProviderResponseError: status 404 Not Found: {"error":"nope"} (request id: req_abc)"#
     );
 
-    let without_id = crate::completion::CompletionError::from_http_response(
+    let without_id = crate::error::ProviderError::from_http_response(
         StatusCode::NOT_FOUND,
         r#"{"error":"nope"}"#,
     );
@@ -327,9 +295,8 @@ fn display_goldens_for_error_shapes() {
     );
 
     // A response-less transport failure is a transport error, and says so.
-    let dropped = crate::completion::CompletionError::from_transport_error(
-        crate::http_client::Error::StreamEnded,
-    );
+    let dropped =
+        crate::error::ProviderError::from_transport_error(crate::http_client::Error::StreamEnded);
     assert_eq!(dropped.to_string(), "HttpError: Stream ended");
 
     // The transport's own rejection text names the status and body.
@@ -345,9 +312,9 @@ fn display_goldens_for_error_shapes() {
 
     // rig#2210: capturing headers must never change the text a caller logs.
     for build in [
-        crate::completion::CompletionError::from_http_response,
+        crate::error::ProviderError::from_http_response,
         |status, body| {
-            crate::completion::CompletionError::from_http_response(status, body)
+            crate::error::ProviderError::from_http_response(status, body)
                 .with_provider_request_id(Some("req_abc".to_string()))
         },
     ] {
@@ -462,15 +429,13 @@ fn a_reply_names_its_machine_code_from_the_transport_then_the_body() {
     );
 
     // The report a completion failure becomes carries it.
-    let report = crate::error::ErrorReport::from(
-        &crate::completion::CompletionError::ProviderResponse(bodied),
-    );
+    let report =
+        crate::error::ErrorReport::from(&crate::error::ProviderError::ProviderResponse(bodied));
     assert_eq!(report.code.as_deref(), Some("model_not_found"));
     assert_eq!(report.http_status, Some(404));
-    let report =
-        crate::error::ErrorReport::from(&crate::completion::CompletionError::ProviderResponse(
-            ProviderResponseError::new(StatusCode::NOT_FOUND, r#"{"error":"prose"}"#),
-        ));
+    let report = crate::error::ErrorReport::from(&crate::error::ProviderError::ProviderResponse(
+        ProviderResponseError::new(StatusCode::NOT_FOUND, r#"{"error":"prose"}"#),
+    ));
     assert_eq!(report.code, None);
 }
 

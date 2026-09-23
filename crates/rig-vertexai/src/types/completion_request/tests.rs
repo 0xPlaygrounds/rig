@@ -583,7 +583,7 @@ fn generation_config_rejects_audio_response_modality() {
     let error = VertexCompletionRequest(request)
         .generation_config()
         .expect_err("audio output must fail before the API call");
-    assert!(matches!(error, CompletionError::RequestError(_)));
+    assert!(matches!(error, ProviderError::Request(_)));
     assert!(error.to_string().contains("responseModalities AUDIO"));
 }
 
@@ -596,7 +596,7 @@ fn generation_config_rejects_out_of_f32_range_typed_and_provider_values() {
     let typed_error = VertexCompletionRequest(typed_request)
         .generation_config()
         .expect_err("typed temperature beyond f32 must fail");
-    assert!(matches!(typed_error, CompletionError::RequestError(_)));
+    assert!(matches!(typed_error, ProviderError::Request(_)));
     assert!(typed_error.to_string().contains("temperature"));
 
     let provider_error = vertex_generation_config(GeminiGenerationConfig {
@@ -604,7 +604,7 @@ fn generation_config_rejects_out_of_f32_range_typed_and_provider_values() {
         ..Default::default()
     })
     .expect_err("provider top_p beyond f32 must fail");
-    assert!(matches!(provider_error, CompletionError::RequestError(_)));
+    assert!(matches!(provider_error, ProviderError::Request(_)));
     assert!(provider_error.to_string().contains("top_p"));
 }
 
@@ -618,7 +618,7 @@ fn generation_config_rejects_non_finite_typed_values() {
     let error = VertexCompletionRequest(request)
         .generation_config()
         .expect_err("non-finite typed temperature must fail");
-    assert!(matches!(error, CompletionError::RequestError(_)));
+    assert!(matches!(error, ProviderError::Request(_)));
     assert!(error.to_string().contains("temperature"));
 }
 
@@ -737,7 +737,7 @@ fn generation_config_rejects_conflicting_response_schema_forms() {
         let error = VertexCompletionRequest(request)
             .generation_config()
             .expect_err("response schema forms cannot be combined");
-        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(matches!(error, ProviderError::Request(_)));
         assert!(
             error
                 .to_string()
@@ -761,7 +761,7 @@ fn generation_config_rejects_both_response_json_schema_aliases() {
     let error = VertexCompletionRequest(request)
         .generation_config()
         .expect_err("JSON schema aliases cannot be combined");
-    assert!(matches!(error, CompletionError::RequestError(_)));
+    assert!(matches!(error, ProviderError::Request(_)));
     assert!(
         error
             .to_string()

@@ -5,7 +5,8 @@ use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
     ToolConfiguration, ToolInputSchema, ToolSpecification,
 };
-use rig_core::completion::{CompletionError, Message};
+use rig_core::completion::Message;
+use rig_core::error::ProviderError;
 use rig_core::message::{DocumentMediaType, UserContent};
 
 pub struct AwsCompletionRequest {
@@ -13,11 +14,11 @@ pub struct AwsCompletionRequest {
     pub prompt_caching: bool,
 }
 
-fn cache_point_block() -> Result<CachePointBlock, CompletionError> {
+fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
     CachePointBlock::builder()
         .r#type(CachePointType::Default)
         .build()
-        .map_err(|e| CompletionError::RequestError(e.into()))
+        .map_err(|e| ProviderError::Request(e.into()))
 }
 
 impl AwsCompletionRequest {
@@ -63,7 +64,7 @@ impl AwsCompletionRequest {
         inference_configuration.build()
     }
 
-    pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, CompletionError> {
+    pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, ProviderError> {
         if self.inner.tool_choice == Some(rig_core::message::ToolChoice::None) {
             return Ok(None);
         }
@@ -80,7 +81,7 @@ impl AwsCompletionRequest {
                     .set_input_schema(Some(ToolInputSchema::Json(doc.0)))
                     .build()
                     .map(Tool::ToolSpec)
-                    .map_err(|e| CompletionError::RequestError(e.into()))
+                    .map_err(|e| ProviderError::Request(e.into()))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -106,7 +107,7 @@ impl AwsCompletionRequest {
                                 .build()
                                 .map(aws_bedrock::ToolChoice::Tool)
                                 .map(Some)
-                                .map_err(|e| CompletionError::RequestError(e.into()))
+                                .map_err(|e| ProviderError::Request(e.into()))
                         })
                         .transpose()
                         .map(Option::flatten),
@@ -118,7 +119,7 @@ impl AwsCompletionRequest {
                 .set_tools(Some(tools))
                 .set_tool_choice(tool_choice)
                 .build()
-                .map_err(|e| CompletionError::RequestError(e.into()))?;
+                .map_err(|e| ProviderError::Request(e.into()))?;
 
             Ok(Some(config))
         } else {
@@ -127,7 +128,7 @@ impl AwsCompletionRequest {
     }
 
     /// Maps rig's `output_schema` to Bedrock's `OutputConfig` for structured output.
-    pub fn output_config(&self) -> Result<Option<aws_bedrock::OutputConfig>, CompletionError> {
+    pub fn output_config(&self) -> Result<Option<aws_bedrock::OutputConfig>, ProviderError> {
         let Some(schema) = self.inner.output_schema.as_ref() else {
             return Ok(None);
         };
@@ -138,13 +139,13 @@ impl AwsCompletionRequest {
             .unwrap_or_else(|| "response_schema".to_string());
 
         let schema_json = serde_json::to_string(schema.as_value())
-            .map_err(|e| CompletionError::RequestError(e.into()))?;
+            .map_err(|e| ProviderError::Request(e.into()))?;
 
         let json_schema_def = aws_bedrock::JsonSchemaDefinition::builder()
             .schema(schema_json)
             .name(schema_name)
             .build()
-            .map_err(|e| CompletionError::RequestError(e.into()))?;
+            .map_err(|e| ProviderError::Request(e.into()))?;
 
         let text_format = aws_bedrock::OutputFormat::builder()
             .r#type(aws_bedrock::OutputFormatType::JsonSchema)
@@ -152,7 +153,7 @@ impl AwsCompletionRequest {
                 json_schema_def,
             ))
             .build()
-            .map_err(|e| CompletionError::RequestError(e.into()))?;
+            .map_err(|e| ProviderError::Request(e.into()))?;
 
         Ok(Some(
             aws_bedrock::OutputConfig::builder()
@@ -161,7 +162,7 @@ impl AwsCompletionRequest {
         ))
     }
 
-    pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
+    pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, ProviderError> {
         let mut system_blocks = Vec::new();
 
         for message in self.inner.chat_history.iter() {
@@ -184,7 +185,7 @@ impl AwsCompletionRequest {
 
     /// Consumes the request: this is the one accessor that needs the chat
     /// history by value, so call it after the borrowing accessors.
-    pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
+    pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, ProviderError> {
         let mut full_history: Vec<Message> = Vec::new();
 
         if !self.inner.documents.is_empty() {
@@ -220,7 +221,7 @@ impl AwsCompletionRequest {
 
         let tool_ids =
             rig_core::providers::internal::tool_call_ids::ToolCallIds::new(&full_history)
-                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                .map_err(|error| ProviderError::Request(Box::new(error)))?;
         let mut messages = Vec::new();
         for (position, message) in full_history.into_iter().enumerate() {
             let mut message: aws_bedrock::Message = RigMessage(message).try_into()?;
@@ -235,7 +236,7 @@ impl AwsCompletionRequest {
                         _ => None,
                     }),
                 )
-                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                .map_err(|error| ProviderError::Request(Box::new(error)))?;
             messages.push(message);
         }
 
@@ -253,7 +254,7 @@ impl AwsCompletionRequest {
                 .role(last_msg.role.clone())
                 .set_content(Some(content))
                 .build()
-                .map_err(|e| CompletionError::RequestError(e.into()))?;
+                .map_err(|e| ProviderError::Request(e.into()))?;
         }
 
         Ok(messages)

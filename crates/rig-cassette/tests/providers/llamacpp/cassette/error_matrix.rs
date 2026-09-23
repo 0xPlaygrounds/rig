@@ -59,9 +59,10 @@
 
 use futures::StreamExt;
 use rig::completion::CompletionModel;
-use rig::embeddings::{EmbeddingError, EmbeddingModel};
+use rig::embeddings::EmbeddingModel;
+use rig::error::ProviderError;
 use rig::model::ModelLister;
-use rig::rerank::{RerankError, RerankModel};
+use rig::rerank::RerankModel;
 use serde_json::{Value, json};
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
@@ -376,7 +377,11 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
                 .await
                 .expect_err("verification must fail without the key");
             assert!(
-                matches!(error, rig::client::VerifyError::InvalidAuthentication),
+                matches!(
+                    &error,
+                    rig::error::ProviderError::InvalidAuthentication(response)
+                        if response.status.map(|status| status.as_u16()) == Some(401)
+                ),
                 "a 401 from the verify path must classify as invalid authentication, got: {error}"
             );
         },
@@ -424,11 +429,9 @@ async fn the_model_listing_requires_the_key_on_a_keyed_server() {
                 .expect_err("`/v1/models` must refuse an unkeyed client");
             assert!(
                 matches!(
-                    error,
-                    rig::model::ModelListingError::ApiError {
-                        status_code: 401,
-                        ..
-                    }
+                    &error,
+                    rig::error::ProviderError::ProviderResponse(response)
+                        if response.status.map(|status| status.as_u16()) == Some(401)
                 ),
                 "the refusal is a readable 401: {error:?}"
             );
@@ -513,7 +516,7 @@ async fn embeddings_with_pooling_none_are_a_400() {
                 "{error}"
             );
             assert!(
-                matches!(error, EmbeddingError::ProviderResponse(_)),
+                matches!(error, ProviderError::ProviderResponse(_)),
                 "the provider envelope must be preserved rather than reduced: {error}"
             );
         },
@@ -737,7 +740,7 @@ async fn rerank_without_a_reranker_is_a_501() {
                 .expect("the 501 body must be preserved");
             assert!(body.contains("--reranking"), "{body}");
             assert!(
-                !matches!(error, RerankError::JsonError(_)),
+                !matches!(error, ProviderError::Json(_)),
                 "a 501 must not be misread as a decode failure: {error}"
             );
         },

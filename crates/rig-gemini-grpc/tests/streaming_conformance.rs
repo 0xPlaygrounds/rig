@@ -9,7 +9,8 @@
 //! unknown-variant signal is the sub-frame `part.data` oneof decoding to
 //! `None`.
 
-use rig_core::completion::{CompletionError, FinishReason};
+use rig_core::completion::FinishReason;
+use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     InterleavedReasoningFixture, ProviderWireFixture, WireDriver, WireInput, event_frame,
     fixtures::drain,
@@ -19,19 +20,19 @@ use rig_gemini_grpc::proto;
 fn driver() -> WireDriver {
     WireDriver::new("gemini-grpc", |chunks| {
         Box::pin(async move {
-            let events: Vec<Result<proto::GenerateContentResponse, CompletionError>> = chunks
+            let events: Vec<Result<proto::GenerateContentResponse, ProviderError>> = chunks
                 .into_iter()
                 .map(|chunk| match chunk {
                     Ok(frame) => frame
                         .downcast_event::<proto::GenerateContentResponse>()
                         .cloned()
                         .ok_or_else(|| {
-                            CompletionError::ProviderError(
+                            ProviderError::Provider(
                                 "gemini-grpc conformance frames must be protobuf responses"
                                     .to_string(),
                             )
                         }),
-                    Err(error) => Err(CompletionError::HttpError(error)),
+                    Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
             let stream =

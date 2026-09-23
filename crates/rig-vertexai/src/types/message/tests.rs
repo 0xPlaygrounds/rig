@@ -96,7 +96,7 @@ fn test_assistant_image_history_rejects_invalid_or_unsupported_input() {
     ];
 
     for (image, expected_message) in cases {
-        let result: Result<vertexai::model::Content, CompletionError> =
+        let result: Result<vertexai::model::Content, ProviderError> =
             RigMessage(Message::Assistant {
                 id: None,
                 content: vec![image],
@@ -105,7 +105,7 @@ fn test_assistant_image_history_rejects_invalid_or_unsupported_input() {
         let Err(error) = result else {
             panic!("invalid assistant image must fail")
         };
-        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(matches!(error, ProviderError::Request(_)));
         assert!(error.to_string().contains(expected_message));
     }
 }

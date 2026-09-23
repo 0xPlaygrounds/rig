@@ -7,6 +7,7 @@
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
+use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
@@ -259,14 +260,14 @@ impl PromptResponse {
 
 use thiserror::Error;
 
-use rig_core::{completion::CompletionError, memory::MemoryError};
+use rig_core::memory::MemoryError;
 
 /// Errors from classic agent prompting.
 #[derive(Debug, Error)]
 pub enum PromptError {
     /// A provider completion failed.
     #[error("CompletionError: {0}")]
-    CompletionError(#[from] CompletionError),
+    CompletionError(#[from] ProviderError),
 
     /// Structured effect failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]

@@ -56,7 +56,7 @@ fn websocket_provider_error_preserves_status_body_and_request_id() {
         &[],
     ));
 
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert!(matches!(error, ProviderError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(StatusCode::UNAUTHORIZED)
@@ -159,7 +159,7 @@ fn websocket_provider_error_preserves_the_rejections_headers() {
 fn websocket_provider_error_leaves_a_transport_failure_alone() {
     let error = websocket_provider_error(http_client::Error::StreamEnded);
 
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(matches!(error, ProviderError::Http(_)));
     assert!(error.is_retryable());
     assert_eq!(error.provider_response_status(), None);
     assert_eq!(error.provider_response_body(), None);

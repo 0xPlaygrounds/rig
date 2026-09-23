@@ -5,7 +5,8 @@
 //! let message = Message::system("Answer briefly.");
 //! ```
 
-use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
+use crate::completion::CompletionRequest as CoreCompletionRequest;
+use crate::error::ProviderError;
 use crate::json_utils::string_or_vec;
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::{completion, json_utils, message};
@@ -537,12 +538,12 @@ impl ToolChoice {
 }
 
 impl TryFrom<crate::message::ToolChoice> for ToolChoice {
-    type Error = CompletionError;
+    type Error = ProviderError;
     fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
         let res = match value {
             message::ToolChoice::Specific { function_names } => {
                 let [name] = function_names.as_slice() else {
-                    return Err(CompletionError::ProviderError(
+                    return Err(ProviderError::Provider(
                         "Provider only supports forcing exactly one specific tool".to_string(),
                     ));
                 };
@@ -1371,7 +1372,7 @@ pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
 pub(crate) fn request_body(
     request: &CompletionRequest,
     modern_output_cap: bool,
-) -> Result<serde_json::Value, CompletionError> {
+) -> Result<serde_json::Value, ProviderError> {
     let mut body = serde_json::to_value(request)?;
 
     if modern_output_cap
@@ -1553,7 +1554,7 @@ pub struct OpenAIRequestParams {
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
-    type Error = CompletionError;
+    type Error = ProviderError;
 
     fn try_from(params: OpenAIRequestParams) -> Result<Self, Self::Error> {
         let OpenAIRequestParams {
@@ -1586,7 +1587,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let tool_ids =
             crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
-                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                .map_err(|error| ProviderError::Request(Box::new(error)))?;
 
         let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(
@@ -1602,7 +1603,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         );
 
         if full_history.is_empty() {
-            return Err(CompletionError::RequestError(
+            return Err(ProviderError::Request(
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "OpenAI Chat Completions request has no provider-compatible messages after conversion",
@@ -1617,7 +1618,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 if content.has_image() {
                     if !supports_image_tool_results {
                         // Reject unsupported images instead of silently removing tool output.
-                        return Err(CompletionError::RequestError(
+                        return Err(ProviderError::Request(
                             concat!(
                                 "this provider does not accept an image in a tool result. ",
                                 "Official OpenAI refuses it on Chat Completions (and the GPT-5 ",
@@ -1678,7 +1679,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         {
             let raw_tools =
                 serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
-                    CompletionError::RequestError(
+                    ProviderError::Request(
                         format!(
                             "Invalid OpenAI Chat Completions `additional_params.tools` payload: {err}"
                         )
@@ -1692,7 +1693,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 if is_function_tool {
                     let tool =
                         serde_json::from_value::<ToolDefinition>(raw_tool).map_err(|err| {
-                            CompletionError::RequestError(
+                            ProviderError::Request(
                                 format!(
                                     "Invalid function tool in OpenAI Chat Completions \
                                  `additional_params.tools`: {err}"

@@ -24,7 +24,7 @@ struct Batch<R, U, F> {
 impl<R: Query, U: Query, F: Query> Query for Batch<R, U, F> {
     type Response = Batch<R::Response, U::Response, F::Response>;
     type Output = Batch<R::Output, U::Output, F::Output>;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, Error> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
         Ok(Batch {
             route: self.route.decode(response.route)?,
             urgency: self.urgency.decode(response.urgency)?,
@@ -33,7 +33,7 @@ impl<R: Query, U: Query, F: Query> Query for Batch<R, U, F> {
     }
 }
 
-fn route() -> Result<Choice<Route>, Error> {
+fn route() -> Result<Choice<Route>, ProviderError> {
     Choice::new(
         "Which team should handle the customer message?",
         [
@@ -109,7 +109,7 @@ fn rejects_duplicate_ids_and_choices() -> anyhow::Result<()> {
         validation::request_ids(&serde_json::value::to_raw_value(
             &(&q).named("route")?.join((&q).named("route")?)
         )?),
-        Err(Error::InvalidRequest(_))
+        Err(ProviderError::Request(_))
     ));
     ensure!(Choice::new("route", [(Route::Billing, "one"), (Route::Billing, "two")]).is_err());
     ensure!(DynamicScore::try_from_iter("rate", ["only one"]).is_err());
@@ -128,7 +128,7 @@ fn rejects_corrupt_answers() -> anyhow::Result<()> {
     ] {
         ensure!(matches!(
             q.decode(serde_json::from_value(replacement)?),
-            Err(Error::InvalidResponse(_))
+            Err(ProviderError::Response(_))
         ));
     }
     Ok(())
@@ -158,7 +158,7 @@ fn rejects_labels_that_decode_to_a_different_variant() {
             "choose",
             [(Asymmetric::First, "one"), (Asymmetric::Second, "two")]
         ),
-        Err(Error::InvalidRequest(_))
+        Err(ProviderError::Request(_))
     ));
 }
 
@@ -378,17 +378,16 @@ fn rejects_non_string_choice_serialization() {
     }
     assert!(matches!(
         Choice::new("Choose", [(Tagged::One, "One"), (Tagged::Two, "Two")]),
-        Err(Error::InvalidRequest(_))
+        Err(ProviderError::Request(_))
     ));
     assert!(matches!(
         Choice::new("Choose", [(1u8, "One"), (2u8, "Two")]),
-        Err(Error::InvalidRequest(_))
+        Err(ProviderError::Request(_))
     ));
 }
 
 #[tokio::test]
 async fn preserves_http_error_metadata() -> anyhow::Result<()> {
-    use rig_core::wire::WireError;
     for status in [429, 529] {
         let server = httpmock::MockServer::start_async().await;
         let mock = server
@@ -408,7 +407,7 @@ async fn preserves_http_error_metadata() -> anyhow::Result<()> {
             .await
             .err()
             .ok_or_else(|| anyhow::anyhow!("expected provider error"))?;
-        let Error::ProviderResponse(response) = &error else {
+        let ProviderError::ProviderResponse(response) = &error else {
             anyhow::bail!("wrong error: {error}");
         };
         ensure!(response.status.map(|s| s.as_u16()) == Some(status));
@@ -440,7 +439,7 @@ async fn rejects_missing_and_extra_response_ids() -> anyhow::Result<()> {
             .bind(rig_reqwest::ReqwestClient::default());
         ensure!(
             matches!(client.evaluate(&"state", Noul::new("Ready?")?.named("ready")?).await,
-            Err(Error::InvalidResponse(message)) if message == "response question IDs differ from request")
+            Err(ProviderError::Response(message)) if message == "response question IDs differ from request")
         );
         mock.assert_async().await;
     }
@@ -477,7 +476,7 @@ fn dynamic_query_rejects_invalid_runtime_definitions() -> anyhow::Result<()> {
         let definition = serde_json::from_value(definition)?;
         ensure!(matches!(
             DynamicQuery::new(BTreeMap::from([(id.into(), definition)])),
-            Err(Error::InvalidRequest(_))
+            Err(ProviderError::Request(_))
         ));
     }
     Ok(())

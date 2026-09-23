@@ -163,7 +163,7 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
-                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
                 "contract providers classify 4xx as ProviderResponse: {error:?}"
             );
             assert_eq!(
@@ -194,7 +194,7 @@ async fn auth_rejection_classifies_with_contract() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
                 "got {error:?}"
             );
             // Derived from the recording.

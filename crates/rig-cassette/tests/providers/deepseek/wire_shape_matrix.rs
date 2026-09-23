@@ -97,7 +97,7 @@ fn recorded_first_user_part_types(scenario: &str) -> Option<Vec<String>> {
     })
 }
 
-fn assert_rejected_by_deepseek(error: &rig::completion::CompletionError, context: &str) {
+fn assert_rejected_by_deepseek(error: &rig::error::ProviderError, context: &str) {
     let rendered = error.to_string();
     assert!(
         rendered.contains("unknown variant") || rendered.contains("expected `text`"),
