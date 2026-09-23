@@ -913,4 +913,6 @@ const _: fn() = || {
 };
 
 #[cfg(test)]
+mod encode_tests;
+#[cfg(test)]
 mod tests;

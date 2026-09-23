@@ -527,3 +527,24 @@ fn validates_score_against_distribution() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// A request the endpoint URL cannot carry fails as a request that could not
+/// be built.
+#[test]
+fn an_unbuildable_request_is_a_request_failure() -> anyhow::Result<()> {
+    use rig_core::error::{ErrorKind, ProviderError};
+    use rig_core::wire::{Mode, Wire};
+
+    let request = serde_json::from_value(json!({"state": 1, "questions": {}}))?;
+    let Err(error) = Jev::new("token")
+        .with_endpoint("http://bad host")
+        .encode(request, Mode::Unary)
+    else {
+        anyhow::bail!("the request must not build");
+    };
+    let report = ProviderError::from(error).report();
+    ensure!(report.kind == ErrorKind::Request);
+    ensure!(!report.retryable);
+    ensure!(report.message == "RequestError: invalid uri character");
+    Ok(())
+}

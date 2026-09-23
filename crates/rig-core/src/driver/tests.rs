@@ -967,3 +967,65 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
          terminal record, not by an error: {errors:?}"
     );
 }
+
+/// A stream opens one byte-body request. A wire that encodes a batch or a
+/// multipart body for a stream fails before anything is sent, as a request
+/// that could not be built.
+#[test]
+fn a_stream_the_driver_cannot_send_is_a_request_failure() {
+    struct Batch;
+    impl Wire for Batch {
+        type Op = Completion;
+        type Decoder = EchoDecoder;
+        fn name(&self) -> &str {
+            "echo"
+        }
+        fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
+            let one =
+                || http::Request::post("https://echo.invalid/a").body(Body::Bytes(Vec::new()));
+            let mut encoded = Encoded::new(one()?, Framing::Sse);
+            encoded.requests.push(one()?);
+            Ok(encoded)
+        }
+        fn decoder(&self, _mode: Mode) -> Self::Decoder {
+            EchoDecoder
+        }
+    }
+    struct Multipart;
+    impl Wire for Multipart {
+        type Op = Completion;
+        type Decoder = EchoDecoder;
+        fn name(&self) -> &str {
+            "echo"
+        }
+        fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
+            let request = http::Request::post("https://echo.invalid/a")
+                .body(Body::Multipart(crate::http_client::MultipartForm::new()))?;
+            Ok(Encoded::new(request, Framing::Sse))
+        }
+        fn decoder(&self, _mode: Mode) -> Self::Decoder {
+            EchoDecoder
+        }
+    }
+
+    let http = crate::test_utils::RecordingHttpClient::new("");
+    for (error, message) in [
+        (
+            stream(&Batch, &http, prompt(), None).err(),
+            "RequestError: a streamed reply takes exactly one request, not 2",
+        ),
+        (
+            stream(&Multipart, &http, prompt(), None).err(),
+            "RequestError: a multipart request cannot open a streamed reply",
+        ),
+    ] {
+        let error = error.expect("the stream must not open");
+        assert_eq!(error.to_string(), message);
+        assert_eq!(error.kind(), crate::error::ErrorKind::Request);
+        assert_eq!(
+            error.boundary(),
+            crate::observe::AdapterErrorBoundary::Request
+        );
+        assert!(!error.is_retryable());
+    }
+}
