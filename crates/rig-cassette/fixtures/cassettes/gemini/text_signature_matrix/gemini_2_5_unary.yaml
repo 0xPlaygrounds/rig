@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Here''s my thought process, breaking down the calculation the user requested:\n\n**Calculating 17 Squared**\n\nOkay, so the user wants the value of 17 squared. That means I need to calculate 17 multiplied by itself: 17 * 17.\n\nMy first thought is to break it down mentally. I''ll split 17 into 10 and 7. That''ll make the calculation easier:\n\n*   10 * 17 is simple: that''s 170.\n*   Then I need to figure out 7 * 17. I''ll break that down further: 7 * (10 + 7) which is the same as (7 * 10) + (7 * 7) = 70 + 49 = 119.\n\nNow I just add those results together: 170 + 119 = 289.\n\nJust to be thorough, I''ll double-check it by doing it the long way as if I was doing it on paper:\n\n```\n  17\nx 17\n-----\n 119 (7 * 17)\n170 (10 * 17)\n-----\n 289\n```\n\nYep, that confirms it: 289.\n\nI need to remember the user just asked for the number, so I''ll report the numerical answer.\n","thought":true},{"text":"289"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"5WKzarTvJo2MmtkPtcmy0Qw","usageMetadata":{"candidatesTokenCount":4,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":146,"totalTokenCount":164}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 17 squared? Answer with the number only.","thought":false}],"role":"user"},{"parts":[{"text":"Here''s my thought process, breaking down the calculation the user requested:\n\n**Calculating 17 Squared**\n\nOkay, so the user wants the value of 17 squared. That means I need to calculate 17 multiplied by itself: 17 * 17.\n\nMy first thought is to break it down mentally. I''ll split 17 into 10 and 7. That''ll make the calculation easier:\n\n*   10 * 17 is simple: that''s 170.\n*   Then I need to figure out 7 * 17. I''ll break that down further: 7 * (10 + 7) which is the same as (7 * 10) + (7 * 7) = 70 + 49 = 119.\n\nNow I just add those results together: 170 + 119 = 289.\n\nJust to be thorough, I''ll double-check it by doing it the long way as if I was doing it on paper:\n\n```\n  17\nx 17\n-----\n 119 (7 * 17)\n170 (10 * 17)\n-----\n 289\n```\n\nYep, that confirms it: 289.\n\nI need to remember the user just asked for the number, so I''ll report the numerical answer.\n","thought":true},{"text":"289","thought":false}],"role":"model"},{"parts":[{"text":"Add one to that number. Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**My Next Calculation**\n\nOkay, so the user wants me to build upon my last response. They''ve provided a previous answer, 289, and my task is simple: add one to it. Let me just confirm that... yes, add one. Alright, straightforward. 289 plus 1, a basic arithmetic operation. Let''s execute that: 289 + 1 = 290. There we go, the solution is 290.\n","thought":true},{"text":"290"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"6GKzatSSE7D9qtsPvKPY4Qg","usageMetadata":{"candidatesTokenCount":4,"promptTokenCount":344,"promptTokensDetails":[{"modality":"TEXT","tokenCount":344}],"serviceTier":"standard","thoughtsTokenCount":34,"totalTokenCount":382}}'

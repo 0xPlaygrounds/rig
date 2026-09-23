@@ -1,0 +1,248 @@
+when:
+  path: /api/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"anthropic/claude-haiku-4.5","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160338-YuKfYWqVRsQD6vHcXMME","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160338-YuKfYWqVRsQD6vHcXMME","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"id":"rs_tmp_hwsy5imxvap","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_hwsy5imxvap","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"The user is","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" asking me to think","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" through the request","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" and then call the","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" lookup_code function for the","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" record \"alpha\".","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n\nLet","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" me think about this:\n1.","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" The user wants me to look","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" up a code for a record","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n2. The","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" record name","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" is \"alpha\"\n3. I","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":16,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" have","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":17,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" a function called \"","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":18,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"lookup_code\" that takes a \"","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":19,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"record\" parameter\n4. The","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":20,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" user explicitly","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":21,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" wants me to call","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" it for \"alpha","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":23,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\"\n\nThis","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":24,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" is","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":25,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" straight","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":26,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"forward - I should","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":27,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" call","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":28,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" the lookup_code function with the parameter","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":29,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" \"alpha\". The user has provided the","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":30,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" specific","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":31,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" value","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":32,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":",","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":33,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" so I should use it exactly as specified","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":34,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":".","item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":35,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_hwsy5imxvap","output_index":0,"sequence_number":36,"text":"The user is asking me to think through the request and then call the lookup_code function for the record \"alpha\".\n\nLet me think about this:\n1. The user wants me to look up a code for a record\n2. The record name is \"alpha\"\n3. I have a function called \"lookup_code\" that takes a \"record\" parameter\n4. The user explicitly wants me to call it for \"alpha\"\n\nThis is straightforward - I should call the lookup_code function with the parameter \"alpha\". The user has provided the specific value, so I should use it exactly as specified.","type":"response.reasoning_text.done"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_hwsy5imxvap","output_index":0,"part":{"text":"The user is asking me to think through the request and then call the lookup_code function for the record \"alpha\".\n\nLet me think about this:\n1. The user wants me to look up a code for a record\n2. The record name is \"alpha\"\n3. I have a function called \"lookup_code\" that takes a \"record\" parameter\n4. The user explicitly wants me to call it for \"alpha\"\n\nThis is straightforward - I should call the lookup_code function with the parameter \"alpha\". The user has provided the specific value, so I should use it exactly as specified.","type":"reasoning_text"},"sequence_number":37,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"text":"The user is asking me to think through the request and then call the lookup_code function for the record \"alpha\".\n\nLet me think about this:\n1. The user wants me to look up a code for a record\n2. The record name is \"alpha\"\n3. I have a function called \"lookup_code\" that takes a \"record\" parameter\n4. The user explicitly wants me to call it for \"alpha\"\n\nThis is straightforward - I should call the lookup_code function with the parameter \"alpha\". The user has provided the specific value, so I should use it exactly as specified.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_hwsy5imxvap","signature":"Eo8GCpwBCBIQARgCKkDyAry3jIsBfs1AzPYDLfMcCRUztqt6nk7utU0WmP5NY5qIGPALkp+wuatsNfAf8rKMqGZfYMCOeoQkFAtRiy9LMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdPbztUGsAECEgx91g6XPLvwfixHgAoaDPRrwLGNxi/EKxxTmSIweJF1jENgcs+921HzCLeAk7X2Tox++d+1aW5Ml+1ZQipXVgx4ioXfCTzzG/3aOBuwKp8EdsLOP1n0EGm8Z0AB+cYtCGDyVhGspybiQKC1E1emp+bRJYQ0ypSgWhas9ffUSOpPl1l78pZ/UL2ONPZNFyzSJ4ohAxi9UH/SYSDHojkSqjRMwFUBKAUMJG8Cu1FHUDpUtsbxSFGKAaJkA0YlvBzNm6icj3tRkNH2rKBX6fbgKWb8TS3R2iC0jgSq4bd8Ss5pv0J3YHyUm+20vpYfh5dH+FS2VW45jIZglN3N34ZVFyXaApjsPx2jtGj0YY0vzN2oyOiaqGuWKXyhvMm4nudOs3xwp8Bl15P3Cx/50UcPJU3mjhyeNTMrBLjb2jpCzw+8tW0CLV6+g/pD2zm0riFWd82K/KI78WlL3IasmyHspWYHut9V0oqNfsufKKzMe1m4OieemFGfOYKFhqXrJ8TEiDvKopLpTynQxCduIEdA6u0y1vjrlbWxmwk3gQrSYMuczn14rMLTluSnNNwcOwMn8j0rVjJikMWPsixlFqoHo/fGNem5FgVLnOKPIOPJHZkrLBRdydaZxf1JWU9S23MQplMp78PTc7TCCY8yDHQrCfHBwDBOwJodpv+qJ+BbsP2aQZZac2wC/QKQtD0DhUbUDcKDw7yUZyx2RUprCbDyPnF5J1i0Ngb/ITlH0JsvvhP79id1HEAo0xCMayGRwqWKmSnGPdT5wYgIubEr6tHuaTDaEkp1vEScJPllaPHxClv3K6cHOx5l3o5kEkNbNXbUGAE=","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":38,"type":"response.output_item.done"}
+
+    data: {"item":{"content":[],"id":"msg_tmp_v7q8hrrw2xk","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":39,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_v7q8hrrw2xk","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":40,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"I'll look up the code for","item_id":"msg_tmp_v7q8hrrw2xk","logprobs":[],"output_index":1,"sequence_number":41,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" record \"alpha\".","item_id":"msg_tmp_v7q8hrrw2xk","logprobs":[],"output_index":1,"sequence_number":42,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_v7q8hrrw2xk","logprobs":[],"output_index":1,"sequence_number":43,"text":"I'll look up the code for record \"alpha\".","type":"response.output_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_v7q8hrrw2xk","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"I'll look up the code for record \"alpha\".","type":"output_text"},"sequence_number":44,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"I'll look up the code for record \"alpha\".","type":"output_text"}],"id":"msg_tmp_v7q8hrrw2xk","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":45,"type":"response.output_item.done"}
+
+    data: {"item":{"arguments":"","call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","id":"fc_tmp_r6s139g6wf","name":"lookup_code","status":"in_progress","type":"function_call"},"output_index":2,"sequence_number":46,"type":"response.output_item.added"}
+
+    data: {"delta":"{\"record\": \"alpha","item_id":"fc_tmp_r6s139g6wf","output_index":2,"sequence_number":47,"type":"response.function_call_arguments.delta"}
+
+    data: {"delta":"\"}","item_id":"fc_tmp_r6s139g6wf","output_index":2,"sequence_number":48,"type":"response.function_call_arguments.delta"}
+
+    data: {"arguments":"{\"record\": \"alpha\"}","item_id":"fc_tmp_r6s139g6wf","name":"lookup_code","output_index":2,"sequence_number":49,"type":"response.function_call_arguments.done"}
+
+    data: {"item":{"arguments":"{\"record\": \"alpha\"}","call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","id":"fc_tmp_r6s139g6wf","name":"lookup_code","status":"completed","type":"function_call"},"output_index":2,"sequence_number":50,"type":"response.output_item.done"}
+
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160338-YuKfYWqVRsQD6vHcXMME","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[{"content":[{"text":"The user is asking me to think through the request and then call the lookup_code function for the record \"alpha\".\n\nLet me think about this:\n1. The user wants me to look up a code for a record\n2. The record name is \"alpha\"\n3. I have a function called \"lookup_code\" that takes a \"record\" parameter\n4. The user explicitly wants me to call it for \"alpha\"\n\nThis is straightforward - I should call the lookup_code function with the parameter \"alpha\". The user has provided the specific value, so I should use it exactly as specified.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_hwsy5imxvap","signature":"Eo8GCpwBCBIQARgCKkDyAry3jIsBfs1AzPYDLfMcCRUztqt6nk7utU0WmP5NY5qIGPALkp+wuatsNfAf8rKMqGZfYMCOeoQkFAtRiy9LMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdPbztUGsAECEgx91g6XPLvwfixHgAoaDPRrwLGNxi/EKxxTmSIweJF1jENgcs+921HzCLeAk7X2Tox++d+1aW5Ml+1ZQipXVgx4ioXfCTzzG/3aOBuwKp8EdsLOP1n0EGm8Z0AB+cYtCGDyVhGspybiQKC1E1emp+bRJYQ0ypSgWhas9ffUSOpPl1l78pZ/UL2ONPZNFyzSJ4ohAxi9UH/SYSDHojkSqjRMwFUBKAUMJG8Cu1FHUDpUtsbxSFGKAaJkA0YlvBzNm6icj3tRkNH2rKBX6fbgKWb8TS3R2iC0jgSq4bd8Ss5pv0J3YHyUm+20vpYfh5dH+FS2VW45jIZglN3N34ZVFyXaApjsPx2jtGj0YY0vzN2oyOiaqGuWKXyhvMm4nudOs3xwp8Bl15P3Cx/50UcPJU3mjhyeNTMrBLjb2jpCzw+8tW0CLV6+g/pD2zm0riFWd82K/KI78WlL3IasmyHspWYHut9V0oqNfsufKKzMe1m4OieemFGfOYKFhqXrJ8TEiDvKopLpTynQxCduIEdA6u0y1vjrlbWxmwk3gQrSYMuczn14rMLTluSnNNwcOwMn8j0rVjJikMWPsixlFqoHo/fGNem5FgVLnOKPIOPJHZkrLBRdydaZxf1JWU9S23MQplMp78PTc7TCCY8yDHQrCfHBwDBOwJodpv+qJ+BbsP2aQZZac2wC/QKQtD0DhUbUDcKDw7yUZyx2RUprCbDyPnF5J1i0Ngb/ITlH0JsvvhP79id1HEAo0xCMayGRwqWKmSnGPdT5wYgIubEr6tHuaTDaEkp1vEScJPllaPHxClv3K6cHOx5l3o5kEkNbNXbUGAE=","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"I'll look up the code for record \"alpha\".","type":"output_text"}],"id":"msg_tmp_v7q8hrrw2xk","role":"assistant","status":"completed","type":"message"},{"arguments":"{\"record\": \"alpha\"}","call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","id":"fc_tmp_r6s139g6wf","name":"lookup_code","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":{"cost":0.001613,"cost_details":{"upstream_inference_cost":0.001613,"upstream_inference_input_cost":0.000608,"upstream_inference_output_cost":0.001005},"input_tokens":608,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"is_byok":false,"output_tokens":201,"output_tokens_details":{"reasoning_tokens":133},"total_tokens":809}},"sequence_number":51,"type":"response.completed"}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha.","type":"input_text"}],"role":"user","type":"message"},{"content":"I''ll look up the code for record \"alpha\".","role":"assistant","type":"message"},{"arguments":"{\"record\":\"alpha\"}","call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","id":"fc_tmp_r6s139g6wf","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"},{"content":[{"text":"Without calling any tool, repeat the code you were given, exactly.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"google/gemini-3-flash-preview","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160340-whQ69NDw2EK8aAz46p7q","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"google/gemini-3-flash-preview","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160340-whQ69NDw2EK8aAz46p7q","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"google/gemini-3-flash-preview","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"content":[],"id":"msg_tmp_g60esf7twcn","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_g60esf7twcn","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"amber-5521","item_id":"msg_tmp_g60esf7twcn","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_g60esf7twcn","logprobs":[],"output_index":0,"sequence_number":5,"text":"amber-5521","type":"response.output_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_g60esf7twcn","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"amber-5521","type":"output_text"},"sequence_number":6,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"amber-5521","type":"output_text"}],"id":"msg_tmp_g60esf7twcn","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":7,"type":"response.output_item.done"}
+
+    data: {"item":{"id":"rs_tmp_fb6xhb4e1y","status":"in_progress","summary":[],"type":"reasoning"},"output_index":1,"sequence_number":8,"type":"response.output_item.added"}
+
+    data: {"item":{"id":"rs_tmp_fb6xhb4e1y","signature":"AY89a190HaqVr5Mwd2lCRrSJpid7/lIep91ZhhZ1vITMyLFAewOObPNnYscKbyjUxN+266Lj50aDlIu5DrKUVCMEJDLFc6yhGjmjGofcdJvLGOA=","status":"completed","summary":[],"type":"reasoning"},"output_index":1,"sequence_number":9,"type":"response.output_item.done"}
+
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160340-whQ69NDw2EK8aAz46p7q","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"google/gemini-3-flash-preview","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"amber-5521","type":"output_text"}],"id":"msg_tmp_g60esf7twcn","role":"assistant","status":"completed","type":"message"},{"id":"rs_tmp_fb6xhb4e1y","signature":"AY89a190HaqVr5Mwd2lCRrSJpid7/lIep91ZhhZ1vITMyLFAewOObPNnYscKbyjUxN+266Lj50aDlIu5DrKUVCMEJDLFc6yhGjmjGofcdJvLGOA=","status":"completed","summary":[],"type":"reasoning"}],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"provisioned","status":"completed","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":{"cost":0.0000665,"cost_details":{"upstream_inference_cost":0.0000665,"upstream_inference_input_cost":0.0000485,"upstream_inference_output_cost":0.000018},"input_tokens":97,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"is_byok":false,"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":103}},"sequence_number":10,"type":"response.completed"}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"The user is asking me to think through the request and then call the lookup_code function for the record \"alpha\".\n\nLet me think about this:\n1. The user wants me to look up a code for a record\n2. The record name is \"alpha\"\n3. I have a function called \"lookup_code\" that takes a \"record\" parameter\n4. The user explicitly wants me to call it for \"alpha\"\n\nThis is straightforward - I should call the lookup_code function with the parameter \"alpha\". The user has provided the specific value, so I should use it exactly as specified.","type":"reasoning_text"}],"id":"rs_tmp_hwsy5imxvap","signature":"Eo8GCpwBCBIQARgCKkDyAry3jIsBfs1AzPYDLfMcCRUztqt6nk7utU0WmP5NY5qIGPALkp+wuatsNfAf8rKMqGZfYMCOeoQkFAtRiy9LMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdPbztUGsAECEgx91g6XPLvwfixHgAoaDPRrwLGNxi/EKxxTmSIweJF1jENgcs+921HzCLeAk7X2Tox++d+1aW5Ml+1ZQipXVgx4ioXfCTzzG/3aOBuwKp8EdsLOP1n0EGm8Z0AB+cYtCGDyVhGspybiQKC1E1emp+bRJYQ0ypSgWhas9ffUSOpPl1l78pZ/UL2ONPZNFyzSJ4ohAxi9UH/SYSDHojkSqjRMwFUBKAUMJG8Cu1FHUDpUtsbxSFGKAaJkA0YlvBzNm6icj3tRkNH2rKBX6fbgKWb8TS3R2iC0jgSq4bd8Ss5pv0J3YHyUm+20vpYfh5dH+FS2VW45jIZglN3N34ZVFyXaApjsPx2jtGj0YY0vzN2oyOiaqGuWKXyhvMm4nudOs3xwp8Bl15P3Cx/50UcPJU3mjhyeNTMrBLjb2jpCzw+8tW0CLV6+g/pD2zm0riFWd82K/KI78WlL3IasmyHspWYHut9V0oqNfsufKKzMe1m4OieemFGfOYKFhqXrJ8TEiDvKopLpTynQxCduIEdA6u0y1vjrlbWxmwk3gQrSYMuczn14rMLTluSnNNwcOwMn8j0rVjJikMWPsixlFqoHo/fGNem5FgVLnOKPIOPJHZkrLBRdydaZxf1JWU9S23MQplMp78PTc7TCCY8yDHQrCfHBwDBOwJodpv+qJ+BbsP2aQZZac2wC/QKQtD0DhUbUDcKDw7yUZyx2RUprCbDyPnF5J1i0Ngb/ITlH0JsvvhP79id1HEAo0xCMayGRwqWKmSnGPdT5wYgIubEr6tHuaTDaEkp1vEScJPllaPHxClv3K6cHOx5l3o5kEkNbNXbUGAE=","summary":[],"type":"reasoning"},{"content":"I''ll look up the code for record \"alpha\".","role":"assistant","type":"message"},{"arguments":"{\"record\":\"alpha\"}","call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","id":"fc_tmp_r6s139g6wf","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"toolu_bdrk_01CcneAGsJTFEV23ugDS7TnT","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"},{"content":[{"text":"Without calling any tool, repeat the code you were given, exactly.","type":"input_text"}],"role":"user","type":"message"},{"content":"amber-5521","role":"assistant","type":"message"},{"content":[{"text":"Without calling any tool, say the code once more, in uppercase.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"anthropic/claude-haiku-4.5","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160341-WEHfEUMN7zr7RvFItkGa","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160341-WEHfEUMN7zr7RvFItkGa","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"id":"rs_tmp_uji5qoqk43","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_uji5qoqk43","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"The user is","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" asking me to repeat","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" the code I was given earlier","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":", but in uppercase. The","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" code was \"amber-5521\".","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" In","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" uppercase","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":",","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" that would be \"AMBER-5","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"521\".","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n\nThe","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" user explicitly","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" said not","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":16,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" to call any tool","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":17,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":", so I'll","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":18,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" just provide","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":19,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" the answer","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":20,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" directly","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":21,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":".","item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_uji5qoqk43","output_index":0,"sequence_number":23,"text":"The user is asking me to repeat the code I was given earlier, but in uppercase. The code was \"amber-5521\". In uppercase, that would be \"AMBER-5521\".\n\nThe user explicitly said not to call any tool, so I'll just provide the answer directly.","type":"response.reasoning_text.done"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_uji5qoqk43","output_index":0,"part":{"text":"The user is asking me to repeat the code I was given earlier, but in uppercase. The code was \"amber-5521\". In uppercase, that would be \"AMBER-5521\".\n\nThe user explicitly said not to call any tool, so I'll just provide the answer directly.","type":"reasoning_text"},"sequence_number":24,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"text":"The user is asking me to repeat the code I was given earlier, but in uppercase. The code was \"amber-5521\". In uppercase, that would be \"AMBER-5521\".\n\nThe user explicitly said not to call any tool, so I'll just provide the answer directly.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_uji5qoqk43","signature":"Eu4DCpwBCBIQARgCKkAtiyVFZqTy+8UebDr8ou8UBasalm0dlfdiwFeovFDlTkHdCfivZZRZflIMC34rPh4az2z7QGQR7Ck/tEQrr22aMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdbbztUGsAECEgyuRELeYIc7/3j//6gaDCKQ20d5YYoGCyrCOyIwDAMcujW3gszUczGUhz7SmvmmnKWhuwhTeJi1pR7bZGG6yhA/Pw39n8h/nLjKNS6AKv4BXPpMjOOODYL/UzLoWlWRTT61Ht6yjF0TUkEmKamPFx3A5IFILqYSoTDcLXIRevHgG4xLppVJfNpGdfFj1yWruxdA69t0DeMJso2CeB2HceAb4fbsXypLDmjecViDumFS3H7xIzHOLtCUW1wAA6pG6VLzYz888TxxTsKH1H9MTUypXWerTuZH6WHkLz8gd9VuNP6qHlAqoo0B/HCwcyiDlnIHUD5W1VRzEj8ICxpBt4IAinnGvnS9kCPwSWiytg/5uBUQA3F1xn+yDXXbsPcjszDSkzZSGxEiicEhweOF+seZTKVDSU+vZS4CyR48fxhQRpTmQ+4Q7npijtTFCX4YAQ==","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":25,"type":"response.output_item.done"}
+
+    data: {"item":{"content":[],"id":"msg_tmp_5xnjma9e3vp","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":26,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_5xnjma9e3vp","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":27,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"AMBER-5521","item_id":"msg_tmp_5xnjma9e3vp","logprobs":[],"output_index":1,"sequence_number":28,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_5xnjma9e3vp","logprobs":[],"output_index":1,"sequence_number":29,"text":"AMBER-5521","type":"response.output_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_5xnjma9e3vp","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"AMBER-5521","type":"output_text"},"sequence_number":30,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"AMBER-5521","type":"output_text"}],"id":"msg_tmp_5xnjma9e3vp","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":31,"type":"response.output_item.done"}
+
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160341-WEHfEUMN7zr7RvFItkGa","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[{"content":[{"text":"The user is asking me to repeat the code I was given earlier, but in uppercase. The code was \"amber-5521\". In uppercase, that would be \"AMBER-5521\".\n\nThe user explicitly said not to call any tool, so I'll just provide the answer directly.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_uji5qoqk43","signature":"Eu4DCpwBCBIQARgCKkAtiyVFZqTy+8UebDr8ou8UBasalm0dlfdiwFeovFDlTkHdCfivZZRZflIMC34rPh4az2z7QGQR7Ck/tEQrr22aMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdbbztUGsAECEgyuRELeYIc7/3j//6gaDCKQ20d5YYoGCyrCOyIwDAMcujW3gszUczGUhz7SmvmmnKWhuwhTeJi1pR7bZGG6yhA/Pw39n8h/nLjKNS6AKv4BXPpMjOOODYL/UzLoWlWRTT61Ht6yjF0TUkEmKamPFx3A5IFILqYSoTDcLXIRevHgG4xLppVJfNpGdfFj1yWruxdA69t0DeMJso2CeB2HceAb4fbsXypLDmjecViDumFS3H7xIzHOLtCUW1wAA6pG6VLzYz888TxxTsKH1H9MTUypXWerTuZH6WHkLz8gd9VuNP6qHlAqoo0B/HCwcyiDlnIHUD5W1VRzEj8ICxpBt4IAinnGvnS9kCPwSWiytg/5uBUQA3F1xn+yDXXbsPcjszDSkzZSGxEiicEhweOF+seZTKVDSU+vZS4CyR48fxhQRpTmQ+4Q7npijtTFCX4YAQ==","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"AMBER-5521","type":"output_text"}],"id":"msg_tmp_5xnjma9e3vp","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":{"cost":0.001116,"cost_details":{"upstream_inference_cost":0.001116,"upstream_inference_input_cost":0.000736,"upstream_inference_output_cost":0.00038},"input_tokens":736,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"is_byok":false,"output_tokens":76,"output_tokens_details":{"reasoning_tokens":65},"total_tokens":812}},"sequence_number":32,"type":"response.completed"}
+
+    data: [DONE]
+

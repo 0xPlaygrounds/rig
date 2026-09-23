@@ -1,0 +1,175 @@
+when:
+  path: /api/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"anthropic/claude-haiku-4.5","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160348-8WIOg19LxjJGk8zInURi","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160348-8WIOg19LxjJGk8zInURi","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"id":"rs_tmp_qtfmsrqegja","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_qtfmsrqegja","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"The user is asking me to think","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" through a","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" request","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":", then call the","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" lookup_code function for record \"alpha","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\".","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n\nLet me think about this:","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n1. The user wants me to call","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" the","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" lookup_code function","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n2. The","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" function takes one parameter: \"record\"","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n3. The user wants me to","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":16,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" look","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":17,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" up the code for record \"alpha\"","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":18,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"\n4. This","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":19,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" is","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":20,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" a straightforward request","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":21,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" with","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" all","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":23,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" the","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":24,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" information","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":25,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" I need\n\nI should call the lookup","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":26,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":"_code function with \"alpha\" as","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":27,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" the record parameter.","item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":28,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_qtfmsrqegja","output_index":0,"sequence_number":29,"text":"The user is asking me to think through a request, then call the lookup_code function for record \"alpha\".\n\nLet me think about this:\n1. The user wants me to call the lookup_code function\n2. The function takes one parameter: \"record\"\n3. The user wants me to look up the code for record \"alpha\"\n4. This is a straightforward request with all the information I need\n\nI should call the lookup_code function with \"alpha\" as the record parameter.","type":"response.reasoning_text.done"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_qtfmsrqegja","output_index":0,"part":{"text":"The user is asking me to think through a request, then call the lookup_code function for record \"alpha\".\n\nLet me think about this:\n1. The user wants me to call the lookup_code function\n2. The function takes one parameter: \"record\"\n3. The user wants me to look up the code for record \"alpha\"\n4. This is a straightforward request with all the information I need\n\nI should call the lookup_code function with \"alpha\" as the record parameter.","type":"reasoning_text"},"sequence_number":30,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"text":"The user is asking me to think through a request, then call the lookup_code function for record \"alpha\".\n\nLet me think about this:\n1. The user wants me to call the lookup_code function\n2. The function takes one parameter: \"record\"\n3. The user wants me to look up the code for record \"alpha\"\n4. This is a straightforward request with all the information I need\n\nI should call the lookup_code function with \"alpha\" as the record parameter.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_qtfmsrqegja","signature":"ErUFCpwBCBIQARgCKkDJiD7lIAfmDnaYBlmJA4um83FRza9IuDAbKKNZuksQI+DCM2vbJCKBuZHcL1TXoPJ1e+JrsuNl3ueH0jgVOfNBMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAd7bztUGsAECEgwEWtqYQ0DxbkvU/dAaDHmxRH7QUodmR1TUFiIwYDuV4HlbNR8LhmGx/mLqKtmZQnLpNOnm+fBuE9Sx4KuPbUIUb4wPJNnO2j8r6PKKKsUD7hTy8D9n7h6X+C6tBmKcm1DPh74oWo5BrVWegMOzVGzUao/P49sJb94CtBoWys5X8Rjp+kNmdlmVyTkv8gcNcLe+cJXkyKf2kShW1Tml2QcJ+QEo4KqZJ+/xZdQI+5iCdNfHSIDJ7JArq0exKpRYzbM+y2FUhzTOkmlvBSw15QIsILvGWoI3vIcgY+kmbAi0NPlkMyZxnvsIwwzInnSfCnuc8tPQ/DgHXFtTZnPf4Ai7fp2ADHLWoHVfR+/I8k9DWJsKSSgYVwU77b5KXRiUNUUltGxqfc1RQItJyYB2VFHbaxwcKgHGy3G68XI5GGsH9hA0nbPwrOSq/lU+YY1+bJWN4+RCBXq080P0+nbDy82FSlh+WGw/ES3Fyhe55Avj38qGDRLjaEsV0gWRL5ImI2MDYK4KwBz5nJLv0opeGKcZxrWzOT8r3VxCVSl9sGy1nYamuDyYPIPiRk3XWsOu/B2ahJwJQjRW75uTgKFKcwZi2uAXhXXKZ9OrhxLDcCqdCBQGTTugV42VtylzgKxMIOX4wGFu1AeCUzlD7rCO5iSmlcfxlCEFWx7hlyKwIiCLObL2lTwRpHnd1Arhtmrih7jx22xkGAE=","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":31,"type":"response.output_item.done"}
+
+    data: {"item":{"content":[],"id":"msg_tmp_hcit2f28d8c","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":32,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_hcit2f28d8c","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":33,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"I need","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":34,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" to look","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":35,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" up the code for record \"alpha\".","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":36,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" This","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":37,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" is a straightforward request to","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":38,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" retrieve the stored","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":39,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" code associated","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":40,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" with that record.\n\nLet","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":41,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" me call the function","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":42,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":":","item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":43,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_hcit2f28d8c","logprobs":[],"output_index":1,"sequence_number":44,"text":"I need to look up the code for record \"alpha\". This is a straightforward request to retrieve the stored code associated with that record.\n\nLet me call the function:","type":"response.output_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_hcit2f28d8c","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"I need to look up the code for record \"alpha\". This is a straightforward request to retrieve the stored code associated with that record.\n\nLet me call the function:","type":"output_text"},"sequence_number":45,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"I need to look up the code for record \"alpha\". This is a straightforward request to retrieve the stored code associated with that record.\n\nLet me call the function:","type":"output_text"}],"id":"msg_tmp_hcit2f28d8c","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":46,"type":"response.output_item.done"}
+
+    data: {"item":{"arguments":"","call_id":"toolu_bdrk_011HDBvdKV9rkuCUYMGLMf7j","id":"fc_tmp_8lh6j6u3ahu","name":"lookup_code","status":"in_progress","type":"function_call"},"output_index":2,"sequence_number":47,"type":"response.output_item.added"}
+
+    data: {"delta":"{\"record\": \"alpha","item_id":"fc_tmp_8lh6j6u3ahu","output_index":2,"sequence_number":48,"type":"response.function_call_arguments.delta"}
+
+    data: {"delta":"\"}","item_id":"fc_tmp_8lh6j6u3ahu","output_index":2,"sequence_number":49,"type":"response.function_call_arguments.delta"}
+
+    data: {"arguments":"{\"record\": \"alpha\"}","item_id":"fc_tmp_8lh6j6u3ahu","name":"lookup_code","output_index":2,"sequence_number":50,"type":"response.function_call_arguments.done"}
+
+    data: {"item":{"arguments":"{\"record\": \"alpha\"}","call_id":"toolu_bdrk_011HDBvdKV9rkuCUYMGLMf7j","id":"fc_tmp_8lh6j6u3ahu","name":"lookup_code","status":"completed","type":"function_call"},"output_index":2,"sequence_number":51,"type":"response.output_item.done"}
+
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160348-8WIOg19LxjJGk8zInURi","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-haiku-4.5","object":"response","output":[{"content":[{"text":"The user is asking me to think through a request, then call the lookup_code function for record \"alpha\".\n\nLet me think about this:\n1. The user wants me to call the lookup_code function\n2. The function takes one parameter: \"record\"\n3. The user wants me to look up the code for record \"alpha\"\n4. This is a straightforward request with all the information I need\n\nI should call the lookup_code function with \"alpha\" as the record parameter.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_qtfmsrqegja","signature":"ErUFCpwBCBIQARgCKkDJiD7lIAfmDnaYBlmJA4um83FRza9IuDAbKKNZuksQI+DCM2vbJCKBuZHcL1TXoPJ1e+JrsuNl3ueH0jgVOfNBMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAd7bztUGsAECEgwEWtqYQ0DxbkvU/dAaDHmxRH7QUodmR1TUFiIwYDuV4HlbNR8LhmGx/mLqKtmZQnLpNOnm+fBuE9Sx4KuPbUIUb4wPJNnO2j8r6PKKKsUD7hTy8D9n7h6X+C6tBmKcm1DPh74oWo5BrVWegMOzVGzUao/P49sJb94CtBoWys5X8Rjp+kNmdlmVyTkv8gcNcLe+cJXkyKf2kShW1Tml2QcJ+QEo4KqZJ+/xZdQI+5iCdNfHSIDJ7JArq0exKpRYzbM+y2FUhzTOkmlvBSw15QIsILvGWoI3vIcgY+kmbAi0NPlkMyZxnvsIwwzInnSfCnuc8tPQ/DgHXFtTZnPf4Ai7fp2ADHLWoHVfR+/I8k9DWJsKSSgYVwU77b5KXRiUNUUltGxqfc1RQItJyYB2VFHbaxwcKgHGy3G68XI5GGsH9hA0nbPwrOSq/lU+YY1+bJWN4+RCBXq080P0+nbDy82FSlh+WGw/ES3Fyhe55Avj38qGDRLjaEsV0gWRL5ImI2MDYK4KwBz5nJLv0opeGKcZxrWzOT8r3VxCVSl9sGy1nYamuDyYPIPiRk3XWsOu/B2ahJwJQjRW75uTgKFKcwZi2uAXhXXKZ9OrhxLDcCqdCBQGTTugV42VtylzgKxMIOX4wGFu1AeCUzlD7rCO5iSmlcfxlCEFWx7hlyKwIiCLObL2lTwRpHnd1Arhtmrih7jx22xkGAE=","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"I need to look up the code for record \"alpha\". This is a straightforward request to retrieve the stored code associated with that record.\n\nLet me call the function:","type":"output_text"}],"id":"msg_tmp_hcit2f28d8c","role":"assistant","status":"completed","type":"message"},{"arguments":"{\"record\": \"alpha\"}","call_id":"toolu_bdrk_011HDBvdKV9rkuCUYMGLMf7j","id":"fc_tmp_8lh6j6u3ahu","name":"lookup_code","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":{"cost":0.001623,"cost_details":{"upstream_inference_cost":0.001623,"upstream_inference_input_cost":0.000608,"upstream_inference_output_cost":0.001015},"input_tokens":608,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"is_byok":false,"output_tokens":203,"output_tokens_details":{"reasoning_tokens":111},"total_tokens":811}},"sequence_number":52,"type":"response.completed"}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Think it through, then call lookup_code for record alpha.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"The user is asking me to think through a request, then call the lookup_code function for record \"alpha\".\n\nLet me think about this:\n1. The user wants me to call the lookup_code function\n2. The function takes one parameter: \"record\"\n3. The user wants me to look up the code for record \"alpha\"\n4. This is a straightforward request with all the information I need\n\nI should call the lookup_code function with \"alpha\" as the record parameter.","type":"reasoning_text"}],"id":"rs_tmp_qtfmsrqegja","signature":"ErUFCpwBCBIQARgCKkDJiD7lIAfmDnaYBlmJA4um83FRza9IuDAbKKNZuksQI+DCM2vbJCKBuZHcL1TXoPJ1e+JrsuNl3ueH0jgVOfNBMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAd7bztUGsAECEgwEWtqYQ0DxbkvU/dAaDHmxRH7QUodmR1TUFiIwYDuV4HlbNR8LhmGx/mLqKtmZQnLpNOnm+fBuE9Sx4KuPbUIUb4wPJNnO2j8r6PKKKsUD7hTy8D9n7h6X+C6tBmKcm1DPh74oWo5BrVWegMOzVGzUao/P49sJb94CtBoWys5X8Rjp+kNmdlmVyTkv8gcNcLe+cJXkyKf2kShW1Tml2QcJ+QEo4KqZJ+/xZdQI+5iCdNfHSIDJ7JArq0exKpRYzbM+y2FUhzTOkmlvBSw15QIsILvGWoI3vIcgY+kmbAi0NPlkMyZxnvsIwwzInnSfCnuc8tPQ/DgHXFtTZnPf4Ai7fp2ADHLWoHVfR+/I8k9DWJsKSSgYVwU77b5KXRiUNUUltGxqfc1RQItJyYB2VFHbaxwcKgHGy3G68XI5GGsH9hA0nbPwrOSq/lU+YY1+bJWN4+RCBXq080P0+nbDy82FSlh+WGw/ES3Fyhe55Avj38qGDRLjaEsV0gWRL5ImI2MDYK4KwBz5nJLv0opeGKcZxrWzOT8r3VxCVSl9sGy1nYamuDyYPIPiRk3XWsOu/B2ahJwJQjRW75uTgKFKcwZi2uAXhXXKZ9OrhxLDcCqdCBQGTTugV42VtylzgKxMIOX4wGFu1AeCUzlD7rCO5iSmlcfxlCEFWx7hlyKwIiCLObL2lTwRpHnd1Arhtmrih7jx22xkGAE=","summary":[],"type":"reasoning"},{"content":"I need to look up the code for record \"alpha\". This is a straightforward request to retrieve the stored code associated with that record.\n\nLet me call the function:","role":"assistant","type":"message"},{"arguments":"{\"record\":\"alpha\"}","call_id":"toolu_bdrk_011HDBvdKV9rkuCUYMGLMf7j","id":"fc_tmp_8lh6j6u3ahu","name":"lookup_code","status":"completed","type":"function_call"},{"call_id":"toolu_bdrk_011HDBvdKV9rkuCUYMGLMf7j","output":"record alpha: code amber-5521","status":"completed","type":"function_call_output"},{"content":[{"text":"Now report the code, without calling any tool.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"anthropic/claude-sonnet-4.6","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160350-OzQRrfHwjLAfm16VaOki","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-sonnet-4.6","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160350-OzQRrfHwjLAfm16VaOki","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-sonnet-4.6","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":null},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"id":"rs_tmp_ejivysbxoc","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_ejivysbxoc","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"The","item_id":"rs_tmp_ejivysbxoc","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"delta":" user wants me to report the code without calling any tool.","item_id":"rs_tmp_ejivysbxoc","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_ejivysbxoc","output_index":0,"sequence_number":6,"text":"The user wants me to report the code without calling any tool.","type":"response.reasoning_text.done"}
+
+    data: {"content_index":0,"item_id":"rs_tmp_ejivysbxoc","output_index":0,"part":{"text":"The user wants me to report the code without calling any tool.","type":"reasoning_text"},"sequence_number":7,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"text":"The user wants me to report the code without calling any tool.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_ejivysbxoc","signature":"EtQCCrIBCBIYAipAv2yOR7qDgTAmRkE4R2Uo3mJHyPL4ETi0GTJgHNHZy0rmsrKd0UAFhZrkQKPEetFK4uIeOghhBvi45YG5QVT4yjIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDRjMGYwNDZmLTI1ZmQtNDVmYi1iZmIzLWEwOGE4ZTI0OWNhN3oedXByb2ZfMDExQ2Y0b3VaUTZQVHNMWjd6M0tSVnAyqAHf287VBhIMrxzYktYl77u0Qdj0GgxASkxZqu46K7tCkFciMBp8kyXitadrj3oW3H3o0QolT6ylwfWy00867Ofw25L39Qb0mND4XhvOscL4w9kTlypPbX9LyhK7XeiO2j8Y/HajJd9pZUbYvuuMXOluczWI5WHY0vC7aOrPjxt4vDuXv3f/zSx01NcC7i1wNBxK+BNu2tNhdJn0jAlBTfHy/23NFxgB","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":8,"type":"response.output_item.done"}
+
+    data: {"item":{"content":[],"id":"msg_tmp_svf7nirmk6","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":9,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_svf7nirmk6","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":10,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"The code for record **alpha** is **amber-5521**.","item_id":"msg_tmp_svf7nirmk6","logprobs":[],"output_index":1,"sequence_number":11,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_svf7nirmk6","logprobs":[],"output_index":1,"sequence_number":12,"text":"The code for record **alpha** is **amber-5521**.","type":"response.output_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_tmp_svf7nirmk6","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The code for record **alpha** is **amber-5521**.","type":"output_text"},"sequence_number":13,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The code for record **alpha** is **amber-5521**.","type":"output_text"}],"id":"msg_tmp_svf7nirmk6","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":14,"type":"response.output_item.done"}
+
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0,"id":"gen-1790160350-OzQRrfHwjLAfm16VaOki","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"anthropic/claude-sonnet-4.6","object":"response","output":[{"content":[{"text":"The user wants me to report the code without calling any tool.","type":"reasoning_text"}],"format":"anthropic-claude-v1","id":"rs_tmp_ejivysbxoc","signature":"EtQCCrIBCBIYAipAv2yOR7qDgTAmRkE4R2Uo3mJHyPL4ETi0GTJgHNHZy0rmsrKd0UAFhZrkQKPEetFK4uIeOghhBvi45YG5QVT4yjIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDRjMGYwNDZmLTI1ZmQtNDVmYi1iZmIzLWEwOGE4ZTI0OWNhN3oedXByb2ZfMDExQ2Y0b3VaUTZQVHNMWjd6M0tSVnAyqAHf287VBhIMrxzYktYl77u0Qdj0GgxASkxZqu46K7tCkFciMBp8kyXitadrj3oW3H3o0QolT6ylwfWy00867Ofw25L39Qb0mND4XhvOscL4w9kTlypPbX9LyhK7XeiO2j8Y/HajJd9pZUbYvuuMXOluczWI5WHY0vC7aOrPjxt4vDuXv3f/zSx01NcC7i1wNBxK+BNu2tNhdJn0jAlBTfHy/23NFxgB","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The code for record **alpha** is **amber-5521**.","type":"output_text"}],"id":"msg_tmp_svf7nirmk6","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_options":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the code stored for a record. Always call it before answering.","name":"lookup_code","parameters":{"properties":{"record":{"type":"string"}},"required":["record"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":{"cost":0.003147,"cost_details":{"upstream_inference_cost":0.003147,"upstream_inference_input_cost":0.002472,"upstream_inference_output_cost":0.000675},"input_tokens":824,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"is_byok":false,"output_tokens":45,"output_tokens_details":{"reasoning_tokens":25},"total_tokens":869}},"sequence_number":15,"type":"response.completed"}
+
+    data: [DONE]
+
