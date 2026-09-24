@@ -3398,8 +3398,8 @@ struct StreamLedgerTap {
 impl StreamLedgerTap {
     /// Whether a streamed reply with `headers` is tapped: every body except
     /// a known binary one (audio, image, video, octet stream), which names
-    /// nothing and would only accumulate. `log_created` ignores error
-    /// statuses itself.
+    /// nothing and would only accumulate. Error statuses are filtered before
+    /// this is asked, and again in `log_created`.
     fn taps(headers: &http_client::HeaderMap) -> bool {
         let content_type = headers
             .get(axum::http::header::CONTENT_TYPE)
